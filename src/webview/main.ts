@@ -536,9 +536,15 @@ class App {
     if (this.renderQueued) return;
     this.renderQueued = true;
     requestAnimationFrame(() => {
-      this.renderQueued = false;
-      this.render();
+      this.flushRender();
     });
+  }
+
+  /** Renders now if a render is pending (the queued frame then finds nothing to do). */
+  private flushRender(): void {
+    if (!this.renderQueued) return;
+    this.renderQueued = false;
+    this.render();
   }
 
   private render(): void {
@@ -802,6 +808,9 @@ class App {
   }
 
   private probe(): ProbeState {
+    // Report the DOM as it will be drawn: state changes render on the next frame, which may not
+    // have come yet when the probe arrives (it did not under load, giving stale row positions).
+    this.flushRender();
     return {
       generation: this.generation,
       commits: this.commits.length,

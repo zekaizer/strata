@@ -32,6 +32,19 @@ describe('inline details', () => {
     assert.equal(s.rowTops[3], 3 * ROW_HEIGHT + s.expandedHeight, 'rows below move down by the details height');
   });
 
+  it('reports rows where they are right after a fold, without waiting for a frame', async () => {
+    // The previous test left row 2 expanded; clicking it again would fold it.
+    if ((await panel.probe()).expandedHeight === 0) await panel.simulate({ kind: 'clickRow', index: 2 });
+    await expandedAt(2);
+    for (let i = 0; i < 5; i++) {
+      await panel.simulate({ kind: 'key', key: 'Escape' });
+      const folded = await panel.probe();
+      assert.equal(folded.rowTops[3], 3 * ROW_HEIGHT + folded.expandedHeight, `fold ${i}`);
+      await panel.simulate({ kind: 'key', key: 'Enter' });
+      await expandedAt(2);
+    }
+  });
+
   it('collapses with Escape and expands again with Enter', async () => {
     await panel.simulate({ kind: 'key', key: 'Escape' });
     const closed = await waitFor('collapsed', async () => {
