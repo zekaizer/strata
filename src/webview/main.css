@@ -523,6 +523,8 @@ body.vscode-high-contrast .badge-remotes {
   right: 0;
   box-sizing: border-box;
   overflow: auto;
+  /* A scrollbar coming and going must not change the width the layout was decided for. */
+  scrollbar-gutter: stable;
   padding: 8px 12px 12px calc(var(--graph-width, 40px) + var(--col-gap));
   border-top: 1px solid transparent;
   border-bottom: 1px solid transparent;
@@ -570,15 +572,48 @@ body.vscode-high-contrast .expansion.more-below {
   color: var(--vscode-descriptionForeground);
 }
 
-/* Narrow lists: the message, then the files. Wide lists: side by side (see the container query). */
+/*
+ * The message and the files side by side when both fit on a line, the files below otherwise:
+ * the message asks for its natural width (up to 72ch), the files for one tree column (--tree-w,
+ * measured in main.ts). Nothing here may depend on .stacked in a way that changes those sizes,
+ * or the layout could flip back and forth.
+ */
 .details-layout {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  column-gap: 24px;
+}
+
+.details-main {
+  flex: 1 1 max-content;
+  min-width: min(100%, 32ch);
+  max-width: 72ch;
+}
+
+/* Beside the files, the message stays in view while the tree scrolls (not once fully unfolded). */
+.details-layout:not(.stacked) .details-main:not(.body-open) {
+  position: sticky;
+  top: 0;
 }
 
 .details-files {
+  flex: 100 1 calc(var(--tree-w, 300px) + 17px);
+  min-width: 0;
+  box-sizing: border-box;
+  padding-left: 16px;
+  border-left: 1px solid var(--separator);
+}
+
+.details-layout:not(.stacked) .files-summary {
+  /* Room for the fold button. */
+  padding-right: 28px;
+}
+
+.details-layout.stacked .details-files {
   margin-top: 10px;
-  padding-top: 8px;
+  padding: 8px 0 0;
+  border-left: none;
   border-top: 1px solid var(--separator);
 }
 
@@ -699,14 +734,26 @@ body:not(.hover-off) .byline-toggle:hover {
   overflow-wrap: anywhere;
 }
 
-.meta-table {
-  margin: 0 0 8px;
-  border-collapse: collapse;
-  font-size: 0.92em;
+/* Folded by height, not removed: it keeps counting toward the message's width. */
+.meta-wrap {
+  display: grid;
+  grid-template-rows: 1fr;
 }
 
-.meta-table[hidden] {
-  display: none;
+.meta-wrap.closed {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+}
+
+.meta-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.meta-table {
+  margin: 2px 0 6px;
+  border-collapse: collapse;
+  font-size: 0.92em;
 }
 
 .meta-table th {
@@ -736,7 +783,12 @@ body:not(.hover-off) .byline-toggle:hover {
 }
 
 .meta-parent {
+  max-width: 48ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   text-align: left;
+  vertical-align: bottom;
 }
 
 .details-message {
@@ -803,12 +855,18 @@ body:not(.hover-off) .byline-toggle:hover {
 }
 
 /*
- * When the whole tree fits (decided in main.ts), it flows top to bottom into columns. Rows never
- * split, a folder stays with its first child, and columns prefer to start at top-level rows.
+ * One column is as wide as the widest row (--tree-col-w), so Old | diff | New line up right after
+ * the longest name rather than at the far edge. Columns (count from main.ts) flow top to bottom:
+ * rows never split, a folder stays with its first child, columns prefer top-level rows.
  */
+.files {
+  width: min(100%, var(--tree-col-w, 100%));
+}
+
 .files.files-multicol {
-  column-width: 300px;
+  column-count: var(--cols);
   column-gap: 24px;
+  width: min(100%, calc(var(--cols) * var(--tree-col-w) + (var(--cols) - 1) * 24px));
 }
 
 .files-multicol li {
@@ -823,22 +881,18 @@ body:not(.hover-off) .byline-toggle:hover {
   break-before: avoid;
 }
 
-.files-multicol .file-path {
-  flex: 1;
-  min-width: 0;
+/* Measuring the widest row: every row (folded ones too, so folding never changes it), no renames' old paths. */
+.files.measuring {
+  width: max-content;
+  column-count: auto;
 }
 
-.files-multicol .file-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.files.measuring li[hidden] {
+  display: flex;
 }
 
-.files-multicol .file-actions {
-  position: absolute;
-  right: 4px;
-  background: var(--details-bg);
+.files.measuring .file-old {
+  display: none;
 }
 
 /* Tree rows: 16px per level; a folder's chevron sits where a file's status letter does. */
@@ -926,7 +980,9 @@ body:not(.hover-off) .file:hover {
 }
 
 .file-actions {
-  display: none;
+  /* Its room is always kept (and measured), so showing it never moves or cuts the name. */
+  display: inline-flex;
+  visibility: hidden;
   margin-left: auto;
   flex: none;
   /* One segmented control: Old | diff | New. */
@@ -943,7 +999,7 @@ body:not(.hover-off) .file:hover {
 body:not(.hover-off) .file:hover .file-actions,
 .file:focus-within .file-actions,
 .file.opened .file-actions {
-  display: inline-flex;
+  visibility: visible;
 }
 
 .file-action {
@@ -981,13 +1037,23 @@ body:not(.hover-off) .file-action:hover {
 
 .file-path {
   display: flex;
+  flex: 0 1 auto;
   gap: 6px;
   min-width: 0;
   white-space: nowrap;
 }
 
 .file-name {
-  flex: none;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-old {
+  flex-shrink: 100;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-dir {
@@ -1025,30 +1091,6 @@ body:not(.hover-off) .file-action:hover {
 
 .empty[hidden] {
   display: none;
-}
-
-/* Wide lists: the message on the left, the files on the right. */
-@container list (min-width: 1200px) {
-  .details-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
-    column-gap: 32px;
-    align-items: start;
-  }
-  .details-files {
-    align-self: stretch;
-    margin: 0;
-    padding: 0 0 0 16px;
-    border-top: none;
-    border-left: 1px solid var(--separator);
-  }
-  .files-summary {
-    /* Room for the fold button. */
-    padding-right: 28px;
-  }
-  .files.files-multicol {
-    column-width: 260px;
-  }
 }
 
 /*
@@ -1092,5 +1134,11 @@ body:not(.hover-off) .file-action:hover {
   }
   .details-date-short {
     display: inline;
+  }
+  /* The tree is as wide as the list here: Old | diff | New float over the row instead of taking room. */
+  .file-actions {
+    position: absolute;
+    right: 4px;
+    background: var(--details-bg);
   }
 }

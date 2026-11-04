@@ -49,6 +49,35 @@ describe('details layout', () => {
     assert.match(d.byline, /Ada Lovelace/);
   });
 
+  it('opens the meta table between the byline and the subject', async () => {
+    const d = await openDetails(2);
+    const at = (c: string) => d.blocks.findIndex((b) => b.split(' ').includes(c));
+    assert.ok(at('byline') < at('meta-wrap') && at('meta-wrap') < at('details-subject'), d.blocks.join(', '));
+  });
+
+  it('decides side by side from the content, not from a fixed width', async () => {
+    // "Add docs and sources": no body and a small tree, narrow enough to sit beside each other.
+    const d = await openDetails(1);
+    assert.ok(d.treeWidth >= 150 && d.treeWidth <= 480, `tree width ${d.treeWidth}`);
+    assert.equal(d.stacked, !d.sideBySide);
+    if (d.listWidth >= 900) assert.equal(d.sideBySide, true, `list ${d.listWidth}px, tree ${d.treeWidth}px`);
+    // Opening the meta table changes the height only, never the arrangement.
+    await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
+    const open = await waitFor('meta open', async () => {
+      const p = await panel.probe();
+      return p.details?.metaOpen && p.details;
+    });
+    assert.equal(open.sideBySide, d.sideBySide);
+    await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
+    await waitFor('meta closed', async () => (await panel.probe()).details?.metaOpen === false);
+  });
+
+  it('keeps Old | diff | New next to the file names', async () => {
+    const d = await openDetails(1);
+    assert.ok(d.actionsRight > 0, 'actions laid out');
+    assert.ok(d.actionsRight <= d.cols * d.treeWidth + (d.cols - 1) * 24 + 1, `${d.actionsRight} vs ${d.treeWidth}`);
+  });
+
   it('copies the full hash when the hash is clicked', async () => {
     await openDetails(2);
     await vscode.env.clipboard.writeText('');
