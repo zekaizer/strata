@@ -43,18 +43,18 @@ interface SavedState {
 const RESTORE_SEARCH_LIMIT = 5000;
 
 /**
- * Left and right arrows around the compare icon (as Source Control's "Open Changes"): the file's
- * content before the commit on the left side of the change, after it on the right.
+ * Old and New are words: no icon says "this file before / after the commit" without being read as
+ * history or navigation. The diff keeps Source Control's "Open Changes" icon.
  */
-const FILE_VIEW_ICON: Record<FileView, string> = { before: 'arrow-left', diff: 'git-compare', after: 'arrow-right' };
+const FILE_VIEW_LABEL: Record<FileView, string | undefined> = { before: 'Old', diff: undefined, after: 'New' };
 /** Buttons follow time: before, the change, after. */
 const FILE_VIEW_ORDER: readonly FileView[] = ['before', 'diff', 'after'];
 const FILE_VIEW_TITLE: Record<FileView, string> = {
-  diff: 'Open the changes',
-  before: 'Open the file content before this commit',
-  after: 'Open the file content after this commit',
+  diff: 'Open changes',
+  before: 'Open old version (before this commit)',
+  after: 'Open new version (as of this commit)',
 };
-const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'B', after: 'A' };
+const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
 const REF_ORDER: Record<Ref['kind'], number> = { branch: 0, remote: 1, tag: 2, stash: 3 };
 const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag', stash: 'archive' };
@@ -743,7 +743,12 @@ class App {
     const primary = views[0]!;
     const actions = el('span', 'file-actions');
     for (const view of FILE_VIEW_ORDER.filter((v) => views.includes(v))) {
-      const b = el('button', `file-action file-action-${view} codicon codicon-${FILE_VIEW_ICON[view]}`);
+      const label = FILE_VIEW_LABEL[view];
+      const b = el(
+        'button',
+        `file-action file-action-${view}${label === undefined ? ' codicon codicon-git-compare' : ''}`,
+        label,
+      );
       b.tabIndex = -1;
       b.setAttribute('aria-label', FILE_VIEW_TITLE[view]);
       b.title = `${FILE_VIEW_TITLE[view]} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;

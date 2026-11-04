@@ -471,6 +471,9 @@ canvas.graph {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  /* Tall enough for the Old | diff | New control, so hovering does not shift the rows below. */
+  min-height: 22px;
+  box-sizing: border-box;
   padding: 1px 6px;
   border-radius: 3px;
   cursor: pointer;
@@ -512,8 +515,11 @@ canvas.graph {
 .file-actions {
   display: none;
   margin-left: auto;
-  gap: 2px;
   flex: none;
+  /* One segmented control: Old | diff | New. */
+  border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, var(--vscode-panel-border)));
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 /* Shown where the pointer or keyboard is, and on the file opened last. */
@@ -527,19 +533,29 @@ canvas.graph {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 20px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  min-width: 24px;
+  height: 18px;
+  padding: 0 6px;
+  border: none;
   background: transparent;
-  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 0.9em;
   cursor: pointer;
+}
+
+.file-action + .file-action {
+  border-left: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, var(--vscode-panel-border)));
+}
+
+.file-action.codicon {
+  font-size: 14px;
 }
 
 .file-action:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
 }
 
 .file-old,

@@ -33,14 +33,12 @@ page, so it opens quickly even on very large repositories.
   <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
   selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
 - Click a file in the details to open its diff against the parent commit.
-  Hover a file (or focus it) for three buttons: ← opens the file's content
-  before the commit, the compare icon opens the diff, and → opens the
-  content after the commit. Added
-  files only have the after button and deleted files only the before
-  button.
+  Hover a file (or focus it) for **Old**, the compare icon and **New**: the
+  file as it was before the commit, the diff, and the file as of the
+  commit. Added files only have **New** and deleted files only **Old**.
   <kbd>Alt</kbd> opens to the side. With a file focused, ↑/↓ move between
-  files, <kbd>Enter</kbd> opens it, and <kbd>D</kbd>, <kbd>B</kbd>,
-  <kbd>A</kbd> open the diff, before and after.
+  files, <kbd>Enter</kbd> opens it, and <kbd>O</kbd>, <kbd>D</kbd>,
+  <kbd>N</kbd> open the old version, the diff and the new version.
 - The details show the commit message body (and trailers such as
   `Signed-off-by`) below the files; the subject is the row itself.
 - Use the branch button in the toolbar to show only some refs (type to search,
