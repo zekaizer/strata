@@ -9,7 +9,7 @@ import type {
 } from '../shared/protocol.ts';
 import type { FileChange, FileView } from '../core/details.ts';
 import { GraphController } from './controller.ts';
-import { isMenuCommand } from '../shared/menu-commands.ts';
+import { isCommandId } from '../shared/commands.ts';
 import { getGitApi } from './git-api.ts';
 
 export type ReadyInfo = Extract<WebviewToHost, { type: 'ready' }>;
@@ -206,8 +206,8 @@ export class GraphPanel implements vscode.Disposable {
       case 'probe':
         break;
       case 'menuCommand':
-        // Only the graph's own menu commands, with the same validation as a menu click.
-        if (isMenuCommand(m.command)) {
+        // Only the graph's own commands, with the same validation as a menu click.
+        if (isCommandId(m.command)) {
           void Promise.resolve(
             vscode.commands.executeCommand(m.command, { webview: GraphPanel.viewType, ...m.context }),
           ).then(undefined, (e: unknown) => {

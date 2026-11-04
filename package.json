@@ -159,22 +159,22 @@
         {
           "command": "strata.commit.copyHash",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@1"
+          "group": "5_copy@1"
         },
         {
           "command": "strata.commit.copyShortHash",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@2"
+          "group": "5_copy@2"
         },
         {
           "command": "strata.commit.copySubject",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@3"
+          "group": "5_copy@3"
         },
         {
           "command": "strata.commit.copyPatch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@4"
+          "group": "5_copy@4"
         }
       ],
       "commandPalette": [
@@ -248,6 +248,7 @@
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "fixtures": "node test/fixtures/cli.ts",
+    "manifest": "node scripts/manifest.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json && tsc -p src/worker/tsconfig.json && tsc -p playground/tsconfig.json",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit",

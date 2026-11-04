@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
 import { isCommitId } from '../git/details.ts';
-import { MENU_COMMANDS, type MenuCommand } from '../shared/menu-commands.ts';
+import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
 import { isRepoPath } from './controller.ts';
 import { GraphPanel } from './panel.ts';
 
@@ -46,7 +46,7 @@ const copy = (text: (ctx: MenuArg) => string | Promise<string>) => async (ctx: M
   await vscode.env.clipboard.writeText(await text(ctx));
 };
 
-const HANDLERS: Record<MenuCommand, (ctx: MenuArg) => unknown> = {
+const HANDLERS: Record<CommandId, (ctx: MenuArg) => unknown> = {
   'strata.file.openChanges': open('diff', false),
   'strata.file.openOld': open('before', false),
   'strata.file.openNew': open('after', false),
@@ -68,6 +68,6 @@ const HANDLERS: Record<MenuCommand, (ctx: MenuArg) => unknown> = {
   'strata.commit.copyPatch': (ctx) => panel().copyCommitPatch(commitArg(ctx).hash),
 };
 
-export function registerMenuCommands(): vscode.Disposable[] {
-  return MENU_COMMANDS.map((id) => vscode.commands.registerCommand(id, HANDLERS[id]));
+export function registerCommands(): vscode.Disposable[] {
+  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, HANDLERS[id]));
 }

@@ -6,7 +6,7 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { MenuCommand } from './menu-commands.ts';
+import type { CommandId } from './commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
 
@@ -60,8 +60,8 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
-  /** Runs a context menu command from a keyboard shortcut, with the element's menu context. */
-  | { type: 'menuCommand'; command: MenuCommand; context: Record<string, unknown> }
+  /** Runs a command of the table from a keyboard shortcut or a button, with the element's menu context. */
+  | { type: 'menuCommand'; command: CommandId; context: Record<string, unknown> }
   | { type: 'refresh' }
   /** The view state the webview also keeps with setState, mirrored for re-creating the panel. */
   | { type: 'state'; state: unknown }

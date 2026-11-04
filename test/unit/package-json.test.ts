@@ -1,33 +1,42 @@
 import * as assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { MENU_COMMANDS } from '../../src/shared/menu-commands.ts';
+import { syncManifest } from '../../scripts/lib/manifest.ts';
+import { COMMAND_IDS, COMMANDS, SECTION_KEYS, type CommandSpec } from '../../src/shared/commands.ts';
 
-interface MenuItem {
+interface Command {
   command: string;
-  when?: string;
+  enablement?: string;
 }
-const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+const text = readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
+const pkg = JSON.parse(text) as {
   activationEvents: string[];
-  contributes: { commands: { command: string }[]; menus: Record<string, MenuItem[]> };
+  contributes: { commands: Command[] };
 };
 
-describe('package.json context menus', () => {
-  const declared = new Set(pkg.contributes.commands.map((c) => c.command));
-  const webview = pkg.contributes.menus['webview/context'] ?? [];
-
-  it('declares every menu command and shows each in the graph only', () => {
-    for (const id of MENU_COMMANDS) assert.ok(declared.has(id), `${id} not in contributes.commands`);
-    assert.deepEqual(new Set(webview.map((m) => m.command)), new Set(MENU_COMMANDS));
-    for (const m of webview)
-      assert.match(m.when ?? '', /webviewId == 'strata\.graph' && webviewSection == '(file|commit)'/);
+describe('package.json commands', () => {
+  it('contributes exactly what the command table generates (npm run manifest)', () => {
+    assert.equal(text, syncManifest(text));
   });
 
-  it('keeps menu commands out of the command palette', () => {
-    const hidden = new Set(
-      (pkg.contributes.menus['commandPalette'] ?? []).filter((m) => m.when === 'false').map((m) => m.command),
-    );
-    for (const id of MENU_COMMANDS) assert.ok(hidden.has(id), `${id} shows in the command palette`);
+  it('disables every command that changes the repository while another one runs', () => {
+    const byId = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
+    for (const id of COMMAND_IDS) {
+      const spec: CommandSpec = COMMANDS[id];
+      assert.equal(byId.get(id)?.enablement, spec.writes ? '!strata.busy' : undefined, id);
+    }
+  });
+
+  it("decides a menu's visibility only from context keys its own section carries", () => {
+    // A badge's context also holds its row's keys (VS Code merges them), so a badge menu reading a row flag would lie.
+    for (const id of COMMAND_IDS) {
+      const spec: CommandSpec = COMMANDS[id];
+      for (const m of spec.menus ?? []) {
+        const allowed: readonly string[] = SECTION_KEYS[m.section];
+        for (const key of m.when?.match(/\bstrata[A-Z]\w*/g) ?? [])
+          assert.ok(allowed.includes(key), `${id} in ${m.section} menus reads ${key}`);
+      }
+    }
   });
 });
 
