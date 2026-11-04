@@ -56,14 +56,16 @@ interface SavedState {
   options?: ViewOptions | undefined;
 }
 
-/** Lists at least this wide show the message and the files side by side; matches main.css. */
-const WIDE_DETAILS = 1200;
-/** A long body shows this many lines until "Show more" (more when there is room beside the files). */
+/** A long body shows this many lines until "Show more" when the files are below it. */
 const BODY_LINES = 6;
-/** Trees flow into columns only between these row counts: a few rows read better in one column, and many need a full layout to measure. */
-const MULTICOL_MIN_ROWS = 8;
+/** Width of a tree column: the tree's widest row, within these limits (and half the details). */
+const TREE_MIN = 200;
+const TREE_MAX = 480;
 /** Gap between tree columns; matches main.css. */
-const MULTICOL_GAP = 24;
+const TREE_COL_GAP = 24;
+const TREE_MAX_COLS = 4;
+/** Trees flow into columns only between these row counts: a few rows read better in one column. */
+const MULTICOL_MIN_ROWS = 8;
 const MULTICOL_MAX_ROWS = 300;
 
 /** Restoring a selection loads at most this many commits looking for it. */
@@ -127,6 +129,8 @@ class App {
   /** Announces results of actions (a copy) to screen readers. */
   private readonly announcer = el('div', 'sr-only');
   private announced = '';
+  /** Natural width of the expanded commit's file tree (widest row, Old | diff | New included). */
+  private treeNatural = 0;
   /** Graph and list widths the details were last laid out for. */
   private laidOutWidths = '';
 
@@ -208,7 +212,9 @@ class App {
     });
     // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
-      if (this.expansion.contains(e.target as Node)) return;
+      // By the dispatch path: the target may already be detached (a fold or a parent link
+      // rebuilds the details), and its position would then hit the row under the pointer.
+      if (e.composedPath().includes(this.expansion)) return;
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.commits.length) return;
@@ -227,6 +233,7 @@ class App {
     }).observe(this.viewport);
     this.watchPixelRatio();
     this.trackPointer();
+    this.trackInputModality();
     // VS Code rewrites the theme variables on <html> when the color theme changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
@@ -451,6 +458,28 @@ class App {
     document.addEventListener('pointermove', (e) => {
       if (e.movementX !== 0 || e.movementY !== 0) document.body.classList.remove('hover-off');
     });
+  }
+
+  /**
+   * Marks keyboard use (body.keyboard-nav) until the next pointer press: the list shows where
+   * focus is while it is driven by keys, without a border left behind on a clicked row.
+   */
+  private trackInputModality(): void {
+    const modifiers = new Set(['Shift', 'Control', 'Alt', 'Meta']);
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (!modifiers.has(e.key)) document.body.classList.add('keyboard-nav');
+      },
+      { capture: true },
+    );
+    document.addEventListener(
+      'pointerdown',
+      () => {
+        document.body.classList.remove('keyboard-nav');
+      },
+      { capture: true },
+    );
   }
 
   /** Redraws the canvas at the new resolution when the window moves to a display with another pixel ratio. */
@@ -878,14 +907,15 @@ class App {
     const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
-    close.addEventListener('click', () => {
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.userCollapse();
       this.scroller.focus();
     });
 
     // The commit's text in one column, the change in the other (side by side on wide lists).
     const main = el('div', 'details-main');
-    main.append(this.byline(d), el('h2', 'details-subject', subject), this.metaTable(d));
+    main.append(this.byline(d), this.metaTable(d), el('h2', 'details-subject', subject));
     if (body) {
       const pre = el('pre', 'details-message', reflowBody(body));
       pre.id = 'details-body';
@@ -903,8 +933,10 @@ class App {
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
-    pane.replaceChildren(close, layout);
+    // The fold button is positioned top right; after the content, it comes last in tab order.
+    pane.replaceChildren(layout, close);
     this.applyMetaOpen();
+    this.measureTree();
     pane.scrollTop = 0;
     this.placeExpansion();
     this.layoutDetails();
@@ -947,9 +979,12 @@ class App {
   }
 
   private applyMetaOpen(): void {
-    const table = this.expansion.querySelector<HTMLElement>('.meta-table');
+    const wrap = this.expansion.querySelector<HTMLElement>('.meta-wrap');
     const toggle = this.expansion.querySelector<HTMLElement>('.byline-toggle');
-    if (table) table.hidden = !this.metaOpen;
+    // Folded with CSS rather than removed, so it keeps counting toward the message's width and
+    // unfolding it never changes the layout.
+    wrap?.classList.toggle('closed', !this.metaOpen);
+    wrap?.setAttribute('aria-hidden', String(!this.metaOpen));
     toggle?.setAttribute('aria-expanded', String(this.metaOpen));
     toggle?.classList.toggle('codicon-chevron-down', this.metaOpen);
     toggle?.classList.toggle('codicon-chevron-right', !this.metaOpen);
@@ -985,7 +1020,7 @@ class App {
     });
   }
 
-  /** Commit, author, committer (when it differs) and parents with their subjects. */
+  /** Commit, author and committer (both always, in full) and parents with their subjects. */
   private metaTable(d: CommitDetails): HTMLElement {
     const table = el('table', 'meta-table');
     table.id = 'details-meta';
@@ -1003,14 +1038,17 @@ class App {
     copy.setAttribute('aria-label', copy.title);
     copy.addEventListener('click', () => {
       this.copyHash(d.hash);
+      copy.classList.replace('codicon-copy', 'codicon-check');
+      copy.classList.add('copied');
+      setTimeout(() => {
+        copy.classList.replace('codicon-check', 'codicon-copy');
+        copy.classList.remove('copied');
+      }, 1500);
     });
     row('Commit', el('code', undefined, d.hash), copy);
+    // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
     row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
-    if (d.committer !== d.author || d.committerEmail !== d.authorEmail) {
-      row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
-    } else if (d.commitTime !== d.authorTime) {
-      row('Committer', `same · ${formatDate(d.commitTime)}`);
-    }
+    row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
     d.parents.forEach((p, i) => {
       const subject = d.parentSubjects[i] ?? '';
       const link = el('button', 'link-button meta-parent');
@@ -1022,8 +1060,11 @@ class App {
       });
       row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
     });
-    table.hidden = !this.metaOpen;
-    return table;
+    const clip = el('div', 'meta-clip');
+    clip.append(table);
+    const wrap = el('div', 'meta-wrap');
+    wrap.append(clip);
+    return wrap;
   }
 
   /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
@@ -1052,11 +1093,32 @@ class App {
    */
   private layoutDetails(): void {
     if (!this.details || !this.expanded || this.expansion.hidden) return;
-    const wide = this.viewport.clientWidth >= WIDE_DETAILS;
+    const layout = this.expansion.querySelector<HTMLElement>('.details-layout');
+    const main = this.expansion.querySelector<HTMLElement>('.details-main');
+    const files = this.expansion.querySelector<HTMLElement>('.details-files');
+    if (!layout || !main || !files) return;
     const cap = expansionCap(this.geometry, this.selected, this.scroller.clientHeight, MAX_EXPANSION_SHARE);
     const box = getComputedStyle(this.expansion);
-    // Below the content: padding and borders, which offsetTop (inside the top border) leaves out.
-    const below = parseFloat(box.paddingBottom) + parseFloat(box.borderTopWidth) + parseFloat(box.borderBottomWidth);
+    // Around the content: padding and borders, which offsets (inside the top border) leave out.
+    const borderTop = parseFloat(box.borderTopWidth);
+    const above = parseFloat(box.paddingTop) + borderTop;
+    const below = parseFloat(box.paddingBottom) + parseFloat(box.borderBottomWidth);
+    // Measured unstuck: a stuck message reports its scrolled position.
+    main.classList.remove('stick');
+
+    // Side by side when the message and one tree column fit on a line: CSS wraps the files below
+    // the message otherwise (flex-wrap), so the decision and the layout are one computation.
+    const width = layout.clientWidth;
+    const treeWidth = Math.ceil(
+      Math.min(Math.max(this.treeNatural, TREE_MIN), TREE_MAX, Math.max(TREE_MIN, width / 2)),
+    );
+    layout.style.setProperty('--tree-w', `${treeWidth}px`);
+    const stacked = files.offsetTop > main.offsetTop + 1;
+    layout.classList.toggle('stacked', stacked);
+    /** Top of `e` from the expansion's border edge, the edge `cap` is measured from. */
+    const top = (e: HTMLElement) =>
+      borderTop + layout.offsetTop + e.getBoundingClientRect().top - layout.getBoundingClientRect().top;
+
     const pre = this.expansion.querySelector<HTMLElement>('.details-message');
     const more = this.expansion.querySelector<HTMLElement>('.details-more');
     if (pre && more) {
@@ -1067,9 +1129,10 @@ class App {
       more.textContent = 'Show more · 999 more lines';
       const line = parseFloat(getComputedStyle(pre).lineHeight) || 18;
       const total = Math.round(pre.scrollHeight / line);
-      const tail = more.offsetTop + more.offsetHeight - (pre.offsetTop + pre.offsetHeight) + below;
+      const tail = more.getBoundingClientRect().bottom - pre.getBoundingClientRect().bottom + below;
       // Beside the files, the body may use the height the files take anyway.
-      const lines = wide ? Math.max(BODY_LINES, Math.floor((cap - pre.offsetTop - tail) / line)) : BODY_LINES;
+      const room = Math.floor((cap - top(pre) - tail) / line);
+      const lines = stacked ? BODY_LINES : Math.max(BODY_LINES, room);
       // Hiding a line or two behind a link saves nothing.
       const clampable = total >= lines + 2;
       const clamped = clampable && !this.bodyExpanded;
@@ -1082,21 +1145,49 @@ class App {
       more.textContent = clamped ? `Show more · ${total - lines} more lines` : 'Show less';
       more.setAttribute('aria-expanded', String(!clamped));
     }
-    const tree = this.expansion.querySelector<HTMLElement>('.files');
+
+    const tree = files.querySelector<HTMLElement>('.files');
     if (tree) {
-      tree.classList.remove('files-multicol');
       const rows = tree.querySelectorAll('li:not([hidden])').length;
-      // CSS multicol: floor((width + gap) / (column-width + gap)) columns; values as in main.css.
-      const columns = Math.floor((tree.clientWidth + MULTICOL_GAP) / ((wide ? 260 : 300) + MULTICOL_GAP));
-      if (columns >= 2 && rows >= MULTICOL_MIN_ROWS && rows <= MULTICOL_MAX_ROWS) {
-        // Columns only when the whole tree then fits: a column cut off at the bottom would hide the
-        // rest of its folder while the next column goes on elsewhere. Measured, since rows that
-        // must stay together make columns uneven.
-        tree.classList.add('files-multicol');
-        if (tree.offsetTop + tree.offsetHeight + below > cap) tree.classList.remove('files-multicol');
+      const rowHeight = tree.querySelector<HTMLElement>('li:not([hidden])')?.offsetHeight || 22;
+      const area = files.clientWidth - parseFloat(getComputedStyle(files).paddingLeft);
+      // Below the message the tree has the whole width, so its columns take the widest row as it
+      // is; the limits above only keep one long name from pushing the files below the message.
+      const columnWidth = stacked ? Math.min(Math.max(this.treeNatural, TREE_MIN), Math.floor(area)) : treeWidth;
+      layout.style.setProperty('--tree-col-w', `${columnWidth}px`);
+      const byWidth = Math.min(
+        TREE_MAX_COLS,
+        Math.max(1, Math.floor((area + TREE_COL_GAP) / (columnWidth + TREE_COL_GAP))),
+      );
+      // The tree's own view: the details' height from where the tree starts once the files are at
+      // the top (beside the message they already are; below it, after scrolling past it).
+      const view = cap - above - below - (top(tree) - top(files));
+      const height = (c: number) => Math.ceil((rows * 1.1) / c) * rowHeight;
+      let cols = 1;
+      if (byWidth > 1 && rows >= MULTICOL_MIN_ROWS && rows <= MULTICOL_MAX_ROWS) {
+        // The fewest columns that fit the view; else as many as fit across, if that is within two views.
+        const fits = Array.from({ length: byWidth }, (_, i) => i + 1).find((c) => height(c) <= view);
+        cols = fits ?? (height(byWidth) <= 2 * view ? byWidth : 1);
       }
+      tree.style.setProperty('--cols', String(cols));
+      tree.classList.toggle('files-multicol', cols > 1);
     }
+    // A stuck message taller than the view would hide its own end; and once unfolded it scrolls.
+    main.classList.toggle('stick', !stacked && !this.bodyExpanded && main.offsetHeight <= cap - above - below);
     this.updateExpansionOverflow();
+  }
+
+  /** Measures the tree's widest row once per commit; folding and resizing do not change it. */
+  private measureTree(): void {
+    const tree = this.expansion.querySelector<HTMLElement>('.files');
+    if (!tree) {
+      this.treeNatural = 0;
+      return;
+    }
+    tree.classList.add('measuring');
+    // Rounded up: offsetWidth rounds down, which would cut the widest name by a fraction of a pixel.
+    this.treeNatural = Math.ceil(tree.getBoundingClientRect().width);
+    tree.classList.remove('measuring');
   }
 
   /**
@@ -1347,6 +1438,12 @@ class App {
       ),
       details: this.probeDetails(),
       announced: this.announced,
+      selectionOutline: (() => {
+        const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
+        if (!row) return 'none';
+        const cs = getComputedStyle(row);
+        return cs.outlineColor === 'rgba(0, 0, 0, 0)' ? 'none' : cs.outlineStyle;
+      })(),
       focused: (document.activeElement as HTMLElement | null)?.className ?? '',
       columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
         .filter((e) => !e.classList.contains('refs'))
@@ -1361,15 +1458,19 @@ class App {
     const main = e.querySelector<HTMLElement>('.details-main');
     const files = e.querySelector<HTMLElement>('.details-files');
     const table = e.querySelector<HTMLElement>('.meta-table');
+    const metaOpen = !!e.querySelector('.meta-wrap:not(.closed)');
     const pre = e.querySelector<HTMLElement>('.details-message');
+    const tree = e.querySelector<HTMLElement>('.files');
+    const treeLeft = tree?.getBoundingClientRect().left ?? 0;
     return {
       blocks: [...e.querySelectorAll<HTMLElement>('.details-main > *, .details-files > *')]
         .filter((b) => !b.hidden)
         .map((b) => b.className),
-      sideBySide: !!main && !!files && Math.abs(main.offsetTop - files.offsetTop) < 2,
+      sideBySide:
+        !!main && !!files && Math.abs(main.getBoundingClientRect().top - files.getBoundingClientRect().top) < 2,
       byline: e.querySelector('.byline')?.textContent ?? '',
-      metaOpen: !!table && !table.hidden,
-      metaRows: table && !table.hidden ? [...table.querySelectorAll('th')].map((th) => th.textContent) : [],
+      metaOpen,
+      metaRows: table && metaOpen ? [...table.querySelectorAll('th')].map((th) => th.textContent) : [],
       filesSummary: e.querySelector('.files-summary')?.textContent ?? '',
       bodyClamp: {
         clamped: pre?.classList.contains('clamped') ?? false,
@@ -1378,6 +1479,18 @@ class App {
       moreBelow: e.classList.contains('more-below'),
       overflowing: e.scrollTop + e.clientHeight < e.scrollHeight - 1,
       filesMulticol: e.querySelector('.files')?.classList.contains('files-multicol') ?? false,
+      stacked: e.querySelector('.details-layout')?.classList.contains('stacked') ?? false,
+      treeWidth: parseFloat(
+        e.querySelector<HTMLElement>('.details-layout')?.style.getPropertyValue('--tree-col-w') ?? '0',
+      ),
+      cols: Number(tree?.style.getPropertyValue('--cols') || 1),
+      actionsRight: Math.max(
+        0,
+        ...[...e.querySelectorAll<HTMLElement>('.file:not([hidden]) .file-actions')].map(
+          (a) => a.getBoundingClientRect().right - treeLeft,
+        ),
+      ),
+      listWidth: this.scroller.clientWidth,
     };
   }
 
@@ -1391,6 +1504,12 @@ class App {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${a.index}`);
         if (row) {
           const r = row.getBoundingClientRect();
+          // A real click starts with a pointerdown, which tells keyboard and pointer use apart.
+          row.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, clientX: r.left + 40, clientY: r.top + 4 }),
+          );
+          // Pressing on the list focuses it (tabIndex 0), as a real mousedown does.
+          this.scroller.focus({ preventScroll: true });
           row.dispatchEvent(
             new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + (a.y ?? r.height / 2) }),
           );

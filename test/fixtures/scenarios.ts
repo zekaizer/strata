@@ -160,6 +160,40 @@ export function messages(): RepoBuilder {
       },
     },
   );
+  b.commit(
+    'main',
+    [
+      'docs(inventory): clarify hosts and inventory records across the ADRs and the hardware files',
+      '',
+      'Split host facts from hardware facts so each record has one owner, and repoint the',
+      'ADRs that linked to the old combined pages.',
+      '',
+      'Signed-off-by: Ada Lovelace <ada@example.com>',
+    ].join('\n'),
+    {
+      files: {
+        'docs/adr/0008-wallpad-proxy-to-rpi2-shared-port.md': 'adr\n',
+        'docs/adr/0018-pve-cluster-with-gen8-and-pfsense-ha.md': 'adr\n',
+        'docs/adr/0021-move-dns-to-adguard-home.md': 'adr\n',
+        'inventory/embedded-parts.md': 'host\n',
+        'inventory/esxi.md': 'host\n',
+        'inventory/gen8ubuntu.md': 'host\n',
+        'inventory/GL-XE300.md': 'host\n',
+        'inventory/GS116Ev2.md': 'host\n',
+        'inventory/pfSense.md': 'host\n',
+        'inventory/RaspberryPi2B.md': 'host\n',
+        'inventory/rpi2.md': 'host\n',
+        'inventory/U6-Pro.md': 'host\n',
+        'inventory/what-runs-where.md': 'host\n',
+        'docs/network/vlans.md': 'net\n',
+        'docs/network/wifi.md': 'net\n',
+        'docs/network/firewall-rules.md': 'net\n',
+        'ops/pve3/victorialogs.yml': 'cfg\n',
+        'ops/pve3/journal-upload.service': 'cfg\n',
+        'README.md': 'homelab\n',
+      },
+    },
+  );
   return b;
 }
 

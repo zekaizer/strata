@@ -19,6 +19,7 @@ export class RefFilter {
   private readonly popover = el('div', 'popover');
   private readonly search = el('input', 'popover-search');
   private readonly list = el('div', 'popover-list');
+  private readonly currentButton = el('button', 'link-button popover-current', 'Current branch');
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private selected: Set<string> | null = null;
   private readonly onChange: (refs: string[] | null) => void;
@@ -32,6 +33,7 @@ export class RefFilter {
     );
     this.button.title = 'Show history of selected branches and tags';
     this.button.setAttribute('aria-haspopup', 'dialog');
+    this.button.setAttribute('aria-expanded', 'false');
     this.button.addEventListener('click', () => {
       this.toggle();
     });
@@ -45,7 +47,7 @@ export class RefFilter {
     all.addEventListener('click', () => {
       this.commit(null);
     });
-    const current = el('button', 'link-button popover-current', 'Current branch');
+    const current = this.currentButton;
     current.addEventListener('click', () => {
       const head = this.refs.headBranch;
       if (head !== undefined) this.commit(new Set([`refs/heads/${head}`]));
@@ -57,6 +59,11 @@ export class RefFilter {
     this.popover.setAttribute('aria-label', 'Filter refs');
     this.popover.append(this.search, actions, this.list);
     host.append(this.popover);
+    // Tabbing out of the popover closes it, like a click outside.
+    this.popover.addEventListener('focusout', (e) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && !this.popover.contains(next) && !this.button.contains(next)) this.close();
+    });
     // Escape closes the popover even when focus has left it.
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !this.popover.hidden) {
@@ -76,6 +83,8 @@ export class RefFilter {
     this.refs = refs;
     this.selected = selected ? new Set(selected) : null;
     this.updateLabel();
+    this.currentButton.disabled = refs.headBranch === undefined;
+    this.currentButton.title = refs.headBranch === undefined ? 'HEAD is detached' : '';
     if (this.popover.hidden) return;
     if (refsChanged) this.renderList();
     else

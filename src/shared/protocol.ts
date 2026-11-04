@@ -137,8 +137,19 @@ export interface ProbeState {
         moreBelow: boolean;
         overflowing: boolean;
         filesMulticol: boolean;
+        /** The message and the files wrapped onto separate lines (not enough room side by side). */
+        stacked: boolean;
+        /** Width given to one tree column: the tree's widest row, within limits. */
+        treeWidth: number;
+        /** Tree columns. */
+        cols: number;
+        /** Rightmost edge of any file's Old | diff | New control, from the tree's left edge. */
+        actionsRight: number;
+        listWidth: number;
       }
     | undefined;
+  /** Computed outline style of the selected row ('none' when it has no visible outline). */
+  selectionOutline: string;
   /** Text last announced to screen readers. */
   announced: string;
   /** Class name of the focused element. */

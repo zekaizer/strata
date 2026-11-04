@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
-import { git, strata, waitFor } from './helpers.ts';
+import { delay, git, strata, waitFor } from './helpers.ts';
 
 const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
 const IDENTITY = ['-c', 'user.name=Ada Lovelace', '-c', 'user.email=ada@example.com'];
@@ -49,6 +49,65 @@ describe('details layout', () => {
     assert.match(d.byline, /Ada Lovelace/);
   });
 
+  it('opens the meta table between the byline and the subject', async () => {
+    const d = await openDetails(2);
+    const at = (c: string) => d.blocks.findIndex((b) => b.split(' ').includes(c));
+    assert.ok(at('byline') < at('meta-wrap') && at('meta-wrap') < at('details-subject'), d.blocks.join(', '));
+  });
+
+  it('decides side by side from the content, not from a fixed width', async () => {
+    // "Add docs and sources": no body and a small tree, narrow enough to sit beside each other.
+    const d = await openDetails(1);
+    assert.ok(d.treeWidth >= 150 && d.treeWidth <= 480, `tree width ${d.treeWidth}`);
+    assert.equal(d.stacked, !d.sideBySide);
+    if (d.listWidth >= 900) assert.equal(d.sideBySide, true, `list ${d.listWidth}px, tree ${d.treeWidth}px`);
+    // Opening the meta table changes the height only, never the arrangement.
+    await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
+    const open = await waitFor('meta open', async () => {
+      const p = await panel.probe();
+      return p.details?.metaOpen && p.details;
+    });
+    assert.equal(open.sideBySide, d.sideBySide);
+    await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
+    await waitFor('meta closed', async () => (await panel.probe()).details?.metaOpen === false);
+  });
+
+  it('keeps Old | diff | New next to the file names', async () => {
+    const d = await openDetails(1);
+    assert.ok(d.actionsRight > 0, 'actions laid out');
+    assert.ok(d.actionsRight <= d.cols * d.treeWidth + (d.cols - 1) * 24 + 1, `${d.actionsRight} vs ${d.treeWidth}`);
+  });
+
+  it('outlines the selected row only while the list is used with the keyboard', async () => {
+    await panel.simulate({ kind: 'clickRow', index: 3 });
+    const clicked = await waitFor('selected by click', async () => {
+      const p = await panel.probe();
+      return p.selected === order()[3] && p;
+    });
+    assert.equal(clicked.selectionOutline, 'none', 'a click leaves no focus outline behind');
+    await panel.simulate({ kind: 'clickRow', index: 3 });
+    await waitFor('folded', async () => (await panel.probe()).expandedHeight === 0);
+    assert.equal((await panel.probe()).selectionOutline, 'none', 'nor does folding');
+    await panel.simulate({ kind: 'key', key: 'ArrowDown' });
+    const keyed = await waitFor('moved by key', async () => {
+      const p = await panel.probe();
+      return p.selected === order()[4] && p;
+    });
+    assert.equal(keyed.selectionOutline, 'solid', 'keyboard navigation shows where focus is');
+  });
+
+  it('folds with the fold button without touching the row under the pointer', async () => {
+    await openDetails(2);
+    await panel.simulate({ kind: 'click', selector: '.details-fold' });
+    const s = await waitFor('folded', async () => {
+      const p = await panel.probe();
+      return p.expandedHeight === 0 && p;
+    });
+    assert.equal(s.selected, order()[2], 'the same commit stays selected');
+    await delay(300);
+    assert.equal((await panel.probe()).expandedHeight, 0, 'and nothing else unfolded');
+  });
+
   it('copies the full hash when the hash is clicked', async () => {
     await openDetails(2);
     await vscode.env.clipboard.writeText('');
@@ -66,7 +125,8 @@ describe('details layout', () => {
     await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
     const d = (await waitFor('meta open', async () => (await panel.probe()).details?.metaOpen && (await panel.probe())))
       .details!;
-    assert.deepEqual(d.metaRows.slice(0, 2), ['Commit', 'Author']);
+    // Author and committer always both, even when they are the same person.
+    assert.deepEqual(d.metaRows.slice(0, 3), ['Commit', 'Author', 'Committer']);
     // Row 2 is "Merge cross/x and cross/y": two parents, labelled in order.
     assert.ok(d.metaRows.includes('1st parent') && d.metaRows.includes('2nd parent'), d.metaRows.join(', '));
     const next = await openDetails(1);
