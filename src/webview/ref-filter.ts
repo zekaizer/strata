@@ -19,7 +19,7 @@ export class RefFilter {
   private readonly popover = el('div', 'popover');
   private readonly search = el('input', 'popover-search');
   private readonly list = el('div', 'popover-list');
-  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [] };
+  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private selected: Set<string> | null = null;
   private readonly onChange: (refs: string[] | null) => void;
 

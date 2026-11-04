@@ -31,6 +31,10 @@ describe('readRefs', () => {
     assert.equal(byName.get('refs/tags/lightweight-tag')?.hash, git(dir, 'rev-parse', 'lightweight-tag'));
   });
 
+  it('lists the configured remotes', async () => {
+    assert.deepEqual((await readRefs('git', dir)).remotes.sort(), ['origin', 'upstream']);
+  });
+
   it('omits symbolic remote HEAD refs', async () => {
     git(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main');
     const snap = await readRefs('git', dir);
@@ -56,7 +60,7 @@ describe('readRefs', () => {
     const d = join(root, 'empty');
     mkdirSync(d);
     git(d, 'init', '--quiet', '-b', 'trunk');
-    assert.deepEqual(await readRefs('git', d), { head: undefined, headBranch: 'trunk', refs: [] });
+    assert.deepEqual(await readRefs('git', d), { head: undefined, headBranch: 'trunk', refs: [], remotes: [] });
   });
 
   it('includes the stash', async () => {

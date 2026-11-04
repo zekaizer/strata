@@ -116,8 +116,33 @@ export interface ProbeState {
       subjectTop: number;
       subjectLeft: number;
       bandLeft: number;
+      /** Full names of every ref behind the badges, merged badges included. */
+      refNames: string[];
     }
   >;
+  /** The inline details as laid out, or undefined when collapsed. */
+  details?:
+    | {
+        /** Class names of the blocks of the message column, then of the files column, in DOM order. */
+        blocks: string[];
+        /** Whether the message and the files sit side by side (wide lists). */
+        sideBySide: boolean;
+        byline: string;
+        metaOpen: boolean;
+        /** Row labels of the unfolded meta table. */
+        metaRows: string[];
+        filesSummary: string;
+        bodyClamp: { clamped: boolean; hiddenLines: number };
+        /** The more-below marker, and whether the details actually continue below their visible part. */
+        moreBelow: boolean;
+        overflowing: boolean;
+        filesMulticol: boolean;
+      }
+    | undefined;
+  /** Text last announced to screen readers. */
+  announced: string;
+  /** Class name of the focused element. */
+  focused: string;
   options: ViewOptions;
 }
 

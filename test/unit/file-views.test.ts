@@ -29,22 +29,42 @@ describe('filesSummary', () => {
     committerEmail: 'a@example.com',
     commitTime: 0,
     message: 's',
+    parentSubjects: parents.map(() => 'p'),
     base,
     files: Array.from({ length: n }, (_, i) => ({ status: 'M' as const, path: `f${i}` })),
   });
-  it('counts files without naming the only parent', () => {
-    assert.deepEqual(filesSummary(details([BASE], BASE, 1)), { text: '1 file changed', base: undefined });
-    assert.deepEqual(filesSummary(details([], undefined, 3)), { text: '3 files changed', base: undefined });
-  });
-  it('names the parent a merge is compared with', () => {
-    const other = 'b'.repeat(40);
-    assert.deepEqual(filesSummary(details([BASE, other], BASE, 2)), {
-      text: '2 files changed vs first parent',
+  const other = 'b'.repeat(40);
+  it('names the only parent as the base', () => {
+    assert.deepEqual(filesSummary(details([BASE], BASE, 1)), {
+      text: '1 file changed',
       base: BASE,
+      baseLabel: '',
+      root: false,
     });
   });
-  it('names any other base', () => {
-    const other = 'b'.repeat(40);
-    assert.deepEqual(filesSummary(details([BASE], other, 2)), { text: '2 files changed vs', base: other });
+  it('names the first parent a merge is compared with', () => {
+    assert.deepEqual(filesSummary(details([BASE, other], BASE, 2)), {
+      text: '2 files changed',
+      base: BASE,
+      baseLabel: 'first parent',
+      root: false,
+    });
+  });
+  it('names any other base without a label', () => {
+    assert.deepEqual(filesSummary(details([BASE], other, 2)), {
+      text: '2 files changed',
+      base: other,
+      baseLabel: '',
+      root: false,
+    });
+    assert.deepEqual(filesSummary(details([BASE, other], other, 2)).baseLabel, '');
+  });
+  it('says a root commit adds its files', () => {
+    assert.deepEqual(filesSummary(details([], undefined, 3)), {
+      text: '3 files added',
+      base: undefined,
+      baseLabel: '',
+      root: true,
+    });
   });
 });
