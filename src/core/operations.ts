@@ -21,6 +21,7 @@ export type Operation =
   | { kind: 'renameBranch'; from: string; to: string }
   | { kind: 'deleteBranch'; name: string }
   | { kind: 'deleteTag'; name: string }
+  /** `ref` as the merge commit's message should name it: a short ref name or a commit id. */
   | { kind: 'merge'; ref: string; mode: MergeMode; autostash: boolean }
   | { kind: 'rebase'; onto: string; autostash: boolean }
   | { kind: 'cherryPick'; commit: string }
@@ -87,8 +88,8 @@ export function argv(op: Operation): string[] {
     case 'reset':
       return ['reset', `--${op.mode}`, op.commit];
     case 'continue':
-      // A stopped merge has no --continue before git 2.12's wrapper; committing is the same.
-      return op.operation === 'merge' ? ['commit', '--no-edit'] : [GIT_COMMAND[op.operation], '--continue'];
+      // For a merge, `commit --no-edit` would keep the "# Conflicts:" notes; --continue's editor (none) strips them.
+      return [GIT_COMMAND[op.operation], '--continue'];
     case 'abort':
       return [GIT_COMMAND[op.operation], '--abort'];
     case 'skip':

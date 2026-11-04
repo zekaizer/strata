@@ -126,6 +126,18 @@ describe('operations', () => {
     assert.equal(run(d, 'log', '--format=%s', '-3'), 'topic2\ntopic1\nmain1');
   });
 
+  it('concludes a merge after resolving with the message git prepared, without its conflict notes', async () => {
+    const d = repo();
+    await assert.rejects(op(d, { kind: 'merge', ref: 'topic', mode: 'auto', autostash: false }), {
+      kind: 'conflict',
+    });
+    writeFileSync(join(d, 'f.txt'), 'resolved\n');
+    run(d, 'add', 'f.txt');
+    await op(d, { kind: 'continue', operation: 'merge' });
+    assert.equal(await readOperationState('git', d), undefined);
+    assert.equal(run(d, 'log', '-1', '--format=%B'), "Merge branch 'topic'");
+  });
+
   it('aborts and skips', async () => {
     const d = repo();
     const before = head(d);
