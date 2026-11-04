@@ -346,6 +346,16 @@ describe('readStashes', () => {
     assert.deepEqual((await readStashes('git', dir, cache))[0]!.anchor, { kind: 'tip', tip });
   });
 
+  it('keeps a stash at its base while another branch or remote-tracking branch still holds the base', async () => {
+    const tip = run(dir, 'rev-parse', 'HEAD');
+    const base = run(dir, 'rev-parse', 'stash@{0}^1');
+    // A hard reset that origin/topic still covers: the base row stays in the graph.
+    run(dir, 'update-ref', 'refs/remotes/origin/topic', base);
+    assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'base' });
+    run(dir, 'update-ref', '-d', 'refs/remotes/origin/topic');
+    assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'tip', tip });
+  });
+
   it('anchors a stash at its base when its branch is gone', async () => {
     run(dir, 'switch', '--quiet', 'main');
     run(dir, 'branch', '--quiet', '-D', 'topic');
