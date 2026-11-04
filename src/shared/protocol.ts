@@ -93,6 +93,8 @@ export interface ProbeState {
   expandedHeight: number;
   /** Top offset in px of each rendered row within the list, by row index. */
   rowTops: Record<number, number>;
+  /** Scroll offset of the commit list in px. */
+  scrollTop: number;
   /** Rendered height in px of each rendered row, by row index. */
   rowHeights: Record<number, number>;
   /**
@@ -110,6 +112,8 @@ export interface ProbeState {
 export type SimulatedAction =
   /** `y`: px below the row's top to click at (default: its middle). */
   | { kind: 'clickRow'; index: number; y?: number }
+  /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
+  | { kind: 'scrollToRow'; index: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
   | {
       kind: 'key';

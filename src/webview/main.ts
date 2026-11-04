@@ -40,6 +40,12 @@ const MAX_EXPANSION_SHARE = 0.45;
 /** Persisted with setState: survives hiding and VS Code restarts (the panel is restored by a serializer). */
 interface SavedState {
   selectedHash?: string | undefined;
+  /**
+   * The first row in view and how far into it the list is scrolled. Row heights depend on the
+   * refs, so a pixel offset alone points at other rows once refs above it change.
+   */
+  scrollAnchor?: { hash: string; offset: number } | undefined;
+  /** Pixel offset; used when the anchor's commit is not found (and by states saved before anchors). */
   scrollTop?: number | undefined;
   /** Set when a scroll position was restored together with the selection; do not scroll to the selection. */
   keepScroll?: boolean | undefined;
@@ -293,6 +299,7 @@ class App {
       const sameView = JSON.stringify(options) === JSON.stringify(this.options);
       this.restore = {
         selectedHash: this.commits[this.selected]?.hash,
+        scrollAnchor: sameView ? this.scrollAnchor() : undefined,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
         expanded: this.expanded,
       };
@@ -332,9 +339,24 @@ class App {
   private applyRestore(): void {
     const r = this.restore;
     if (!r) return;
-    if (r.scrollTop !== undefined) r.keepScroll = true;
+    if (r.scrollTop !== undefined || r.scrollAnchor !== undefined) r.keepScroll = true;
     const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
-    if (r.scrollTop !== undefined) {
+    if (r.scrollAnchor !== undefined) {
+      const anchor = r.scrollAnchor;
+      const index = this.commits.findIndex((c) => c.hash === anchor.hash);
+      if (index >= 0) {
+        this.syncSizer();
+        this.scroller.scrollTop = this.rowTop(index) + anchor.offset;
+        r.scrollAnchor = undefined;
+        r.scrollTop = undefined;
+      } else if (searchable) {
+        this.loadMore(NEXT_PAGE);
+      } else {
+        // Gone from the history: fall back to the pixel offset.
+        r.scrollAnchor = undefined;
+      }
+    }
+    if (r.scrollAnchor === undefined && r.scrollTop !== undefined) {
       // The sizer normally grows in the next render; it must be tall enough now or the browser clamps scrollTop.
       this.syncSizer();
       this.scroller.scrollTop = r.scrollTop;
@@ -354,18 +376,28 @@ class App {
         r.selectedHash = undefined;
       }
     }
-    if (r.scrollTop === undefined && r.selectedHash === undefined) this.restore = undefined;
+    if (r.scrollAnchor === undefined && r.scrollTop === undefined && r.selectedHash === undefined)
+      this.restore = undefined;
   }
 
   private saveState(): void {
     // While a restore is pending, keep the saved position rather than the not yet restored one.
     const state: SavedState = {
       selectedHash: this.restore?.selectedHash ?? this.commits[this.selected]?.hash,
+      scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
       expanded: this.restore?.expanded ?? this.expanded,
       options: this.options,
     };
     vscode.setState(state);
+  }
+
+  /** The row at the top of the view and the offset into it; undefined with no rows. */
+  private scrollAnchor(): SavedState['scrollAnchor'] {
+    const top = this.scroller.scrollTop;
+    const index = Math.min(this.rowFloor(top), this.commits.length - 1);
+    const commit = this.commits[index];
+    return commit && { hash: commit.hash, offset: top - this.rowTop(index) };
   }
 
   /**
@@ -543,8 +575,13 @@ class App {
   private onExpansionResize(): void {
     const h = this.expansion.hidden ? 0 : this.expansion.offsetHeight;
     if (h === this.gap) return;
+    // Details opening or growing above the view (e.g. restored under a row scrolled past) would
+    // push the rows in view down; keep them where they are.
+    const above = this.selected >= 0 && this.geometry.top(this.selected + 1) < this.scroller.scrollTop;
+    const delta = h - this.gap;
     this.gap = h;
     this.syncSizer();
+    if (above) this.scroller.scrollTop += delta;
     if (this.revealExpansion && this.details) {
       this.revealExpansion = false;
       this.ensureVisible(this.selected, true);
@@ -1047,6 +1084,7 @@ class App {
           parseFloat(r.style.top),
         ]),
       ),
+      scrollTop: this.scroller.scrollTop,
       rowHeights: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [
           Number(r.dataset['index']),
@@ -1098,6 +1136,10 @@ class App {
         }
         break;
       }
+      case 'scrollToRow':
+        this.scroller.scrollTop = this.rowTop(a.index);
+        this.render();
+        break;
       case 'clickFile': {
         const file = this.expansion.querySelectorAll<HTMLElement>('.file')[a.index];
         const target = a.view ? file?.querySelector<HTMLElement>(`.file-action-${a.view}`) : file;

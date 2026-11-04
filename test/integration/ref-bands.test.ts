@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict';
 import type { GraphPanel } from '../../src/host/panel.ts';
+import * as vscode from 'vscode';
 import { git, strata, waitFor } from './helpers.ts';
 
 const ROW_HEIGHT = 24;
@@ -47,5 +48,41 @@ describe('ref badges', () => {
       .find((i) => i > 0)!;
     await panel.simulate({ kind: 'clickRow', index, y: 2 });
     await waitFor('band click selects its row', async () => (await panel.probe()).selected === order()[index]);
+  });
+
+  it('keeps the same rows in view when a refresh adds a ref above them', async () => {
+    // A short list, so it can scroll: the graph on top, a document below.
+    const doc = await vscode.workspace.openTextDocument({ content: 'below' });
+    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+    await vscode.commands.executeCommand('workbench.action.editorLayoutTwoRows');
+    const tag = 'strata-test-band';
+    const refresh = async () => {
+      const before = (await panel.probe()).generation;
+      await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
+      return waitFor('reloaded', async () => {
+        const s = await panel.probe();
+        return s.generation > before && s.done && s.rowTops[8] !== undefined && s;
+      });
+    };
+    try {
+      await panel.simulate({ kind: 'key', key: 'Escape' });
+      await panel.simulate({ kind: 'scrollToRow', index: 8 });
+      const scrolled = await waitFor('scrolled to row 8', async () => {
+        const s = await panel.probe();
+        return s.scrollTop > 0 && s.rowTops[8] === s.scrollTop && s;
+      });
+      assert.equal(scrolled.refBands[2], undefined, 'row 2 has no refs yet');
+      git('tag', tag, order()[2]!);
+      const s = await refresh();
+      assert.ok(s.refBands[2] !== undefined || s.rowTops[2] === undefined, 'row 2 got a band');
+      assert.equal(s.rowTops[8], s.scrollTop, 'row 8 is still the first row in view');
+    } finally {
+      git('tag', '-d', tag);
+      await refresh();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await vscode.commands.executeCommand('workbench.action.editorLayoutSingle');
+      panel = (await strata()).show();
+      await panel.whenReady();
+    }
   });
 });
