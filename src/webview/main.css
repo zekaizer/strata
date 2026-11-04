@@ -754,11 +754,22 @@ body.vscode-high-contrast .expansion.more-below {
   text-overflow: ellipsis;
 }
 
+.byline-stash,
 .byline-date,
 .byline-sep,
 .byline-hash,
 .byline-toggle {
   flex: none;
+}
+
+.byline-stash {
+  color: var(--vscode-foreground);
+}
+
+.byline-branch {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .byline-sep {
@@ -948,6 +959,11 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 .files-summary {
   margin: 0 0 4px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* A stash's untracked files follow its changes. */
+.files + .files-summary {
+  margin-top: 10px;
 }
 
 .files-base {
@@ -1271,4 +1287,14 @@ body:not(.hover-off) .file:hover .file-actions,
     right: 4px;
     background: var(--details-bg);
   }
+}
+
+.file-staged {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--separator);
+  border-radius: 3px;
+  font-size: 0.85em;
+  line-height: 14px;
+  color: var(--vscode-descriptionForeground);
 }

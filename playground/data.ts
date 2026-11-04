@@ -7,7 +7,7 @@ import type { CommitDetails } from '../src/core/details.ts';
 import { readCommitDetails } from '../src/git/details.ts';
 import { LogReader } from '../src/git/log-reader.ts';
 import { readRefs } from '../src/git/refs.ts';
-import { readStashes } from '../src/git/stash.ts';
+import { readStashDetails, readStashes } from '../src/git/stash.ts';
 import { scenarios, type ScenarioName } from '../test/fixtures/scenarios.ts';
 import type { PlaygroundData } from './types.ts';
 
@@ -25,7 +25,7 @@ for (const name of NAMES) {
   const stashes = await readStashes('git', dir);
   const details: Record<string, CommitDetails> = {};
   for (const c of commits.slice(0, DETAILS)) details[c.hash] = await readCommitDetails('git', dir, c.hash);
-  for (const s of stashes) details[s.hash] = await readCommitDetails('git', dir, s.hash);
+  for (const s of stashes) details[s.hash] = await readStashDetails('git', dir, s.hash);
   const data: PlaygroundData = {
     repo: { name, root: dir },
     refs: await readRefs('git', dir),

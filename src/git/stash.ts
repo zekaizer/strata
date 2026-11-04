@@ -1,4 +1,6 @@
+import type { CommitDetails } from '../core/details.ts';
 import { parseStashList, type StashEntry } from '../core/stash.ts';
+import { readChangedFiles, readCommitDetails } from './details.ts';
 import { runGit } from './run.ts';
 
 /** Stashes beyond this many are drawn at their base without checking their branch, and not counted. */
@@ -106,4 +108,22 @@ async function countFiles(git: string, cwd: string, s: StashEntry, cache: StashC
   const files = { changed, untracked };
   cache.files.set(s.hash, files);
   return files;
+}
+
+/** The stash commit's details against its base, with what was staged and the untracked files. */
+export async function readStashDetails(git: string, cwd: string, hash: string): Promise<CommitDetails> {
+  const details = await readCommitDetails(git, cwd, hash);
+  const [base, index, untracked] = details.parents;
+  if (base === undefined || index === undefined) return details;
+  const [staged, added] = await Promise.all([
+    readChangedFiles(git, cwd, index, base),
+    untracked === undefined ? undefined : readChangedFiles(git, cwd, untracked, undefined),
+  ]);
+  return {
+    ...details,
+    stash: {
+      staged: staged.map((f) => f.path),
+      untracked: untracked === undefined || !added ? undefined : { hash: untracked, files: added },
+    },
+  };
 }

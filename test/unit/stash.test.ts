@@ -14,7 +14,8 @@ import {
   type ListRow,
   type StashEntry,
 } from '../../src/core/stash.ts';
-import { readStashes, stashCache } from '../../src/git/stash.ts';
+import { readStashDetails, readStashes, stashCache } from '../../src/git/stash.ts';
+import { scenarios } from '../fixtures/scenarios.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -272,5 +273,34 @@ describe('readStashes', () => {
   it('anchors at the base and leaves files uncounted when git takes longer than allowed', async () => {
     const [s] = await readStashes('git', dir, stashCache(), 0);
     assert.deepEqual([s!.anchor, s!.files], [{ kind: 'base' }, undefined]);
+  });
+});
+
+describe('readStashDetails', () => {
+  const dir = join(tempDir('stash-details'), 'repo');
+  before(() => {
+    scenarios.stashes().write(dir);
+  });
+
+  it('lists the changes against the base, what of them was staged, and the untracked files', async () => {
+    const d = await readStashDetails('git', dir, run(dir, 'rev-parse', 'stash@{2}'));
+    assert.equal(d.message, 'On feature/search: half-done ranking UI');
+    assert.equal(d.base, run(dir, 'rev-parse', 'feature/search'));
+    assert.deepEqual(d.files, [
+      { status: 'M', path: 'feature_search.txt' },
+      { status: 'A', path: 'src/ranking.ts' },
+    ]);
+    assert.deepEqual(d.stash, {
+      staged: ['src/ranking.ts'],
+      untracked: {
+        hash: run(dir, 'rev-parse', 'stash@{2}^3'),
+        files: [{ status: 'A', path: 'notes/ranking-ideas.md' }],
+      },
+    });
+  });
+
+  it('has no untracked files for a stash made without them', async () => {
+    const d = await readStashDetails('git', dir, run(dir, 'rev-parse', 'stash@{3}'));
+    assert.deepEqual(d.stash, { staged: [], untracked: undefined });
   });
 });

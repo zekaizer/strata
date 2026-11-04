@@ -555,6 +555,8 @@ class App {
     if (anchor >= 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
     if (this.selected >= 0 && this.selectedHash() !== was && this.expanded)
       this.select(this.selected, { reveal: false });
+    // Open stash details name stash@{n}, which may have been renumbered.
+    else if (this.details?.stash) this.renderDetails();
     this.saveState();
     this.queueRender();
   }
@@ -1166,8 +1168,10 @@ class App {
     clearTimeout(this.copiedTimer);
     clearTimeout(this.metaCopiedTimer);
 
+    const stash = d.stash && this.stashes.find((s) => s.hash === d.hash);
     // The row truncates long subjects, so the details repeat it in full.
-    const [subject = '', ...rest] = d.message.split('\n');
+    const [first = '', ...rest] = d.message.split('\n');
+    const subject = stash ? stashLabel(stash).text : first;
     const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
@@ -1181,7 +1185,12 @@ class App {
     const main = el('div', 'details-main');
     // Carries the body font, whose 80 columns size the message column (layoutDetails).
     const ruler = el('span', 'column-ruler');
-    main.append(ruler, this.byline(d), this.metaTable(d), el('h2', 'details-subject', subject));
+    main.append(
+      ruler,
+      stash ? this.stashByline(d, stash) : this.byline(d),
+      stash ? this.stashMeta(d, stash) : this.metaTable(d),
+      el('h2', 'details-subject', subject),
+    );
     if (body) {
       const pre = el('pre', 'details-message', reflowBody(body));
       pre.id = 'details-body';
@@ -1195,7 +1204,20 @@ class App {
       main.append(pre, more);
     }
     const files = el('div', 'details-files');
-    files.append(this.filesSummaryLine(d), this.fileTree(d));
+    const changes = { hash: d.hash, base: d.base };
+    if (stash && d.stash) {
+      const summary = el('div', 'files-summary', `Changes (${d.files.length})`);
+      if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
+      files.append(summary, this.fileTree(changes, d.files, 'Changes', new Set(d.stash.staged)));
+      const untracked = d.stash.untracked;
+      if (untracked)
+        files.append(
+          el('div', 'files-summary', `Untracked (${untracked.files.length})`),
+          this.fileTree({ hash: untracked.hash, base: undefined }, untracked.files, 'Untracked files'),
+        );
+    } else {
+      files.append(this.filesSummaryLine(d), this.fileTree(changes, d.files, 'Changed files'));
+    }
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
@@ -1212,15 +1234,20 @@ class App {
 
   /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
   private byline(d: CommitDetails): HTMLElement {
-    const line = el('div', 'byline');
     const author = el('span', 'byline-author', d.author);
     author.title = `${d.author} <${d.authorEmail}>`;
-    const date = el('span', 'byline-date');
-    date.append(
-      el('span', 'details-date-full', formatDate(d.authorTime)),
-      el('span', 'details-date-short', formatShortDate(d.authorTime)),
-    );
-    date.title = formatDate(d.authorTime);
+    return this.bylineOf(d, 'Show commit, author, committer and parents', author, byDate('', d.authorTime));
+  }
+
+  /** "stash@{n} · stashed <date> · on <branch>", then the stash commit's short hash and the meta toggle. */
+  private stashByline(d: CommitDetails, s: StashEntry): HTMLElement {
+    const parts: Node[] = [el('span', 'byline-stash', `stash@{${s.index}}`), byDate('stashed ', s.time)];
+    if (s.branch !== undefined) parts.push(el('span', 'byline-branch', `on ${s.branch}`));
+    return this.bylineOf(d, 'Show the stash commit, its base and what was staged', ...parts);
+  }
+
+  private bylineOf(d: CommitDetails, toggleTitle: string, ...parts: Node[]): HTMLElement {
+    const line = el('div', 'byline');
     const hash = el('button', 'byline-hash');
     const icon = el('span', 'codicon codicon-copy hash-icon');
     icon.setAttribute('aria-hidden', 'true');
@@ -1231,7 +1258,7 @@ class App {
       this.copyHash(d.hash, hash);
     });
     const toggle = el('button', 'byline-toggle codicon');
-    toggle.title = 'Show commit, author, committer and parents';
+    toggle.title = toggleTitle;
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-controls', 'details-meta');
     toggle.addEventListener('click', () => {
@@ -1241,7 +1268,7 @@ class App {
       this.layoutDetails();
     });
     const sep = () => el('span', 'byline-sep', '·');
-    line.append(author, sep(), date, sep(), hash, toggle);
+    line.append(...[...parts, hash].flatMap((p, i) => (i > 0 ? [sep(), p] : [p])), toggle);
     return line;
   }
 
@@ -1289,11 +1316,59 @@ class App {
 
   /** Commit, author and committer (both always, in full) and parents with their subjects. */
   private metaTable(d: CommitDetails): HTMLElement {
+    return this.metaWrap('Commit metadata', (row) => {
+      row('Commit', el('code', undefined, d.hash), this.metaCopy(d.hash));
+      // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
+      row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
+      row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
+      d.parents.forEach((p, i) => {
+        const subject = d.parentSubjects[i] ?? '';
+        const link = el('button', 'link-button meta-parent');
+        link.append(el('code', undefined, shortHash(p)), ` ${subject}`);
+        link.title = p;
+        link.setAttribute('aria-label', `Select parent ${shortHash(p)}: ${subject}`);
+        link.addEventListener('click', () => {
+          this.selectHash(p);
+        });
+        row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
+      });
+    });
+  }
+
+  /**
+   * The stash commit, its base (a link while the base is in the graph) and how many of its files
+   * were staged.
+   */
+  private stashMeta(d: CommitDetails, s: StashEntry): HTMLElement {
+    return this.metaWrap('Stash metadata', (row) => {
+      row('Stash', el('code', undefined, d.hash), this.metaCopy(d.hash));
+      const subject = d.parentSubjects[0] ?? '';
+      const moved = s.anchor.kind === 'tip' ? `. No longer on '${s.branch ?? ''}'` : '';
+      const base = el(this.indexOf(s.base) >= 0 ? 'button' : 'span', 'meta-parent');
+      base.append(el('code', undefined, shortHash(s.base)), ` ${subject}${moved}`);
+      base.title = s.base;
+      if (base instanceof HTMLButtonElement) {
+        base.classList.add('link-button');
+        base.setAttribute('aria-label', `Select base ${shortHash(s.base)}: ${subject}${moved}`);
+        base.addEventListener('click', () => {
+          this.selectHash(s.base);
+        });
+      }
+      row('Base', base);
+      const staged = d.stash?.staged.length ?? 0;
+      row('Staged', staged === 0 ? 'nothing' : `${staged} file${staged === 1 ? '' : 's'}`);
+    });
+  }
+
+  private metaWrap(
+    label: string,
+    build: (row: (label: string, ...cells: (string | Node)[]) => void) => void,
+  ): HTMLElement {
     const table = el('table', 'meta-table');
     table.id = 'details-meta';
     // Laid out as a grid (main.css), which drops the implicit table roles: state them.
     table.setAttribute('role', 'table');
-    table.setAttribute('aria-label', 'Commit metadata');
+    table.setAttribute('aria-label', label);
     const row = (label: string, ...cells: (string | Node)[]) => {
       const th = el('th', undefined, label);
       th.scope = 'row';
@@ -1306,11 +1381,20 @@ class App {
       tr.append(th, td);
       table.append(tr);
     };
+    build(row);
+    const clip = el('div', 'meta-clip');
+    clip.append(table);
+    const wrap = el('div', 'meta-wrap');
+    wrap.append(clip);
+    return wrap;
+  }
+
+  private metaCopy(hash: string): HTMLElement {
     const copy = el('button', 'icon-button codicon codicon-copy meta-copy');
     copy.title = 'Copy full commit hash';
     copy.setAttribute('aria-label', copy.title);
     copy.addEventListener('click', () => {
-      this.copyHash(d.hash);
+      this.copyHash(hash);
       copy.classList.replace('codicon-copy', 'codicon-check');
       copy.classList.add('copied');
       clearTimeout(this.metaCopiedTimer);
@@ -1319,26 +1403,7 @@ class App {
         copy.classList.remove('copied');
       }, 1500);
     });
-    row('Commit', el('code', undefined, d.hash), copy);
-    // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
-    row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
-    row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
-    d.parents.forEach((p, i) => {
-      const subject = d.parentSubjects[i] ?? '';
-      const link = el('button', 'link-button meta-parent');
-      link.append(el('code', undefined, shortHash(p)), ` ${subject}`);
-      link.title = p;
-      link.setAttribute('aria-label', `Select parent ${shortHash(p)}: ${subject}`);
-      link.addEventListener('click', () => {
-        this.selectHash(p);
-      });
-      row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
-    });
-    const clip = el('div', 'meta-clip');
-    clip.append(table);
-    const wrap = el('div', 'meta-wrap');
-    wrap.append(clip);
-    return wrap;
+    return copy;
   }
 
   /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
@@ -1346,18 +1411,19 @@ class App {
     const s = filesSummary(d);
     const line = el('div', 'files-summary', s.text);
     if (s.root) line.append(' · root commit');
-    if (s.base !== undefined) {
-      const target = s.base;
-      line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`);
-      const base = el('button', 'link-button files-base', shortHash(target));
-      base.title = target;
-      base.setAttribute('aria-label', `Select base commit ${shortHash(target)}`);
-      base.addEventListener('click', () => {
-        this.selectHash(target);
-      });
-      line.append(base);
-    }
+    if (s.base !== undefined) line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, this.baseLink(s.base));
     return line;
+  }
+
+  /** The commit changed files are compared with; selects it. */
+  private baseLink(target: string): HTMLElement {
+    const base = el('button', 'link-button files-base', shortHash(target));
+    base.title = target;
+    base.setAttribute('aria-label', `Select base commit ${shortHash(target)}`);
+    base.addEventListener('click', () => {
+      this.selectHash(target);
+    });
+    return base;
   }
 
   /**
@@ -1417,8 +1483,7 @@ class App {
       more.setAttribute('aria-expanded', String(!clamped));
     }
 
-    const tree = files.querySelector<HTMLElement>('.files');
-    if (tree) {
+    for (const tree of files.querySelectorAll<HTMLElement>('.files')) {
       const rows = tree.querySelectorAll('li:not([hidden])').length;
       const rowHeight = tree.querySelector<HTMLElement>('li:not([hidden])')?.offsetHeight || 22;
       const area = files.clientWidth - parseFloat(getComputedStyle(files).paddingLeft);
@@ -1447,31 +1512,36 @@ class App {
     this.updateExpansionOverflow();
   }
 
-  /** Measures the tree's widest row once per commit; folding and resizing do not change it. */
+  /** Measures the trees' widest row once per commit; folding and resizing do not change it. */
   private measureTree(): void {
-    const tree = this.expansion.querySelector<HTMLElement>('.files');
-    if (!tree) {
-      this.treeNatural = 0;
-      return;
+    this.treeNatural = 0;
+    for (const tree of this.expansion.querySelectorAll<HTMLElement>('.files')) {
+      tree.classList.add('measuring');
+      // Rounded up: offsetWidth rounds down, which would cut the widest name by a fraction of a pixel.
+      this.treeNatural = Math.max(this.treeNatural, Math.ceil(tree.getBoundingClientRect().width));
+      tree.classList.remove('measuring');
     }
-    tree.classList.add('measuring');
-    // Rounded up: offsetWidth rounds down, which would cut the widest name by a fraction of a pixel.
-    this.treeNatural = Math.ceil(tree.getBoundingClientRect().width);
-    tree.classList.remove('measuring');
   }
 
   /**
    * The changed files as a tree (role=tree): folders fold with a click, Left/Right or Enter;
    * Up/Down move between visible entries. Folded folders are remembered per commit.
    */
-  private fileTree(d: CommitDetails): HTMLElement {
+  private fileTree(
+    source: FileSource,
+    files: readonly FileChange[],
+    label: string,
+    staged: ReadonlySet<string> = new Set(),
+  ): HTMLElement {
     const list = el('ul', 'files');
     list.setAttribute('role', 'tree');
-    list.setAttribute('aria-label', 'Changed files');
+    list.setAttribute('aria-label', label);
+    // Folds are remembered per tree: a stash's changes and its untracked files can share folders.
+    list.dataset['folds'] = `${label}:`;
     const add = (nodes: FileTreeNode[], depth: number) => {
       for (const n of nodes) {
         if (n.kind === 'file') {
-          list.append(this.fileItem(d, n.change, n.name, depth));
+          list.append(this.fileItem(source, n.change, n.name, depth, staged.has(n.change.path)));
           continue;
         }
         const li = el('li', depth > 0 ? 'folder nested' : 'folder');
@@ -1489,7 +1559,7 @@ class App {
         add(n.children, depth + 1);
       }
     };
-    add(buildFileTree(d.files), 0);
+    add(buildFileTree([...files]), 0);
     list.addEventListener('keydown', (e) => {
       this.onTreeKey(list, e);
     });
@@ -1497,22 +1567,28 @@ class App {
     return list;
   }
 
+  private isFolded(list: HTMLElement, path: string): boolean {
+    return this.foldedFolders.has(`${list.dataset['folds'] ?? ''}${path}`);
+  }
+
   private toggleFolder(list: HTMLElement, path: string, fold?: boolean): void {
-    const folded = fold ?? !this.foldedFolders.has(path);
-    if (folded) this.foldedFolders.add(path);
-    else this.foldedFolders.delete(path);
+    const key = `${list.dataset['folds'] ?? ''}${path}`;
+    const folded = fold ?? !this.foldedFolders.has(key);
+    if (folded) this.foldedFolders.add(key);
+    else this.foldedFolders.delete(key);
     this.applyFolds(list);
     this.layoutDetails();
   }
 
   /** Hides entries under folded folders and updates the chevrons. */
   private applyFolds(list: HTMLElement): void {
-    const folded = [...this.foldedFolders];
+    const prefix = list.dataset['folds'] ?? '';
+    const folded = [...this.foldedFolders].filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
     for (const item of list.querySelectorAll<HTMLElement>('li')) {
       const path = item.dataset['path'] ?? '';
       item.hidden = folded.some((f) => path.startsWith(`${f}/`));
       if (item.classList.contains('folder')) {
-        const open = !this.foldedFolders.has(path);
+        const open = !this.isFolded(list, path);
         item.setAttribute('aria-expanded', String(open));
         item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-right', !open);
         item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-down', open);
@@ -1536,10 +1612,10 @@ class App {
     if (e.key === 'ArrowDown') next = visible[at + 1];
     else if (e.key === 'ArrowUp') next = visible[at - 1];
     else if (e.key === 'ArrowLeft') {
-      if (isFolder && !this.foldedFolders.has(path)) this.toggleFolder(list, path, true);
+      if (isFolder && !this.isFolded(list, path)) this.toggleFolder(list, path, true);
       else next = parent();
     } else if (e.key === 'ArrowRight' && isFolder) {
-      if (this.foldedFolders.has(path)) this.toggleFolder(list, path, false);
+      if (this.isFolded(list, path)) this.toggleFolder(list, path, false);
       else next = visible[at + 1];
     } else if (isFolder && (e.key === 'Enter' || e.key === ' ')) {
       this.toggleFolder(list, path);
@@ -1548,8 +1624,8 @@ class App {
     next?.focus();
   }
 
-  private fileItem(d: CommitDetails, f: FileChange, name: string, depth: number): HTMLElement {
-    const views = fileViews(f, d.base);
+  private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
+    const views = fileViews(f, source.base);
     const li = el('li', `file status-${f.status}${depth > 0 ? ' nested' : ''}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'treeitem');
@@ -1557,7 +1633,7 @@ class App {
     li.style.setProperty('--depth', String(depth));
     li.dataset['path'] = f.path;
     li.dataset['views'] = views.join(' ');
-    const menu = fileMenuContext(d, f, views);
+    const menu = fileMenuContext(source, f, views);
     li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
     li.append(el('span', 'file-status', f.status));
@@ -1566,14 +1642,19 @@ class App {
     label.append(el('span', 'file-name', name));
     if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
     li.append(label);
+    if (staged) {
+      const tag = el('span', 'file-staged', 'staged');
+      tag.title = 'Staged when it was stashed';
+      li.append(tag);
+    }
 
     const open = (view: FileView, beside: boolean) => {
       vscode.postMessage({
         type: 'openFile',
         view,
         generation: this.generation,
-        hash: d.hash,
-        base: d.base,
+        hash: source.hash,
+        base: source.base,
         file: f,
         beside,
       });
@@ -1899,16 +1980,33 @@ class App {
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+/** The commit changed files belong to and the commit they are compared with (none: all added). */
+interface FileSource {
+  hash: string;
+  base: string | undefined;
+}
+
+/** A details date: full and short forms, CSS shows the one that fits. */
+function byDate(prefix: string, time: number): HTMLElement {
+  const date = el('span', 'byline-date');
+  date.append(
+    el('span', 'details-date-full', `${prefix}${formatDate(time)}`),
+    el('span', 'details-date-short', `${prefix}${formatShortDate(time)}`),
+  );
+  date.title = formatDate(time);
+  return date;
+}
+
 /**
  * data-vscode-context of a changed file: VS Code merges it into the arguments of the
  * webview/context menu commands and evaluates the menu's `when` clauses against it.
  */
-function fileMenuContext(d: CommitDetails, f: FileChange, views: FileView[]): Record<string, unknown> {
+function fileMenuContext(source: FileSource, f: FileChange, views: FileView[]): Record<string, unknown> {
   return {
     webviewSection: 'file',
     preventDefaultContextMenuItems: true,
-    strataHash: d.hash,
-    ...(d.base === undefined ? {} : { strataBase: d.base }),
+    strataHash: source.hash,
+    ...(source.base === undefined ? {} : { strataBase: source.base }),
     strataPath: f.path,
     ...(f.oldPath === undefined ? {} : { strataOldPath: f.oldPath }),
     strataStatus: f.status,

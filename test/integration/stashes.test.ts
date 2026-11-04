@@ -1,4 +1,5 @@
 import * as assert from 'node:assert/strict';
+import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { addBranchyStashes, storeStash } from '../fixtures/stashes.ts';
@@ -80,6 +81,47 @@ describe('stash rows', () => {
     await waitFor('stash details', async () => (await panel.probe()).detailsShown === stash[1]);
     await panel.simulate({ kind: 'key', key: 'ArrowDown' });
     await waitFor('HEAD again', async () => (await panel.probe()).selected === head);
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+  });
+
+  it("shows a stash's base, staged count, changes and untracked files in its details", async () => {
+    const p = await probeAll();
+    await panel.simulate({ kind: 'clickRow', index: rowOf(p, stash[2]!) });
+    const d = await waitFor('stash details', async () => {
+      const s = await panel.probe();
+      return s.detailsShown === stash[2] && s.details && s;
+    });
+    assert.ok(d.details!.byline.startsWith('stash@{2}·stashed '), d.details!.byline);
+    assert.ok(d.details!.byline.includes(`·on feature/search·${short(stash[2]!)}`), d.details!.byline);
+    assert.equal(d.detailsSubject, 'half-done ranking UI');
+    assert.equal(d.details!.filesSummary, `Changes (2) · vs ${short('feature/search')}`);
+    assert.deepEqual(d.fileTree, ['src/', '  ranking.ts', 'feature_search.txt', 'notes/', '  ranking-ideas.md']);
+    assert.deepEqual(d.fileViews, [
+      { path: 'ranking.ts', views: ['after'] },
+      { path: 'feature_search.txt', views: ['diff', 'before', 'after'] },
+      { path: 'ranking-ideas.md', views: ['after'] },
+    ]);
+    const untracked = d.menuContexts.files[2]!;
+    assert.equal(untracked['strataHash'], git('rev-parse', 'stash@{2}^3'));
+    assert.equal(untracked['strataBase'], undefined);
+
+    await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
+    const meta = await waitFor('meta open', async () => {
+      const s = await panel.probe();
+      return s.details?.metaOpen && s.details;
+    });
+    assert.deepEqual(meta.metaRows, ['Stash', 'Base', 'Staged']);
+    await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
+
+    const before = vscode.window.tabGroups.activeTabGroup.activeTab;
+    await panel.simulate({ kind: 'clickFile', index: 2 });
+    const input = await waitFor('untracked file tab', () => {
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+      return tab !== before && tab?.input;
+    });
+    assert.ok(input instanceof vscode.TabInputText);
+    assert.equal((await vscode.workspace.openTextDocument(input.uri)).getText(), '# Ranking ideas\n');
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
     await panel.simulate({ kind: 'key', key: 'Escape' });
   });
 

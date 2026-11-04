@@ -9,7 +9,7 @@ import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readCommitPatch, readFilePatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
-import { readStashes, stashCache } from '../git/stash.ts';
+import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { runGit } from '../git/run.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
@@ -160,7 +160,8 @@ export class GraphController implements vscode.Disposable {
           break;
         case 'select':
           if (this.repo && m.generation === this.generation) {
-            const details = await readCommitDetails(this.api.git.path, this.repo.rootUri.fsPath, m.hash);
+            const read = this.stashes.some((s) => s.hash === m.hash) ? readStashDetails : readCommitDetails;
+            const details = await read(this.api.git.path, this.repo.rootUri.fsPath, m.hash);
             if (m.generation === this.generation) this.post({ type: 'details', generation: m.generation, details });
           }
           break;
