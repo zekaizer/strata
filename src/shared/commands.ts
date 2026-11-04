@@ -4,17 +4,21 @@
  * (`npm run manifest`) and a unit test keeps them equal.
  */
 
-/** Elements that carry a data-vscode-context: the `webviewSection` VS Code matches menus against. */
-export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'file';
+/**
+ * Elements that carry a data-vscode-context (src/shared/menu-context.ts): the `webviewSection` VS
+ * Code matches menus against. `refs` is a "+N" badge.
+ */
+export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'file';
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataMerge'],
-  stash: [],
+  commit: ['strataIsHead', 'strataMerge', 'strataHasRefs'],
+  stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],
   tag: [],
   head: [],
+  refs: [],
   file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed'],
 };
 
@@ -73,6 +77,11 @@ export type CommandId = keyof typeof COMMANDS;
 export const COMMAND_IDS = Object.keys(COMMANDS) as CommandId[];
 
 export const isCommandId = (id: string): id is CommandId => Object.hasOwn(COMMANDS, id);
+
+/** Sections with at least one context menu item; VS Code opens no menu for the others. */
+export const MENU_SECTIONS: ReadonlySet<string> = new Set(
+  COMMAND_IDS.flatMap((id) => (COMMANDS[id] as CommandSpec).menus?.map((m) => m.section) ?? []),
+);
 
 const GRAPH = "webviewId == 'strata.graph'";
 const ACTIVE = "activeWebviewPanelId == 'strata.graph'";

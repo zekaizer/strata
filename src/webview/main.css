@@ -386,7 +386,9 @@ canvas.graph {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  overflow: hidden;
+  /* Clipped like hidden, but a badge's menu outline (offset outside it) still shows. */
+  overflow: clip;
+  overflow-clip-margin: 2px;
 }
 
 /* Like VS Code lists: hover never paints over the selection. */
@@ -552,6 +554,22 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-hea
 
 body.vscode-high-contrast .badge-remotes {
   border-left-color: var(--vscode-contrastBorder);
+}
+
+/* Each remote name is a menu target of its own. */
+.badge-remote-name {
+  padding: 0 1px;
+}
+
+/* The element a context menu is open on, while the menu is open, as in VS Code's own lists. */
+body.vscode-context-menu-visible .menu-target {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* Apart from the badge's own border, which may have the same color. */
+body.vscode-context-menu-visible .badge.menu-target {
+  outline-offset: 1px;
 }
 
 .badge-tag {

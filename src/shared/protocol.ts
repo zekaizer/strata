@@ -114,8 +114,19 @@ export interface ProbeState {
   >;
   /** Path of the file whose diff was opened last in the details pane. */
   openedFile: string | undefined;
-  /** `data-vscode-context` of the changed files and of the selected row (context menu arguments). */
-  menuContexts: { files: Record<string, unknown>[]; selectedRow: Record<string, unknown> | undefined };
+  /**
+   * `data-vscode-context` of the changed files, of the selected row, and of the badges and remote
+   * names of each rendered row by row index, in document order (context menu arguments).
+   */
+  menuContexts: {
+    files: Record<string, unknown>[];
+    selectedRow: Record<string, unknown> | undefined;
+    badges: Record<number, Record<string, unknown>[]>;
+  };
+  /** The element marked as the open context menu's target: its context, text and outline style. */
+  menuTarget: { context: Record<string, unknown>; text: string; outline: string } | undefined;
+  /** VS Code's body.vscode-context-menu-visible. */
+  menuShown: boolean;
   /** Per changed file in the details, which views can be opened. */
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
@@ -231,6 +242,8 @@ export type SimulatedAction =
     }
   | { kind: 'click'; selector: string }
   | { kind: 'contextMenu'; selector: string }
+  /** What Chromium sends for Shift+F10 or the Menu key: a contextmenu on the focused list (button -1). */
+  | { kind: 'keyboardContextMenu' }
   | { kind: 'focus'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 

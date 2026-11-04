@@ -3,8 +3,8 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
-import { badgeOrder, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
-import type { OperationState } from '../core/repo-state.ts';
+import { badgeOrder, type Ref, type RefSnapshot } from '../core/refs.ts';
+import type { Leftover, OperationState } from '../core/repo-state.ts';
 import {
   anchoredAt,
   describeStash,
@@ -15,6 +15,8 @@ import {
   type StashEntry,
   type StashShown,
 } from '../core/stash.ts';
+import { MENU_SECTIONS } from '../shared/commands.ts';
+import type { CommitContext, StashContext } from '../shared/menu-context.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -24,6 +26,7 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
+import { rowBadges, type Badge } from './badges.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
@@ -43,8 +46,6 @@ const MAX_GRAPH_SHARE = 0.4;
 /** Narrow lists keep most of their width for the text. */
 const NARROW_LIST = 600;
 const NARROW_GRAPH_SHARE = 0.25;
-/** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
-const MAX_BADGES = 6;
 /** Height of the band above the commit line of rows with refs; matches --ref-band in main.css. */
 const REF_BAND = 14;
 /** The inline details never take more than this share of the list height. */
@@ -106,7 +107,12 @@ const FILE_VIEW_TITLE: Record<FileView, string> = {
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
-const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag' };
+const BADGE_ICON: Record<Exclude<Badge['look'], 'more'>, string> = {
+  head: 'target',
+  branch: 'git-branch',
+  remote: 'cloud',
+  tag: 'tag',
+};
 
 class App {
   private worker: Worker | undefined;
@@ -162,6 +168,12 @@ class App {
   /** Widest author name and dates of the loaded commits, in px (the row's own font). */
   private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
   private operation: OperationState | undefined;
+  private leftover: Leftover | undefined;
+  /**
+   * The row element a context menu is open on, by row index and place among the row's menu
+   * targets: rows are re-rendered while the menu is open.
+   */
+  private menuTarget: { row: number; target: number } | undefined;
   private measureContext: CanvasRenderingContext2D | null | undefined;
   private columns: ColumnChoice | undefined;
   /** Natural width of the expanded commit's file tree (widest row, Old | diff | New included). */
@@ -294,6 +306,7 @@ class App {
     this.scroller.addEventListener('keydown', (e) => {
       if (e.target === this.scroller) this.onKey(e);
     });
+    this.trackMenuTarget();
     new ResizeObserver(() => {
       this.queueRender();
       this.layoutDetails();
@@ -344,6 +357,9 @@ class App {
         break;
       case 'repoState':
         this.operation = m.operation;
+        this.leftover = m.leftover;
+        // Stash rows carry whether restoring them conflicted.
+        this.queueRender();
         break;
       case 'commits':
         if (m.generation !== this.generation) return;
@@ -654,6 +670,69 @@ class App {
   private selectedHash(): string | undefined {
     const row = this.list[this.selected];
     return row && rowHash(row);
+  }
+
+  /**
+   * Outlines the element a context menu is open on (main.css) until VS Code closes the menu. VS
+   * Code sets body.vscode-context-menu-visible for every workbench menu, so the mark goes when the
+   * class does, not at the next menu.
+   */
+  private trackMenuTarget(): void {
+    const clear = () => {
+      this.menuTarget = undefined;
+      for (const e of document.querySelectorAll('.menu-target')) e.classList.remove('menu-target');
+    };
+    document.addEventListener('contextmenu', (e) => {
+      // Redirected, to the row or to an element that has a menu: the redirected event marks it.
+      if (e.defaultPrevented) return;
+      clear();
+      const target = (e.target as Element).closest<HTMLElement>('[data-vscode-context]');
+      if (!target) return;
+      // VS Code would show no menu, yet report one as open until another menu closes.
+      if (!MENU_SECTIONS.has(String(contextOf(target)['webviewSection']))) {
+        e.preventDefault();
+        target.parentElement
+          ?.closest('[data-vscode-context]')
+          ?.dispatchEvent(
+            new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: e.clientX, clientY: e.clientY }),
+          );
+        return;
+      }
+      target.classList.add('menu-target');
+      const row = target.closest<HTMLElement>('.row');
+      if (row) this.menuTarget = { row: Number(row.dataset['index']), target: menuTargets(row).indexOf(target) };
+    });
+    let shown = false;
+    new MutationObserver(() => {
+      const now = document.body.classList.contains('vscode-context-menu-visible');
+      if (shown && !now) clear();
+      shown = now;
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    // Shift+F10 and the Menu key open a menu on the focused element: the list, which has no context.
+    this.scroller.addEventListener('contextmenu', (e) => {
+      if (e.target !== this.scroller) return;
+      e.preventDefault();
+      // A right-click into the empty list below the rows (button 2) opens nothing.
+      if (e.button !== 2) this.openRowMenu();
+    });
+  }
+
+  /** Opens the selected row's context menu below its subject, as for a right-click there. */
+  private openRowMenu(): void {
+    if (this.selected < 0) return;
+    this.ensureVisible(this.selected);
+    this.render();
+    const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
+    const at = (row?.querySelector('.subject') ?? row)?.getBoundingClientRect();
+    if (!row || !at) return;
+    row.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: at.left + 4, clientY: at.bottom - 2 }),
+    );
+  }
+
+  /** Re-applies the open menu's outline to a re-rendered row. */
+  private markMenuTarget(row: HTMLElement, index: number): void {
+    if (this.menuTarget?.row === index) menuTargets(row)[this.menuTarget.target]?.classList.add('menu-target');
   }
 
   /**
@@ -1072,23 +1151,30 @@ class App {
       row.classList.add(this.expanded ? 'selected' : 'cursor');
       row.setAttribute('aria-expanded', String(this.expanded));
     }
-    if (r.kind === 'stash') return this.fillStashRow(row, r.stash);
+    if (r.kind === 'stash') {
+      this.fillStashRow(row, r.stash);
+      this.markMenuTarget(row, i);
+      return row;
+    }
     const c = r.commit;
-    row.setAttribute(
-      'data-vscode-context',
-      JSON.stringify({
-        webviewSection: 'commit',
-        preventDefaultContextMenuItems: true,
-        strataHash: c.hash,
-        strataSubject: c.subject,
-      }),
-    );
-    const badges = this.badges(c.hash);
+    const badges = rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs);
+    const refs = badges.flatMap((b) => b.refs);
+    const context: CommitContext = {
+      webviewSection: 'commit',
+      preventDefaultContextMenuItems: true,
+      strataHash: c.hash,
+      strataSubject: c.subject,
+      strataIsHead: c.hash === this.refs.head,
+      strataMerge: c.parents.length > 1,
+      strataHasRefs: refs.length > 0,
+      strataRefs: refs.join(' '),
+    };
+    row.setAttribute('data-vscode-context', JSON.stringify(context));
     if (badges.length > 0) {
       // Refs get a band of their own above the commit line, so the subject keeps its column.
       row.classList.add('banded');
       const band = el('span', 'refs');
-      band.append(...badges);
+      band.append(...badges.map(renderBadge));
       row.append(band);
     }
     if (c.hash === this.refs.head) row.classList.add('head');
@@ -1103,6 +1189,7 @@ class App {
       el('span', 'hash', shortHash(c.hash)),
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    this.markMenuTarget(row, i);
     return row;
   }
 
@@ -1110,18 +1197,17 @@ class App {
    * A stash row: always one line, the stash@{n} badge inline before the message, which keeps git's
    * "On <branch>:" prefix. No author or hash; the date is when it was stashed.
    */
-  private fillStashRow(row: HTMLElement, s: StashEntry): HTMLElement {
+  private fillStashRow(row: HTMLElement, s: StashEntry): void {
     row.classList.add('stash');
     if (s.autostash) row.classList.add('autostash');
-    row.setAttribute(
-      'data-vscode-context',
-      JSON.stringify({
-        webviewSection: 'stash',
-        preventDefaultContextMenuItems: true,
-        strataHash: s.hash,
-        strataSubject: s.message,
-      }),
-    );
+    const context: StashContext = {
+      webviewSection: 'stash',
+      preventDefaultContextMenuItems: true,
+      strataHash: s.hash,
+      strataSubject: s.message,
+      strataLeftover: this.leftover?.kind === 'restoreConflicted' && this.leftover.stash.hash === s.hash,
+    };
+    row.setAttribute('data-vscode-context', JSON.stringify(context));
     const subject = el('span', 'subject');
     const name = badge('stash', 'git-stash', `stash@{${s.index}}`, `stash@{${s.index}}`);
     if (s.autostash) {
@@ -1152,7 +1238,6 @@ class App {
     const label = describeStash(s, { short: shortHash(s.base), subject: base?.subject }, formatDate(s.time));
     row.title = label;
     row.setAttribute('aria-label', label);
-    return row;
   }
 
   /** Widens the measured author and date widths to cover `commits`. */
@@ -1211,34 +1296,9 @@ class App {
     }
   }
 
-  /** Whether a commit shows ref badges; must agree with badges(). */
+  /** Whether a commit shows ref badges; must agree with rowBadges(). */
   private hasBadges(hash: string): boolean {
     return this.refsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
-  }
-
-  private badges(hash: string): HTMLElement[] {
-    const out: HTMLElement[] = [];
-    if (hash === this.refs.head && this.refs.headBranch === undefined) {
-      const b = badge('head', 'target', 'HEAD', 'Detached HEAD');
-      b.dataset['refs'] = 'HEAD';
-      out.push(b);
-    }
-    for (const { ref: r, remotes } of pairRefs(this.refsByHash.get(hash) ?? [], this.refs.remotes)) {
-      const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
-      const names = [r.name, ...remotes.map((x) => x.name)];
-      const b = badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, names.join('\n'));
-      b.dataset['refs'] = names.join(' ');
-      b.dataset['summary'] = remotes.length ? `${r.short} (also ${remotes.map((x) => x.short).join(', ')})` : r.name;
-      if (remotes.length > 0) b.append(remoteSegment(r, remotes));
-      out.push(b);
-    }
-    // In badgeOrder order (a merged badge counts once); beyond MAX_BADGES the rest collapse into one.
-    if (out.length <= MAX_BADGES) return out;
-    const rest = out.slice(MAX_BADGES - 1);
-    const more = el('span', 'badge badge-more', `+${rest.length}`);
-    more.title = rest.map((b) => b.dataset['summary'] ?? b.title).join('\n');
-    more.dataset['refs'] = rest.map((b) => b.dataset['refs'] ?? '').join(' ');
-    return [...out.slice(0, MAX_BADGES - 1), more];
   }
 
   private renderDetails(): void {
@@ -1837,7 +1897,20 @@ class App {
           const ctx = row?.getAttribute('data-vscode-context');
           return ctx ? (JSON.parse(ctx) as Record<string, unknown>) : undefined;
         })(),
+        badges: Object.fromEntries(
+          [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+            const targets = menuTargets(r).slice(1);
+            return targets.length > 0 ? [[Number(r.dataset['index']), targets.map(contextOf)]] : [];
+          }),
+        ),
       },
+      menuTarget: (() => {
+        const e = document.querySelector<HTMLElement>('.menu-target');
+        return e
+          ? { context: contextOf(e), text: e.textContent, outline: getComputedStyle(e).outlineStyle }
+          : undefined;
+      })(),
+      menuShown: document.body.classList.contains('vscode-context-menu-visible'),
       fileViews: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map((li) => ({
         path: li.querySelector('.file-name')?.textContent ?? '',
         views: (li.dataset['views'] ?? '').split(' ').filter(Boolean) as FileView[],
@@ -2029,6 +2102,20 @@ class App {
         }
         break;
       }
+      case 'keyboardContextMenu': {
+        this.scroller.focus();
+        const r = this.scroller.getBoundingClientRect();
+        this.scroller.dispatchEvent(
+          new PointerEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            button: -1,
+            clientX: r.left + r.width / 2,
+            clientY: r.top + r.height / 2,
+          }),
+        );
+        break;
+      }
       case 'type': {
         const input = document.querySelector<HTMLInputElement>(a.selector);
         if (input) {
@@ -2115,19 +2202,42 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.restore();
 }
 
-/** "origin, upstream" after a branch's name: its same-named remote-tracking branches. */
-function remoteSegment(local: Ref, remotes: Ref[]): HTMLElement {
+/** A badge; it and each remote name in it carry their own menu context. */
+function renderBadge(b: Badge): HTMLElement {
+  const e =
+    b.look === 'more' ? el('span', 'badge badge-more', b.text) : badge(b.look, BADGE_ICON[b.look], b.text, b.title);
+  e.title = b.title;
+  e.dataset['refs'] = b.context.webviewSection === 'head' ? 'HEAD' : b.refs.join(' ');
+  e.setAttribute('data-vscode-context', JSON.stringify(b.context));
+  if (b.remotes.length > 0) e.append(remoteSegment(b));
+  return e;
+}
+
+/** "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. */
+function remoteSegment(b: Badge): HTMLElement {
   const seg = el('span', 'badge-remotes');
   const icon = el('span', 'codicon codicon-cloud');
   icon.setAttribute('aria-hidden', 'true');
-  // origin/main -> origin (remote names may contain slashes, branch names too).
-  const names = remotes.map((r) => r.short.slice(0, r.short.length - local.short.length - 1));
-  const shown = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
-  const text = el('span', 'badge-remote-names', shown);
-  text.setAttribute('aria-hidden', 'true');
-  seg.append(icon, text, el('span', 'sr-only', `, also ${remotes.map((r) => r.short).join(', ')}`));
+  const names = el('span', 'badge-remote-names');
+  names.setAttribute('aria-hidden', 'true');
+  b.remotes.forEach((r, i) => {
+    if (i > 0) names.append(r.context.webviewSection === 'refs' ? ' ' : ', ');
+    const name = el('span', 'badge-remote-name', r.text);
+    name.setAttribute('data-vscode-context', JSON.stringify(r.context));
+    names.append(name);
+  });
+  seg.append(icon, names, el('span', 'sr-only', `, also ${b.also.join(', ')}`));
   return seg;
 }
+
+/** A row and the elements in it a context menu can be opened on, in document order. */
+const menuTargets = (row: HTMLElement): HTMLElement[] => [
+  row,
+  ...row.querySelectorAll<HTMLElement>('[data-vscode-context]'),
+];
+
+const contextOf = (e: HTMLElement) =>
+  JSON.parse(e.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>;
 
 const ordinal = (n: number) =>
   `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
