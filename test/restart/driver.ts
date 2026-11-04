@@ -28,7 +28,7 @@ export function activate(): void {
 }
 
 async function api(): Promise<StrataTestApi> {
-  const ext = vscode.extensions.getExtension<StrataTestApi>('inhouse.strata')!;
+  const ext = vscode.extensions.getExtension<StrataTestApi>('zekaizer.strata')!;
   return ext.activate();
 }
 

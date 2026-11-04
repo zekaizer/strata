@@ -3,10 +3,18 @@
   "displayName": "Strata",
   "description": "Commit graph for git repositories",
   "version": "0.0.1",
-  "publisher": "inhouse",
+  "publisher": "zekaizer",
   "private": true,
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zekaizer/strata.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zekaizer/strata/issues"
+  },
+  "homepage": "https://github.com/zekaizer/strata#readme",
   "engines": {
     "vscode": "^1.90.0",
     "node": ">=22.18"
@@ -215,7 +223,7 @@
     "test": "npm run check && npm run test:integration",
     "playground": "node scripts/build.mjs --playground",
     "shot": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
-    "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies --allow-missing-repository -o artifacts/strata.vsix",
+    "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies -o artifacts/strata.vsix",
     "vscode:prepublish": "node scripts/build.mjs --production",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

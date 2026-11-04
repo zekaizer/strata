@@ -73,7 +73,7 @@ and only adds a cache file to the repository. Turn the offer off with the
 
 ## Feedback
 
-Report problems and requests to the maintainers of this extension.
+Report problems and requests at https://github.com/zekaizer/strata/issues.
 
 ## License
 

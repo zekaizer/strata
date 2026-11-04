@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-Strata is an in-house VS Code extension that renders the commit graph of a git
+Strata is a VS Code extension that renders the commit graph of a git
 repository. It replaces a third-party extension and must be a clean-room
 implementation. Target repositories include very large ones (Linux kernel
 scale, more than 1M commits), used over WSL and SSH remotes. The minimum
