@@ -58,6 +58,14 @@ export const COMMANDS = {
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },
   'strata.commit.copySubject': { title: 'Copy Commit Subject', menus: [commit('5_copy@3')] },
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
+
+  'strata.undo': {
+    title: 'Undo Last Operation',
+    palette: 'strata.canUndo',
+    titleBar: { group: '4_undo@1', when: 'strata.canUndo' },
+    writes: true,
+  },
+  'strata.showOutput': { title: 'Show Git Output', palette: true, titleBar: { group: '9_output@1' } },
 } as const satisfies Record<string, CommandSpec>;
 
 export type CommandId = keyof typeof COMMANDS;

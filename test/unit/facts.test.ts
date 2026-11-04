@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
-import { readOverlap, readResetFacts, readUnmergedCommits } from '../../src/git/facts.ts';
+import { readCommit, readOverlap, readResetFacts, readUnmergedCommits } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -74,5 +74,13 @@ describe('confirmation facts', () => {
       'a.txt',
       'c.txt',
     ]);
+  });
+
+  it('names a commit by id, abbreviation and subject', async () => {
+    assert.deepEqual(await readCommit('git', dir, 'topic'), {
+      hash: run(dir, 'rev-parse', 'topic'),
+      short: run(dir, 'rev-parse', '--short', 'topic'),
+      subject: 'topic two',
+    });
   });
 });

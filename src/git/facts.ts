@@ -1,6 +1,11 @@
 import type { CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
 
+/** A commit as flows name it. */
+export interface CommitInfo extends CommitRef {
+  hash: string;
+}
+
 /** Commits listed by name in a confirmation; counts are exact either way. */
 export const COMMITS_LISTED = 50;
 
@@ -90,4 +95,19 @@ export async function readOverlap(
     (await runGit(git, cwd, ['diff', '--name-only', '-z', '--no-renames', 'HEAD', target, '--'])).split('\0'),
   );
   return dirty.filter((p) => changed.has(p));
+}
+
+export async function readCommit(git: string, cwd: string, rev: string): Promise<CommitInfo> {
+  const out = await runGit(git, cwd, [
+    'log',
+    '-1',
+    '--no-walk',
+    '-z',
+    '--format=%H%x00%h%x00%s',
+    '--end-of-options',
+    rev,
+    '--',
+  ]);
+  const [hash = '', short = '', subject = ''] = out.split('\0');
+  return { hash, short, subject };
 }

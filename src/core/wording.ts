@@ -13,6 +13,8 @@ export interface Confirmation<B extends string = string> {
   message: string;
   detail: string;
   buttons: { id: B; label: string }[];
+  /** A modal that informs rather than warns. */
+  level?: 'info';
 }
 
 export const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -152,3 +154,49 @@ export function abortConfirmation(
     buttons: [{ id: 'abort', label: `Abort ${OP_TITLE[op]}` }],
   };
 }
+
+const branchName = (branch: string | undefined) => (branch === undefined ? 'HEAD' : `'${branch}'`);
+
+/** `label` names what is undone ("merge", "branch deletion"); `back` is where Undo moves HEAD. */
+export function undoMovedConfirmation(
+  branch: string | undefined,
+  label: string,
+  now: string,
+  back: string,
+): Confirmation<'undo'> {
+  return {
+    message: `${branchName(branch)} has moved since the ${label} (now at ${now}).`,
+    detail: `Undo would move it back to ${back} and drop the newer commits.`,
+    buttons: [{ id: 'undo', label: 'Undo Anyway' }],
+  };
+}
+
+export const undone = (label: string): string => `Undid the ${label}`;
+
+/** A failed git command as an error notification shows it. */
+export const gitFailure = (message: string): string => message.trim().split('\n').slice(0, 3).join('\n');
+
+export const gitTooOld = (found: string): string =>
+  `Strata needs git 2.27 or newer to change repositories (found ${found}).`;
+
+/** A remote operation that git could not authenticate (auth) or whose host it does not know yet (hostKey). */
+export function signInConfirmation(
+  remote: string | undefined,
+  kind: 'auth' | 'hostKey',
+): Confirmation<'terminal' | 'output'> {
+  const name = remote === undefined ? 'a remote' : `'${remote}'`;
+  return {
+    message: kind === 'auth' ? `Strata couldn't sign in to ${name}.` : `Strata couldn't connect to ${name}.`,
+    detail:
+      kind === 'auth'
+        ? 'git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there.'
+        : 'Connect to the host once from a terminal to accept its key.',
+    buttons: [
+      { id: 'terminal', label: 'Run in Terminal' },
+      { id: 'output', label: 'Show Output' },
+    ],
+  };
+}
+
+/** Progress label of Undo Last Operation. */
+export const undoLabel = (label: string): string => `Undoing the ${label}`;

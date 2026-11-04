@@ -6,6 +6,7 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import type { OperationState } from '../core/repo-state.ts';
 import type { CommandId } from './commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
@@ -30,7 +31,10 @@ export interface RepoInfo {
  */
 export type HostToWebview =
   | { type: 'init'; theme: ThemeKind }
-  | { type: 'reset'; generation: number; repo: RepoInfo; refs: RefSnapshot; options: ViewOptions }
+  /** `focus`: a commit to select and reveal once loaded, instead of the kept selection (the result of an operation). */
+  | { type: 'reset'; generation: number; repo: RepoInfo; refs: RefSnapshot; options: ViewOptions; focus?: string }
+  /** The operation in progress in the repository, sent after every reset and when it changes. */
+  | { type: 'repoState'; operation: OperationState | undefined }
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
@@ -177,6 +181,8 @@ export interface ProbeState {
   /** Class name of the focused element. */
   focused: string;
   options: ViewOptions;
+  /** The operation in progress, as the host last reported it. */
+  operation: OperationState | undefined;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */

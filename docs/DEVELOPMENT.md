@@ -25,6 +25,7 @@ npm ci
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
 | Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
 | Fixture repos → `out/fixtures/<name>`  | `npm run fixtures [name ...]`                       |
+| Command contributions from the table   | `npm run manifest` (after editing `commands.ts`)    |
 | Performance (git + layout)             | `npm run perf -- <repo>`                            |
 | Performance in VS Code                 | `STRATA_PERF_REPO=<repo> npm run perf:e2e`          |
 | Package                                | `npm run package` → `artifacts/strata.vsix`         |

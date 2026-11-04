@@ -105,6 +105,17 @@
         "command": "strata.commit.copyPatch",
         "title": "Copy Patch",
         "category": "Strata"
+      },
+      {
+        "command": "strata.undo",
+        "title": "Undo Last Operation",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.showOutput",
+        "title": "Show Git Output",
+        "category": "Strata"
       }
     ],
     "menus": {
@@ -225,6 +236,26 @@
         {
           "command": "strata.commit.copyPatch",
           "when": "false"
+        },
+        {
+          "command": "strata.undo",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo"
+        },
+        {
+          "command": "strata.showOutput",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "strata.undo",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo",
+          "group": "4_undo@1"
+        },
+        {
+          "command": "strata.showOutput",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "9_output@1"
         }
       ]
     },
@@ -235,6 +266,16 @@
           "type": "boolean",
           "default": true,
           "description": "Offer to write a commit-graph file when a repository without one takes long to show its first page of history."
+        },
+        "strata.autoStash": {
+          "type": "string",
+          "enum": [
+            "gitConfig",
+            "always",
+            "never"
+          ],
+          "default": "gitConfig",
+          "description": "Which choice comes first when an operation finds uncommitted changes. gitConfig follows rebase.autoStash (rebase, pull with rebase) and merge.autoStash (merge, pull with merge); operations without a git setting keep changes in place by default."
         },
         "strata.keepCommitGraphUpdated": {
           "type": "boolean",
