@@ -1,6 +1,6 @@
 export type GitVersion = readonly [major: number, minor: number, patch: number];
 
-/** Write operations use `merge --autostash` and `pull --autostash` in merge mode. */
+/** Write operations use `merge --autostash` (git 2.27); Pull is a fetch followed by Strata's merge or rebase. */
 const WRITES_NEED: GitVersion = [2, 27, 0];
 
 /** Parses `git version` output, e.g. "git version 2.39.3 (Apple Git-145)" or "git version 2.41.0.windows.1". */
