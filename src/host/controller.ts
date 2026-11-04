@@ -215,6 +215,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   }
 
   private async reset(focus?: string): Promise<void> {
+    if (this.disposed) return;
     this.reader?.dispose();
     this.reader = undefined;
     const generation = ++this.generation;
@@ -365,6 +366,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
    * the history, and stash changes alone only re-interleave the rows.
    */
   private scheduleRefresh(): void {
+    if (this.disposed) return;
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
       void this.refreshIfChanged();
@@ -615,6 +617,8 @@ export class GraphController implements vscode.Disposable, FlowHost {
   }
 
   setUndo(undo: Undo | undefined): void {
+    // A closed graph's Undo toast can still be clicked: strata.canUndo is the open graph's.
+    if (this.disposed) return;
     this.undoRecord = undo;
     void setContext('strata.canUndo', undo !== undefined);
   }
@@ -664,6 +668,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   }
 
   dispose(): void {
+    this.setUndo(undefined);
     this.disposed = true;
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);

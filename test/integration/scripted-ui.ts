@@ -18,6 +18,7 @@ export class ScriptedUi implements Ui {
   private picks: (string | undefined)[] = [];
   private clicks: (string | undefined)[] = [];
   private pending: (() => void) | undefined;
+  private held: ((click: (action: string | undefined) => Promise<void>) => void)[] = [];
 
   /** Labels of the buttons to press in the next modals. */
   press(...labels: (string | undefined)[]): this {
@@ -43,6 +44,14 @@ export class ScriptedUi implements Ui {
     return this;
   }
 
+  /**
+   * Keeps the next notification open. Resolves, once it is shown, to a function that clicks one
+   * of its actions later and resolves when what the click runs has finished.
+   */
+  later(): Promise<(action: string | undefined) => Promise<void>> {
+    return new Promise((resolve) => this.held.push(resolve));
+  }
+
   /** Runs `change` when the next modal is answered, as if the repository changed while it was open. */
   meanwhile(change: () => void): this {
     this.pending = change;
@@ -51,6 +60,7 @@ export class ScriptedUi implements Ui {
 
   clear(): void {
     this.pending = undefined;
+    this.held = [];
     this.asked.length = 0;
     this.confirms = [];
     this.inputs = [];
@@ -100,6 +110,18 @@ export class ScriptedUi implements Ui {
 
   notify(level: 'info' | 'warning' | 'error', message: string, ...actions: string[]): Promise<string | undefined> {
     this.asked.push({ kind: 'notify', level, message, actions });
-    return Promise.resolve(this.clicks.shift());
+    const hold = this.held.shift();
+    if (!hold) return Promise.resolve(this.clicks.shift());
+    // A thenable rather than a promise: the click runs the flow's handler and waits for it.
+    let handle: ((action: string | undefined) => unknown) | undefined;
+    hold(async (action) => {
+      await handle?.(action);
+    });
+    return {
+      then: (onClick: (action: string | undefined) => unknown) => {
+        handle = onClick;
+        return new Promise(() => undefined);
+      },
+    } as unknown as Promise<string | undefined>;
   }
 }
