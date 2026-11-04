@@ -1070,8 +1070,11 @@ class App {
     const cap = expansionCap(this.geometry, this.selected, this.scroller.clientHeight, MAX_EXPANSION_SHARE);
     const box = getComputedStyle(this.expansion);
     // Around the content: padding and borders, which offsets (inside the top border) leave out.
-    const above = parseFloat(box.paddingTop) + parseFloat(box.borderTopWidth);
-    const below = parseFloat(box.paddingBottom) + parseFloat(box.borderTopWidth) + parseFloat(box.borderBottomWidth);
+    const borderTop = parseFloat(box.borderTopWidth);
+    const above = parseFloat(box.paddingTop) + borderTop;
+    const below = parseFloat(box.paddingBottom) + parseFloat(box.borderBottomWidth);
+    // Measured unstuck: a stuck message reports its scrolled position.
+    main.classList.remove('stick');
 
     // Side by side when the message and one tree column fit on a line: CSS wraps the files below
     // the message otherwise (flex-wrap), so the decision and the layout are one computation.
@@ -1082,9 +1085,9 @@ class App {
     layout.style.setProperty('--tree-w', `${treeWidth}px`);
     const stacked = files.offsetTop > main.offsetTop + 1;
     layout.classList.toggle('stacked', stacked);
-    main.classList.toggle('body-open', this.bodyExpanded);
-    const top = (e: HTMLElement, within: HTMLElement) =>
-      layout.offsetTop + within.offsetTop + e.getBoundingClientRect().top - within.getBoundingClientRect().top;
+    /** Top of `e` from the expansion's border edge, the edge `cap` is measured from. */
+    const top = (e: HTMLElement) =>
+      borderTop + layout.offsetTop + e.getBoundingClientRect().top - layout.getBoundingClientRect().top;
 
     const pre = this.expansion.querySelector<HTMLElement>('.details-message');
     const more = this.expansion.querySelector<HTMLElement>('.details-more');
@@ -1098,7 +1101,7 @@ class App {
       const total = Math.round(pre.scrollHeight / line);
       const tail = more.getBoundingClientRect().bottom - pre.getBoundingClientRect().bottom + below;
       // Beside the files, the body may use the height the files take anyway.
-      const room = Math.floor((cap - top(pre, main) - tail) / line);
+      const room = Math.floor((cap - top(pre) - tail) / line);
       const lines = stacked ? BODY_LINES : Math.max(BODY_LINES, room);
       // Hiding a line or two behind a link saves nothing.
       const clampable = total >= lines + 2;
@@ -1128,7 +1131,7 @@ class App {
       );
       // The tree's own view: the details' height from where the tree starts once the files are at
       // the top (beside the message they already are; below it, after scrolling past it).
-      const view = cap - above - below - (top(tree, files) - top(files, files));
+      const view = cap - above - below - (top(tree) - top(files));
       const height = (c: number) => Math.ceil((rows * 1.1) / c) * rowHeight;
       let cols = 1;
       if (byWidth > 1 && rows >= MULTICOL_MIN_ROWS && rows <= MULTICOL_MAX_ROWS) {
@@ -1139,6 +1142,8 @@ class App {
       tree.style.setProperty('--cols', String(cols));
       tree.classList.toggle('files-multicol', cols > 1);
     }
+    // A stuck message taller than the view would hide its own end; and once unfolded it scrolls.
+    main.classList.toggle('stick', !stacked && !this.bodyExpanded && main.offsetHeight <= cap - above - below);
     this.updateExpansionOverflow();
   }
 

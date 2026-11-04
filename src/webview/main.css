@@ -591,8 +591,8 @@ body.vscode-high-contrast .expansion.more-below {
   max-width: 72ch;
 }
 
-/* Beside the files, the message stays in view while the tree scrolls (not once fully unfolded). */
-.details-layout:not(.stacked) .details-main:not(.body-open) {
+/* Beside the files, the message stays in view while the tree scrolls, when it fits the view (main.ts). */
+.details-main.stick {
   position: sticky;
   top: 0;
 }
@@ -893,6 +893,11 @@ body:not(.hover-off) .byline-toggle:hover {
 
 .files.measuring .file-old {
   display: none;
+}
+
+/* Narrow lists float the actions over the row; the measurement must not depend on that. */
+.files.measuring .file-actions {
+  position: static;
 }
 
 /* Tree rows: 16px per level; a folder's chevron sits where a file's status letter does. */
