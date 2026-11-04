@@ -56,13 +56,14 @@ export class RefFilter {
     this.popover.setAttribute('role', 'dialog');
     this.popover.setAttribute('aria-label', 'Filter refs');
     this.popover.append(this.search, actions, this.list);
-    this.popover.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
+    host.append(this.popover);
+    // Escape closes the popover even when focus has left it.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.popover.hidden) {
         this.close();
         this.button.focus();
       }
     });
-    host.append(this.popover);
     document.addEventListener('pointerdown', (e) => {
       if (!this.popover.hidden && !this.popover.contains(e.target as Node) && !this.button.contains(e.target as Node))
         this.close();
@@ -71,10 +72,16 @@ export class RefFilter {
   }
 
   update(refs: RefSnapshot, selected: string[] | null): void {
+    const refsChanged = refs !== this.refs;
     this.refs = refs;
     this.selected = selected ? new Set(selected) : null;
     this.updateLabel();
-    if (!this.popover.hidden) this.renderList();
+    if (this.popover.hidden) return;
+    if (refsChanged) this.renderList();
+    else
+      for (const box of this.list.querySelectorAll<HTMLInputElement>('input[data-ref]')) {
+        box.checked = this.selected?.has(box.dataset['ref'] ?? '') ?? false;
+      }
   }
 
   private toggle(): void {
@@ -96,7 +103,10 @@ export class RefFilter {
   private commit(selected: Set<string> | null): void {
     this.selected = selected && selected.size > 0 ? selected : null;
     this.updateLabel();
-    this.renderList();
+    // Update checkboxes in place: rebuilding the list would drop keyboard focus to <body>.
+    for (const box of this.list.querySelectorAll<HTMLInputElement>('input[data-ref]')) {
+      box.checked = this.selected?.has(box.dataset['ref'] ?? '') ?? false;
+    }
     this.onChange(this.selected ? [...this.selected] : null);
   }
 

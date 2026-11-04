@@ -400,17 +400,22 @@ canvas.graph {
   cursor: row-resize;
   background: transparent;
   transition: background-color 0.1s 0.2s;
+  /* High contrast themes show the sash as a border. */
+  box-shadow: 0 0 0 1px var(--vscode-contrastBorder, transparent) inset;
 }
 
-.splitter:hover {
+.splitter:hover,
+.splitter:focus-visible {
   background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+  outline: none;
 }
 
 .details {
   flex: none;
   /* Fits its content up to a cap until the user drags the splitter. */
   height: var(--details-height, auto);
-  max-height: var(--details-max-height, 45%);
+  /* The list always keeps at least 120px. */
+  max-height: min(var(--details-max-height, 45%), calc(100% - 120px));
   min-height: 96px;
   overflow: auto;
   padding: 8px 16px 12px;
@@ -616,6 +621,7 @@ canvas.graph {
     width: var(--details-width, 380px);
     height: auto;
     max-height: none;
+    max-width: calc(100% - 240px);
     min-width: 240px;
     border-top: none;
     border-left: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));

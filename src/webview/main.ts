@@ -30,6 +30,8 @@ const MAX_BADGES = 3;
 interface SavedState {
   selectedHash?: string | undefined;
   scrollTop?: number | undefined;
+  /** Set when a scroll position was restored together with the selection; do not scroll to the selection. */
+  keepScroll?: boolean | undefined;
   /** Details pane size beside the list (px). */
   detailsWidth?: number | undefined;
   /** Details pane size below the list (px). */
@@ -66,6 +68,8 @@ class App {
   private loading = false;
   private selected = -1;
   private details: CommitDetails | undefined;
+  /** Commit whose details were last requested; replies for any other commit are stale. */
+  private pendingDetails: string | undefined;
   private openedFile: string | undefined;
 
   private readonly toolbar = el('header', 'toolbar');
@@ -117,7 +121,12 @@ class App {
     this.detailsPane.hidden = true;
     this.splitter.hidden = true;
     this.splitter.setAttribute('role', 'separator');
+    this.splitter.setAttribute('aria-label', 'Resize commit details');
+    this.splitter.tabIndex = 0;
     this.splitter.title = 'Drag to resize';
+    this.splitter.addEventListener('keydown', (e) => {
+      this.resizeByKey(e);
+    });
     this.layout.append(this.viewport, this.splitter, this.detailsPane);
     this.main.append(this.layout);
     root.replaceChildren(this.toolbar, this.main);
@@ -132,9 +141,11 @@ class App {
       this.queueRender();
       this.saveState();
     });
+    // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
-      const row = (e.target as HTMLElement).closest<HTMLElement>('.row');
-      if (row) this.select(Number(row.dataset['index']));
+      const top = this.scroller.getBoundingClientRect().top;
+      const index = Math.floor((e.clientY - top + this.scroller.scrollTop) / ROW_HEIGHT);
+      if (index >= 0 && index < this.commits.length) this.select(index);
     });
     this.scroller.addEventListener('keydown', (e) => {
       this.onKey(e);
@@ -142,6 +153,7 @@ class App {
     new ResizeObserver(() => {
       this.queueRender();
     }).observe(this.viewport);
+    this.watchPixelRatio();
     // VS Code rewrites the theme variables on <html> when the color theme changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
@@ -192,7 +204,8 @@ class App {
         this.queueRender();
         break;
       case 'details':
-        if (m.generation !== this.generation) return;
+        if (m.generation !== this.generation || m.details.hash !== this.pendingDetails) return;
+        this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
         break;
@@ -233,6 +246,15 @@ class App {
   }
 
   private reset(generation: number, repo: RepoInfo, refs: RefSnapshot, options: ViewOptions): void {
+    // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
+    // scroll position too when the history itself is the same view.
+    if (this.restore === undefined && this.repo?.root === repo.root) {
+      const sameView = JSON.stringify(options) === JSON.stringify(this.options);
+      this.restore = {
+        selectedHash: this.commits[this.selected]?.hash,
+        scrollTop: sameView ? this.scroller.scrollTop : undefined,
+      };
+    }
     this.generation = generation;
     this.repo = repo;
     this.refs = refs;
@@ -255,6 +277,8 @@ class App {
     this.repoLabel.textContent = repo.name;
     this.repoLabel.title = repo.root;
     this.status.classList.remove('error');
+    // Replies to requests of the previous generation are dropped, so nothing is in flight any more.
+    this.loading = false;
     this.loadMore(FIRST_PAGE);
     this.closeDetails();
     this.queueRender();
@@ -264,16 +288,22 @@ class App {
   private applyRestore(): void {
     const r = this.restore;
     if (!r) return;
-    if (r.scrollTop !== undefined && r.scrollTop <= this.commits.length * ROW_HEIGHT) {
+    if (r.scrollTop !== undefined) r.keepScroll = true;
+    const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
+    if (r.scrollTop !== undefined) {
+      // The sizer normally grows in the next render; it must be tall enough now or the browser clamps scrollTop.
+      this.sizer.style.height = `${this.commits.length * ROW_HEIGHT}px`;
       this.scroller.scrollTop = r.scrollTop;
-      r.scrollTop = undefined;
+      if (Math.abs(this.scroller.scrollTop - r.scrollTop) < 1 || !searchable) r.scrollTop = undefined;
+      else this.loadMore(NEXT_PAGE);
     }
     if (r.selectedHash !== undefined) {
       const index = this.commits.findIndex((c) => c.hash === r.selectedHash);
       if (index >= 0) {
-        this.select(index, false);
+        // Reveal it only when no scroll position is being restored with it.
+        this.select(index, r.scrollTop === undefined && !r.keepScroll);
         r.selectedHash = undefined;
-      } else if (!this.done && this.commits.length < RESTORE_SEARCH_LIMIT) {
+      } else if (searchable) {
         this.loadMore(NEXT_PAGE);
       } else {
         r.selectedHash = undefined;
@@ -303,7 +333,8 @@ class App {
     if (this.detailsWidth !== undefined) this.main.style.setProperty('--details-width', `${this.detailsWidth}px`);
     if (this.detailsHeight !== undefined) {
       this.main.style.setProperty('--details-height', `${this.detailsHeight}px`);
-      this.main.style.setProperty('--details-max-height', 'none');
+      // The CSS cap (list keeps a minimum height) still applies to a stored size.
+      this.main.style.setProperty('--details-max-height', '100%');
     }
   }
 
@@ -332,6 +363,36 @@ class App {
     };
     this.splitter.addEventListener('pointermove', move);
     this.splitter.addEventListener('pointerup', up);
+  }
+
+  /** Redraws the canvas at the new resolution when the window moves to a display with another pixel ratio. */
+  private watchPixelRatio(): void {
+    matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
+      'change',
+      () => {
+        this.queueRender();
+        this.watchPixelRatio();
+      },
+      { once: true },
+    );
+  }
+
+  private resizeByKey(e: KeyboardEvent): void {
+    const beside = this.paneBeside();
+    const step = { ArrowLeft: 16, ArrowUp: 16, ArrowRight: -16, ArrowDown: -16 }[e.key];
+    if (step === undefined) return;
+    e.preventDefault();
+    const bounds = this.layout.getBoundingClientRect();
+    if (beside) {
+      const current = this.detailsWidth ?? this.detailsPane.getBoundingClientRect().width;
+      this.detailsWidth = Math.round(Math.min(bounds.width - MIN_PANE * 2, Math.max(MIN_PANE * 2, current + step)));
+    } else {
+      const current = this.detailsHeight ?? this.detailsPane.getBoundingClientRect().height;
+      this.detailsHeight = Math.round(Math.min(bounds.height - MIN_PANE, Math.max(MIN_PANE, current + step)));
+    }
+    this.applyPaneSize();
+    this.saveState();
+    this.queueRender();
   }
 
   private setOptions(options: ViewOptions): void {
@@ -364,11 +425,25 @@ class App {
     if (!commit) return;
     this.selected = index;
     this.details = undefined;
+    this.pendingDetails = commit.hash;
     this.openedFile = undefined;
     vscode.postMessage({ type: 'select', generation: this.generation, hash: commit.hash });
     if (reveal) this.ensureVisible(index);
     this.saveState();
     this.queueRender();
+  }
+
+  /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
+  private selectHash(hash: string): void {
+    this.scroller.focus();
+    const index = this.commits.findIndex((c) => c.hash === hash);
+    if (index >= 0) {
+      this.select(index);
+      return;
+    }
+    this.restore = { selectedHash: hash };
+    this.status.textContent = `Looking for ${shortHash(hash)}…`;
+    this.applyRestore();
   }
 
   private ensureVisible(index: number): void {
@@ -418,7 +493,12 @@ class App {
     const rows: HTMLElement[] = [];
     for (let i = first; i < last; i++) rows.push(this.renderRow(i));
     this.sizer.replaceChildren(...rows);
-    this.scroller.setAttribute('aria-activedescendant', this.selected >= 0 ? `row-${this.selected}` : '');
+    // Only point at a row that exists in the DOM.
+    if (this.selected >= first && this.selected < last) {
+      this.scroller.setAttribute('aria-activedescendant', `row-${this.selected}`);
+    } else {
+      this.scroller.removeAttribute('aria-activedescendant');
+    }
 
     const dpr = window.devicePixelRatio || 1;
     this.canvas.style.width = `${gw}px`;
@@ -437,6 +517,7 @@ class App {
       merge: (this.commits[i]?.parents.length ?? 0) > 1,
     }));
     ctx.restore();
+    if (graphWidth(this.lanes) > gw) fadeRightEdge(ctx, gw, height, this.theme.background);
 
     if (!this.done && !this.loading && last + LOAD_AHEAD > this.commits.length) this.loadMore(NEXT_PAGE);
   }
@@ -448,6 +529,8 @@ class App {
     row.dataset['index'] = String(i);
     row.setAttribute('role', 'option');
     row.setAttribute('aria-selected', String(i === this.selected));
+    row.setAttribute('aria-posinset', String(i + 1));
+    row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
     row.style.top = `${i * ROW_HEIGHT}px`;
     if (i === this.selected) row.classList.add('selected');
     if (c.hash === this.refs.head) row.classList.add('head');
@@ -527,8 +610,7 @@ class App {
         link.title = `Select parent ${p}`;
         link.addEventListener('click', (e) => {
           e.preventDefault();
-          const index = this.commits.findIndex((c) => c.hash === p);
-          if (index >= 0) this.select(index);
+          this.selectHash(p);
         });
         parents.append(link);
       }
@@ -547,6 +629,10 @@ class App {
     const children: HTMLElement[] = [header, meta, summary, files];
     if (body) children.push(el('pre', 'details-message', body));
     pane.replaceChildren(...children);
+    // A pane opening below the list shrinks it; keep the selected commit in view once layout settles.
+    requestAnimationFrame(() => {
+      if (!this.paneBeside() && this.selected >= 0) this.ensureVisible(this.selected);
+    });
     this.queueRender();
   }
 
@@ -598,6 +684,7 @@ class App {
 
   private closeDetails(): void {
     this.details = undefined;
+    this.pendingDetails = undefined;
     this.detailsPane.hidden = true;
     this.splitter.hidden = true;
     this.detailsPane.replaceChildren();
@@ -625,7 +712,14 @@ class App {
       case 'clickRow': {
         this.scroller.scrollTop = Math.max(0, a.index * ROW_HEIGHT - ROW_HEIGHT * 3);
         this.render();
-        this.sizer.querySelector<HTMLElement>(`#row-${a.index}`)?.click();
+        // A real click carries the pointer position, which is what selection uses.
+        const row = this.sizer.querySelector<HTMLElement>(`#row-${a.index}`);
+        if (row) {
+          const r = row.getBoundingClientRect();
+          row.dispatchEvent(
+            new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + r.height / 2 }),
+          );
+        }
         break;
       }
       case 'clickFile': {
@@ -655,6 +749,16 @@ class App {
       }
     }
   }
+}
+
+/** Fades the graph out at the right edge when lanes beyond the column are cut off. */
+function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: number, background: string): void {
+  const fade = 16;
+  const g = ctx.createLinearGradient(width - fade, 0, width, 0);
+  g.addColorStop(0, `${background}00`);
+  g.addColorStop(1, background);
+  ctx.fillStyle = g;
+  ctx.fillRect(width - fade, 0, fade, height);
 }
 
 function badge(kind: string, icon: string, text: string, title: string): HTMLElement {

@@ -59,6 +59,17 @@ describe('graph panel', () => {
     });
   }
 
+  it('keeps the selection and details across a refresh', async () => {
+    const hash = await selectCommit('Search ranking');
+    const before = (await panel.probe()).generation;
+    await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
+    const s = await waitFor('reloaded with selection', async () => {
+      const p = await panel.probe();
+      return p.generation > before && p.detailsShown === hash && p;
+    });
+    assert.equal(s.selected, hash);
+  });
+
   it('opens a git: diff for a modified file', async () => {
     const hash = await selectCommit('Search ranking');
     const file = git('diff-tree', '--no-commit-id', '--name-only', '-r', `${hash}^`, hash);
