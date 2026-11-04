@@ -3,7 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
-import type { Ref, RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, type Ref, type RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -71,7 +71,6 @@ const FILE_VIEW_TITLE: Record<FileView, string> = {
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
-const REF_ORDER: Record<Ref['kind'], number> = { branch: 0, remote: 1, tag: 2, stash: 3 };
 const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag', stash: 'archive' };
 
 class App {
@@ -309,13 +308,14 @@ class App {
     this.refs = refs;
     this.options = options;
     this.refsByHash = new Map();
-    for (const r of [...refs.refs].sort(
-      (a, b) => REF_ORDER[a.kind] - REF_ORDER[b.kind] || a.short.localeCompare(b.short),
-    )) {
+    for (const r of refs.refs) {
       const list = this.refsByHash.get(r.hash) ?? [];
       list.push(r);
       this.refsByHash.set(r.hash, list);
     }
+    // Refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    for (const [hash, list] of this.refsByHash)
+      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
     this.commits = [];
     this.geometry.clear();
     this.rows = [];
@@ -798,8 +798,7 @@ class App {
       const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
       out.push(badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, r.name));
     }
-    // Current branch first; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
-    out.sort((a, b) => Number(b.classList.contains('head')) - Number(a.classList.contains('head')));
+    // In badgeOrder order; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
     if (out.length <= MAX_BADGES) return out;
     const rest = out.slice(MAX_BADGES - 1);
     const more = el('span', 'badge badge-more', `+${rest.length}`);
