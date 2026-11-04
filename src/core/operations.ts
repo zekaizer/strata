@@ -36,8 +36,8 @@ export type Operation =
   | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
-  /** `unshallow`: the whole history of a shallow clone. */
-  | { kind: 'fetch'; remote: string | undefined; unshallow?: boolean }
+  /** `unshallow`: the whole history of a shallow clone; `ref`: only this ref of `remote`. */
+  | { kind: 'fetch'; remote: string | undefined; unshallow?: boolean; ref?: string }
   /**
    * Local `branch` to `dest`, a full ref on `remote` (the upstream's branch may have another name).
    * `forceWithLease`: the commit `dest` must still be at.
@@ -142,6 +142,7 @@ export function argv(op: Operation): string[] {
       return ['stash', 'store', '--message', op.message, op.commit];
     case 'fetch':
       if (op.unshallow) return ['fetch', '--progress', '--unshallow', ...(op.remote === undefined ? [] : [op.remote])];
+      if (op.remote !== undefined && op.ref !== undefined) return ['fetch', '--progress', op.remote, op.ref];
       return ['fetch', '--progress', ...(op.remote === undefined ? ['--all'] : [op.remote])];
     case 'push':
       return [

@@ -659,3 +659,101 @@ export const STASH_DOING = {
   dropping: (label: string): string => `Dropping ${label}`,
   branching: (name: string): string => `Creating '${name}' from a stash`,
 };
+
+export const NO_REMOTE = 'This repository has no remote.';
+
+export const noUpstream = (branch: string): string => `'${branch}' has no upstream branch.`;
+
+/** A detached HEAD has no branch to pull into or push. */
+export const detachedNoBranch = (action: 'pull' | 'push'): string =>
+  `HEAD is detached: switch to a branch to ${action}.`;
+
+/** Pull of a branch that diverged from its upstream; `allowed`: what config permits, `note` says why not. */
+export function divergedConfirmation(
+  branch: string,
+  upstream: string,
+  ahead: number,
+  behind: number,
+  allowed: { rebase: boolean; merge: boolean },
+  note: string | undefined,
+): Confirmation<'rebase' | 'merge'> {
+  return {
+    message: `${branch} and '${upstream}' have diverged (${ahead} and ${behind} commits).`,
+    detail: note ?? 'Rebase replays its commits on top of the upstream; Merge records a merge commit.',
+    buttons: [
+      ...(allowed.rebase ? [{ id: 'rebase' as const, label: 'Rebase' }] : []),
+      ...(allowed.merge ? [{ id: 'merge' as const, label: 'Merge' }] : []),
+    ],
+  };
+}
+
+/** Push of `branch` whose upstream (on `remote`) has another name. */
+export function pushOtherNameConfirmation(
+  branch: string,
+  remote: string,
+  upstreamBranch: string,
+): Confirmation<'new' | 'upstream'> {
+  return {
+    message: `'${branch}' tracks ${remote}/${upstreamBranch}, which has another name.`,
+    detail: `Push it to a branch of its own, or update ${remote}/${upstreamBranch} with it.`,
+    buttons: [
+      { id: 'new', label: `Push to new '${remote}/${branch}'` },
+      { id: 'upstream', label: `Push to '${remote}/${upstreamBranch}'` },
+    ],
+  };
+}
+
+/** A push the remote refused because it has commits `branch` lacks (counted after fetching them). */
+export function pushRejectedConfirmation(
+  upstream: string,
+  branch: string,
+  count: number,
+  canPull: boolean,
+  canForce: boolean,
+): Confirmation<'pull' | 'force'> {
+  return {
+    message: `'${upstream}' has ${plural(count, 'commit')} that '${branch}' doesn't have.`,
+    detail: 'Pull them first, or overwrite them with a force push.',
+    buttons: [
+      ...(canPull ? [{ id: 'pull' as const, label: 'Pull' }] : []),
+      ...(canForce ? [{ id: 'force' as const, label: 'Force Push (With Lease)...' }] : []),
+    ],
+  };
+}
+
+export function forcePushConfirmation(
+  branch: string,
+  remote: string,
+  upstream: string,
+  count: number,
+  newest: string | undefined,
+): Confirmation<'force'> {
+  return {
+    message: `Force push '${branch}' to '${remote}'?`,
+    detail: `Replaces ${upstream}, which has ${plural(count, 'commit')} '${branch}' doesn't have${newest === undefined ? '' : ` (newest "${newest}")`}. The push fails if ${upstream} changed since Strata read it.`,
+    buttons: [{ id: 'force', label: 'Force Push' }],
+  };
+}
+
+export const publishPick = (branch: string): string => `Publish '${branch}' to…`;
+
+export const REMOTE_DONE = {
+  fetched: (remote: string | undefined): string => `Fetched ${remote ?? 'all remotes'}`,
+  published: (branch: string, remote: string): string => `Published '${branch}' to ${remote}`,
+  pushed: (branch: string, upstream: string): string => `Pushed '${branch}' to ${upstream}`,
+  forcePushed: (branch: string, upstream: string): string => `Force pushed '${branch}' to ${upstream}`,
+  upToDate: 'Already up to date',
+};
+
+export const REMOTE_DOING = {
+  fetching: (remote: string | undefined): string => `Fetching ${remote ?? 'all remotes'}`,
+  pushing: (branch: string, dest: string): string => `Pushing '${branch}' to ${dest}`,
+  publishing: (branch: string, remote: string): string => `Publishing '${branch}' to ${remote}`,
+};
+
+/** Why a diverged pull offers less than Rebase and Merge, or rebases differently than configured. */
+export const PULL_NOTES = {
+  ffOnly: 'pull.ff is "only", so git would not merge.',
+  rebaseMerges:
+    'pull.rebase is "merges"; Strata\'s rebase replays the merged commits one by one instead of keeping the merges.',
+};

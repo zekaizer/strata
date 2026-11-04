@@ -121,6 +121,32 @@ export const COMMANDS = {
     writes: true,
   },
 
+  'strata.push': {
+    title: 'Push',
+    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataUpstream' }],
+    palette: true,
+    titleBar: { group: '1_sync@2' },
+    writes: true,
+  },
+  'strata.publish': {
+    title: 'Publish Branch...',
+    menus: [{ section: 'branch', group: '3_remote@1', when: '!strataUpstream' }],
+    writes: true,
+  },
+  'strata.pull': {
+    title: 'Pull',
+    menus: [{ section: 'branch', group: '3_remote@2', when: 'strataIsCurrent && strataUpstream' }],
+    palette: true,
+    titleBar: { group: '1_sync@1' },
+    writes: true,
+  },
+  'strata.fetch': {
+    title: 'Fetch',
+    menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
+    palette: true,
+    titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
+    writes: true,
+  },
   'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
   'strata.copyRefName': {
     title: 'Copy Name',

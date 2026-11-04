@@ -173,6 +173,31 @@
         "enablement": "!strata.busy"
       },
       {
+        "command": "strata.push",
+        "title": "Push",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.publish",
+        "title": "Publish Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.pull",
+        "title": "Pull",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.fetch",
+        "title": "Fetch",
+        "category": "Strata",
+        "icon": "$(repo-fetch)",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.renameBranch",
         "title": "Rename Branch...",
         "category": "Strata",
@@ -436,6 +461,26 @@
           "group": "6_reset@1"
         },
         {
+          "command": "strata.push",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataUpstream",
+          "group": "3_remote@1"
+        },
+        {
+          "command": "strata.publish",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataUpstream",
+          "group": "3_remote@1"
+        },
+        {
+          "command": "strata.pull",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent && strataUpstream",
+          "group": "3_remote@2"
+        },
+        {
+          "command": "strata.fetch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "3_remote@1"
+        },
+        {
           "command": "strata.renameBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
           "group": "4_edit@1"
@@ -585,6 +630,22 @@
           "when": "false"
         },
         {
+          "command": "strata.push",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.publish",
+          "when": "false"
+        },
+        {
+          "command": "strata.pull",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.fetch",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
           "command": "strata.renameBranch",
           "when": "false"
         },
@@ -667,6 +728,21 @@
           "command": "strata.stash.pushUntracked",
           "when": "activeWebviewPanelId == 'strata.graph'",
           "group": "3_stash@2"
+        },
+        {
+          "command": "strata.push",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "1_sync@2"
+        },
+        {
+          "command": "strata.pull",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "1_sync@1"
+        },
+        {
+          "command": "strata.fetch",
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation",
+          "group": "navigation@1"
         },
         {
           "command": "strata.operation.continue",

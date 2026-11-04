@@ -31,7 +31,9 @@ import {
   skipCommit,
   sourceOf,
 } from './flows/history.ts';
+import { fetchRemote, publish, pull, push } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
+import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
 import { parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
@@ -136,6 +138,10 @@ const write =
     }
   };
 
+/** The menu target of a command that also runs from the palette or title bar (no menu context there). */
+const optionalTarget = <K extends TargetKind>(ctx: MenuArg, kinds: readonly K[], host: FlowHost) =>
+  typeof ctx?.['webviewSection'] === 'string' ? parseTarget(ctx, kinds, host.refs) : undefined;
+
 /** A stash commit named by a banner button (`strataHash`). */
 const stashHash = (ctx: MenuArg): string => {
   const hash = str(ctx?.['strataHash']);
@@ -211,6 +217,15 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
   'strata.stash.drop': write((host, ctx) => dropStash(host, stashHash(ctx))),
   'strata.showStashes': () => panel().showStashes(),
+  'strata.fetch': write((host, ctx) => {
+    const t = optionalTarget(ctx, ['remoteBranch'], host);
+    return fetchRemote(host, t && remoteBranch(t.ref.name, host.refs.remotes)?.remote);
+  }),
+  'strata.pull': write((host) => pull(host)),
+  'strata.push': write((host, ctx) =>
+    push(host, optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch),
+  ),
+  'strata.publish': on(['branch'], (host, t) => publish(host, t.ref.short)),
   'strata.resolveConflicts': async () => {
     const host = panel().flowHost();
     await resolveConflicts(host, await readUnmerged(host.git, host.cwd));

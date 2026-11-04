@@ -231,3 +231,7 @@ export async function readUntrackedAt(git: string, cwd: string, target: string):
   }
   return found;
 }
+
+/** A git config value as written; undefined when unset. */
+export const readConfig = (git: string, cwd: string, key: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['config', '--get', key]));
