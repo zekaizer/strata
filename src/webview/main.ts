@@ -323,12 +323,18 @@ class App {
         break;
       case 'hidden':
         document.body.classList.add('hover-off');
+        this.refFilter.close();
         break;
       case 'noRepository':
         this.generation = -1;
         this.noRepository = true;
         this.repoLabel.textContent = 'No git repository';
+        this.repoLabel.title = '';
+        this.status.classList.remove('error');
         this.status.textContent = 'Open a folder that contains a git repository.';
+        this.refFilter.close();
+        this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+        this.refFilter.update(this.refs, null);
         this.commits = [];
         this.geometry.clear();
         this.rows = [];
