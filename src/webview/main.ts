@@ -264,7 +264,7 @@ class App {
     );
     this.stashButton.hidden = true;
     this.stashButton.addEventListener('click', () => {
-      vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
+      this.pickStash();
     });
     this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
@@ -443,6 +443,9 @@ class App {
         break;
       case 'reveal':
         this.reveal(m.hash);
+        break;
+      case 'pickStash':
+        this.pickStash();
         break;
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
@@ -713,6 +716,11 @@ class App {
     this.stashButton.querySelector('.stash-count-narrow')!.textContent = `${n}${hidden > 0 ? '•' : ''}`;
     this.stashButton.title = `${label}. Show Stashes`;
     this.stashButton.setAttribute('aria-label', this.stashButton.title);
+  }
+
+  /** Opens Show Stashes, telling the host which stash rows are drawn and why the others are not. */
+  private pickStash(): void {
+    vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
   }
 
   /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */

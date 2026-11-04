@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
+import type { StashShown } from '../../src/core/stash.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { addBranchyStashes, storeStash } from '../fixtures/stashes.ts';
 import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
@@ -234,6 +235,27 @@ describe('stash rows', () => {
     for (let i = 0; i < next; i++) await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
     await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
   }
+
+  it('asks the graph which stash rows it draws when Show Stashes runs from the Command Palette', async () => {
+    const answers: Record<string, StashShown>[] = [];
+    const listening = panel.onDidReceiveMessage((m) => {
+      if (m.type === 'pickStash') answers.push(m.shown);
+    });
+    try {
+      void vscode.commands.executeCommand('strata.showStashes');
+      const [shown] = await waitFor('the graph to answer', () => answers.length > 0 && answers);
+      assert.deepEqual(shown, {
+        [stash[0]!]: 'drawn',
+        [stash[1]!]: 'drawn',
+        [stash[2]!]: 'drawn',
+        [stash[3]!]: 'drawn',
+        [stash[4]!]: 'notInView',
+      });
+    } finally {
+      listening.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+    }
+  });
 
   // Show Stashes lists stash@{1} (on main, the current branch), then stash@{0}, {2}, {3} and {4}.
   it('opens a stash picked in Show Stashes, showing hidden stash rows again', async () => {

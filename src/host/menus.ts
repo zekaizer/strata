@@ -223,7 +223,9 @@ const handlers = (env: FlowEnv): Handlers => ({
     return panel().copyStashPatch(parseTarget(ctx, ['stash'], host.refs).hash);
   },
   'strata.stash.drop': write((host, ctx) => dropStash(host, stashHash(ctx))),
-  'strata.showStashes': () => panel().showStashes(),
+  'strata.showStashes': () => {
+    panel().showStashes();
+  },
   'strata.fetch': write((host, ctx) => {
     const t = optionalTarget(ctx, ['remoteBranch'], host);
     return fetchRemote(host, t && remoteBranch(t.ref.name, host.refs.remotes)?.remote);

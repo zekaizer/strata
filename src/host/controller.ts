@@ -491,10 +491,9 @@ export class GraphController implements vscode.Disposable, FlowHost {
     await this.copyPatch(patch, s ? `stash@{${s.index}}` : `stash ${short}`, `stash-${short}.patch`);
   }
 
-  /** The Show Stashes pick from the palette or title bar, where the graph's own row states are not at hand. */
-  async showStashes(): Promise<void> {
-    const hash = await pickStash(this.stashes, {}, this.snapshot?.headBranch);
-    if (hash) this.reveal(hash);
+  /** Show Stashes from the palette or title bar: only the webview knows which stash rows it draws. */
+  showStashes(): void {
+    this.post({ type: 'pickStash' });
   }
 
   /** Copies the change to one file of a commit as a plain diff. */
