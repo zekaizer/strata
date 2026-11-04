@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { autostashMessage, strataAutostashOf, type StashChoice } from '../../core/autostash.ts';
+import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
 import type { MergeMode, Operation, ResetMode } from '../../core/operations.ts';
 import type { OperationKind, OperationState } from '../../core/repo-state.ts';
 import {
@@ -40,7 +40,6 @@ import {
   readUpstream,
   type CommitInfo,
 } from '../../git/facts.ts';
-import { readStashes } from '../../git/stash.ts';
 import { readOperationState } from '../../git/state.ts';
 import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
@@ -130,7 +129,7 @@ export async function stopped(host: FlowHost, kind: OperationKind): Promise<void
   if (!state) return;
   const [subject, held] = await Promise.all([
     state.applying === undefined ? undefined : readCommit(host.git, host.cwd, state.applying).then((c) => c.subject),
-    heldStash(host, kind),
+    heldStash(host, state),
   ]);
   const message = stoppedMessage(
     kind,
@@ -145,11 +144,13 @@ export async function stopped(host: FlowHost, kind: OperationKind): Promise<void
   );
 }
 
-/** Strata's own stash for a stopped cherry pick or revert (git holds a rebase's or merge's itself). */
-async function heldStash(host: FlowHost, kind: OperationKind) {
-  if (kind !== 'cherryPick' && kind !== 'revert') return undefined;
-  const stashes = await readStashes(host.git, host.cwd);
-  return stashes.find((s) => strataAutostashOf(s.message) === kind);
+/**
+ * The stash Strata pushed before the stopped cherry pick or revert `state` (git holds a rebase's
+ * or merge's itself). Any other stash, even one named like Strata's, is not this operation's.
+ */
+async function heldStash(host: FlowHost, state: OperationState) {
+  const hash = await host.leftovers.held(state);
+  return hash === undefined ? undefined : readStash(host.git, host.cwd, hash);
 }
 
 /** Runs an operation that may stop at conflicts; resolves its stderr, or undefined when it stopped or did not run. */
@@ -391,9 +392,9 @@ async function inProgress(host: FlowHost): Promise<OperationState | undefined> {
  * After Continue, Abort or Skip ended a cherry pick or revert, puts back what Strata stashed
  * before it; git restores its own autostash for rebase and merge.
  */
-async function restoreHeld(host: FlowHost, exec: Exec, kind: OperationKind): Promise<Restored> {
+async function restoreHeld(host: FlowHost, exec: Exec, state: OperationState): Promise<Restored> {
   if (await readOperationState(host.git, host.cwd)) return { kind: 'none' };
-  const held = await heldStash(host, kind);
+  const held = await heldStash(host, state);
   return held ? restore(host, exec, held.hash) : { kind: 'none' };
 }
 
@@ -411,7 +412,7 @@ async function settle(
     label,
     async (exec) => {
       const { stderr } = await exec(op);
-      return { stderr, restored: await restoreHeld(host, exec, state.kind) };
+      return { stderr, restored: await restoreHeld(host, exec, state) };
     },
     [],
   );
@@ -448,7 +449,7 @@ export async function abortOperation(host: FlowHost): Promise<void> {
     host.cwd,
     state.kind === 'rebase' || state.kind === 'merge' ? 'ORIG_HEAD' : 'HEAD',
   );
-  const held = state.autostash || (await heldStash(host, state.kind)) !== undefined;
+  const held = state.autostash || (await heldStash(host, state)) !== undefined;
   if (!(await host.ui.confirm(abortConfirmation(state.kind, state.branch, back.short, held)))) return;
   const op: Operation = { kind: 'abort', operation: state.kind };
   await settle(host, state, HISTORY_DOING.aborting(state.kind), op, HISTORY_DONE.aborted(state.kind));

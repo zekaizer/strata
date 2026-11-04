@@ -1,4 +1,3 @@
-import { strataAutostashOf } from '../../core/autostash.ts';
 import {
   dropStashConfirmation,
   NOTHING_TO_STASH,
@@ -74,8 +73,8 @@ export async function restoreStash(host: FlowHost, hash: string, pop: boolean): 
     return;
   }
   const done = pop ? STASH_DONE.popped(s.label) : STASH_DONE.applied(s.label);
-  // Applied, Strata's pending autostash is settled: popping it again would apply the changes twice.
-  if (r.kind === 'restored' && !pop && strataAutostashOf(s.message) !== undefined) await host.leftovers.keep(hash);
+  // Applied, Strata owes it no restore: popping it again would apply the changes twice.
+  if (r.kind === 'restored' && !pop) await host.leftovers.keep(hash);
   await finish(host, { message: done });
   await reportRestore(host, done, r);
 }

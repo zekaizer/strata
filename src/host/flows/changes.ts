@@ -14,7 +14,7 @@ import {
 import { readConfigBool, readOverlap, readStash, readStashTop, readUnmerged } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readWorktree } from '../../git/state.ts';
+import { readOperationState, readWorktree } from '../../git/state.ts';
 import { notify, type FlowHost } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 
@@ -90,8 +90,8 @@ export async function restore(host: FlowHost, exec: Exec, hash: string, pop = tr
 
 /**
  * Runs `body` between Strata's own `stash push` and a pop of the stash that push created. A body
- * that stops at conflicts keeps the stash for after the operation (the error propagates); one
- * that fails otherwise gets the changes back at once.
+ * that stops at conflicts leaves the stash to the stopped operation, whose Continue, Abort or Skip
+ * restores it (the error propagates); one that fails otherwise gets the changes back at once.
  */
 export async function stashAround(
   host: FlowHost,
@@ -104,11 +104,15 @@ export async function stashAround(
   const after = await readStashTop(host.git, host.cwd);
   // "No local changes to save" (e.g. only submodule changes) creates none, and there is nothing to pop.
   const created = after !== before ? after : undefined;
+  if (created !== undefined) await host.leftovers.pushed(created);
   try {
     await body();
   } catch (e) {
-    // Refused before changing anything: give the changes back now.
-    if (!isConflict(e) && created !== undefined) await restore(host, exec, created).catch(() => undefined);
+    if (created !== undefined) {
+      if (isConflict(e)) await host.leftovers.pushed(created, (await readOperationState(host.git, host.cwd))?.applying);
+      // Refused before changing anything: give the changes back now.
+      else await restore(host, exec, created).catch(() => undefined);
+    }
     throw e;
   }
   return created === undefined ? { kind: 'none' } : restore(host, exec, created);

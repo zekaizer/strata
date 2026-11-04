@@ -1,12 +1,15 @@
 import * as assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { branchMenu, commitMenu, flowSuite, reload, run, selected } from './flow-helpers.ts';
+import { branchMenu, commitMenu, flowSuite, menu, reload, run, selected } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 const write = (file: string, content: string) => {
   writeFileSync(join(workspaceRoot(), file), content);
 };
+const read = (file: string) => readFileSync(join(workspaceRoot(), file), 'utf8');
 /** A branch from `from` with one commit writing `file`. */
 const branchWith = (branch: string, from: string, file: string, content: string) => {
   git('switch', '--quiet', '--create', branch, from);
@@ -17,6 +20,18 @@ const branchWith = (branch: string, from: string, file: string, content: string)
 
 describe('history operations', () => {
   const { api, panel, ui } = flowSuite();
+
+  /** A commit on main~1 whose main.txt conflicts with main's; HEAD stays on main. */
+  const conflicting = async () => {
+    branchWith('strata-pick', 'main~1', 'main.txt', 'picked\n');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    return git('rev-parse', 'strata-pick');
+  };
+  const leftover = () =>
+    panel()
+      .probe()
+      .then((p) => p.leftover);
 
   it('fast-forwards the current branch, and undoes that', async () => {
     branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
@@ -104,6 +119,83 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
     assert.equal(readFileSync(join(workspaceRoot(), 'NOTES.md'), 'utf8'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
+  });
+
+  it('restores the stash of a cherry pick that stopped once Continue finishes it', async () => {
+    const picked = await conflicting();
+    const notes = read('NOTES.md');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(picked));
+    assert.match(
+      ui.of('notify').at(-1)?.message ?? '',
+      /Your uncommitted changes are in stash@\{0\} \("On main: Strata autostash: cherry pick [0-9a-f]+ onto 'main'"\)\.$/,
+    );
+    await waitFor('the banner names the held stash', async () =>
+      (await panel().probe()).banner?.text.includes('Your uncommitted changes are in stash@{0} (Strata autostash)'),
+    );
+    assert.equal(read('NOTES.md'), notes);
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    await run('strata.operation.continue');
+    assert.equal(git('log', '-1', '--format=%s'), 'main.txt: picked');
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
+  it('never restores a Strata stash the stopped cherry pick did not push', async () => {
+    const picked = await conflicting();
+    const notes = read('NOTES.md');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(picked));
+    const kept = git('rev-parse', 'refs/stash');
+    git('cherry-pick', '--abort');
+    await waitFor('the stash is pending', async () => (await leftover())?.kind === 'pendingStash');
+    await run('strata.keepStash', menu({ strataHash: kept }));
+    await waitFor('the stash is kept', async () => (await leftover()) === undefined);
+
+    ui.clear();
+    await run('strata.cherryPick', commitMenu(picked));
+    assert.doesNotMatch(ui.of('notify').at(-1)?.message ?? '', /stash/);
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    await run('strata.operation.continue');
+    assert.equal(git('log', '-1', '--format=%s'), 'main.txt: picked');
+    assert.equal(git('rev-parse', 'refs/stash'), kept);
+    assert.equal(read('NOTES.md'), notes);
+  });
+
+  it('leaves a Strata stash of another worktree alone: no banner here, and no restore on Abort', async () => {
+    const picked = await conflicting();
+    const other = join(mkdtempSync(join(tmpdir(), 'strata-wt-')), 'other');
+    git('worktree', 'add', '--quiet', '--detach', other, 'main');
+    try {
+      writeFileSync(join(other, 'NOTES.md'), 'theirs\n');
+      const short = git('rev-parse', '--short', picked);
+      execFileSync(
+        'git',
+        ['stash', 'push', '--quiet', '--message', `Strata autostash: cherry pick ${short} onto HEAD`],
+        {
+          cwd: other,
+        },
+      );
+      const theirs = git('rev-parse', 'refs/stash');
+      await reload(panel());
+      assert.equal(await leftover(), undefined);
+
+      const notes = read('NOTES.md');
+      await run('strata.cherryPick', commitMenu(picked));
+      assert.doesNotMatch(ui.of('notify').at(-1)?.message ?? '', /stash/);
+      ui.press('Abort Cherry Pick');
+      await run('strata.operation.abort');
+      assert.doesNotMatch(ui.first('confirm').detail, /stashed changes/);
+      assert.equal(git('rev-parse', 'refs/stash'), theirs);
+      assert.equal(read('NOTES.md'), notes);
+    } finally {
+      git('worktree', 'remove', '--force', other);
+      rmSync(join(other, '..'), { recursive: true, force: true });
+    }
   });
 
   it('keeps uncommitted changes of a hard reset in a stash it never pops, and undoes the reset', async () => {

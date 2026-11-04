@@ -1,6 +1,6 @@
 import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
-import type { AutostashSetting } from '../core/autostash.ts';
+import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
@@ -17,7 +17,6 @@ import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import { setContext } from './context.ts';
-import { leftoverOf } from '../core/autostash.ts';
 import { readUnmerged } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
@@ -30,9 +29,8 @@ const GRAPH_UPDATE_DELAY_MS = 3000;
 /** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
 const LARGE_PATCH_BYTES = 4 << 20;
 
-/** workspaceState keys of the Leftovers sets. */
-const RESTORE_CONFLICTED = 'strata.restoreConflicted';
-const KEPT = 'strata.keptStashes';
+/** workspaceState key of Strata's stash marks, by the git dir of the worktree they belong to. */
+const STASH_MARKS = 'strata.stashMarks';
 
 const AUTOSTASH: readonly string[] = ['gitConfig', 'always', 'never'] satisfies AutostashSetting[];
 
@@ -56,6 +54,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   /** What the graph was last told is in progress or left behind. */
   private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
   private undoRecord: Undo | undefined;
+  private gitDirOf: { root: string; dir: Promise<string> } | undefined;
   private running: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private repoSubscription: vscode.Disposable | undefined;
@@ -264,21 +263,19 @@ export class GraphController implements vscode.Disposable, FlowHost {
     const repo = this.repo;
     if (!repo) return;
     const cwd = repo.rootUri.fsPath;
-    const [operation, unmerged] = await Promise.all([
+    const [operation, unmerged, dir] = await Promise.all([
       readOperationState(this.api.git.path, cwd).catch(() => undefined),
       readUnmerged(this.api.git.path, cwd).catch(() => []),
+      this.gitDir().catch(() => undefined),
     ]);
     if (repo !== this.repo || this.disposed) return;
-    const listed = new Set(this.stashes.map((s) => s.hash));
-    const [restoreConflicted, kept] = await Promise.all([
-      this.prune(RESTORE_CONFLICTED, listed),
-      this.prune(KEPT, listed),
-    ]);
-    // A running flow's own stash is not a leftover.
-    const leftover =
-      this.running === undefined
-        ? leftoverOf({ operation: operation !== undefined, stashes: this.stashes, unmerged, restoreConflicted, kept })
-        : undefined;
+    // A running flow's own stash is not a leftover, and its marks are the flow's to change.
+    let leftover: Leftover | undefined;
+    if (this.running === undefined && dir !== undefined) {
+      const marks = settleMarks(this.marksOf(dir), operation, new Set(this.stashes.map((s) => s.hash)));
+      await this.setMarks(dir, marks);
+      leftover = leftoverOf({ operation, stashes: this.stashes, unmerged, marks });
+    }
     const state = { operation, leftover };
     if (!force && JSON.stringify(state) === JSON.stringify(this.repoState)) return;
     this.repoState = state;
@@ -286,24 +283,46 @@ export class GraphController implements vscode.Disposable, FlowHost {
     await setContext('strata.operation', operation?.kind ?? '');
   }
 
-  /** A workspace-state set of stash commits, without those no longer in the stash list. */
-  private async prune(key: string, listed: ReadonlySet<string>): Promise<Set<string>> {
-    const stored = this.env.state.get<string[]>(key) ?? [];
-    const kept = stored.filter((h) => listed.has(h));
-    if (kept.length !== stored.length) await this.env.state.update(key, kept);
-    return new Set(kept);
+  /**
+   * The git dir of the graph's worktree, which Strata's stash marks belong to: the stash list is
+   * shared by every worktree of a repository, but each worktree has its own git dir.
+   */
+  private gitDir(): Promise<string> {
+    const root = this.requireRepo().rootUri.fsPath;
+    if (this.gitDirOf?.root !== root)
+      this.gitDirOf = {
+        root,
+        dir: runGit(this.api.git.path, root, ['rev-parse', '--git-dir']).then((d) => resolve(root, d.trim())),
+      };
+    return this.gitDirOf.dir;
+  }
+
+  private marksOf(dir: string): StashMark[] {
+    return this.env.state.get<Record<string, StashMark[]>>(STASH_MARKS)?.[dir] ?? [];
+  }
+
+  private async setMarks(dir: string, marks: StashMark[]): Promise<void> {
+    if (JSON.stringify(marks) === JSON.stringify(this.marksOf(dir))) return;
+    const all = { ...this.env.state.get<Record<string, StashMark[]>>(STASH_MARKS) };
+    if (marks.length > 0) all[dir] = marks;
+    else Reflect.deleteProperty(all, dir);
+    await this.env.state.update(STASH_MARKS, all);
+  }
+
+  /** Gives the stash commit `hash` this mark (none: forgets it). */
+  private async mark(hash: string, mark: StashMark | undefined): Promise<void> {
+    const dir = await this.gitDir();
+    const others = this.marksOf(dir).filter((m) => m.hash !== hash);
+    await this.setMarks(dir, mark ? [...others, mark] : others);
+    await this.syncRepoState(false);
   }
 
   readonly leftovers: Leftovers = {
-    markRestoreConflicted: (hash) => this.addTo(RESTORE_CONFLICTED, hash),
-    keep: (hash) => this.addTo(KEPT, hash),
+    pushed: (hash, head) => this.mark(hash, { kind: 'pushed', hash, ...(head === undefined ? {} : { head }) }),
+    held: async (operation) => heldBy(this.marksOf(await this.gitDir()), operation)?.hash,
+    markRestoreConflicted: (hash) => this.mark(hash, { kind: 'restoreConflicted', hash }),
+    keep: (hash) => this.mark(hash, undefined),
   };
-
-  private async addTo(key: string, hash: string): Promise<void> {
-    const stored = this.env.state.get<string[]>(key) ?? [];
-    if (!stored.includes(hash)) await this.env.state.update(key, [...stored, hash]);
-    await this.syncRepoState(false);
-  }
 
   reveal(hash: string): void {
     this.post({ type: 'reveal', hash });

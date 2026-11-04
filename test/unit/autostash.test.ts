@@ -1,6 +1,13 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { leftoverOf, resolveStashChoices, type DirtyFacts } from '../../src/core/autostash.ts';
+import {
+  leftoverOf,
+  resolveStashChoices,
+  settleMarks,
+  type DirtyFacts,
+  type StashMark,
+} from '../../src/core/autostash.ts';
+import type { OperationState } from '../../src/core/repo-state.ts';
 
 const clean: DirtyFacts = { files: 0, staged: 0, overlap: false };
 const dirty: DirtyFacts = { files: 2, staged: 0, overlap: false };
@@ -65,28 +72,48 @@ describe('resolveStashChoices', () => {
 
 describe('leftoverOf', () => {
   const stash = (index: number, message: string) => ({ hash: `${index}`.repeat(40), index, message });
-  const none = new Set<string>();
-  const base = { operation: false, unmerged: [], restoreConflicted: none, kept: none };
+  const base = { operation: undefined, unmerged: [], marks: [] };
+  const picking = (applying: string): OperationState => ({
+    kind: 'cherryPick',
+    branch: 'main',
+    onto: undefined,
+    step: undefined,
+    applying,
+    conflicts: ['a'],
+    conflictCount: 1,
+    autostash: false,
+  });
+  const pushed = (hash: string, head?: string): StashMark => ({ kind: 'pushed', hash, ...(head ? { head } : {}) });
 
-  it('names nothing while an operation holds the changes', () => {
-    const stashes = [stash(0, 'On main: Strata autostash: cherry pick abc1234')];
-    assert.equal(leftoverOf({ ...base, operation: true, stashes, unmerged: ['a'] }), undefined);
+  it('names only the stash a stopped operation holds while it is in progress', () => {
+    const stashes = [stash(0, 'On main: Strata autostash: cherry pick abc1234'), stash(1, 'On main: wip')];
+    const held = { ...base, stashes, unmerged: ['a'], marks: [pushed(stashes[0]!.hash, 'c'.repeat(40))] };
+    assert.deepEqual(leftoverOf({ ...held, operation: picking('c'.repeat(40)) }), {
+      kind: 'pendingStash',
+      stash: { hash: stashes[0]!.hash, index: 0 },
+      operation: 'cherry pick',
+    });
+    assert.equal(leftoverOf({ ...held, operation: picking('d'.repeat(40)) }), undefined);
   });
 
   it('reports a restore Strata saw conflict, first, with its files', () => {
     const stashes = [stash(0, 'autostash'), stash(1, 'On main: Strata autostash: switch to x')];
-    const l = leftoverOf({ ...base, stashes, unmerged: ['a.ts'], restoreConflicted: new Set([stashes[0]!.hash]) });
+    const marks: StashMark[] = [pushed(stashes[1]!.hash), { kind: 'restoreConflicted', hash: stashes[0]!.hash }];
+    const l = leftoverOf({ ...base, stashes, unmerged: ['a.ts'], marks });
     assert.deepEqual(l, { kind: 'restoreConflicted', stash: { hash: stashes[0]!.hash, index: 0 }, files: ['a.ts'] });
   });
 
-  it('reports a Strata stash nobody restored, unless the user kept it', () => {
-    const stashes = [stash(0, 'On main: wip'), stash(1, 'On main: Strata autostash: cherry pick abc1234')];
-    assert.deepEqual(leftoverOf({ ...base, stashes }), {
+  it('reports a stash Strata pushed here and nobody restored, and no Strata-named stash it did not push', () => {
+    const stashes = [
+      stash(0, 'On main: Strata autostash: cherry pick 1234abc'),
+      stash(1, 'On main: Strata autostash: cherry pick abc1234'),
+    ];
+    assert.deepEqual(leftoverOf({ ...base, stashes, marks: [pushed(stashes[1]!.hash)] }), {
       kind: 'pendingStash',
       stash: { hash: stashes[1]!.hash, index: 1 },
       operation: 'cherry pick',
     });
-    assert.equal(leftoverOf({ ...base, stashes, kept: new Set([stashes[1]!.hash]) }), undefined);
+    assert.equal(leftoverOf({ ...base, stashes }), undefined);
   });
 
   it("reports unmerged files nobody resolves, naming git's own autostash without advising to drop it", () => {
@@ -97,5 +124,30 @@ describe('leftoverOf', () => {
       count: 2,
       autostash: { hash: stashes[1]!.hash, index: 1 },
     });
+  });
+});
+
+describe('settleMarks', () => {
+  const op = (applying: string): OperationState => ({
+    kind: 'revert',
+    branch: 'main',
+    onto: undefined,
+    step: undefined,
+    applying,
+    conflicts: [],
+    conflictCount: 0,
+    autostash: false,
+  });
+  const w = 'a'.repeat(40);
+  const held: StashMark = { kind: 'pushed', hash: w, head: 'c'.repeat(40) };
+
+  it('keeps the stash a stopped operation holds held while it is in progress', () => {
+    assert.deepEqual(settleMarks([held], op('c'.repeat(40)), new Set([w])), [held]);
+  });
+
+  it('lets go of it once that operation ended without Strata, and forgets stashes that left the list', () => {
+    const conflicted: StashMark = { kind: 'restoreConflicted', hash: 'b'.repeat(40) };
+    assert.deepEqual(settleMarks([held, conflicted], undefined, new Set([w])), [{ kind: 'pushed', hash: w }]);
+    assert.deepEqual(settleMarks([held], op('d'.repeat(40)), new Set([w])), [{ kind: 'pushed', hash: w }]);
   });
 });

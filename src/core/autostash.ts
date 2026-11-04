@@ -1,4 +1,4 @@
-import type { Leftover } from './repo-state.ts';
+import type { Leftover, OperationState } from './repo-state.ts';
 
 /** Operations that uncommitted changes can get in the way of. */
 export type StashOp =
@@ -139,30 +139,76 @@ export function strataAutostashOf(reflogSubject: string): ExplicitStashOp | unde
   return (Object.keys(EXPLICIT) as ExplicitStashOp[]).find((op) => rest.startsWith(`${EXPLICIT[op]} `));
 }
 
+/**
+ * What Strata remembers about a stash commit in one worktree, until the stash leaves the list. A
+ * stash with no mark is not Strata's to restore.
+ */
+export type StashMark =
+  /**
+   * Strata pushed it before an operation and owes it a restore. `head`: the CHERRY_PICK_HEAD or
+   * REVERT_HEAD of the stopped operation holding it, which restores it when it ends through Strata.
+   */
+  | { kind: 'pushed'; hash: string; head?: string }
+  /** Strata saw restoring it conflict: it is never offered for restoring again. */
+  | { kind: 'restoreConflicted'; hash: string };
+
+/** The mark of the stash Strata pushed for the stopped cherry pick or revert `operation`. */
+export function heldBy(
+  marks: readonly StashMark[],
+  operation: Pick<OperationState, 'kind' | 'applying'>,
+): StashMark | undefined {
+  if (operation.kind !== 'cherryPick' && operation.kind !== 'revert') return undefined;
+  return marks.find((m) => m.kind === 'pushed' && m.head !== undefined && m.head === operation.applying);
+}
+
+/**
+ * The marks once `operation` is in progress and `listed` is the stash list: a stash that left the
+ * list is forgotten, and one whose operation ended without Strata is no longer held.
+ */
+export function settleMarks(
+  marks: readonly StashMark[],
+  operation: OperationState | undefined,
+  listed: ReadonlySet<string>,
+): StashMark[] {
+  const held = operation && heldBy(marks, operation);
+  return marks
+    .filter((m) => listed.has(m.hash))
+    .map((m) => (m.kind === 'pushed' && m.head !== undefined && m !== held ? { kind: 'pushed', hash: m.hash } : m));
+}
+
 /** Unmerged files a leftover lists, at most. */
 const FILES_SHOWN = 50;
 
 /**
  * What an earlier operation left for the user to settle, in the banner's order: a restore Strata
- * saw conflict, a Strata stash nobody restored, unmerged files nobody resolves. Nothing while an
- * operation is in progress (it says where the changes are itself).
+ * saw conflict, a stash Strata pushed here and nobody restored, unmerged files nobody resolves.
+ * While an operation is in progress, only the stash it holds (its banner says where the changes are).
  */
 export function leftoverOf(i: {
-  operation: boolean;
+  operation: OperationState | undefined;
   /** stash@{0} first; `message` is the reflog subject. */
   stashes: readonly { hash: string; index: number; message: string }[];
   unmerged: readonly string[];
-  restoreConflicted: ReadonlySet<string>;
-  kept: ReadonlySet<string>;
+  /** This worktree's marks. */
+  marks: readonly StashMark[];
 }): Leftover | undefined {
-  if (i.operation) return undefined;
   const ref = (s: { hash: string; index: number }) => ({ hash: s.hash, index: s.index });
-  const open = i.stashes.filter((s) => !i.kept.has(s.hash));
-  const conflicted = open.find((s) => i.restoreConflicted.has(s.hash));
-  if (conflicted) return { kind: 'restoreConflicted', stash: ref(conflicted), files: i.unmerged.slice(0, FILES_SHOWN) };
-  for (const s of open) {
+  const pending = (s: { hash: string; index: number; message: string }): Leftover | undefined => {
     const op = strataAutostashOf(s.message);
-    if (op !== undefined) return { kind: 'pendingStash', stash: ref(s), operation: EXPLICIT[op] };
+    return op === undefined ? undefined : { kind: 'pendingStash', stash: ref(s), operation: EXPLICIT[op] };
+  };
+  const marked = (kind: StashMark['kind']) =>
+    i.stashes.filter((s) => i.marks.some((m) => m.hash === s.hash && m.kind === kind));
+  if (i.operation) {
+    const held = heldBy(i.marks, i.operation);
+    const s = held && i.stashes.find((e) => e.hash === held.hash);
+    return s && pending(s);
+  }
+  const [conflicted] = marked('restoreConflicted');
+  if (conflicted) return { kind: 'restoreConflicted', stash: ref(conflicted), files: i.unmerged.slice(0, FILES_SHOWN) };
+  for (const s of marked('pushed')) {
+    const l = pending(s);
+    if (l) return l;
   }
   if (i.unmerged.length === 0) return undefined;
   const git = i.stashes.find((s) => s.message === 'autostash');

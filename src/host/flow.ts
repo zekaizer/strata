@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
 import { argv, type Operation } from '../core/operations.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import type { OperationState } from '../core/repo-state.ts';
 import { shellCommand, shellKind } from '../core/shell.ts';
 import {
   changedMeanwhile,
@@ -60,11 +61,15 @@ export interface FlowEnv {
   readonly state: vscode.Memento;
 }
 
-/** Stash commits a leftover banner treats specially, kept in workspace state until they leave the stash list. */
+/** What Strata remembers about the stashes it pushed or restored in the graph's worktree (StashMark). */
 export interface Leftovers {
+  /** Strata pushed it before an operation; `head`: the stopped cherry pick or revert now holding it. */
+  pushed(hash: string, head?: string): Promise<void>;
+  /** The stash Strata pushed for the stopped cherry pick or revert `operation`, if any. */
+  held(operation: OperationState): Promise<string | undefined>;
   /** Strata saw restoring it conflict: never offer to restore it again. */
   markRestoreConflicted(hash: string): Promise<void>;
-  /** The user chose to keep it. */
+  /** The user kept it, or applied it: Strata owes it no restore. */
   keep(hash: string): Promise<void>;
 }
 
