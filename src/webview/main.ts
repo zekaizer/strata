@@ -513,10 +513,16 @@ class App {
     document.addEventListener(
       'keydown',
       (e) => {
-        if (!modifiers.has(e.key)) document.body.classList.add('keyboard-nav');
+        // Shortcuts (copy and the like) are not navigation.
+        if (modifiers.has(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
+        document.body.classList.add('keyboard-nav');
       },
       { capture: true },
     );
+    // Back from another editor, the pointer is the likelier next input.
+    window.addEventListener('blur', () => {
+      document.body.classList.remove('keyboard-nav');
+    });
     document.addEventListener(
       'pointerdown',
       () => {
@@ -759,6 +765,9 @@ class App {
   }
 
   private onKey(e: KeyboardEvent): void {
+    // Rows move under a still pointer; a hover there would follow the keys around.
+    if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'Enter', 'Escape'].includes(e.key))
+      document.body.classList.add('hover-off');
     const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
     const delta = moves[e.key];
     const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
