@@ -148,8 +148,8 @@ class App {
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.commits.length) return;
       // Clicking the expanded row folds it; any other row opens its details.
-      if (index === this.selected && this.expanded) this.collapse();
-      else this.select(index, { expand: true });
+      if (index === this.selected && this.expanded) this.userCollapse();
+      else this.userSelect(index, { expand: true });
     });
     this.scroller.addEventListener('keydown', (e) => {
       this.onKey(e);
@@ -425,6 +425,21 @@ class App {
     if (this.selected >= 0 && !this.expanded) this.select(this.selected, { expand: true });
   }
 
+  /**
+   * A selection the user makes replaces any selection or scroll position still
+   * waiting to be restored after a reload.
+   */
+  private userSelect(index: number, opts: { expand?: boolean } = {}): void {
+    this.restore = undefined;
+    this.select(index, opts);
+  }
+
+  /** A fold the user asks for also stops a pending restore from unfolding again. */
+  private userCollapse(): void {
+    if (this.restore) this.restore.expanded = false;
+    this.collapse();
+  }
+
   /** Folds the details away; the selection stays. */
   private collapse(): void {
     this.expanded = false;
@@ -498,16 +513,16 @@ class App {
     if (delta !== undefined) {
       e.preventDefault();
       const next = Math.min(this.commits.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
-      this.select(next);
+      this.userSelect(next);
     } else if (e.key === 'Home') {
       e.preventDefault();
-      this.select(0);
+      this.userSelect(0);
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (this.expanded) this.collapse();
+      if (this.expanded) this.userCollapse();
       else this.expand();
     } else if (e.key === 'Escape') {
-      this.collapse();
+      this.userCollapse();
     }
   }
 
@@ -641,7 +656,7 @@ class App {
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
     close.addEventListener('click', () => {
-      this.collapse();
+      this.userCollapse();
       this.scroller.focus();
     });
 

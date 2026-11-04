@@ -60,4 +60,22 @@ describe('inline details', () => {
     const s = await expandedAt(1);
     assert.ok(s.expandedHeight <= 0.5 * 1000, `height ${s.expandedHeight}`);
   });
+
+  it('lets a fold during a reload win over restoring the expansion', async () => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await panel.simulate({ kind: 'clickRow', index: 2 });
+      await expandedAt(2);
+      const before = (await panel.probe()).generation;
+      await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
+      // Fold as soon as the new history starts, before its pages (and the restore) arrive.
+      await waitFor('reload started', async () => (await panel.probe()).generation > before, 15_000, 1);
+      await panel.simulate({ kind: 'key', key: 'Escape' });
+      await waitFor('reload done', async () => (await panel.probe()).done);
+      // Give a wrongly pending restore time to unfold again.
+      await new Promise((r) => setTimeout(r, 200));
+      const settled = await panel.probe();
+      assert.equal(settled.expandedHeight, 0, `attempt ${attempt}: details came back after Escape`);
+      assert.equal(settled.detailsShown, undefined);
+    }
+  });
 });
