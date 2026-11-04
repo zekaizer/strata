@@ -13,7 +13,7 @@ import {
   REMOTE_DOING,
   REMOTE_DONE,
 } from '../../core/wording.ts';
-import { countCommits, readCommit, readConfig, readHead, readUpstream } from '../../git/facts.ts';
+import { countCommits, readCommit, readConfig, readForkPoint, readHead, readUpstream } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { fail, finish, notify, run, type FlowHost } from '../flow.ts';
@@ -91,14 +91,16 @@ export async function pull(host: FlowHost): Promise<void> {
   ]);
   const rebaseFirst = rebaseCfg === undefined ? undefined : BOOL[rebaseCfg.toLowerCase()];
   const canMerge = ff !== 'only';
-  if (rebaseFirst === true) return rebase(host, src, 'whenDirty');
+  // As git pull --rebase: commits upstream had before a force push are not the branch's own.
+  const rebaseOnto = async () => rebase(host, src, 'whenDirty', await readForkPoint(host.git, host.cwd, tracking));
+  if (rebaseFirst === true) return rebaseOnto();
   if (rebaseFirst === false && canMerge) return merge(host, src, 'whenDirty');
   // Unset, "merges" or "interactive": ask, saying what Strata can do.
   const note = !canMerge ? PULL_NOTES.ffOnly : rebaseCfg?.startsWith('m') ? PULL_NOTES.rebaseMerges : undefined;
   const answer = await host.ui.confirm(
     divergedConfirmation(quote(branch), upstream.name, ahead, behind, { rebase: true, merge: canMerge }, note),
   );
-  if (answer === 'rebase') await rebase(host, src, 'whenDirty');
+  if (answer === 'rebase') await rebaseOnto();
   else if (answer === 'merge') await merge(host, src, 'whenDirty');
 }
 

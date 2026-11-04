@@ -155,7 +155,7 @@ describe('operations', () => {
     const stacked = run(d, 'rev-parse', 'stacked');
     run(d, 'config', 'rebase.updateRefs', 'true');
     run(d, 'config', 'rebase.rebaseMerges', 'true');
-    await op(d, { kind: 'rebase', onto: run(d, 'rev-parse', 'onto'), autostash: false });
+    await op(d, { kind: 'rebase', onto: run(d, 'rev-parse', 'onto'), from: undefined, autostash: false });
     assert.equal(run(d, 'rev-parse', 'stacked'), stacked, 'no other branch moved');
     assert.equal(run(d, 'rev-list', '--count', '--merges', 'onto..topic'), '0', 'the merge is dropped');
     assert.equal(run(d, 'rev-list', '--count', 'onto..topic'), '3', "its side's commit is replayed");
@@ -164,9 +164,12 @@ describe('operations', () => {
   it('stops a rebase at a conflict, then continues after resolving', async () => {
     const d = repo();
     run(d, 'checkout', '--quiet', 'topic');
-    await assert.rejects(op(d, { kind: 'rebase', onto: run(d, 'rev-parse', 'main'), autostash: false }), {
-      kind: 'conflict',
-    });
+    await assert.rejects(
+      op(d, { kind: 'rebase', onto: run(d, 'rev-parse', 'main'), from: undefined, autostash: false }),
+      {
+        kind: 'conflict',
+      },
+    );
     assert.equal((await readOperationState('git', d))?.kind, 'rebase');
     writeFileSync(join(d, 'f.txt'), 'resolved\n');
     run(d, 'add', 'f.txt');

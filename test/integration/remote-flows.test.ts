@@ -1,20 +1,25 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { branchMenu, flowSuite, reload, run } from './flow-helpers.ts';
-import { git } from './helpers.ts';
+import { git, workspaceRoot } from './helpers.ts';
 
 const IDENTITY = ['-c', 'user.name=Other Person', '-c', 'user.email=other@example.com'];
 
 describe('remote operations', () => {
-  const { panel, ui } = flowSuite();
+  const { api, panel, ui } = flowSuite();
   let root: string;
   let bare: string;
   const remote = (...args: string[]) => execFileSync('git', args, { cwd: bare, encoding: 'utf8' }).trim();
   const errors = () => ui.of('notify').filter((n) => n.level === 'error');
+  const commit = (file: string, content: string, subject: string) => {
+    writeFileSync(join(workspaceRoot(), file), content);
+    git('add', file);
+    git('commit', '--quiet', '-m', subject);
+  };
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'strata-remote-'));
@@ -103,6 +108,40 @@ describe('remote operations', () => {
     await run('strata.pull');
     assert.deepEqual(errors(), []);
     assert.equal(git('rev-parse', 'refs/heads/strata-pub'), theirs);
+  });
+
+  it('pulls with rebase from where the branch forked, past upstream commits rewritten since', async () => {
+    await publish();
+    git('switch', '--quiet', 'strata-pub');
+    commit('up.txt', 'up\n', 'Upstream one');
+    git('push', '--quiet', 'origin', 'strata-pub');
+    commit('mine.txt', 'mine\n', 'Mine');
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    writeFileSync(join(other, 'up.txt'), 'up, amended\n');
+    execFileSync('git', [
+      ...IDENTITY,
+      '-C',
+      other,
+      'commit',
+      '--quiet',
+      '--all',
+      '--amend',
+      '-m',
+      'Upstream one, amended',
+    ]);
+    execFileSync('git', ['-C', other, 'push', '--quiet', '--force', 'origin', 'strata-pub']);
+    git('config', 'pull.rebase', 'true');
+    writeFileSync(join(workspaceRoot(), 'mine.txt'), 'mine, uncommitted\n');
+    await reload(panel());
+
+    ui.press('Stash & Rebase');
+    await run('strata.pull');
+    assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-pub' on top of 'origin\/strata-pub'/);
+    assert.deepEqual(errors(), []);
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('log', '--format=%s', '-2', 'strata-pub'), 'Mine\nUpstream one, amended');
+    assert.equal(readFileSync(join(workspaceRoot(), 'mine.txt'), 'utf8'), 'mine, uncommitted\n');
   });
 
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {

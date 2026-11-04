@@ -179,6 +179,13 @@ export async function readHead(git: string, cwd: string): Promise<{ branch: stri
   return { branch, hash: hash.trim() };
 }
 
+/**
+ * Where HEAD forked from `upstream` by upstream's reflog, which also knows the commits upstream
+ * had before it was rewritten (what `git pull --rebase` replays after); undefined when unknown.
+ */
+export const readForkPoint = (git: string, cwd: string, upstream: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['merge-base', '--fork-point', upstream, 'HEAD']));
+
 /** The best common ancestor of two commits; undefined for unrelated histories. */
 export const readMergeBase = (git: string, cwd: string, a: string, b: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['merge-base', a, b]));
@@ -197,20 +204,22 @@ export async function readBranchConfig(git: string, cwd: string, branch: string)
 }
 
 /**
- * What a rebase of HEAD onto `onto` replays: git drops merges (replaying the commits they
- * brought in) and skips patches `onto` already has. `onUpstream`: replayed commits already on
- * `upstream`, which would need a force push.
+ * What a rebase of HEAD onto `onto` (of the commits after `from`, when given) replays: git drops
+ * merges (replaying the commits they brought in) and skips patches `onto` already has.
+ * `onUpstream`: replayed commits already on `upstream`, which would need a force push.
  */
 export async function readRebaseCounts(
   git: string,
   cwd: string,
   onto: string,
   upstream: string | undefined,
+  from?: string,
 ): Promise<{ replay: number; merges: number; onUpstream: number }> {
-  const replayed = ['--no-merges', '--cherry-pick', '--right-only', `${onto}...HEAD`];
+  const after = from === undefined ? [] : [`^${from}`];
+  const replayed = ['--no-merges', '--cherry-pick', '--right-only', `${onto}...HEAD`, ...after];
   const [replay, merges, notOnUpstream] = await Promise.all([
     count(git, cwd, replayed),
-    count(git, cwd, ['--merges', `${onto}..HEAD`]),
+    count(git, cwd, ['--merges', `${onto}..HEAD`, ...after]),
     upstream === undefined ? Promise.resolve(0) : count(git, cwd, [...replayed, '--not', upstream]),
   ]);
   return { replay, merges, onUpstream: upstream === undefined ? 0 : replay - notOnUpstream };

@@ -261,7 +261,13 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
   });
 }
 
-export async function rebase(host: FlowHost, onto: Source, ask: 'always' | 'whenDirty' = 'always'): Promise<void> {
+/** `from`: replay only the commits after it (a pull's fork point), not every commit `onto` lacks. */
+export async function rebase(
+  host: FlowHost,
+  onto: Source,
+  ask: 'always' | 'whenDirty' = 'always',
+  from?: string,
+): Promise<void> {
   const [h, target] = await Promise.all([head(host), readCommit(host.git, host.cwd, onto.rev)]);
   if (await isAncestor(host.git, host.cwd, target.hash, h.hash)) {
     void host.ui.notify('info', alreadyBased(h.name, onto.name));
@@ -270,7 +276,7 @@ export async function rebase(host: FlowHost, onto: Source, ask: 'always' | 'when
   if (!(await deepEnough(host, h.hash, target.hash, [h.name, onto.name]))) return;
   const upstream = h.branch === undefined ? undefined : await readUpstream(host.git, host.cwd, h.branch);
   const [counts, c] = await Promise.all([
-    readRebaseCounts(host.git, host.cwd, target.hash, upstream?.ref),
+    readRebaseCounts(host.git, host.cwd, target.hash, upstream?.ref, from),
     changes(host, 'rebase'),
   ]);
   const dirty = c.choices.choices.length > 0;
@@ -284,7 +290,7 @@ export async function rebase(host: FlowHost, onto: Source, ask: 'always' | 'when
   const r = await runStoppable(
     host,
     HISTORY_DOING.rebasing(h.name, onto.name),
-    (exec) => exec({ kind: 'rebase', onto: target.hash, autostash: dirty }),
+    (exec) => exec({ kind: 'rebase', onto: target.hash, from, autostash: dirty }),
     [h.expect, ...sourceExpect(onto, target.hash)],
   );
   if (!r) return;

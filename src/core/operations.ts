@@ -25,8 +25,11 @@ export type Operation =
   | { kind: 'deleteTag'; name: string }
   /** `ref`: a commit id, or a ref name that git reads as the ref meant (the merge message names it). */
   | { kind: 'merge'; ref: string; mode: MergeMode; autostash: boolean }
-  /** `onto`: the commit id the confirmation named. */
-  | { kind: 'rebase'; onto: string; autostash: boolean }
+  /**
+   * `onto`: the commit id the confirmation named. `from`: replay only the commits after it (where
+   * the branch forked from a rewritten upstream), not every commit `onto` lacks.
+   */
+  | { kind: 'rebase'; onto: string; from: string | undefined; autostash: boolean }
   | { kind: 'cherryPick'; commit: string }
   | { kind: 'revert'; commit: string }
   | { kind: 'reset'; commit: string; mode: ResetMode }
@@ -106,7 +109,7 @@ export function argv(op: Operation): string[] {
         ...['-c', 'rebase.updateRefs=false', '-c', 'rebase.rebaseMerges=false', '-c', 'rebase.autoSquash=false'],
         'rebase',
         ...autostash(op.autostash),
-        op.onto,
+        ...(op.from === undefined ? [op.onto] : ['--onto', op.onto, op.from]),
       ];
     case 'cherryPick':
       return ['cherry-pick', op.commit];
