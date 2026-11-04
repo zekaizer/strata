@@ -681,6 +681,55 @@ body.vscode-high-contrast .badge-remotes {
   border-left-color: var(--vscode-contrastBorder);
 }
 
+/*
+ * What an operation moved: a badge or a stash row pulses twice; under reduced motion it is
+ * outlined as long as it is marked (LANDING_MS).
+ */
+.badge.landed {
+  animation: landed-badge 1.2s ease-in-out;
+}
+
+.row.landed {
+  animation: landed-row 1.2s ease-in-out;
+}
+
+@keyframes landed-badge {
+  25%,
+  75% {
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+    background: color-mix(in srgb, var(--badge-color) 45%, transparent);
+  }
+}
+
+@keyframes landed-row {
+  25%,
+  75% {
+    box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent);
+  }
+}
+
+body.vscode-reduce-motion .landed {
+  animation: none;
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+body.vscode-reduce-motion .badge.landed {
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landed {
+    animation: none;
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: -2px;
+  }
+
+  .badge.landed {
+    outline-offset: 0;
+  }
+}
+
 /* Each remote name is a menu target of its own. */
 .badge-remote-name {
   padding: 0 1px;

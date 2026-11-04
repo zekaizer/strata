@@ -1,9 +1,10 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
-import { MAX_BADGES, rowBadges } from '../../src/webview/badges.ts';
+import { landedRefs, MAX_BADGES, rowBadges } from '../../src/webview/badges.ts';
 
-const at = 'c'.repeat(40);
+const h = (c: string) => c.repeat(40);
+const at = h('c');
 const ref = (name: string, upstream?: string): Ref => {
   const [, kind, short] = /^refs\/(heads|remotes|tags)\/(.*)$/.exec(name)!;
   return {
@@ -95,5 +96,34 @@ describe('rowBadges', () => {
       refs.map((r) => r.name),
       'all refs of the row, collapsed ones included',
     );
+  });
+});
+
+describe('landedRefs', () => {
+  const b = (short: string, hash: string): Ref => ({ name: `refs/heads/${short}`, short, kind: 'branch', hash });
+  const snap = (refs: Ref[], head: string, headBranch: string | undefined): RefSnapshot => ({
+    head,
+    headBranch,
+    refs,
+    remotes: [],
+  });
+  const main = b('main', h('1'));
+  const topic = b('topic', h('2'));
+
+  it('names the refs that moved or appeared', () => {
+    const before = snap([main, topic], h('1'), 'main');
+    const after = snap([{ ...main, hash: h('3') }, topic, b('new', h('2'))], h('3'), 'main');
+    assert.deepEqual(landedRefs(before, after), ['refs/heads/main', 'refs/heads/new']);
+  });
+
+  it('names the branch HEAD switched to, though no ref moved', () => {
+    assert.deepEqual(landedRefs(snap([main, topic], h('1'), 'main'), snap([main, topic], h('2'), 'topic')), [
+      'refs/heads/topic',
+    ]);
+  });
+
+  it('names HEAD when a detached HEAD moved, and nothing when nothing changed', () => {
+    assert.deepEqual(landedRefs(snap([main], h('1'), undefined), snap([main], h('4'), undefined)), ['HEAD']);
+    assert.deepEqual(landedRefs(snap([main], h('1'), 'main'), snap([main], h('1'), 'main')), []);
   });
 });

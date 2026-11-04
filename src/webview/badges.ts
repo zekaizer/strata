@@ -96,3 +96,16 @@ function refBadge(hash: string, r: Ref, remotes: Ref[], headBranch: string | und
     also: remotes.map((x) => x.short),
   };
 }
+
+/**
+ * Refs an operation moved, by full name: moved or new refs, the branch HEAD switched to, and
+ * "HEAD" when a detached HEAD moved.
+ */
+export function landedRefs(before: RefSnapshot, after: RefSnapshot): string[] {
+  const was = new Map(before.refs.map((r) => [r.name, r.hash]));
+  const moved = after.refs.filter((r) => was.get(r.name) !== r.hash).map((r) => r.name);
+  const switched =
+    after.headBranch !== undefined && after.headBranch !== before.headBranch ? [`refs/heads/${after.headBranch}`] : [];
+  const detached = after.headBranch === undefined && after.head !== before.head ? ['HEAD'] : [];
+  return [...new Set([...moved, ...switched, ...detached])];
+}

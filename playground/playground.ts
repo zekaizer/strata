@@ -3,6 +3,7 @@
 // Query: ?theme=dark|light|high-contrast|high-contrast-light&repo=<scenario>&select=<row>&showStashes=0
 //   &menu=<selector>: right-click that element, shown as while VS Code's menu is open
 //   &busy=<label>: a Strata operation running
+//   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import type { Commit } from '../src/core/commit.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
@@ -41,6 +42,8 @@ const openPopover = params.get('open');
 const menuAt = params.get('menu');
 const busy = params.get('busy');
 const bannerState = params.get('banner');
+const land = params.get('land');
+if (params.get('reduceMotion') === '1') document.body.classList.add('vscode-reduce-motion');
 
 for (const [k, v] of Object.entries(themes[theme])) document.documentElement.style.setProperty(k, v);
 document.body.classList.add(...bodyClass[theme]);
@@ -123,6 +126,30 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         }, 50);
       }
       if (busy !== null && offset === commits.length) toWebview({ type: 'busy', label: busy });
+      if (land !== null && offset === commits.length && generation === 2) {
+        // The view had the branch elsewhere; the reset that follows the "operation" focuses where it is now.
+        const moved = data.refs.refs.find((r) => r.short === land);
+        if (moved) {
+          const elsewhere = data.commits.at(-1)!.hash;
+          const before = {
+            ...data.refs,
+            refs: data.refs.refs.map((r) => (r === moved ? { ...r, hash: elsewhere } : r)),
+          };
+          generation++;
+          offset = 0;
+          toWebview({ type: 'reset', generation, repo: data.repo, refs: before, options, stashes: data.stashes });
+          generation++;
+          toWebview({
+            type: 'reset',
+            generation,
+            repo: data.repo,
+            refs: data.refs,
+            options,
+            stashes: data.stashes,
+            focus: moved.hash,
+          });
+        }
+      }
       if (bannerState !== null && offset === commits.length)
         for (const [operation, leftover] of repoStates(bannerState, data))
           toWebview({ type: 'repoState', operation, leftover });

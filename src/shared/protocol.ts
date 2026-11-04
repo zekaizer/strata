@@ -222,6 +222,8 @@ export interface ProbeState {
   announced: string;
   /** Text last said at once (role=alert). */
   alerted: string;
+  /** Rendered elements marked as moved by the last operation: a badge's refs or "stash:<hash>", and how they show it. */
+  landed: { refs: string; animation: string; outline: string }[];
   /** The banner above the list: its state, region name, sentence, look, buttons and the commits it links. */
   banner:
     { state: string; label: string; text: string; warning: boolean; buttons: string[]; links: string[] } | undefined;

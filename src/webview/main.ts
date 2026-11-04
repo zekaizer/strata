@@ -26,7 +26,7 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { rowBadges, type Badge } from './badges.ts';
+import { landedRefs, rowBadges, type Badge } from './badges.ts';
 import { bannerOf } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
@@ -93,6 +93,9 @@ const AUTHOR_MAX = 180;
 /** Trees flow into columns only between these row counts: a few rows read better in one column. */
 const MULTICOL_MIN_ROWS = 8;
 const MULTICOL_MAX_ROWS = 300;
+
+/** How long what an operation moved is marked (main.css .landed: two pulses, or an outline under reduced motion). */
+const LANDING_MS = 2000;
 
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
@@ -184,6 +187,12 @@ class App {
   private bannerSaid = '';
   /** Stops seen with conflicts (stopKey): when none are left, they were resolved. */
   private readonly conflictedStops = new Set<string>();
+  /**
+   * What the last operation moved (refs by full name, "HEAD", a stash it focused), marked from
+   * `start` (the first page) for LANDING_MS.
+   */
+  private landing: { refs: ReadonlySet<string>; stash: string | undefined; start: number | undefined } | undefined;
+  private landingTimer: ReturnType<typeof setTimeout> | undefined;
   /** Widest author name and dates of the loaded commits, in px (the row's own font). */
   private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
   private operation: OperationState | undefined;
@@ -411,6 +420,13 @@ class App {
         });
         this.updateStatus();
         this.updateStashButton();
+        if (this.landing && this.landing.start === undefined) {
+          this.landing.start = performance.now();
+          this.landingTimer = setTimeout(() => {
+            this.landing = undefined;
+            this.queueRender();
+          }, LANDING_MS);
+        }
         // Subjects the banner names may have arrived.
         this.updateBanner();
         this.applyRestore();
@@ -511,6 +527,16 @@ class App {
     const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
     if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
     if (focus !== undefined) this.selectionsAtBusy = undefined;
+    // An operation's result: the badges it moved and the stash row it made pulse once shown.
+    clearTimeout(this.landingTimer);
+    this.landing =
+      focus !== undefined && this.repo?.root === repo.root
+        ? {
+            refs: new Set(landedRefs(this.refs, refs)),
+            stash: stashes.some((s) => s.hash === focus) ? focus : undefined,
+            start: undefined,
+          }
+        : undefined;
     this.generation = generation;
     this.repo = repo;
     this.refs = refs;
@@ -802,6 +828,13 @@ class App {
     row.dispatchEvent(
       new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: at.left + 4, clientY: at.bottom - 2 }),
     );
+  }
+
+  /** Marks what an operation moved; re-rendered, its pulse goes on where it was. */
+  private markLanded(e: HTMLElement): void {
+    if (this.landing?.start === undefined) return;
+    e.classList.add('landed');
+    e.style.animationDelay = `${this.landing.start - performance.now()}ms`;
   }
 
   /** Re-applies the open menu's outline to a re-rendered row. */
@@ -1256,6 +1289,7 @@ class App {
     }
     if (r.kind === 'stash') {
       this.fillStashRow(row, r.stash);
+      if (this.landing?.stash === r.stash.hash) this.markLanded(row);
       this.markMenuTarget(row, i);
       return row;
     }
@@ -1277,7 +1311,14 @@ class App {
       // Refs get a band of their own above the commit line, so the subject keeps its column.
       row.classList.add('banded');
       const band = el('span', 'refs');
-      band.append(...badges.map(renderBadge));
+      band.append(
+        ...badges.map((b) => {
+          const e = renderBadge(b);
+          const refs = b.context.webviewSection === 'head' ? ['HEAD'] : b.refs;
+          if (refs.some((name) => this.landing?.refs.has(name))) this.markLanded(e);
+          return e;
+        }),
+      );
       row.append(band);
     }
     if (c.hash === this.refs.head) row.classList.add('head');
@@ -2063,6 +2104,15 @@ class App {
       details: this.probeDetails(),
       announced: this.announced,
       alerted: this.alerted,
+      landed: [...this.rowsLayer.querySelectorAll<HTMLElement>('.landed')].map((e) => {
+        const row = this.list[Number(e.dataset['index'])];
+        const style = getComputedStyle(e);
+        return {
+          refs: row && e.classList.contains('row') ? `stash:${rowHash(row)}` : (e.dataset['refs'] ?? ''),
+          animation: style.animationName,
+          outline: style.outlineStyle,
+        };
+      }),
       banner: this.banner.element.hidden
         ? undefined
         : {
