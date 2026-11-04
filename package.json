@@ -6,7 +6,7 @@
   "publisher": "inhouse",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.90.0",
     "node": ">=22.18"
@@ -215,7 +215,7 @@
     "test": "npm run check && npm run test:integration",
     "playground": "node scripts/build.mjs --playground",
     "shot": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
-    "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies --skip-license --allow-missing-repository -o artifacts/strata.vsix",
+    "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies --allow-missing-repository -o artifacts/strata.vsix",
     "vscode:prepublish": "node scripts/build.mjs --production",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
