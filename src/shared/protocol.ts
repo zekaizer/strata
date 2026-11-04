@@ -148,6 +148,10 @@ export interface ProbeState {
         /** Rightmost edge of any file's Old | diff | New control, from the tree's left edge. */
         actionsRight: number;
         listWidth: number;
+        /** Left edge of the files column, in px from the message column's left edge. */
+        filesLeft: number;
+        /** The graph column's width when this was probed (the details start after it). */
+        graphWidth: number;
       }
     | undefined;
   /** Width of the author column and of the widest author name rendered in it, in px. */

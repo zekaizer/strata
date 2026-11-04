@@ -61,9 +61,8 @@ interface SavedState {
 const DETAILS_TIMEOUT_MS = 15_000;
 /** A long body shows this many lines until "Show more" when the files are below it. */
 const BODY_LINES = 6;
-/** Width of a tree column: the tree's widest row, within these limits (and half the details). */
+/** A tree column is as wide as the tree's widest row, but at least this (and at most the files' room). */
 const TREE_MIN = 200;
-const TREE_MAX = 480;
 /** Gap between tree columns; matches main.css. */
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
@@ -1099,12 +1098,18 @@ class App {
   private metaTable(d: CommitDetails): HTMLElement {
     const table = el('table', 'meta-table');
     table.id = 'details-meta';
+    // Laid out as a grid (main.css), which drops the implicit table roles: state them.
+    table.setAttribute('role', 'table');
+    table.setAttribute('aria-label', 'Commit metadata');
     const row = (label: string, ...cells: (string | Node)[]) => {
       const th = el('th', undefined, label);
       th.scope = 'row';
+      th.setAttribute('role', 'rowheader');
       const td = el('td');
+      td.setAttribute('role', 'cell');
       td.append(...cells);
       const tr = el('tr');
+      tr.setAttribute('role', 'row');
       tr.append(th, td);
       table.append(tr);
     };
@@ -1181,13 +1186,7 @@ class App {
     // Measured unstuck: a stuck message reports its scrolled position.
     main.classList.remove('stick');
 
-    // Side by side when the message and one tree column fit on a line: CSS wraps the files below
-    // the message otherwise (flex-wrap), so the decision and the layout are one computation.
-    const width = layout.clientWidth;
-    const treeWidth = Math.ceil(
-      Math.min(Math.max(this.treeNatural, TREE_MIN), TREE_MAX, Math.max(TREE_MIN, width / 2)),
-    );
-    layout.style.setProperty('--tree-w', `${treeWidth}px`);
+    // Side by side or stacked is decided by CSS from the list width alone (flex-wrap); read back.
     const stacked = files.offsetTop > main.offsetTop + 1;
     layout.classList.toggle('stacked', stacked);
     /** Top of `e` from the expansion's border edge, the edge `cap` is measured from. */
@@ -1226,9 +1225,8 @@ class App {
       const rows = tree.querySelectorAll('li:not([hidden])').length;
       const rowHeight = tree.querySelector<HTMLElement>('li:not([hidden])')?.offsetHeight || 22;
       const area = files.clientWidth - parseFloat(getComputedStyle(files).paddingLeft);
-      // Below the message the tree has the whole width, so its columns take the widest row as it
-      // is; the limits above only keep one long name from pushing the files below the message.
-      const columnWidth = stacked ? Math.min(Math.max(this.treeNatural, TREE_MIN), Math.floor(area)) : treeWidth;
+      // A column is as wide as the widest row, within the files' room.
+      const columnWidth = Math.min(Math.max(this.treeNatural, TREE_MIN), Math.floor(area));
       layout.style.setProperty('--tree-col-w', `${columnWidth}px`);
       const byWidth = Math.min(
         TREE_MAX_COLS,
@@ -1581,6 +1579,8 @@ class App {
         ),
       ),
       listWidth: this.scroller.clientWidth,
+      filesLeft: files && main ? files.getBoundingClientRect().left - main.getBoundingClientRect().left : 0,
+      graphWidth: parseFloat(this.root.style.getPropertyValue('--graph-width')) || 0,
     };
   }
 

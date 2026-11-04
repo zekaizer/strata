@@ -55,10 +55,9 @@ describe('details layout', () => {
     assert.ok(at('byline') < at('meta-wrap') && at('meta-wrap') < at('details-subject'), d.blocks.join(', '));
   });
 
-  it('decides side by side from the content, not from a fixed width', async () => {
-    // "Add docs and sources": no body and a small tree, narrow enough to sit beside each other.
+  it('puts the message and the files side by side when the list has room', async () => {
     const d = await openDetails(1);
-    assert.ok(d.treeWidth >= 150 && d.treeWidth <= 480, `tree width ${d.treeWidth}`);
+    assert.ok(d.treeWidth >= 150, `tree width ${d.treeWidth}`);
     assert.equal(d.stacked, !d.sideBySide);
     if (d.listWidth >= 900) assert.equal(d.sideBySide, true, `list ${d.listWidth}px, tree ${d.treeWidth}px`);
     // Opening the meta table changes the height only, never the arrangement.
@@ -70,6 +69,17 @@ describe('details layout', () => {
     assert.equal(open.sideBySide, d.sideBySide);
     await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
     await waitFor('meta closed', async () => (await panel.probe()).details?.metaOpen === false);
+  });
+
+  it('puts the files at the same place for every commit', async () => {
+    // Commits 1 and 2 differ in subject, body and tree; the split may only follow the list width.
+    // The graph column only grows as lanes come into view, so look once both rows have been shown.
+    await openDetails(2);
+    const a = await openDetails(1);
+    const b = await openDetails(2);
+    assert.equal(a.graphWidth, b.graphWidth, 'same list geometry');
+    assert.equal(a.sideBySide, b.sideBySide);
+    assert.ok(Math.abs(a.filesLeft - b.filesLeft) <= 1, `files at ${a.filesLeft}px and ${b.filesLeft}px`);
   });
 
   it('keeps Old | diff | New next to the file names', async () => {

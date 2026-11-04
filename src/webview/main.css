@@ -617,10 +617,10 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 /*
- * The message and the files side by side when both fit on a line, the files below otherwise:
- * the message asks for its natural width (up to 72ch), the files for one tree column (--tree-w,
- * measured in main.ts). Nothing here may depend on .stacked in a way that changes those sizes,
- * or the layout could flip back and forth.
+ * The message and the files side by side when both get their room, the files below otherwise.
+ * The split depends on the list width only, never on the commit, so it stays put while moving
+ * through commits: the message takes 45% (360px to 72ch), the files the rest (at least 300px).
+ * Nothing here may depend on .stacked in a way that changes those sizes.
  */
 .details-layout {
   display: flex;
@@ -630,8 +630,9 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 .details-main {
-  flex: 1 1 max-content;
-  min-width: min(100%, 32ch);
+  flex: 1 0 clamp(min(100%, 360px), 45%, 72ch);
+  /* Never wider than its share because of what is in it (flex items default to their content's minimum). */
+  min-width: 0;
   max-width: 72ch;
 }
 
@@ -642,8 +643,8 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 .details-files {
-  flex: 100 1 calc(var(--tree-w, 300px) + 17px);
-  min-width: 0;
+  flex: 100 1 0;
+  min-width: min(100%, 300px);
   box-sizing: border-box;
   padding-left: 16px;
   border-left: 1px solid var(--separator);
@@ -795,14 +796,24 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   overflow: hidden;
 }
 
+/*
+ * A grid rather than table layout: values may shrink (long parent subjects end in an ellipsis)
+ * instead of widening the message column. Rows keep their table roles (main.ts).
+ */
 .meta-table {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 12px;
   margin: 2px 0 6px;
-  border-collapse: collapse;
   font-size: 0.92em;
 }
 
+.meta-table tr {
+  display: contents;
+}
+
 .meta-table th {
-  padding: 1px 12px 1px 0;
+  padding: 1px 0;
   font-weight: normal;
   text-align: left;
   vertical-align: top;
@@ -811,6 +822,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .meta-table td {
+  min-width: 0;
   padding: 1px 0;
   overflow-wrap: anywhere;
 }
@@ -828,7 +840,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .meta-parent {
-  max-width: 48ch;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
