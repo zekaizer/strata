@@ -71,8 +71,13 @@ describe('resolveStashChoices', () => {
 });
 
 describe('leftoverOf', () => {
-  const stash = (index: number, message: string) => ({ hash: `${index}`.repeat(40), index, message });
-  const base = { operation: undefined, unmerged: [], marks: [] };
+  const stash = (index: number, message: string, branch: string | undefined = 'main') => ({
+    hash: `${index}`.repeat(40),
+    index,
+    message,
+    branch,
+  });
+  const base = { operation: undefined, unmerged: [], marks: [], headBranch: 'main' };
   const picking = (applying: string): OperationState => ({
     kind: 'cherryPick',
     branch: 'main',
@@ -124,6 +129,20 @@ describe('leftoverOf', () => {
       count: 2,
       autostash: { hash: stashes[1]!.hash, index: 1 },
     });
+  });
+
+  it("names git's autostash only when it was made on this worktree's branch", () => {
+    // refs/stash is shared by every worktree; an autostash made on another branch is another worktree's business.
+    const stashes = [stash(0, 'autostash', 'feature')];
+    assert.equal(leftoverOf({ ...base, stashes, unmerged: ['a.ts'] })?.kind, 'unmerged');
+    assert.deepEqual(
+      (leftoverOf({ ...base, stashes, unmerged: ['a.ts'] }) as { autostash: unknown }).autostash,
+      undefined,
+    );
+    assert.deepEqual(
+      (leftoverOf({ ...base, headBranch: 'feature', stashes, unmerged: ['a.ts'] }) as { autostash: unknown }).autostash,
+      { hash: stashes[0]!.hash, index: 0 },
+    );
   });
 });
 

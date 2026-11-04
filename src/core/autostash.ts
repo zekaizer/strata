@@ -187,8 +187,10 @@ const FILES_SHOWN = 50;
 export function leftoverOf(i: {
   operation: OperationState | undefined;
   /** stash@{0} first; `message` is the reflog subject. */
-  stashes: readonly { hash: string; index: number; message: string }[];
+  stashes: readonly { hash: string; index: number; message: string; branch: string | undefined }[];
   unmerged: readonly string[];
+  /** The branch HEAD is on in this worktree; undefined when detached. */
+  headBranch: string | undefined;
   /** This worktree's marks. */
   marks: readonly StashMark[];
 }): Leftover | undefined {
@@ -211,7 +213,8 @@ export function leftoverOf(i: {
     if (l) return l;
   }
   if (i.unmerged.length === 0) return undefined;
-  const git = i.stashes.find((s) => s.message === 'autostash');
+  // refs/stash is shared by every worktree: only an autostash made on this worktree's branch is ours to name.
+  const git = i.stashes.find((s) => s.message === 'autostash' && s.branch !== undefined && s.branch === i.headBranch);
   return {
     kind: 'unmerged',
     files: i.unmerged.slice(0, FILES_SHOWN),

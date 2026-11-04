@@ -279,7 +279,13 @@ export class GraphController implements vscode.Disposable, FlowHost {
     if (this.running === undefined && dir !== undefined) {
       const marks = settleMarks(this.marksOf(dir), operation, new Set(this.stashes.map((s) => s.hash)));
       await this.setMarks(dir, marks);
-      leftover = leftoverOf({ operation, stashes: this.stashes, unmerged, marks });
+      leftover = leftoverOf({
+        operation,
+        stashes: this.stashes,
+        unmerged,
+        marks,
+        headBranch: this.snapshot?.headBranch,
+      });
     }
     // A running flow's own steps are not an operation that stopped; it reports how it ended.
     const state = { operation: this.running === undefined ? operation : this.repoState?.operation, leftover };
