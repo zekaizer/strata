@@ -26,6 +26,9 @@ const NEXT_PAGE = 1000;
 const LOAD_AHEAD = 200;
 const OVERSCAN = 8;
 const MAX_GRAPH_SHARE = 0.4;
+/** Narrow lists keep most of their width for the text. */
+const NARROW_LIST = 600;
+const NARROW_GRAPH_SHARE = 0.25;
 const MAX_BADGES = 3;
 /** The inline details never take more than this share of the list height. */
 const MAX_EXPANSION_SHARE = 0.45;
@@ -77,7 +80,11 @@ class App {
   private commits: Commit[] = [];
   private rows: Row[] = [];
   private readonly spans = new SpanIndex();
-  private lanes = 1;
+  /**
+   * Columns the graph column is sized for: the widest rows seen on screen so far. It only grows
+   * within one history, so the text does not shift back and forth while scrolling.
+   */
+  private shownLanes = 1;
   private done = false;
   private loading = false;
   private selected = -1;
@@ -257,8 +264,6 @@ class App {
 
   private onWorker(m: FromWorker): void {
     if (m.type !== 'rows' || m.generation !== this.generation) return;
-    for (const r of m.rows) this.lanes = Math.max(this.lanes, rowWidth(r));
-    this.lanes = Math.max(this.lanes, m.state.lanes.length);
     this.rows.push(...m.rows);
     this.spans.add(m.spans);
     this.spans.setOpen(m.state);
@@ -291,7 +296,7 @@ class App {
     this.commits = [];
     this.rows = [];
     this.spans.clear();
-    this.lanes = 1;
+    this.shownLanes = 1;
     this.done = false;
     this.selected = -1;
     this.updateOptionControls();
@@ -586,7 +591,12 @@ class App {
     const scrollTop = this.scroller.scrollTop;
     const first = Math.max(0, this.rowFloor(scrollTop) - OVERSCAN);
     const last = Math.min(this.commits.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
-    const gw = Math.min(graphWidth(this.lanes), Math.max(graphWidth(1), Math.floor(width * MAX_GRAPH_SHARE)));
+    for (let i = first; i < Math.min(last, this.rows.length); i++) {
+      this.shownLanes = Math.max(this.shownLanes, rowWidth(this.rows[i]!));
+      for (const e of this.spans.passesAt(i)) this.shownLanes = Math.max(this.shownLanes, e.lane + 1);
+    }
+    const share = width <= NARROW_LIST ? NARROW_GRAPH_SHARE : MAX_GRAPH_SHARE;
+    const gw = Math.min(graphWidth(this.shownLanes), Math.max(graphWidth(1), Math.floor(width * share)));
 
     this.syncSizer();
     if (this.expanded) this.placeExpansion();
@@ -631,7 +641,7 @@ class App {
       this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
     );
     ctx.restore();
-    if (graphWidth(this.lanes) > gw) fadeRightEdge(ctx, gw, height, this.theme.background);
+    if (graphWidth(this.shownLanes) > gw) fadeRightEdge(ctx, gw, height);
 
     if (!this.done && !this.loading && last + LOAD_AHEAD > this.commits.length) this.loadMore(NEXT_PAGE);
   }
@@ -1068,14 +1078,20 @@ function fileMenuContext(d: CommitDetails, f: FileChange, views: FileView[]): Re
   };
 }
 
-/** Fades the graph out at the right edge when lanes beyond the column are cut off. */
-function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: number, background: string): void {
+/**
+ * Fades the graph out at the right edge when lanes beyond the column are cut off. It erases
+ * rather than paints, so whatever is under the canvas (selection, details) shows through.
+ */
+function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: number): void {
   const fade = 16;
   const g = ctx.createLinearGradient(width - fade, 0, width, 0);
-  g.addColorStop(0, `${background}00`);
-  g.addColorStop(1, background);
+  g.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  g.addColorStop(1, 'rgba(0, 0, 0, 1)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
   ctx.fillStyle = g;
   ctx.fillRect(width - fade, 0, fade, height);
+  ctx.restore();
 }
 
 function badge(kind: string, icon: string, text: string, title: string): HTMLElement {

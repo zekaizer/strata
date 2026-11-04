@@ -4,7 +4,6 @@ import { lanePalette } from '../core/palette.ts';
 /** Colors and metrics the canvas needs; CSS handles everything else through variables. */
 export interface GraphTheme {
   lanes: string[];
-  background: string;
   foreground: string;
   /** Ring around the HEAD commit. */
   headRing: string;
@@ -36,7 +35,6 @@ export function resolveGraphTheme(): GraphTheme {
   const fg = parseCssColor(read(style, '--vscode-foreground'), bg) ?? ([1, 1, 1] as Rgb);
   return {
     lanes: lanePalette({ background: bg, surfaces, minContrast: highContrast ? 4.5 : 3 }),
-    background: toHex(bg),
     foreground: toHex(fg),
     headRing: toHex(fg),
     lineWidth: highContrast ? 2 : 1.5,
