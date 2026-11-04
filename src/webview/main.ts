@@ -4,6 +4,7 @@ import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
 import { badgeOrder, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { interleave, rowHash, type ListRow, type StashEntry } from '../core/stash.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -107,8 +108,13 @@ class App {
   private options: ViewOptions = this.restore?.options ?? DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
+  /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
   private commits: Commit[] = [];
   private rows: Row[] = [];
+  /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
+  private list: ListRow[] = [];
+  /** Stashes by the commit their rows are drawn above. */
+  private anchors: ReadonlyMap<string, readonly StashEntry[]> = new Map();
   private readonly spans = new SpanIndex();
   /**
    * Columns the graph column is sized for: the widest rows seen on screen so far. It only grows
@@ -244,7 +250,7 @@ class App {
       if (e.composedPath().includes(this.expansion)) return;
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
-      if (index < 0 || index >= this.commits.length) return;
+      if (index < 0 || index >= this.list.length) return;
       // Clicking the expanded row folds it; any other row opens its details.
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
@@ -301,9 +307,9 @@ class App {
         if (m.generation !== this.generation) return;
         this.loading = false;
         this.done = m.done;
+        this.appendRows(interleave(m.commits, this.commits.length, this.anchors));
         this.commits.push(...m.commits);
         this.measureTexts(m.commits);
-        for (const c of m.commits) this.geometry.push(this.hasBadges(c.hash));
         this.worker?.postMessage({
           type: 'layout',
           generation: m.generation,
@@ -338,6 +344,7 @@ class App {
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refFilter.update(this.refs, null);
         this.commits = [];
+        this.list = [];
         this.geometry.clear();
         this.rows = [];
         this.spans.clear();
@@ -377,7 +384,7 @@ class App {
     if (this.restore === undefined && this.repo?.root === repo.root) {
       const sameView = JSON.stringify(options) === JSON.stringify(this.options);
       this.restore = {
-        selectedHash: this.commits[this.selected]?.hash,
+        selectedHash: this.selectedHash(),
         scrollAnchor: sameView ? this.scrollAnchor() : undefined,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
         expanded: this.expanded,
@@ -397,6 +404,7 @@ class App {
     for (const [hash, list] of this.refsByHash)
       this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
     this.commits = [];
+    this.list = [];
     this.geometry.clear();
     this.rows = [];
     this.spans.clear();
@@ -424,7 +432,7 @@ class App {
     const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
     if (r.scrollAnchor !== undefined) {
       const anchor = r.scrollAnchor;
-      const index = this.commits.findIndex((c) => c.hash === anchor.hash);
+      const index = this.indexOf(anchor.hash);
       if (index >= 0) {
         this.syncSizer();
         this.scroller.scrollTop = this.rowTop(index) + anchor.offset;
@@ -445,7 +453,7 @@ class App {
       else this.loadMore(NEXT_PAGE);
     }
     if (r.selectedHash !== undefined) {
-      const index = this.commits.findIndex((c) => c.hash === r.selectedHash);
+      const index = this.indexOf(r.selectedHash);
       if (index >= 0) {
         // Reveal it only when no scroll position is being restored with it. Older saved states have no
         // `expanded`; a selection then meant visible details.
@@ -468,7 +476,7 @@ class App {
   private saveState(): void {
     // While a restore is pending, keep the saved position rather than the not yet restored one.
     const state: SavedState = {
-      selectedHash: this.restore?.selectedHash ?? this.commits[this.selected]?.hash,
+      selectedHash: this.restore?.selectedHash ?? this.selectedHash(),
       scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
       expanded: this.restore?.expanded ?? this.expanded,
@@ -489,9 +497,24 @@ class App {
   /** The row at the top of the view and the offset into it; undefined with no rows. */
   private scrollAnchor(): SavedState['scrollAnchor'] {
     const top = this.scroller.scrollTop;
-    const index = Math.min(this.rowFloor(top), this.commits.length - 1);
-    const commit = this.commits[index];
-    return commit && { hash: commit.hash, offset: top - this.rowTop(index) };
+    const index = Math.min(this.rowFloor(top), this.list.length - 1);
+    const row = this.list[index];
+    return row && { hash: rowHash(row), offset: top - this.rowTop(index) };
+  }
+
+  private appendRows(rows: readonly ListRow[]): void {
+    this.list.push(...rows);
+    for (const r of rows) this.geometry.push(r.kind === 'commit' && this.hasBadges(r.commit.hash));
+  }
+
+  /** Row index of a commit or stash; -1 when it is not in the list. */
+  private indexOf(hash: string): number {
+    return this.list.findIndex((r) => rowHash(r) === hash);
+  }
+
+  private selectedHash(): string | undefined {
+    const row = this.list[this.selected];
+    return row && rowHash(row);
   }
 
   /**
@@ -619,8 +642,9 @@ class App {
    * row keeps its place on screen when the expansion moves.
    */
   private select(index: number, opts: { reveal?: boolean; expand?: boolean } = {}): void {
-    const commit = this.commits[index];
-    if (!commit) return;
+    const row = this.list[index];
+    if (!row) return;
+    const hash = rowHash(row);
     const screenTop = this.rowTop(index) - this.scroller.scrollTop;
     this.selected = index;
     this.expanded = opts.expand ?? this.expanded;
@@ -631,9 +655,9 @@ class App {
     clearTimeout(this.copiedTimer);
     this.pendingDetails = undefined;
     if (this.expanded) {
-      this.pendingDetails = commit.hash;
+      this.pendingDetails = hash;
       this.showLoading();
-      vscode.postMessage({ type: 'select', generation: this.generation, hash: commit.hash });
+      vscode.postMessage({ type: 'select', generation: this.generation, hash });
     }
     this.syncSizer();
     this.scroller.scrollTop = this.rowTop(index) - screenTop;
@@ -755,7 +779,7 @@ class App {
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
   private selectHash(hash: string): void {
     this.scroller.focus();
-    const index = this.commits.findIndex((c) => c.hash === hash);
+    const index = this.indexOf(hash);
     if (index >= 0) {
       this.select(index);
       return;
@@ -784,9 +808,9 @@ class App {
     const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
     if (delta !== undefined) {
       e.preventDefault();
-      const next = Math.min(this.commits.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
+      const next = Math.min(this.list.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
       this.userSelect(next);
-    } else if (page !== 0 && this.commits.length > 0) {
+    } else if (page !== 0 && this.list.length > 0) {
       e.preventDefault();
       // Rows differ in height (refs), so a page is measured in pixels, not rows.
       const from = Math.max(0, this.selected);
@@ -823,10 +847,13 @@ class App {
     const width = this.scroller.clientWidth;
     const scrollTop = this.scroller.scrollTop;
     const first = Math.max(0, this.rowFloor(scrollTop) - OVERSCAN);
-    const last = Math.min(this.commits.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
-    for (let i = first; i < Math.min(last, this.rows.length); i++) {
-      this.shownLanes = Math.max(this.shownLanes, rowWidth(this.rows[i]!));
-      for (const e of this.spans.passesAt(i)) this.shownLanes = Math.max(this.shownLanes, e.lane + 1);
+    const last = Math.min(this.list.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
+    for (let i = first; i < last; i++) {
+      const at = this.list[i]!.row;
+      const row = this.rows[at];
+      if (!row) continue;
+      this.shownLanes = Math.max(this.shownLanes, rowWidth(row));
+      for (const e of this.spans.passesAt(at)) this.shownLanes = Math.max(this.shownLanes, e.lane + 1);
     }
     const share = width <= NARROW_LIST ? NARROW_GRAPH_SHARE : MAX_GRAPH_SHARE;
     const gw = Math.min(graphWidth(this.shownLanes), Math.max(graphWidth(1), Math.floor(width * share)));
@@ -867,16 +894,14 @@ class App {
     ctx.clip();
     drawGraph(
       ctx,
+      this.list,
       this.rows,
       this.spans,
       first,
       last,
       scrollTop,
       this.theme,
-      (i) => ({
-        head: this.commits[i]?.hash === this.refs.head,
-        merge: (this.commits[i]?.parents.length ?? 0) > 1,
-      }),
+      (c) => ({ head: c.hash === this.refs.head, merge: c.parents.length > 1 }),
       (i) => this.rowTop(i),
       (i) => this.geometry.height(i),
       this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
@@ -885,7 +910,7 @@ class App {
     if (graphWidth(this.shownLanes) > gw) fadeRightEdge(ctx, gw, height);
     this.renderEmpty();
 
-    if (!this.done && !this.loading && last + LOAD_AHEAD > this.commits.length) this.loadMore(NEXT_PAGE);
+    if (!this.done && !this.loading && last + LOAD_AHEAD > this.list.length) this.loadMore(NEXT_PAGE);
   }
 
   /** A message in place of the list when there is nothing to show. */
@@ -900,7 +925,9 @@ class App {
   }
 
   private renderRow(i: number): HTMLElement {
-    const c = this.commits[i]!;
+    const r = this.list[i]!;
+    if (r.kind !== 'commit') return el('div', 'row');
+    const c = r.commit;
     const row = el('div', 'row');
     row.id = `row-${i}`;
     row.dataset['index'] = String(i);
@@ -916,7 +943,7 @@ class App {
     );
     row.setAttribute('aria-selected', String(i === this.selected));
     row.setAttribute('aria-posinset', String(i + 1));
-    row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
+    row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
     row.style.top = `${this.rowTop(i)}px`;
     const badges = this.badges(c.hash);
     if (badges.length > 0) {
@@ -1504,7 +1531,7 @@ class App {
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,
-      selected: this.commits[this.selected]?.hash,
+      selected: this.selectedHash(),
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,

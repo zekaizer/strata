@@ -1,4 +1,6 @@
+import type { Commit } from '../core/commit.ts';
 import type { Row, SpanIndex } from '../core/layout.ts';
+import type { ListRow } from '../core/stash.ts';
 import type { GraphTheme } from './theme.ts';
 
 export const ROW_HEIGHT = 24;
@@ -23,46 +25,50 @@ export interface NodeStyle {
   merge: boolean;
 }
 
-/** Space opened under row `after` (the inline commit details); lines crossing it are drawn through. */
+/** Space opened under list row `after` (the inline commit details); lines crossing it are drawn through. */
 export interface Gap {
   after: number;
   height: number;
 }
 
 /**
- * Draws rows [first, last) into a canvas that covers the visible graph column.
- * `ctx` is already scaled to CSS pixels; `rowTop(i)` is row i's top edge in
- * list coordinates, so row i is drawn at rowTop(i) - scrollTop. A row taller
- * than ROW_HEIGHT has its commit line at the bottom (refs sit above it): its
- * node and curves are drawn there and incoming lines run straight down to it.
+ * Draws list rows [first, last) into a canvas that covers the visible graph column.
+ * `ctx` is already scaled to CSS pixels; `rowTop(i)` is list row i's top edge in
+ * list coordinates, so it is drawn at rowTop(i) - scrollTop. `rows` is the layout,
+ * indexed by commit; list rows whose commit is not laid out yet are left blank. A
+ * row taller than ROW_HEIGHT has its commit line at the bottom (refs sit above it):
+ * its node and curves are drawn there and incoming lines run straight down to it.
  */
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
+  list: readonly ListRow[],
   rows: readonly Row[],
   spans: SpanIndex,
   first: number,
   last: number,
   scrollTop: number,
   theme: GraphTheme,
-  style: (index: number) => NodeStyle,
+  style: (commit: Commit) => NodeStyle,
   rowTop: (index: number) => number,
   rowHeight: (index: number) => number,
   gap: Gap | undefined,
 ): void {
   const color = (c: number) => theme.lanes[c % theme.lanes.length]!;
-  const end = Math.min(last, rows.length);
+  const end = Math.min(last, list.length);
   ctx.lineWidth = theme.lineWidth;
   ctx.lineCap = 'round';
 
   for (let i = first; i < end; i++) {
-    const row = rows[i]!;
+    const item = list[i]!;
+    const row = rows[item.row];
+    if (!row || item.kind !== 'commit') continue;
     const top = rowTop(i) - scrollTop;
     const bottom = top + rowHeight(i);
     const lineTop = bottom - ROW_HEIGHT;
     const mid = lineTop + ROW_HEIGHT / 2;
     const x = laneX(row.lane);
 
-    for (const e of spans.passesAt(i)) {
+    for (const e of spans.passesAt(item.row)) {
       stroke(ctx, color(e.color), (c) => {
         c.moveTo(laneX(e.lane), top);
         c.lineTo(laneX(e.lane), bottom);
@@ -89,9 +95,11 @@ export function drawGraph(
   }
 
   // Lines leaving the row above the gap continue straight through it to the row below.
-  if (gap && gap.after >= first && gap.after < end) {
+  const above = gap && gap.after >= first && gap.after < end ? list[gap.after] : undefined;
+  const aboveRow = above && rows[above.row];
+  if (gap && above && aboveRow) {
     const top = rowTop(gap.after) + rowHeight(gap.after) - scrollTop;
-    const crossing = [...spans.passesAt(gap.after), ...rows[gap.after]!.outgoing];
+    const crossing = [...spans.passesAt(above.row), ...aboveRow.outgoing];
     for (const e of crossing) {
       stroke(ctx, color(e.color), (c) => {
         c.moveTo(laneX(e.lane), top);
@@ -102,10 +110,12 @@ export function drawGraph(
 
   // Nodes last so lines never cover them.
   for (let i = first; i < end; i++) {
-    const row = rows[i]!;
+    const item = list[i]!;
+    const row = rows[item.row];
+    if (!row || item.kind !== 'commit') continue;
     const x = laneX(row.lane);
     const y = rowTop(i) + rowHeight(i) - ROW_HEIGHT / 2 - scrollTop;
-    const { head, merge } = style(i);
+    const { head, merge } = style(item.commit);
     const r = theme.nodeRadius;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
