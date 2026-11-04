@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { delay, workspaceRoot } from './helpers.ts';
 
@@ -27,8 +27,8 @@ const refList = async () =>
 
 /**
  * Records the workspace repository's refs, HEAD and config. The returned function puts them
- * back, ends any operation in progress and cleans the work tree, so suites that change the
- * repository leave it as the other suites expect.
+ * back, ends any operation in progress, cleans the work tree and makes the clone full again, so
+ * suites that change the repository leave it as the other suites expect.
  */
 export async function snapshotRepo(): Promise<() => Promise<void>> {
   const root = workspaceRoot();
@@ -38,6 +38,8 @@ export async function snapshotRepo(): Promise<() => Promise<void>> {
   const detached = head === undefined ? await gitRetry('rev-parse', 'HEAD') : undefined;
   const config = readFileSync(configPath, 'utf8');
   return async () => {
+    // Where a test that made the repository shallow listed its oldest commits; the fixture has none.
+    rmSync(join(root, '.git', 'shallow'), { force: true });
     for (const cmd of ['rebase', 'cherry-pick', 'revert', 'merge']) await quiet(cmd, '--quit');
     writeFileSync(configPath, config);
     for (const name of (await refList()).keys()) if (!refs.has(name)) await gitRetry('update-ref', '-d', name);

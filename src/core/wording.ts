@@ -1,5 +1,5 @@
 import type { DirtyFacts, StashChoice, StashChoices, StashOp } from './autostash.ts';
-import type { ResetMode } from './operations.ts';
+import { MORE_HISTORY, type ResetMode } from './operations.ts';
 import type { RefKind } from './refs.ts';
 import type { OperationKind } from './repo-state.ts';
 
@@ -591,13 +591,20 @@ export function conflictsInProgress(paths: readonly string[], count: number): Co
   };
 }
 
+/** What a shallow clone can fetch of its history: MORE_HISTORY commits further back, or all of it. */
+export type HistoryFetch = 'deepen' | 'unshallow';
+
+const FETCH_HISTORY = {
+  detail: `Fetch More History goes ${MORE_HISTORY} commits further back; Fetch Full History fetches the whole history. Then try again.`,
+  buttons: [
+    { id: 'deepen', label: 'Fetch More History' },
+    { id: 'unshallow', label: 'Fetch Full History' },
+  ],
+} satisfies Pick<Confirmation<HistoryFetch>, 'detail' | 'buttons'>;
+
 /** A shallow clone lacks the commits an operation needs. */
-export function shallowConfirmation(a: string, b: string): Confirmation<'unshallow'> {
-  return {
-    message: `This clone is shallow: ${a} and ${b} have no common commit in it.`,
-    detail: 'Fetch the full history first, then try again.',
-    buttons: [{ id: 'unshallow', label: 'Fetch Full History' }],
-  };
+export function shallowConfirmation(a: string, b: string): Confirmation<HistoryFetch> {
+  return { message: `This clone is shallow: ${a} and ${b} have no common commit in it.`, ...FETCH_HISTORY };
 }
 
 /** What a finished history operation did. */
@@ -613,6 +620,10 @@ export const HISTORY_DONE = {
   continued: (kind: OperationKind): string => `Finished the ${OP_NAME[kind]}`,
   aborted: (kind: OperationKind): string => `Aborted the ${OP_NAME[kind]}`,
   skipped: (short: string): string => `Skipped ${short}`,
+  fetchedHistory: {
+    deepen: `Fetched ${MORE_HISTORY} more commits of history`,
+    unshallow: 'Fetched the full history',
+  } satisfies Record<HistoryFetch, string>,
 };
 
 export const HISTORY_DOING = {
@@ -624,7 +635,10 @@ export const HISTORY_DOING = {
   continuing: (kind: OperationKind): string => `Continuing the ${OP_NAME[kind]}`,
   aborting: (kind: OperationKind): string => `Aborting the ${OP_NAME[kind]}`,
   skipping: (short: string): string => `Skipping ${short}`,
-  fetchingHistory: 'Fetching the full history',
+  fetchingHistory: {
+    deepen: `Fetching ${MORE_HISTORY} more commits of history`,
+    unshallow: 'Fetching the full history',
+  } satisfies Record<HistoryFetch, string>,
 };
 
 /** Restoring stashed changes after `done` applied only part of them (git kept the stash). */

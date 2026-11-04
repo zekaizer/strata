@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
-import type { MergeMode, Operation, ResetMode } from '../../core/operations.ts';
+import { MORE_HISTORY, type MergeMode, type Operation, type ResetMode } from '../../core/operations.ts';
 import type { OperationState } from '../../core/repo-state.ts';
 import {
   abortButton,
@@ -8,6 +8,8 @@ import {
   alreadyBased,
   alreadyContains,
   dirtySection,
+  type Confirmation,
+  type HistoryFetch,
   gitFailure,
   HISTORY_DOING,
   HISTORY_DONE,
@@ -125,17 +127,20 @@ const sourceExpect = (s: Source, hash: string): Expect[] =>
 async function deepEnough(host: FlowHost, a: string, b: string, names: [string, string]): Promise<boolean> {
   if ((await readMergeBase(host.git, host.cwd, a, b)) !== undefined) return true;
   if (!(await isShallow(host.git, host.cwd))) return true;
-  if (!(await host.ui.confirm(shallowConfirmation(...names)))) return false;
-  const ran = await run(
-    host,
-    HISTORY_DOING.fetchingHistory,
-    (exec) => exec({ kind: 'fetch', remote: undefined, unshallow: true }),
-    {
-      remote: true,
-    },
-  );
-  if (ran !== undefined) await host.refresh();
+  await fetchHistory(host, shallowConfirmation(...names));
   return false;
+}
+
+/** Asks `question` about a shallow clone, then fetches more of its history or all of it, as answered. */
+async function fetchHistory(host: FlowHost, question: Confirmation<HistoryFetch>): Promise<void> {
+  const answer = await host.ui.confirm(question);
+  if (answer === undefined) return;
+  const op: Operation =
+    answer === 'deepen'
+      ? { kind: 'fetch', remote: undefined, deepen: MORE_HISTORY }
+      : { kind: 'fetch', remote: undefined, unshallow: true };
+  const ran = await run(host, HISTORY_DOING.fetchingHistory[answer], (exec) => exec(op), { remote: true });
+  if (ran !== undefined) await finish(host, { message: HISTORY_DONE.fetchedHistory[answer] });
 }
 
 /**

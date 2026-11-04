@@ -242,6 +242,19 @@ describe('operations', () => {
     assert.equal(branch(d), 'from-stash');
   });
 
+  it('fetches more history into a shallow clone, or all of it', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', '--depth', '1', '--branch', 'topic', `file://${origin}`, c);
+    assert.equal(run(c, 'rev-list', '--count', 'HEAD'), '1');
+    await op(c, { kind: 'fetch', remote: undefined, deepen: 1 });
+    assert.equal(run(c, 'rev-list', '--count', 'HEAD'), '2');
+    assert.equal(run(c, 'rev-parse', '--is-shallow-repository'), 'true');
+    await op(c, { kind: 'fetch', remote: 'origin', unshallow: true });
+    assert.equal(run(c, 'rev-list', '--count', 'HEAD'), '3');
+    assert.equal(run(c, 'rev-parse', '--is-shallow-repository'), 'false');
+  });
+
   it('fetches, and pushes, setting the upstream and forcing with a lease', async () => {
     const origin = repo();
     const c = join(root, `clone${n++}`);

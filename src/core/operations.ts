@@ -47,8 +47,11 @@ export type Operation =
   | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
-  /** `unshallow`: the whole history of a shallow clone; `ref`: only this ref of `remote`. */
-  | { kind: 'fetch'; remote: string | undefined; unshallow?: boolean; ref?: string }
+  /**
+   * `unshallow`: the whole history of a shallow clone; `deepen`: that many more commits of it;
+   * `ref`: only this ref of `remote`.
+   */
+  | { kind: 'fetch'; remote: string | undefined; unshallow?: boolean; deepen?: number; ref?: string }
   /**
    * Local `branch` to `dest`, a full ref on `remote` (the upstream's branch may have another name).
    * `forceWithLease`: the commit `dest` must still be at.
@@ -61,6 +64,9 @@ export type Operation =
       setUpstream: boolean;
       forceWithLease: string | undefined;
     };
+
+/** How many commits further back Fetch More History reaches in a shallow clone. */
+export const MORE_HISTORY = 100;
 
 const GIT_COMMAND: Record<OperationKind, string> = {
   rebase: 'rebase',
@@ -153,6 +159,8 @@ export function argv(op: Operation): string[] {
       return ['stash', 'store', '--message', op.message, op.commit];
     case 'fetch':
       if (op.unshallow) return ['fetch', '--progress', '--unshallow', ...(op.remote === undefined ? [] : [op.remote])];
+      if (op.deepen !== undefined)
+        return ['fetch', '--progress', `--deepen=${op.deepen}`, ...(op.remote === undefined ? [] : [op.remote])];
       if (op.remote !== undefined && op.ref !== undefined) return ['fetch', '--progress', op.remote, op.ref];
       return ['fetch', '--progress', ...(op.remote === undefined ? ['--all'] : [op.remote])];
     case 'push':

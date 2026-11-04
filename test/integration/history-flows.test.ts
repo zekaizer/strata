@@ -428,6 +428,66 @@ describe('history operations', () => {
     noTrouble();
   });
 
+  /**
+   * Makes the workspace a shallow clone whose oldest commits are `edges`, of an origin that has
+   * the whole history.
+   */
+  const shallow = (...edges: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), 'strata-origin-'));
+    origins.push(dir);
+    execFileSync('git', ['init', '--quiet', '--bare', dir]);
+    git('remote', 'add', 'origin', dir);
+    git('push', '--quiet', 'origin', 'refs/heads/*:refs/heads/*');
+    writeFileSync(join(workspaceRoot(), '.git', 'shallow'), edges.map((e) => `${e}\n`).join(''));
+  };
+  const origins: string[] = [];
+  afterEach(() => {
+    for (const dir of origins.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  /** strata-deep: `n` empty commits on main, with HEAD on it. */
+  const deep = (n: number) => {
+    const main = git('rev-parse', 'main');
+    const stream = Array.from({ length: n }, (_, i) => {
+      const message = `Deep ${i}`;
+      const from = i === 0 ? `from ${main}\n` : '';
+      return `commit refs/heads/strata-deep\ncommitter Ada Lovelace <ada@example.com> ${1_700_010_000 + i * 60} +0000\ndata ${message.length}\n${message}\n${from}\n`;
+    }).join('');
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
+    git('switch', '--quiet', 'strata-deep');
+    return git('rev-parse', 'HEAD');
+  };
+
+  it('fetches 100 more commits of a shallow clone, or all of them, when two lines meet beyond its edge', async () => {
+    branchWith('strata-topic', 'main', 'topic.txt', 'topic\n');
+    const topic = git('rev-parse', 'HEAD');
+    const tip = deep(150);
+    shallow(tip, topic);
+    await reload(panel());
+    ui.press('Fetch More History');
+    await run('strata.merge', branchMenu('strata-topic', topic));
+    assert.deepEqual(ui.of('confirm'), [
+      {
+        kind: 'confirm',
+        message: "This clone is shallow: 'strata-deep' and 'strata-topic' have no common commit in it.",
+        detail:
+          'Fetch More History goes 100 commits further back; Fetch Full History fetches the whole history. Then try again.',
+        buttons: ['Fetch More History', 'Fetch Full History'],
+      },
+    ]);
+    assert.equal(git('rev-parse', '--is-shallow-repository'), 'true');
+    assert.equal(git('rev-list', '--count', 'HEAD'), '101');
+
+    ui.clear();
+    ui.press('Fetch Full History');
+    await run('strata.merge', branchMenu('strata-topic', topic));
+    assert.equal(git('rev-parse', '--is-shallow-repository'), 'false');
+    assert.equal(git('rev-parse', 'HEAD'), tip, 'the merge waits to be tried again');
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+  });
+
   it('reverts a commit, and undoes that', async () => {
     const before = git('rev-parse', 'main');
     const subject = git('log', '-1', '--format=%s', 'main');
