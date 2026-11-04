@@ -443,7 +443,11 @@ class App {
       } else if (searchable) {
         this.loadMore(NEXT_PAGE);
       } else {
+        // Not in this view (filters, first parent): say so instead of leaving "Looking for…".
+        const missing = r.selectedHash;
         r.selectedHash = undefined;
+        this.updateStatus();
+        this.announce(`${shortHash(missing)} is not in this view`);
       }
     }
     if (r.scrollAnchor === undefined && r.scrollTop === undefined && r.selectedHash === undefined)
@@ -536,6 +540,7 @@ class App {
   }
 
   private setOptions(options: ViewOptions): void {
+    this.clearActionError();
     this.options = options;
     this.updateOptionControls();
     this.saveState();
@@ -555,7 +560,13 @@ class App {
     this.updateStatus();
   }
 
+  /** An error from an action (opening a file, a menu command) lasts until the next action. */
+  private clearActionError(): void {
+    if (this.status.classList.contains('error') && this.generation >= 0) this.updateStatus();
+  }
+
   private updateStatus(): void {
+    this.status.classList.remove('error');
     const n = this.commits.length.toLocaleString();
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
   }
@@ -627,12 +638,14 @@ class App {
    * waiting to be restored after a reload.
    */
   private userSelect(index: number, opts: { expand?: boolean } = {}): void {
+    this.clearActionError();
     this.restore = undefined;
     this.select(index, opts);
   }
 
   /** A fold the user asks for also stops a pending restore from unfolding again. */
   private userCollapse(): void {
+    this.clearActionError();
     if (this.restore) this.restore.expanded = false;
     this.collapse();
   }
