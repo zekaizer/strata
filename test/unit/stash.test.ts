@@ -1,0 +1,223 @@
+import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { before, describe, it } from 'node:test';
+import type { Commit } from '../../src/core/commit.ts';
+import {
+  anchoredAt,
+  interleave,
+  parseStashList,
+  rowHash,
+  type ListRow,
+  type StashEntry,
+} from '../../src/core/stash.ts';
+import { readStashes, stashCache } from '../../src/git/stash.ts';
+import { tempDir } from './helpers.ts';
+
+const env = {
+  ...process.env,
+  GIT_AUTHOR_NAME: 'a',
+  GIT_AUTHOR_EMAIL: 'a@example.com',
+  GIT_COMMITTER_NAME: 'a',
+  GIT_COMMITTER_EMAIL: 'a@example.com',
+};
+const run = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, env, encoding: 'utf8' }).trim();
+
+describe('parseStashList', () => {
+  const h = (c: string) => c.repeat(40);
+  const record = (...fields: string[]) => fields.map((f) => `${f}\0`).join('');
+  const entry = (over: Partial<StashEntry>): StashEntry => ({
+    hash: h('a'),
+    index: 0,
+    base: h('1'),
+    untracked: undefined,
+    message: '',
+    branch: undefined,
+    time: 0,
+    autostash: false,
+    anchor: { kind: 'base' },
+    files: undefined,
+    ...over,
+  });
+
+  it('reads index, base, untracked commit, message and time', () => {
+    const out =
+      record(
+        h('a'),
+        `${h('1')} ${h('2')} ${h('3')}`,
+        'refs/stash@{0}',
+        'WIP on main: 1111111 s',
+        'WIP on main: 1111111 s',
+        '100',
+      ) +
+      record(
+        h('b'),
+        `${h('1')} ${h('2')}`,
+        'refs/stash@{1}',
+        'On feature/x: my: message',
+        'On feature/x: my: message',
+        '90',
+      );
+    assert.deepEqual(parseStashList(out), [
+      entry({ hash: h('a'), untracked: h('3'), message: 'WIP on main: 1111111 s', branch: 'main', time: 100 }),
+      entry({ hash: h('b'), index: 1, message: 'On feature/x: my: message', branch: 'feature/x', time: 90 }),
+    ]);
+  });
+
+  it("takes the branch from the stash commit's subject, which git's autostash keeps", () => {
+    const out = record(h('c'), `${h('4')} ${h('5')}`, 'refs/stash@{0}', 'autostash', 'On f2: autostash', '80');
+    assert.deepEqual(parseStashList(out), [
+      entry({ hash: h('c'), base: h('4'), message: 'autostash', branch: 'f2', time: 80, autostash: true }),
+    ]);
+  });
+
+  it("marks git's and Strata's autostash entries, and nothing else", () => {
+    const parse = (message: string) =>
+      parseStashList(record(h('d'), h('4'), 'refs/stash@{0}', message, message, '1'))[0]!.autostash;
+    assert.equal(parse('autostash'), true);
+    assert.equal(parse('On main: Strata autostash: reset to 1a2b3c4'), true);
+    assert.equal(parse('Strata autostash: rebase'), true);
+    assert.equal(parse('On main: autostash later'), false);
+    assert.equal(parse('On main: not a Strata autostash: x'), false);
+  });
+
+  it('has no branch on a detached HEAD', () => {
+    const out = record(h('d'), h('4'), 'refs/stash@{0}', 'On (no branch): detached', 'On (no branch): detached', '70');
+    assert.equal(parseStashList(out)[0]!.branch, undefined);
+  });
+
+  it('is empty for no output', () => {
+    assert.deepEqual(parseStashList(''), []);
+  });
+});
+
+describe('stash rows', () => {
+  const commit = (hash: string): Commit => ({
+    hash,
+    parents: [],
+    author: 'a',
+    authorEmail: 'a@example.com',
+    authorTime: 0,
+    commitTime: 0,
+    subject: hash,
+  });
+  const stash = (hash: string, index: number, base: string, anchor: StashEntry['anchor'] = { kind: 'base' }) =>
+    ({
+      hash,
+      index,
+      base,
+      untracked: undefined,
+      message: `On main: ${hash}`,
+      branch: 'main',
+      time: 0,
+      autostash: false,
+      anchor,
+      files: undefined,
+    }) satisfies StashEntry;
+  const shape = (rows: ListRow[]) => rows.map((r) => `${rowHash(r)}@${r.row}`);
+
+  it('draws each stash directly above the commit it is anchored at, stash@{0} topmost', () => {
+    const stashes = [stash('s2', 2, 'B'), stash('s0', 0, 'B'), stash('s1', 1, 'C')];
+    const rows = interleave([commit('A'), commit('B'), commit('C')], 10, anchoredAt(stashes));
+    assert.deepEqual(shape(rows), ['A@10', 's0@11', 's2@11', 'B@11', 's1@12', 'C@12']);
+  });
+
+  it('draws a displaced stash above its branch tip, not above its old base', () => {
+    const moved = stash('s0', 0, 'old', { kind: 'tip', tip: 'A' });
+    assert.deepEqual(shape(interleave([commit('A'), commit('old')], 0, anchoredAt([moved]))), ['s0@0', 'A@0', 'old@1']);
+  });
+
+  it('leaves out stashes whose commit is not in the page', () => {
+    assert.deepEqual(shape(interleave([commit('A')], 0, anchoredAt([stash('s0', 0, 'Z')]))), ['A@0']);
+  });
+
+  it('gives the same rows whether a history is interleaved whole or page by page', () => {
+    const commits = Array.from({ length: 40 }, (_, i) => commit(`c${i}`));
+    const stashes = [0, 0, 7, 19, 39].map((at, i) => stash(`s${i}`, i, `c${at}`));
+    const anchors = anchoredAt(stashes);
+    const whole = interleave(commits, 0, anchors);
+    for (let i = 0; i <= commits.length; i++) {
+      const split = [...interleave(commits.slice(0, i), 0, anchors), ...interleave(commits.slice(i), i, anchors)];
+      assert.deepEqual(split, whole, `split at ${i}`);
+    }
+  });
+});
+
+describe('readStashes', () => {
+  const root = tempDir('stash');
+  const dir = join(root, 'repo');
+  before(() => {
+    mkdirSync(dir);
+    run(dir, 'init', '--quiet', '-b', 'main');
+    writeFileSync(join(dir, 'a.txt'), 'a\n');
+    run(dir, 'add', '.');
+    run(dir, 'commit', '--quiet', '-m', 'root');
+  });
+
+  it('is empty without stashes', async () => {
+    assert.deepEqual(await readStashes('git', dir), []);
+  });
+
+  it('lists every stash, newest first, with its untracked commit', async () => {
+    appendFileSync(join(dir, 'a.txt'), 'b\n');
+    run(dir, 'stash', 'push', '--quiet', '-m', 'first');
+    appendFileSync(join(dir, 'a.txt'), 'c\n');
+    writeFileSync(join(dir, 'new.txt'), 'u\n');
+    run(dir, 'stash', 'push', '--quiet', '--include-untracked', '-m', 'second');
+    const list = await readStashes('git', dir);
+    assert.deepEqual(
+      list.map((s) => [s.index, s.message, s.branch, s.untracked !== undefined]),
+      [
+        [0, 'On main: second', 'main', true],
+        [1, 'On main: first', 'main', false],
+      ],
+    );
+    assert.equal(list[0]!.hash, run(dir, 'rev-parse', 'stash@{0}'));
+    assert.equal(list[0]!.base, run(dir, 'rev-parse', 'HEAD'));
+  });
+
+  it('counts the changed and the untracked files of each stash', async () => {
+    const list = await readStashes('git', dir);
+    assert.deepEqual(
+      list.map((s) => s.files),
+      [
+        { changed: 1, untracked: 1 },
+        { changed: 1, untracked: 0 },
+      ],
+    );
+  });
+
+  it("anchors a stash at its base while the base is on the stash's branch", async () => {
+    assert.deepEqual(
+      (await readStashes('git', dir)).map((s) => s.anchor),
+      [{ kind: 'base' }, { kind: 'base' }],
+    );
+  });
+
+  it('draws a stash above its branch tip once its base left the branch, and notices the branch moving', async () => {
+    const cache = stashCache();
+    run(dir, 'switch', '--quiet', '-c', 'topic');
+    writeFileSync(join(dir, 'b.txt'), 'b\n');
+    run(dir, 'add', '.');
+    run(dir, 'commit', '--quiet', '-m', 'topic work');
+    appendFileSync(join(dir, 'b.txt'), 'wip\n');
+    run(dir, 'stash', 'push', '--quiet', '-m', 'on topic');
+    assert.deepEqual((await readStashes('git', dir, cache))[0]!.anchor, { kind: 'base' });
+    // Rewriting the branch (amend, rebase, reset) leaves the stash's base behind.
+    run(dir, 'commit', '--quiet', '--amend', '-m', 'topic work, reworded');
+    const tip = run(dir, 'rev-parse', 'HEAD');
+    assert.deepEqual((await readStashes('git', dir, cache))[0]!.anchor, { kind: 'tip', tip });
+  });
+
+  it('anchors a stash at its base when its branch is gone', async () => {
+    run(dir, 'switch', '--quiet', 'main');
+    run(dir, 'branch', '--quiet', '-D', 'topic');
+    assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'base' });
+  });
+
+  it('anchors at the base and leaves files uncounted when git takes longer than allowed', async () => {
+    const [s] = await readStashes('git', dir, stashCache(), 0);
+    assert.deepEqual([s!.anchor, s!.files], [{ kind: 'base' }, undefined]);
+  });
+});
