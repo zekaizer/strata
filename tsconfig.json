@@ -4,5 +4,5 @@
     "lib": ["ES2023"],
     "types": ["node", "vscode", "mocha"]
   },
-  "include": ["src/core", "src/host", "src/shared", "src/extension.ts", "test", "scripts/**/*.ts"]
+  "include": ["src/git", "src/core", "src/host", "src/shared", "src/extension.ts", "test", "scripts/**/*.ts"]
 }
