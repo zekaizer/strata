@@ -1,22 +1,25 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import {
   countCommits,
+  isShallow,
   isAncestor,
   readBranchConfig,
   readCommit,
   readConfigBool,
   readHead,
   readMergeBase,
+  readRebaseCounts,
   readOverlap,
   readResetFacts,
-  readStashIndex,
+  readStash,
   readStashTop,
   readUnmerged,
   readUnmergedCommits,
+  readUntrackedAt,
   readUpstream,
 } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
@@ -130,12 +133,16 @@ describe('confirmation facts', () => {
     run(dir, 'stash', 'push', '--quiet');
     const top = run(dir, 'rev-parse', 'refs/stash');
     assert.equal(await readStashTop('git', dir), top);
-    assert.equal(await readStashIndex('git', dir, top), 0);
+    assert.deepEqual(await readStash('git', dir, top), {
+      hash: top,
+      index: 0,
+      message: 'WIP on main: ' + run(dir, 'log', '-1', '--format=%h %s'),
+    });
     writeFileSync(join(dir, 'a.txt'), 'second\n');
     run(dir, 'stash', 'push', '--quiet');
-    assert.equal(await readStashIndex('git', dir, top), 1, 'renumbered by the newer stash');
+    assert.equal((await readStash('git', dir, top))?.index, 1, 'renumbered by the newer stash');
     run(dir, 'stash', 'drop', '--quiet', 'stash@{0}');
-    assert.equal(await readStashIndex('git', dir, 'f'.repeat(40)), undefined);
+    assert.equal(await readStash('git', dir, 'f'.repeat(40)), undefined);
     run(dir, 'checkout', '--quiet', 'keep');
     writeFileSync(join(dir, 'a.txt'), 'other\n');
     run(dir, 'commit', '--quiet', '-am', 'other');
@@ -164,5 +171,23 @@ describe('confirmation facts', () => {
     ]);
     run(dir, 'config', '--remove-section', 'branch.topic');
     run(dir, 'config', '--remove-section', 'branch.topic.x');
+  });
+
+  it('counts what a rebase replays, and which replayed commits are on the upstream', async () => {
+    assert.deepEqual(await readRebaseCounts('git', dir, 'main~3', 'origin/main'), {
+      replay: 3,
+      merges: 0,
+      onUpstream: 1,
+    });
+    assert.deepEqual(await readRebaseCounts('git', dir, 'main', undefined), { replay: 0, merges: 0, onUpstream: 0 });
+    assert.equal(await isShallow('git', dir), false);
+  });
+
+  it('finds untracked files a hard reset to another line would overwrite', async () => {
+    run(dir, 'checkout', '--quiet', 'topic');
+    writeFileSync(join(dir, 'b.txt'), 'mine\n');
+    assert.deepEqual(await readUntrackedAt('git', dir, 'main'), ['b.txt'], 'b.txt is tracked on main only');
+    rmSync(join(dir, 'b.txt'));
+    run(dir, 'checkout', '--quiet', 'main');
   });
 });

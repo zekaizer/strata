@@ -4,6 +4,10 @@ export type GitErrorKind =
   | 'hostKey'
   | 'lock'
   | 'rejected'
+  /** A hook or the server refused the push; forcing cannot help. */
+  | 'remoteRejected'
+  /** No common commit, e.g. in a shallow clone. */
+  | 'unrelated'
   | 'conflict'
   | 'localChanges'
   | 'untrackedOverwrite'
@@ -32,7 +36,9 @@ const PATTERNS: readonly [RegExp, GitErrorKind][] = [
     'localChanges',
   ],
   [/is already checked out at|is already used by worktree at|used by worktree at/, 'checkedOutElsewhere'],
-  [/\[rejected\]|\[remote rejected\]|Updates were rejected/, 'rejected'],
+  [/\[remote rejected\]/, 'remoteRejected'],
+  [/\[rejected\]|Updates were rejected/, 'rejected'],
+  [/refusing to merge unrelated histories/, 'unrelated'],
   [/is not fully merged/, 'notMerged'],
   [/has no upstream branch|no tracking information/, 'noUpstream'],
 ];

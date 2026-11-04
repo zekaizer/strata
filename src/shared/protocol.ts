@@ -210,8 +210,9 @@ export interface ProbeState {
   /** Class name of the focused element. */
   focused: string;
   options: ViewOptions;
-  /** The operation in progress, as the host last reported it. */
+  /** The operation in progress, and what an earlier one left behind, as the host last reported them. */
   operation: OperationState | undefined;
+  leftover: Leftover | undefined;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */

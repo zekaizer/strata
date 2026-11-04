@@ -116,7 +116,7 @@ describe('ref operations', () => {
     assert.equal(git('branch', '--show-current'), 'feature/search');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0}.",
+      "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0} (\"On main: Strata autostash: switch to 'feature/search'\").",
     );
     assert.equal(
       git('stash', 'list', '--format=%gs'),

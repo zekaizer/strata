@@ -4,7 +4,7 @@ import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
 import { badgeOrder, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
-import type { OperationState } from '../core/repo-state.ts';
+import type { Leftover, OperationState } from '../core/repo-state.ts';
 import {
   anchoredAt,
   describeStash,
@@ -162,6 +162,7 @@ class App {
   /** Widest author name and dates of the loaded commits, in px (the row's own font). */
   private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
   private operation: OperationState | undefined;
+  private leftover: Leftover | undefined;
   private measureContext: CanvasRenderingContext2D | null | undefined;
   private columns: ColumnChoice | undefined;
   /** Natural width of the expanded commit's file tree (widest row, Old | diff | New included). */
@@ -344,6 +345,7 @@ class App {
         break;
       case 'repoState':
         this.operation = m.operation;
+        this.leftover = m.leftover;
         break;
       case 'commits':
         if (m.generation !== this.generation) return;
@@ -1844,6 +1846,7 @@ class App {
       })),
       options: this.options,
       operation: this.operation,
+      leftover: this.leftover,
       expandedHeight: this.gapHeight(),
       rowTops: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [

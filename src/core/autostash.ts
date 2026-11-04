@@ -1,3 +1,5 @@
+import type { Leftover } from './repo-state.ts';
+
 /** Operations that uncommitted changes can get in the way of. */
 export type StashOp =
   'rebase' | 'merge' | 'pullRebase' | 'pullMerge' | 'cherryPick' | 'revert' | 'switch' | 'resetHard' | 'resetKeep';
@@ -135,4 +137,39 @@ export function strataAutostashOf(reflogSubject: string): ExplicitStashOp | unde
   if (!message?.startsWith(AUTOSTASH)) return undefined;
   const rest = message.slice(AUTOSTASH.length);
   return (Object.keys(EXPLICIT) as ExplicitStashOp[]).find((op) => rest.startsWith(`${EXPLICIT[op]} `));
+}
+
+/** Unmerged files a leftover lists, at most. */
+const FILES_SHOWN = 50;
+
+/**
+ * What an earlier operation left for the user to settle, in the banner's order: a restore Strata
+ * saw conflict, a Strata stash nobody restored, unmerged files nobody resolves. Nothing while an
+ * operation is in progress (it says where the changes are itself).
+ */
+export function leftoverOf(i: {
+  operation: boolean;
+  /** stash@{0} first; `message` is the reflog subject. */
+  stashes: readonly { hash: string; index: number; message: string }[];
+  unmerged: readonly string[];
+  restoreConflicted: ReadonlySet<string>;
+  kept: ReadonlySet<string>;
+}): Leftover | undefined {
+  if (i.operation) return undefined;
+  const ref = (s: { hash: string; index: number }) => ({ hash: s.hash, index: s.index });
+  const open = i.stashes.filter((s) => !i.kept.has(s.hash));
+  const conflicted = open.find((s) => i.restoreConflicted.has(s.hash));
+  if (conflicted) return { kind: 'restoreConflicted', stash: ref(conflicted), files: i.unmerged.slice(0, FILES_SHOWN) };
+  for (const s of open) {
+    const op = strataAutostashOf(s.message);
+    if (op !== undefined) return { kind: 'pendingStash', stash: ref(s), operation: EXPLICIT[op] };
+  }
+  if (i.unmerged.length === 0) return undefined;
+  const git = i.stashes.find((s) => s.message === 'autostash');
+  return {
+    kind: 'unmerged',
+    files: i.unmerged.slice(0, FILES_SHOWN),
+    count: i.unmerged.length,
+    autostash: git ? ref(git) : undefined,
+  };
 }

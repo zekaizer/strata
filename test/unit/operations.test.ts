@@ -87,6 +87,16 @@ describe('operations', () => {
     assert.equal(run(d, 'tag', '--list'), 'v1');
   });
 
+  it('stashes only the paths named, untracked ones included', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'f.txt'), 'dirty\n');
+    writeFileSync(join(d, 'new [1].txt'), 'mine\n');
+    writeFileSync(join(d, 'other.txt'), 'stays\n');
+    await op(d, { kind: 'stashPush', message: 'some', includeUntracked: true, paths: ['f.txt', 'new [1].txt'] });
+    assert.equal(run(d, 'status', '--porcelain'), '?? other.txt');
+    assert.equal(run(d, 'show', '--format=', '--name-only', 'stash@{0}^3'), 'new [1].txt');
+  });
+
   it('puts a deleted branch back without switching to it, with its configuration', async () => {
     const d = repo();
     const tip = run(d, 'rev-parse', 'topic');
@@ -108,12 +118,47 @@ describe('operations', () => {
     run(d, 'commit', '--quiet', '-m', 'ahead1');
     run(d, 'checkout', '--quiet', 'main');
     appendFileSync(join(d, 'f.txt'), 'dirty\n');
-    await op(d, { kind: 'merge', ref: 'refs/heads/ahead', mode: 'auto', autostash: true });
+    await op(d, { kind: 'merge', ref: 'refs/heads/ahead', mode: 'ff', autostash: true });
     assert.equal(head(d), run(d, 'rev-parse', 'ahead'), 'fast-forwarded');
     assert.match(run(d, 'diff', '--name-only'), /f\.txt/, 'changes came back');
     run(d, 'reset', '--quiet', '--hard', 'main~1');
     await op(d, { kind: 'merge', ref: 'refs/heads/ahead', mode: 'noFastForward', autostash: false });
     assert.equal(run(d, 'rev-list', '--parents', '-n1', 'HEAD').split(' ').length, 3, 'merge commit');
+  });
+
+  it("merges as the button says, whatever the branch's merge options", async () => {
+    const d = repo();
+    run(d, 'checkout', '--quiet', '-b', 'ahead', 'main');
+    writeFileSync(join(d, 'h.txt'), 'h\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'ahead1');
+    run(d, 'checkout', '--quiet', 'main');
+    run(d, 'config', 'branch.main.mergeoptions', '--squash --no-commit');
+    run(d, 'config', 'merge.ff', 'false');
+    await op(d, { kind: 'merge', ref: 'ahead', mode: 'ff', autostash: false });
+    assert.equal(head(d), run(d, 'rev-parse', 'ahead'), 'fast-forwarded, not squashed or left uncommitted');
+  });
+
+  it('rebases only the current branch, replaying merged commits one by one, whatever the config', async () => {
+    const d = repo();
+    const commitOn = (branch: string, from: string, file: string) => {
+      run(d, 'checkout', '--quiet', '-b', branch, from);
+      writeFileSync(join(d, file), `${file}\n`);
+      run(d, 'add', '.');
+      run(d, 'commit', '--quiet', '-m', file);
+    };
+    commitOn('side', 'main~1', 's.txt');
+    commitOn('onto', 'main~1', 'o.txt');
+    run(d, 'checkout', '--quiet', 'topic');
+    run(d, 'merge', '--quiet', '--no-ff', '--no-edit', 'side');
+    run(d, 'branch', 'stacked', 'topic^1~1');
+    const stacked = run(d, 'rev-parse', 'stacked');
+    run(d, 'config', 'rebase.updateRefs', 'true');
+    run(d, 'config', 'rebase.rebaseMerges', 'true');
+    await op(d, { kind: 'rebase', onto: run(d, 'rev-parse', 'onto'), autostash: false });
+    assert.equal(run(d, 'rev-parse', 'stacked'), stacked, 'no other branch moved');
+    assert.equal(run(d, 'rev-list', '--count', '--merges', 'onto..topic'), '0', 'the merge is dropped');
+    assert.equal(run(d, 'rev-list', '--count', 'onto..topic'), '3', "its side's commit is replayed");
   });
 
   it('stops a rebase at a conflict, then continues after resolving', async () => {
@@ -132,7 +177,7 @@ describe('operations', () => {
 
   it('concludes a merge after resolving with the message git prepared, without its conflict notes', async () => {
     const d = repo();
-    await assert.rejects(op(d, { kind: 'merge', ref: 'topic', mode: 'auto', autostash: false }), {
+    await assert.rejects(op(d, { kind: 'merge', ref: 'topic', mode: 'ff', autostash: false }), {
       kind: 'conflict',
     });
     writeFileSync(join(d, 'f.txt'), 'resolved\n');
@@ -145,7 +190,7 @@ describe('operations', () => {
   it('aborts and skips', async () => {
     const d = repo();
     const before = head(d);
-    await assert.rejects(op(d, { kind: 'merge', ref: 'refs/heads/topic', mode: 'auto', autostash: false }), {
+    await assert.rejects(op(d, { kind: 'merge', ref: 'refs/heads/topic', mode: 'ff', autostash: false }), {
       kind: 'conflict',
     });
     await op(d, { kind: 'abort', operation: 'merge' });

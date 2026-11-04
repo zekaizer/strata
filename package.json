@@ -111,6 +111,30 @@
         "enablement": "!strata.busy"
       },
       {
+        "command": "strata.cherryPick",
+        "title": "Cherry Pick",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.revert",
+        "title": "Revert",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.merge",
+        "title": "Merge into Current Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.rebase",
+        "title": "Rebase Current Branch onto This...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.commit.copyHash",
         "title": "Copy Commit Hash",
         "category": "Strata"
@@ -129,6 +153,12 @@
         "command": "strata.commit.copyPatch",
         "title": "Copy Patch",
         "category": "Strata"
+      },
+      {
+        "command": "strata.reset",
+        "title": "Reset Current Branch to Here...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
       },
       {
         "command": "strata.renameBranch",
@@ -152,6 +182,41 @@
         "title": "Delete Tag...",
         "category": "Strata",
         "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.continue",
+        "title": "Continue Operation",
+        "category": "Strata",
+        "icon": "$(check)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.abort",
+        "title": "Abort Operation...",
+        "category": "Strata",
+        "icon": "$(discard)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.skip",
+        "title": "Skip Commit...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.resolveConflicts",
+        "title": "Resolve Conflicts...",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.showStash",
+        "title": "Show Stash",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.keepStash",
+        "title": "Keep Stash",
+        "category": "Strata"
       },
       {
         "command": "strata.undo",
@@ -250,6 +315,46 @@
           "group": "2_checkout@3"
         },
         {
+          "command": "strata.cherryPick",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead && !strataMerge",
+          "group": "3_apply@1"
+        },
+        {
+          "command": "strata.revert",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataMerge",
+          "group": "3_apply@2"
+        },
+        {
+          "command": "strata.merge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "3_apply@3"
+        },
+        {
+          "command": "strata.merge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "2_apply@1"
+        },
+        {
+          "command": "strata.merge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "2_apply@1"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "3_apply@4"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "2_apply@2"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "2_apply@2"
+        },
+        {
           "command": "strata.commit.copyHash",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
           "group": "5_copy@1"
@@ -268,6 +373,11 @@
           "command": "strata.commit.copyPatch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
           "group": "5_copy@4"
+        },
+        {
+          "command": "strata.reset",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "6_reset@1"
         },
         {
           "command": "strata.renameBranch",
@@ -350,6 +460,22 @@
           "when": "false"
         },
         {
+          "command": "strata.cherryPick",
+          "when": "false"
+        },
+        {
+          "command": "strata.revert",
+          "when": "false"
+        },
+        {
+          "command": "strata.merge",
+          "when": "false"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "false"
+        },
+        {
           "command": "strata.commit.copyHash",
           "when": "false"
         },
@@ -363,6 +489,10 @@
         },
         {
           "command": "strata.commit.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.reset",
           "when": "false"
         },
         {
@@ -382,6 +512,30 @@
           "when": "false"
         },
         {
+          "command": "strata.operation.continue",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation"
+        },
+        {
+          "command": "strata.operation.abort",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation"
+        },
+        {
+          "command": "strata.operation.skip",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation && strata.operation != 'merge'"
+        },
+        {
+          "command": "strata.resolveConflicts",
+          "when": "false"
+        },
+        {
+          "command": "strata.showStash",
+          "when": "false"
+        },
+        {
+          "command": "strata.keepStash",
+          "when": "false"
+        },
+        {
           "command": "strata.undo",
           "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo"
         },
@@ -391,6 +545,21 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "strata.operation.continue",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation",
+          "group": "navigation@1"
+        },
+        {
+          "command": "strata.operation.abort",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation",
+          "group": "navigation@2"
+        },
+        {
+          "command": "strata.operation.skip",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation && strata.operation != 'merge'",
+          "group": "2_operation@1"
+        },
         {
           "command": "strata.undo",
           "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo",

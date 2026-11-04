@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
 import { canWrite, parseGitVersion, type GitVersion } from '../core/git-version.ts';
-import { DONE, gitTooOld } from '../core/wording.ts';
+import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../core/wording.ts';
 import { isCommitId } from '../git/details.ts';
+import { readUnmerged } from '../git/facts.ts';
 import { runGit } from '../git/run.ts';
+import { readOperationState } from '../git/state.ts';
 import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
 import { isRepoPath } from './controller.ts';
 import { fail, undoLast, type FlowEnv, type FlowHost } from './flow.ts';
@@ -18,6 +20,17 @@ import {
   deleteTag,
   renameBranch,
 } from './flows/refs.ts';
+import { resolveConflicts } from './flows/changes.ts';
+import {
+  abortOperation,
+  continueOperation,
+  merge,
+  pick,
+  rebase,
+  reset,
+  skipCommit,
+  sourceOf,
+} from './flows/history.ts';
 import { GraphPanel } from './panel.ts';
 import { parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
@@ -87,15 +100,46 @@ async function gitCanWrite(host: FlowHost): Promise<boolean> {
   return false;
 }
 
-/** A command that changes the repository; failures are shown by the graph, which refreshes when it was outdated. */
-const write = (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>) => async (ctx: MenuArg) => {
-  const host = panel().flowHost();
-  if (!(await gitCanWrite(host))) return;
-  try {
-    await flow(host, ctx);
-  } catch (e) {
-    await fail(host, e);
+/**
+ * While an operation is stopped or files are unmerged, other writes wait: says why and offers
+ * the way on. Resolves true when the write must not run.
+ */
+async function blocked(host: FlowHost): Promise<boolean> {
+  const state = await readOperationState(host.git, host.cwd);
+  if (state) {
+    const answer = await host.ui.confirm(operationInProgress(state.kind, state.step));
+    if (answer === 'continue') await continueOperation(host);
+    else if (answer === 'abort') await abortOperation(host);
+    return true;
   }
+  const unmerged = await readUnmerged(host.git, host.cwd);
+  if (unmerged.length === 0) return false;
+  if (await host.ui.confirm(conflictsInProgress(unmerged, unmerged.length))) await resolveConflicts(host, unmerged);
+  return true;
+}
+
+/**
+ * A command that changes the repository; failures are shown by the graph, which refreshes when it
+ * was outdated. Only `whileStopped` commands (the ways out of a stop) run while one is pending.
+ */
+const write =
+  (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>, opts: { whileStopped?: true } = {}) =>
+  async (ctx: MenuArg) => {
+    const host = panel().flowHost();
+    if (!(await gitCanWrite(host))) return;
+    try {
+      if (!opts.whileStopped && (await blocked(host))) return;
+      await flow(host, ctx);
+    } catch (e) {
+      await fail(host, e);
+    }
+  };
+
+/** A stash commit named by a banner button (`strataHash`). */
+const stashHash = (ctx: MenuArg): string => {
+  const hash = str(ctx?.['strataHash']);
+  if (!hash || !isCommitId(hash)) throw new Error('invalid stash id');
+  return hash;
 };
 
 /** A write command on a menu target of one of `kinds`. */
@@ -146,6 +190,23 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
   'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),
+
+  'strata.merge': on(['commit', 'branch', 'remoteBranch'], async (host, t) => merge(host, await sourceOf(host, t))),
+  'strata.rebase': on(['commit', 'branch', 'remoteBranch'], async (host, t) => rebase(host, await sourceOf(host, t))),
+  'strata.cherryPick': on(['commit'], (host, t) => pick(host, 'cherryPick', t.hash)),
+  'strata.revert': on(['commit'], (host, t) => pick(host, 'revert', t.hash)),
+  'strata.reset': on(['commit'], (host, t) => reset(host, t.hash)),
+  'strata.operation.continue': write(continueOperation, { whileStopped: true }),
+  'strata.operation.abort': write(abortOperation, { whileStopped: true }),
+  'strata.operation.skip': write(skipCommit, { whileStopped: true }),
+  'strata.resolveConflicts': async () => {
+    const host = panel().flowHost();
+    await resolveConflicts(host, await readUnmerged(host.git, host.cwd));
+  },
+  'strata.showStash': (ctx) => {
+    panel().flowHost().reveal(stashHash(ctx));
+  },
+  'strata.keepStash': (ctx) => panel().flowHost().leftovers.keep(stashHash(ctx)),
 
   'strata.undo': write(undoLast),
   'strata.showOutput': () => {

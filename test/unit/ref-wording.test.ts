@@ -18,6 +18,7 @@ import {
   refExists,
   renameInput,
   stashButtons,
+  stashLabel,
   staleTarget,
   switchConfirmation,
   tagMessageInput,
@@ -107,8 +108,8 @@ describe('wording of ref operations', () => {
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
     assert.equal(
-      popConflicted("Switched to 'topic'", ['a.txt'], 1),
-      "Switched to 'topic', but restoring your stashed changes conflicted in 1 file (a.txt). Your changes are safe in stash@{0}.",
+      popConflicted("Switched to 'topic'", ['a.txt'], 1, stashLabel(0, 'On main: autostash')),
+      'Switched to \'topic\', but restoring your stashed changes conflicted in 1 file (a.txt). Your changes are safe in stash@{0} ("On main: autostash").',
     );
     assert.equal(
       migrateConflicted("Switched to 'topic'", 2),

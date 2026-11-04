@@ -73,10 +73,39 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
+  'strata.cherryPick': {
+    title: 'Cherry Pick',
+    menus: [commit('3_apply@1', '!strataIsHead && !strataMerge')],
+    writes: true,
+  },
+  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2', '!strataMerge')], writes: true },
+  'strata.merge': {
+    title: 'Merge into Current Branch...',
+    menus: [
+      commit('3_apply@3', '!strataIsHead'),
+      { section: 'branch', group: '2_apply@1', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '2_apply@1' },
+    ],
+    writes: true,
+  },
+  'strata.rebase': {
+    title: 'Rebase Current Branch onto This...',
+    menus: [
+      commit('3_apply@4', '!strataIsHead'),
+      { section: 'branch', group: '2_apply@2', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '2_apply@2' },
+    ],
+    writes: true,
+  },
   'strata.commit.copyHash': { title: 'Copy Commit Hash', menus: [commit('5_copy@1')] },
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },
   'strata.commit.copySubject': { title: 'Copy Commit Subject', menus: [commit('5_copy@3')] },
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
+  'strata.reset': {
+    title: 'Reset Current Branch to Here...',
+    menus: [commit('6_reset@1', '!strataIsHead')],
+    writes: true,
+  },
 
   'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
   'strata.copyRefName': {
@@ -94,6 +123,28 @@ export const COMMANDS = {
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
 
+  'strata.operation.continue': {
+    title: 'Continue Operation',
+    palette: 'strata.operation',
+    titleBar: { group: 'navigation@1', when: 'strata.operation', icon: '$(check)' },
+    writes: true,
+  },
+  'strata.operation.abort': {
+    title: 'Abort Operation...',
+    palette: 'strata.operation',
+    titleBar: { group: 'navigation@2', when: 'strata.operation', icon: '$(discard)' },
+    writes: true,
+  },
+  'strata.operation.skip': {
+    title: 'Skip Commit...',
+    palette: "strata.operation && strata.operation != 'merge'",
+    titleBar: { group: '2_operation@1', when: "strata.operation && strata.operation != 'merge'" },
+    writes: true,
+  },
+  /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
+  'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
+  'strata.showStash': { title: 'Show Stash' },
+  'strata.keepStash': { title: 'Keep Stash' },
   'strata.undo': {
     title: 'Undo Last Operation',
     palette: 'strata.canUndo',

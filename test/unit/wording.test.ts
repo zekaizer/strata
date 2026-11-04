@@ -67,7 +67,10 @@ describe('wording', () => {
       'hard',
     );
     assert.match(r!.detail, /1 of them is on origin\/main; 'main' will be 1 behind it \(a pull brings it back\)\./);
-    assert.match(r!.detail, /Their changes and your uncommitted changes in 4 files are discarded\./);
+    assert.match(
+      r!.detail,
+      /Their changes are discarded\. Your uncommitted changes in 4 files: Stash Changes & Reset keeps them in the stash list; Discard Changes & Reset throws them away\./,
+    );
   });
 
   it('asks nothing for a reset that drops nothing and discards nothing', () => {

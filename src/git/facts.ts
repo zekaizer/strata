@@ -132,11 +132,19 @@ export const readConfigBool = (git: string, cwd: string, key: string): Promise<b
 export const readUnmerged = async (git: string, cwd: string): Promise<string[]> =>
   (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--'])).split('\0').filter((p) => p !== '');
 
-/** n in stash@{n} of the stash commit `hash` now; undefined once it is gone. */
-export async function readStashIndex(git: string, cwd: string, hash: string): Promise<number | undefined> {
-  const out = await optional(runGit(git, cwd, ['log', '--walk-reflogs', '--format=%H', 'refs/stash', '--']));
-  const index = (out ?? '').split('\n').indexOf(hash);
-  return index < 0 ? undefined : index;
+/** The stash commit `hash` now: n in stash@{n} and its reflog subject; undefined once it is gone. */
+export async function readStash(
+  git: string,
+  cwd: string,
+  hash: string,
+): Promise<{ hash: string; index: number; message: string } | undefined> {
+  const out = await optional(
+    runGit(git, cwd, ['log', '--walk-reflogs', '-z', '--format=%H%x00%gs', 'refs/stash', '--']),
+  );
+  const f = (out ?? '').split('\0');
+  for (let i = 0; i + 1 < f.length; i += 2)
+    if (f[i]!.replace(/^\n/, '') === hash) return { hash, index: i / 2, message: f[i + 1]! };
+  return undefined;
 }
 
 /** The stash commit of stash@{0}. */
@@ -183,4 +191,43 @@ export async function readBranchConfig(git: string, cwd: string, branch: string)
       return nl < 0 ? [entry, ''] : [entry.slice(0, nl), entry.slice(nl + 1)];
     })
     .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('.'));
+}
+
+/**
+ * What a rebase of HEAD onto `onto` replays: git drops merges (replaying the commits they
+ * brought in) and skips patches `onto` already has. `onUpstream`: replayed commits already on
+ * `upstream`, which would need a force push.
+ */
+export async function readRebaseCounts(
+  git: string,
+  cwd: string,
+  onto: string,
+  upstream: string | undefined,
+): Promise<{ replay: number; merges: number; onUpstream: number }> {
+  const replayed = ['--no-merges', '--cherry-pick', '--right-only', `${onto}...HEAD`];
+  const [replay, merges, notOnUpstream] = await Promise.all([
+    count(git, cwd, replayed),
+    count(git, cwd, ['--merges', `${onto}..HEAD`]),
+    upstream === undefined ? Promise.resolve(0) : count(git, cwd, [...replayed, '--not', upstream]),
+  ]);
+  return { replay, merges, onUpstream: upstream === undefined ? 0 : replay - notOnUpstream };
+}
+
+export const isShallow = async (git: string, cwd: string): Promise<boolean> =>
+  (await runGit(git, cwd, ['rev-parse', '--is-shallow-repository'])).trim() === 'true';
+
+/** Untracked (or ignored) files at paths `target` has and HEAD does not: a hard reset overwrites them. */
+export async function readUntrackedAt(git: string, cwd: string, target: string): Promise<string[]> {
+  const added = (
+    await runGit(git, cwd, ['diff', '--name-only', '-z', '--no-renames', '--diff-filter=A', 'HEAD', target, '--'])
+  )
+    .split('\0')
+    .filter((p) => p !== '');
+  const found: string[] = [];
+  for (let i = 0; i < added.length; i += 500) {
+    const chunk = added.slice(i, i + 500).map((p) => `:(literal)${p}`);
+    const out = await runGit(git, cwd, ['ls-files', '--others', '-z', '--', ...chunk]);
+    found.push(...out.split('\0').filter((p) => p !== ''));
+  }
+  return found;
 }

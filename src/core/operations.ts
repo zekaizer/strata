@@ -3,8 +3,8 @@ import type { OperationKind } from './repo-state.ts';
 /** Reset modes, in increasing order of what they throw away. */
 export type ResetMode = 'soft' | 'mixed' | 'keep' | 'hard';
 
-/** How a merge records the result. */
-export type MergeMode = 'auto' | 'noFastForward';
+/** How a merge records the result: fast-forward when it can, or always a merge commit. */
+export type MergeMode = 'ff' | 'noFastForward';
 
 /**
  * Every repository change Strata makes. Ids are validated commit ids, names pass refNameProblem,
@@ -25,16 +25,19 @@ export type Operation =
   | { kind: 'deleteTag'; name: string }
   /** `ref` as the merge commit's message should name it: a short ref name or a commit id. */
   | { kind: 'merge'; ref: string; mode: MergeMode; autostash: boolean }
+  /** `onto`: the commit id the confirmation named. */
   | { kind: 'rebase'; onto: string; autostash: boolean }
   | { kind: 'cherryPick'; commit: string }
   | { kind: 'revert'; commit: string }
   | { kind: 'reset'; commit: string; mode: ResetMode }
   | { kind: 'continue' | 'abort' | 'skip'; operation: OperationKind }
-  | { kind: 'stashPush'; message: string | undefined; includeUntracked: boolean }
+  /** `paths`: only these (a safety stash of exactly what an operation would overwrite). */
+  | { kind: 'stashPush'; message: string | undefined; includeUntracked: boolean; paths?: readonly string[] }
   | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
-  | { kind: 'fetch'; remote: string | undefined }
+  /** `unshallow`: the whole history of a shallow clone. */
+  | { kind: 'fetch'; remote: string | undefined; unshallow?: boolean }
   /**
    * Local `branch` to `dest`, a full ref on `remote` (the upstream's branch may have another name).
    * `forceWithLease`: the commit `dest` must still be at.
@@ -86,15 +89,25 @@ export function argv(op: Operation): string[] {
     case 'deleteTag':
       return ['tag', '--delete', op.name];
     case 'merge':
+      // Explicit, so merge.ff and branch.<b>.mergeOptions (--squash, --no-commit) never contradict the button.
       return [
         'merge',
         '--no-edit',
-        ...(op.mode === 'noFastForward' ? ['--no-ff'] : []),
+        '--commit',
+        '--no-squash',
+        op.mode === 'noFastForward' ? '--no-ff' : '--ff',
         ...autostash(op.autostash),
         op.ref,
       ];
     case 'rebase':
-      return ['rebase', ...autostash(op.autostash), op.onto];
+      // The confirmation names what a plain rebase does: no other branch moves, merges are dropped
+      // (their commits replayed one by one), and no fixup! commits are reordered. Unknown keys are ignored.
+      return [
+        ...['-c', 'rebase.updateRefs=false', '-c', 'rebase.rebaseMerges=false', '-c', 'rebase.autoSquash=false'],
+        'rebase',
+        ...autostash(op.autostash),
+        op.onto,
+      ];
     case 'cherryPick':
       return ['cherry-pick', op.commit];
     case 'revert':
@@ -115,6 +128,7 @@ export function argv(op: Operation): string[] {
         'push',
         ...(op.includeUntracked ? ['--include-untracked'] : []),
         ...(op.message === undefined ? [] : ['--message', op.message]),
+        ...(op.paths === undefined ? [] : ['--', ...op.paths.map((p) => `:(literal)${p}`)]),
       ];
     case 'stashApply':
       return ['stash', 'apply', stash(op.index)];
@@ -127,6 +141,7 @@ export function argv(op: Operation): string[] {
     case 'stashStore':
       return ['stash', 'store', '--message', op.message, op.commit];
     case 'fetch':
+      if (op.unshallow) return ['fetch', '--progress', '--unshallow', ...(op.remote === undefined ? [] : [op.remote])];
       return ['fetch', '--progress', ...(op.remote === undefined ? ['--all'] : [op.remote])];
     case 'push':
       return [

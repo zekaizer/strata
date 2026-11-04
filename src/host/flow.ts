@@ -53,10 +53,19 @@ export interface Undo {
   focus?: string;
 }
 
-/** What the extension gives every graph: the one runner, and the Ui (tests replace it). */
+/** What the extension gives every graph: the one runner, the Ui (tests replace it), workspace state. */
 export interface FlowEnv {
   readonly runner: OpRunner;
   ui: Ui;
+  readonly state: vscode.Memento;
+}
+
+/** Stash commits a leftover banner treats specially, kept in workspace state until they leave the stash list. */
+export interface Leftovers {
+  /** Strata saw restoring it conflict: never offer to restore it again. */
+  markRestoreConflicted(hash: string): Promise<void>;
+  /** The user chose to keep it. */
+  keep(hash: string): Promise<void>;
 }
 
 /** The graph a flow works on (implemented by GraphController). */
@@ -72,6 +81,9 @@ export interface FlowHost extends RunnerHost {
   /** Reports a result in the status bar and to screen readers. */
   done(message: string): void;
   setUndo(undo: Undo | undefined): void;
+  readonly leftovers: Leftovers;
+  /** Selects and opens a stash (or commit) row, loading history to find it. */
+  reveal(hash: string): void;
 }
 
 /** What a confirmation described: `rev` still points at `hash` (undefined: does not exist) when the operation starts. */

@@ -36,7 +36,7 @@ import {
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { finish, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
-import { changes, resolveConflicts, stashAround, warnRestoreConflict } from './changes.ts';
+import { changes, reportRestore, resolveConflicts, stashAround, type Restored } from './changes.ts';
 
 /** A move of HEAD: checkout of a branch or commit, or creating a branch and switching to it. */
 interface SwitchTo {
@@ -75,7 +75,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     );
     if (choice === undefined) return;
   }
-  let restored: 'restored' | 'conflicted' | undefined;
+  let restored: Restored | undefined;
   try {
     restored = await run(
       host,
@@ -83,7 +83,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
       (exec) =>
         choice === 'stash'
           ? stashAround(host, exec, autostashMessage('switch', `to ${s.to}`), () => exec(s.op(false)))
-          : exec(s.op(choice === 'migrate')).then(() => 'restored' as const),
+          : exec(s.op(choice === 'migrate')).then((): Restored => ({ kind: 'none' })),
       { expect },
     );
   } catch (e) {
@@ -95,8 +95,8 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   }
   if (restored === undefined) return;
   await finish(host, { message: s.done, focus: s.commit, ...(s.undo ? { undo: s.undo } : {}) });
-  if (restored === 'conflicted') await warnRestoreConflict(host, s.done);
-  else if (choice === 'migrate') {
+  await reportRestore(host, s.done, restored);
+  if (choice === 'migrate') {
     // switch --merge exits 0 even when it leaves conflicts.
     const paths = await readUnmerged(host.git, host.cwd);
     if (paths.length > 0)
@@ -272,7 +272,7 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
   if (!(await host.ui.confirm(deleteBranchConfirmation(ref.short, tip, unmerged, upstream?.name)))) return;
   // Where the branch hung off the current line, which stays in the graph.
   const forkPoint = await readMergeBase(host.git, host.cwd, 'HEAD', tip.hash);
-  let ran: string | undefined;
+  let ran: unknown;
   try {
     ran = await run(host, DOING.deletingBranch(ref.short), (exec) => exec({ kind: 'deleteBranch', name: ref.short }), {
       expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],

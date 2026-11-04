@@ -11,8 +11,8 @@ export interface RunnerHost {
   busy(label: string | undefined): void;
 }
 
-/** Runs one Operation and resolves with its stdout; a flow may run several within one `run`. */
-export type Exec = (op: Operation) => Promise<string>;
+/** Runs one Operation and resolves with its output; a flow may run several within one `run`. */
+export type Exec = (op: Operation) => Promise<{ stdout: string; stderr: string }>;
 
 /** A lock held by another git process (e.g. VS Code's autofetch) is retried once after this long. */
 const LOCK_RETRY_MS = 300;
@@ -81,13 +81,13 @@ export class OpRunner implements vscode.Disposable {
     op: Operation,
     signal: AbortSignal,
     onProgress: (p: { phase: string; percent: number }) => void,
-  ): Promise<string> {
+  ): Promise<{ stdout: string; stderr: string }> {
     for (let attempt = 0; ; attempt++) {
       this.output.info(`> ${commandLine(op)}`);
       try {
         const { stdout, stderr } = await runGitOp(host.git, host.cwd, argv(op), { signal, onProgress });
         if (stderr.trim()) this.output.info(stderr.trim());
-        return stdout;
+        return { stdout, stderr };
       } catch (e) {
         if (e instanceof GitOpError) {
           this.output.error([e.stdout.trim(), e.stderr.trim()].filter((s) => s !== '').join('\n') || e.message);

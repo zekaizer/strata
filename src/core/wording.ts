@@ -47,12 +47,25 @@ const OP_TITLE: Record<OperationKind, string> = {
 };
 
 /** The closing section of every confirmation that finds uncommitted changes. */
-export function dirtySection(dirty: DirtyFacts, choices: StashChoices, submodules: number): string {
+/**
+ * `overwritten`: for a hard reset, the untracked files at paths it restores (they would be
+ * overwritten, so the "stay in place" sentence would be false).
+ */
+export function dirtySection(
+  dirty: DirtyFacts,
+  choices: StashChoices,
+  submodules: number,
+  overwritten?: readonly string[],
+): string {
   const staged = dirty.staged > 0 ? ` (${dirty.staged} staged)` : '';
   return [
     `Uncommitted changes: ${plural(dirty.files, 'file')}${staged}.`,
     choices.explain,
-    'Untracked files are not stashed; they stay in place.',
+    overwritten === undefined
+      ? 'Untracked files are not stashed; they stay in place.'
+      : overwritten.length > 0
+        ? `${plural(overwritten.length, 'untracked file')} at paths the reset restores would be overwritten (${fileList(overwritten)}); stashing takes them too.`
+        : '',
     ...(submodules > 0
       ? [`Changes inside ${plural(submodules, 'submodule')} are not stashed (git never stashes them).`]
       : []),
@@ -82,13 +95,13 @@ const MODE_LINE: Record<ResetMode, (dirtyFiles: number) => string> = {
   keep: () => 'Your uncommitted changes are kept.',
   hard: (n) =>
     n > 0
-      ? `Their changes and your uncommitted changes in ${plural(n, 'file')} are discarded.`
+      ? `Their changes are discarded. Your uncommitted changes in ${plural(n, 'file')}: Stash Changes & Reset keeps them in the stash list; Discard Changes & Reset throws them away.`
       : 'Their changes are discarded.',
 };
 
-/** Asks only when commits leave the branch or work is discarded. */
-export function resetConfirmation(f: ResetFacts, mode: ResetMode): Confirmation<'reset'> | undefined {
-  if (f.dropped.length === 0 && !(mode === 'hard' && f.dirtyFiles > 0)) return undefined;
+/** Asks only when commits leave the branch or work is discarded, or when `ask` (changes need an answer). */
+export function resetConfirmation(f: ResetFacts, mode: ResetMode, ask = false): Confirmation<'reset'> | undefined {
+  if (!ask && f.dropped.length === 0 && !(mode === 'hard' && f.dirtyFiles > 0)) return undefined;
   const name = f.branch === undefined ? 'HEAD' : `'${f.branch}'`;
   const n = f.dropped.length;
   const moves =
@@ -313,9 +326,12 @@ export function deleteTagConfirmation(tag: string, at: CommitRef): Confirmation<
 export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
   `'${branch}' is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
 
-/** `done`: what the operation did; `paths`: the first of `count` conflicted files. */
-export const popConflicted = (done: string, paths: readonly string[], count: number): string =>
-  `${done}, but restoring your stashed changes conflicted in ${plural(count, 'file')} (${fileList(paths)}). Your changes are safe in stash@{0}.`;
+/** `done`: what the operation did; `paths`: the first of `count` conflicted files; `stash`: stashLabel(). */
+export const popConflicted = (done: string, paths: readonly string[], count: number, stash: string): string =>
+  `${done}, but restoring your stashed changes conflicted in ${plural(count, 'file')} (${fileList(paths)}). Your changes are safe in ${stash}.`;
+
+/** A stash as messages name it: its number goes stale with the next push, its message does not. */
+export const stashLabel = (index: number, message: string): string => `stash@{${index}} ("${message}")`;
 
 export const migrateConflicted = (done: string, count: number): string =>
   `${done}; your changes conflicted in ${plural(count, 'file')}.`;
@@ -350,3 +366,243 @@ export const DOING = {
 /** Run in Terminal could not quote the command for the terminal's shell. */
 export const commandCopied = (line: string): string =>
   `Strata can't quote this command safely for your terminal's shell, so it copied it instead: ${line}`;
+
+const OP_SENTENCE: Record<OperationKind, string> = {
+  rebase: 'Rebase',
+  merge: 'Merge',
+  cherryPick: 'Cherry pick',
+  revert: 'Revert',
+};
+
+export interface MergeFacts {
+  /** The source and the branch merged into, as sentences name them (quoted, or a short id / HEAD). */
+  src: string;
+  into: string;
+  /** The source commit, and how many commits the merge brings. */
+  short: string;
+  count: number;
+  canFastForward: boolean;
+}
+
+/**
+ * Clean: Fast-Forward or Create Merge Commit (merge commit first when merge.ff is false), or just
+ * Merge. Dirty: the stash `buttons`, merging as `mode` says.
+ */
+export function mergeConfirmation(
+  f: MergeFacts,
+  mergeFf: boolean | undefined,
+  dirty?: { section: string; buttons: { id: StashChoice; label: string }[]; mode: 'ff' | 'noFastForward' },
+): Confirmation<'ff' | 'noFastForward' | StashChoice> {
+  const commits = plural(f.count, 'commit');
+  const fastForwards = `${f.into} fast-forwards to ${f.short} (${commits}).`;
+  const records = `Creates a merge commit on ${f.into} with ${commits} from ${f.src}.`;
+  const message = `Merge ${f.src} into ${f.into}?`;
+  if (dirty)
+    return {
+      message,
+      detail: [f.canFastForward && dirty.mode === 'ff' ? fastForwards : records, dirty.section].join(' '),
+      buttons: dirty.buttons,
+    };
+  if (!f.canFastForward) return { message, detail: records, buttons: [{ id: 'ff', label: 'Merge' }] };
+  const both: { id: 'ff' | 'noFastForward'; label: string }[] = [
+    { id: 'ff', label: 'Fast-Forward' },
+    { id: 'noFastForward', label: 'Create Merge Commit' },
+  ];
+  return {
+    message,
+    detail: `${f.into} can fast-forward to ${f.short} (${commits}), or record a merge commit.`,
+    buttons: mergeFf === false ? both.reverse() : both,
+  };
+}
+
+export interface RebaseFacts {
+  branch: string;
+  onto: string;
+  ontoShort: string;
+  /** Commits git replays (merges dropped, patches already upstream skipped). */
+  replay: number;
+  merges: number;
+  /** Of the replayed commits, how many are on the upstream. */
+  onUpstream: number;
+  upstream: string | undefined;
+}
+
+export function rebaseConfirmation<B extends string>(
+  f: RebaseFacts,
+  section: string,
+  buttons: { id: B; label: string }[],
+): Confirmation<B> {
+  const them = f.onUpstream === 1 ? '1 of them is' : `${f.onUpstream} of them are`;
+  return {
+    message: `Rebase ${f.branch} onto ${f.onto}?`,
+    detail: [
+      `Replays ${plural(f.replay, 'commit')} of ${f.branch} on top of ${f.onto} (${f.ontoShort}).`,
+      ...(f.merges > 0
+        ? [
+            `${plural(f.merges, 'merge commit')} ${f.merges === 1 ? 'is' : 'are'} dropped; the commits they brought in are replayed one by one.`,
+          ]
+        : []),
+      ...(f.onUpstream > 0 && f.upstream ? [`${them} on ${f.upstream}: you'll need to force push afterwards.`] : []),
+      'Undo restores the original commits.',
+      section,
+    ]
+      .filter((s) => s !== '')
+      .join(' '),
+    buttons,
+  };
+}
+
+/** Cherry pick or revert of `c` on `onto` (a quoted branch, or HEAD). */
+export function pickConfirmation<B extends string>(
+  kind: 'cherryPick' | 'revert',
+  c: CommitRef,
+  onto: string,
+  detached: boolean,
+  section: string,
+  buttons: { id: B; label: string }[],
+): Confirmation<B> {
+  return {
+    message:
+      kind === 'cherryPick'
+        ? `Cherry pick ${c.short} "${c.subject}" onto ${onto}?`
+        : `Revert ${c.short} "${c.subject}" on ${onto}?`,
+    detail: [detached ? 'HEAD is detached: the new commit will be on no branch.' : '', section]
+      .filter((s) => s !== '')
+      .join(' '),
+    buttons,
+  };
+}
+
+export const alreadyContains = (into: string, what: string): string => `${into} already contains ${what}.`;
+export const alreadyBased = (branch: string, onto: string): string => `${branch} is already based on ${onto}.`;
+
+/** The reset modes in the order offered: git's default first. */
+export const RESET_MODES: readonly { mode: ResetMode; label: string; description: string }[] = [
+  { mode: 'mixed', label: 'Mixed', description: 'Keep their changes in your files, unstaged' },
+  { mode: 'soft', label: 'Soft', description: 'Keep their changes staged' },
+  {
+    mode: 'keep',
+    label: 'Keep',
+    description: 'Drop their changes; keep your uncommitted changes (stops if they touch the same files)',
+  },
+  { mode: 'hard', label: 'Hard', description: 'Discard their changes and your uncommitted changes' },
+];
+
+export const resetPick = (
+  branch: string,
+  target: CommitRef,
+  leaving: number,
+): { title: string; placeholder: string } => ({
+  title: `Reset ${branch} to ${target.short} "${target.subject}"`,
+  placeholder:
+    leaving > 0
+      ? `${plural(leaving, 'commit')} leave ${branch}. What happens to their changes?`
+      : 'How should the reset treat your files?',
+});
+
+/** `held`: where Strata stashed the uncommitted changes (stashLabel), when it did. */
+export function stoppedMessage(
+  kind: OperationKind,
+  step: { current: number; total: number } | undefined,
+  subject: string | undefined,
+  conflicts: readonly string[],
+  count: number,
+  held: string | undefined,
+): string {
+  return [
+    `${OP_SENTENCE[kind]} stopped${step ? ` at ${step.current} of ${step.total}` : ''}${subject === undefined ? '' : ` ("${subject}")`} with conflicts in ${plural(count, 'file')} (${fileList(conflicts)}).`,
+    ...(held === undefined ? [] : [`Your uncommitted changes are in ${held}.`]),
+  ].join(' ');
+}
+
+export const abortButton = (kind: OperationKind): string => `Abort ${OP_TITLE[kind]}...`;
+
+/** Continue while files still have conflicts. */
+export function stillConflicted(paths: readonly string[], count: number): Confirmation<'scm'> {
+  return {
+    message: `${plural(count, 'file')} still ${count === 1 ? 'has' : 'have'} conflicts: ${fileList(paths)}.`,
+    detail: 'Resolve and stage them first.',
+    buttons: [{ id: 'scm', label: 'Open Source Control' }],
+    level: 'info',
+  };
+}
+
+export function skipConfirmation(c: CommitRef, branch: string): Confirmation<'skip'> {
+  return {
+    message: `Skip ${c.short} "${c.subject}"?`,
+    detail: `Its changes won't be in ${branch}.`,
+    buttons: [{ id: 'skip', label: 'Skip Commit' }],
+  };
+}
+
+/** A write while an operation is stopped. */
+export function operationInProgress(
+  kind: OperationKind,
+  step: { current: number; total: number } | undefined,
+): Confirmation<'continue' | 'abort'> {
+  return {
+    message: `A ${OP_NAME[kind]} is in progress${step ? ` (stopped at ${step.current} of ${step.total})` : ''}.`,
+    detail: 'Finish or abort it before starting another operation.',
+    buttons: [
+      { id: 'continue', label: 'Continue' },
+      { id: 'abort', label: abortButton(kind) },
+    ],
+    level: 'info',
+  };
+}
+
+/** A write while files are unmerged and no operation is in progress. */
+export function conflictsInProgress(paths: readonly string[], count: number): Confirmation<'resolve'> {
+  return {
+    message: `${plural(count, 'file')} ${count === 1 ? 'has' : 'have'} unresolved conflicts: ${fileList(paths)}.`,
+    detail: 'Resolve them before starting another operation.',
+    buttons: [{ id: 'resolve', label: 'Resolve...' }],
+    level: 'info',
+  };
+}
+
+/** A shallow clone lacks the commits an operation needs. */
+export function shallowConfirmation(a: string, b: string): Confirmation<'unshallow'> {
+  return {
+    message: `This clone is shallow: ${a} and ${b} have no common commit in it.`,
+    detail: 'Fetch the full history first, then try again.',
+    buttons: [{ id: 'unshallow', label: 'Fetch Full History' }],
+  };
+}
+
+/** What a finished history operation did. */
+export const HISTORY_DONE = {
+  fastForwarded: (into: string, short: string): string => `Fast-forwarded ${into} to ${short}`,
+  merged: (src: string, into: string): string => `Merged ${src} into ${into}`,
+  rebased: (branch: string, onto: string, count: number): string =>
+    `Rebased ${branch} onto ${onto} (${plural(count, 'commit')})`,
+  picked: (short: string, onto: string): string => `Cherry-picked ${short} onto ${onto}`,
+  reverted: (short: string): string => `Reverted ${short}`,
+  reset: (branch: string, short: string, stash: string | undefined): string =>
+    `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
+  continued: (kind: OperationKind): string => `Finished the ${OP_NAME[kind]}`,
+  aborted: (kind: OperationKind): string => `Aborted the ${OP_NAME[kind]}`,
+  skipped: (short: string): string => `Skipped ${short}`,
+};
+
+export const HISTORY_DOING = {
+  merging: (src: string, into: string): string => `Merging ${src} into ${into}`,
+  rebasing: (branch: string, onto: string): string => `Rebasing ${branch} onto ${onto}`,
+  picking: (short: string): string => `Cherry picking ${short}`,
+  reverting: (short: string): string => `Reverting ${short}`,
+  resetting: (branch: string, short: string): string => `Resetting ${branch} to ${short}`,
+  continuing: (kind: OperationKind): string => `Continuing the ${OP_NAME[kind]}`,
+  aborting: (kind: OperationKind): string => `Aborting the ${OP_NAME[kind]}`,
+  skipping: (short: string): string => `Skipping ${short}`,
+  fetchingHistory: 'Fetching the full history',
+};
+
+/** Restoring stashed changes after `done` applied only part of them (git kept the stash). */
+export const popPartial = (done: string, stash: string): string =>
+  `${done}, but only part of your stashed changes came back (git could not restore some files). The rest is safe in ${stash}.`;
+
+/** git refused to restore stashed changes after `done`; nothing was applied. */
+export const popRefused = (done: string, reason: string, stash: string): string =>
+  `${done}, but git could not restore your stashed changes: ${reason} They're safe in ${stash}.`;
+
+export const OPEN_SCM = 'Open Source Control View';

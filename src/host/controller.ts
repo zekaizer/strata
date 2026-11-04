@@ -2,7 +2,7 @@ import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { OperationState } from '../core/repo-state.ts';
+import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
@@ -17,7 +17,9 @@ import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import { setContext } from './context.ts';
-import type { FlowEnv, FlowHost, FlowSettings, Undo } from './flow.ts';
+import { leftoverOf } from '../core/autostash.ts';
+import { readUnmerged } from '../git/facts.ts';
+import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
 
 const REFRESH_DEBOUNCE_MS = 400;
@@ -27,6 +29,10 @@ const SLOW_FIRST_PAGE_MS = 2000;
 const GRAPH_UPDATE_DELAY_MS = 3000;
 /** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
 const LARGE_PATCH_BYTES = 4 << 20;
+
+/** workspaceState keys of the Leftovers sets. */
+const RESTORE_CONFLICTED = 'strata.restoreConflicted';
+const KEPT = 'strata.keptStashes';
 
 const AUTOSTASH: readonly string[] = ['gitConfig', 'always', 'never'] satisfies AutostashSetting[];
 
@@ -47,8 +53,8 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private snapshot: RefSnapshot | undefined;
   private stashes: StashEntry[] = [];
   private stashCache = stashCache();
-  /** The operation in progress the graph was last told about. */
-  private operation: OperationState | undefined;
+  /** What the graph was last told is in progress or left behind. */
+  private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
   private undoRecord: Undo | undefined;
   private running: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
@@ -216,7 +222,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     const repo = this.repo;
     if (!repo) {
       this.post({ type: 'noRepository' });
-      this.operation = undefined;
+      this.repoState = undefined;
       await setContext('strata.operation', '');
       return;
     }
@@ -257,12 +263,50 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private async syncRepoState(force: boolean): Promise<void> {
     const repo = this.repo;
     if (!repo) return;
-    const operation = await readOperationState(this.api.git.path, repo.rootUri.fsPath).catch(() => undefined);
+    const cwd = repo.rootUri.fsPath;
+    const [operation, unmerged] = await Promise.all([
+      readOperationState(this.api.git.path, cwd).catch(() => undefined),
+      readUnmerged(this.api.git.path, cwd).catch(() => []),
+    ]);
     if (repo !== this.repo || this.disposed) return;
-    if (!force && JSON.stringify(operation) === JSON.stringify(this.operation)) return;
-    this.operation = operation;
-    this.post({ type: 'repoState', operation, leftover: undefined });
+    const listed = new Set(this.stashes.map((s) => s.hash));
+    const [restoreConflicted, kept] = await Promise.all([
+      this.prune(RESTORE_CONFLICTED, listed),
+      this.prune(KEPT, listed),
+    ]);
+    // A running flow's own stash is not a leftover.
+    const leftover =
+      this.running === undefined
+        ? leftoverOf({ operation: operation !== undefined, stashes: this.stashes, unmerged, restoreConflicted, kept })
+        : undefined;
+    const state = { operation, leftover };
+    if (!force && JSON.stringify(state) === JSON.stringify(this.repoState)) return;
+    this.repoState = state;
+    this.post({ type: 'repoState', operation, leftover });
     await setContext('strata.operation', operation?.kind ?? '');
+  }
+
+  /** A workspace-state set of stash commits, without those no longer in the stash list. */
+  private async prune(key: string, listed: ReadonlySet<string>): Promise<Set<string>> {
+    const stored = this.env.state.get<string[]>(key) ?? [];
+    const kept = stored.filter((h) => listed.has(h));
+    if (kept.length !== stored.length) await this.env.state.update(key, kept);
+    return new Set(kept);
+  }
+
+  readonly leftovers: Leftovers = {
+    markRestoreConflicted: (hash) => this.addTo(RESTORE_CONFLICTED, hash),
+    keep: (hash) => this.addTo(KEPT, hash),
+  };
+
+  private async addTo(key: string, hash: string): Promise<void> {
+    const stored = this.env.state.get<string[]>(key) ?? [];
+    if (!stored.includes(hash)) await this.env.state.update(key, [...stored, hash]);
+    await this.syncRepoState(false);
+  }
+
+  reveal(hash: string): void {
+    this.post({ type: 'reveal', hash });
   }
 
   /** With strata.keepCommitGraphUpdated, adds new commits to the repository's commit-graph after a change. */

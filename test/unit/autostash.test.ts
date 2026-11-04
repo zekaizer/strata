@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveStashChoices, type DirtyFacts } from '../../src/core/autostash.ts';
+import { leftoverOf, resolveStashChoices, type DirtyFacts } from '../../src/core/autostash.ts';
 
 const clean: DirtyFacts = { files: 0, staged: 0, overlap: false };
 const dirty: DirtyFacts = { files: 2, staged: 0, overlap: false };
@@ -60,5 +60,42 @@ describe('resolveStashChoices', () => {
     assert.equal(hard.mechanism, 'safety');
     assert.deepEqual(resolveStashChoices('resetKeep', dirty, 'never', off).choices, []);
     assert.deepEqual(resolveStashChoices('resetKeep', overlapping, 'never', off).choices, ['stash']);
+  });
+});
+
+describe('leftoverOf', () => {
+  const stash = (index: number, message: string) => ({ hash: `${index}`.repeat(40), index, message });
+  const none = new Set<string>();
+  const base = { operation: false, unmerged: [], restoreConflicted: none, kept: none };
+
+  it('names nothing while an operation holds the changes', () => {
+    const stashes = [stash(0, 'On main: Strata autostash: cherry pick abc1234')];
+    assert.equal(leftoverOf({ ...base, operation: true, stashes, unmerged: ['a'] }), undefined);
+  });
+
+  it('reports a restore Strata saw conflict, first, with its files', () => {
+    const stashes = [stash(0, 'autostash'), stash(1, 'On main: Strata autostash: switch to x')];
+    const l = leftoverOf({ ...base, stashes, unmerged: ['a.ts'], restoreConflicted: new Set([stashes[0]!.hash]) });
+    assert.deepEqual(l, { kind: 'restoreConflicted', stash: { hash: stashes[0]!.hash, index: 0 }, files: ['a.ts'] });
+  });
+
+  it('reports a Strata stash nobody restored, unless the user kept it', () => {
+    const stashes = [stash(0, 'On main: wip'), stash(1, 'On main: Strata autostash: cherry pick abc1234')];
+    assert.deepEqual(leftoverOf({ ...base, stashes }), {
+      kind: 'pendingStash',
+      stash: { hash: stashes[1]!.hash, index: 1 },
+      operation: 'cherry pick',
+    });
+    assert.equal(leftoverOf({ ...base, stashes, kept: new Set([stashes[1]!.hash]) }), undefined);
+  });
+
+  it("reports unmerged files nobody resolves, naming git's own autostash without advising to drop it", () => {
+    const stashes = [stash(0, 'On main: wip'), stash(1, 'autostash')];
+    assert.deepEqual(leftoverOf({ ...base, stashes, unmerged: ['a.ts', 'b.ts'] }), {
+      kind: 'unmerged',
+      files: ['a.ts', 'b.ts'],
+      count: 2,
+      autostash: { hash: stashes[1]!.hash, index: 1 },
+    });
   });
 });
