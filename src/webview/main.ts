@@ -182,6 +182,9 @@ class App {
     (hash) => {
       this.selectHash(hash);
     },
+    () => {
+      this.scroller.focus({ preventScroll: true });
+    },
   );
   /** What the banner last said aloud: a new stop or leftover, not a subject that arrived later. */
   private bannerSaid = '';
@@ -261,7 +264,7 @@ class App {
     );
     this.stashButton.hidden = true;
     this.stashButton.addEventListener('click', () => {
-      vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
+      this.pickStash();
     });
     this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
@@ -441,6 +444,9 @@ class App {
       case 'reveal':
         this.reveal(m.hash);
         break;
+      case 'pickStash':
+        this.pickStash();
+        break;
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
         this.markOpenedFile(m.path);
@@ -513,12 +519,13 @@ class App {
     focus?: string,
   ): void {
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
-    // scroll position too when the history itself is the same view.
+    // scroll position too when the history itself is the same view. A row of a stash that is gone
+    // hands both to the row that takes its place.
     if (this.restore === undefined && this.repo?.root === repo.root) {
       const sameView = JSON.stringify(options) === JSON.stringify(this.options);
       this.restore = {
-        selectedHash: this.selectedHash(),
-        scrollAnchor: sameView ? this.scrollAnchor() : undefined,
+        selectedHash: this.successor(this.selected, stashes),
+        scrollAnchor: sameView ? this.scrollAnchor(stashes) : undefined,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
         expanded: this.expanded,
         // What was in the history before a reload is within what was loaded; past one more page, it is gone.
@@ -648,12 +655,27 @@ class App {
     }
   }
 
-  /** The row at the top of the view and the offset into it; undefined with no rows. */
-  private scrollAnchor(): SavedState['scrollAnchor'] {
+  /**
+   * The row at the top of the view and the offset into it; undefined with no rows. With `stashes`,
+   * a stash row they lack is named by its successor.
+   */
+  private scrollAnchor(stashes = this.stashes): SavedState['scrollAnchor'] {
     const top = this.scroller.scrollTop;
     const index = Math.min(this.rowFloor(top), this.list.length - 1);
-    const row = this.list[index];
-    return row && { hash: rowHash(row), offset: top - this.rowTop(index) };
+    const hash = this.successor(index, stashes);
+    return hash === undefined ? undefined : { hash, offset: top - this.rowTop(index) };
+  }
+
+  /**
+   * Hash of row `index`, or, when it is a stash `stashes` no longer has, of the row that takes its
+   * place: the next stash on that commit, else the commit.
+   */
+  private successor(index: number, stashes: readonly StashEntry[]): string | undefined {
+    for (let i = index; i >= 0 && i < this.list.length; i++) {
+      const row = this.list[i]!;
+      if (row.kind === 'commit' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
+    }
+    return undefined;
   }
 
   private setStashes(stashes: StashEntry[]): void {
@@ -694,6 +716,11 @@ class App {
     this.stashButton.querySelector('.stash-count-narrow')!.textContent = `${n}${hidden > 0 ? '•' : ''}`;
     this.stashButton.title = `${label}. Show Stashes`;
     this.stashButton.setAttribute('aria-label', this.stashButton.title);
+  }
+
+  /** Opens Show Stashes, telling the host which stash rows are drawn and why the others are not. */
+  private pickStash(): void {
+    vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
   }
 
   /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */
@@ -1172,12 +1199,18 @@ class App {
     e.preventDefault();
     e.stopPropagation();
     if (!e.shiftKey) this.copyHash(rowHash(row));
-    // A stash's patch is not a commit's (its untracked files); there is no command for it yet.
     else if (row.kind === 'commit')
       vscode.postMessage({
         type: 'menuCommand',
         command: 'strata.commit.copyPatch',
         context: { strataHash: row.commit.hash },
+      });
+    // A stash's patch is not a commit's: it has the untracked files too.
+    else
+      vscode.postMessage({
+        type: 'menuCommand',
+        command: 'strata.stash.copyPatch',
+        context: { webviewSection: 'stash', strataHash: row.stash.hash },
       });
     return true;
   }

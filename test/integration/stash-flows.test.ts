@@ -1,15 +1,17 @@
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { flowSuite, menu, run } from './flow-helpers.ts';
-import { git, workspaceRoot } from './helpers.ts';
+import { flowSuite, menu, reload, run } from './flow-helpers.ts';
+import { git, waitFor, workspaceRoot } from './helpers.ts';
+import { gitRetry } from './repo-snapshot.ts';
 
 const notes = () => readFileSync(join(workspaceRoot(), 'NOTES.md'), 'utf8');
 const stashMenu = (hash: string) => menu({ webviewSection: 'stash', strataHash: hash, strataSubject: '' });
 
 describe('stash operations', () => {
-  const { ui } = flowSuite();
+  const { panel, ui } = flowSuite();
 
   it('says when there is nothing to stash', async () => {
     await run('strata.stash.push');
@@ -41,6 +43,61 @@ describe('stash operations', () => {
     assert.equal(git('stash', 'list'), '');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'refs/stash'), again, 'the same stash is back');
+  });
+
+  it('selects the row that takes the place of a popped or dropped stash, and loads no more history', async () => {
+    // HEAD on 400 commits more than branchy has, so the history takes more than one page.
+    const main = git('rev-parse', 'main');
+    const stream = Array.from({ length: 400 }, (_, i) => {
+      const message = `Deep ${i}`;
+      const from = i === 0 ? `from ${main}\n` : '';
+      return `commit refs/heads/strata-deep\ncommitter Ada Lovelace <ada@example.com> ${1_700_010_000 + i * 60} +0000\ndata ${message.length}\n${message}\n${from}\n`;
+    }).join('');
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
+    await gitRetry('switch', '--quiet', 'strata-deep');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'older\n');
+    await gitRetry('stash', 'push', '--quiet');
+    const older = git('rev-parse', 'refs/stash');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'newer\n');
+    await gitRetry('stash', 'push', '--quiet');
+    const newer = git('rev-parse', 'refs/stash');
+    await reload(panel());
+    await panel().simulate({ kind: 'scrollToRow', index: 0 });
+    await waitFor('both stash rows at the top', async () => {
+      const p = await panel().probe();
+      return p.scrollTop === 0 && p.rowHashes[0] === newer && p.rowHashes[1] === older;
+    });
+    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await waitFor('stash details', async () => (await panel().probe()).detailsShown === newer);
+
+    const pages: { generation: number; count: number }[] = [];
+    const listening = panel().onDidReceiveMessage((m) => {
+      if (m.type === 'loadMore') pages.push(m);
+    });
+    /** The graph reloaded after `action`, once it restored its selection or gave up looking for it. */
+    const after = async (action: () => Promise<unknown>) => {
+      const before = (await panel().probe()).generation;
+      await action();
+      return waitFor('reloaded', async () => {
+        const p = await panel().probe();
+        return p.generation > before && (p.selected !== undefined || p.done) && p;
+      });
+    };
+    try {
+      const popped = await after(() => run('strata.stash.pop', stashMenu(newer)));
+      assert.equal(popped.selected, older, 'the next stash on that commit');
+      assert.equal(pages.filter((m) => m.generation === popped.generation).length, 1, 'the first page only');
+      assert.doesNotMatch(popped.announced, /is not in this view$/);
+      await waitFor('its details', async () => (await panel().probe()).detailsShown === older);
+
+      ui.press('Drop Stash');
+      const dropped = await after(() => run('strata.stash.drop', stashMenu(older)));
+      assert.equal(dropped.selected, git('rev-parse', 'HEAD'), 'the commit it was made on');
+      assert.equal(pages.filter((m) => m.generation === dropped.generation).length, 1, 'the first page only');
+      assert.doesNotMatch(dropped.announced, /is not in this view$/);
+    } finally {
+      listening.dispose();
+    }
   });
 
   it('tells a pop that conflicts from one that worked, and keeps the stash', async () => {

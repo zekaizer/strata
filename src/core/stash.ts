@@ -66,10 +66,15 @@ const BRANCH = /^(?:WIP on|On) ([^:]+): /;
 /** The commit a stash's row is drawn above. */
 export const anchorOf = (s: StashEntry): string => (s.anchor.kind === 'tip' ? s.anchor.tip : s.base);
 
-/** Stashes by the commit their rows are drawn above, stash@{0} first. */
+/**
+ * Stashes by the commit their rows are drawn above: those displaced there first, then those made
+ * on it, which sit right above it so their spine runs unbroken into its node. Each group is
+ * stash@{0} first.
+ */
 export function anchoredAt(stashes: readonly StashEntry[]): Map<string, StashEntry[]> {
+  const displaced = (s: StashEntry) => (s.anchor.kind === 'tip' ? 0 : 1);
   const map = new Map<string, StashEntry[]>();
-  for (const s of [...stashes].sort((a, b) => a.index - b.index)) {
+  for (const s of [...stashes].sort((a, b) => displaced(a) - displaced(b) || a.index - b.index)) {
     const list = map.get(anchorOf(s));
     if (list) list.push(s);
     else map.set(anchorOf(s), [s]);
@@ -85,7 +90,7 @@ export type ListRow =
 export const rowHash = (r: ListRow): string => (r.kind === 'commit' ? r.commit.hash : r.stash.hash);
 
 /**
- * Rows of one page: each commit, preceded by the stashes drawn above it (stash@{0} first).
+ * Rows of one page: each commit, preceded by the stashes drawn above it, in anchoredAt's order.
  * Looks at nothing but the page and the map, so pages can be interleaved one at a time.
  */
 export function interleave(

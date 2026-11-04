@@ -74,7 +74,8 @@ describe('operation banner', () => {
     await waitFor('commit selected', async () => (await panel.probe()).selected === git('rev-parse', 'strata-topic~1'));
   });
 
-  it('says what Continue does once the conflict is resolved', async () => {
+  it('says what Continue does once the conflict is resolved, and keeps focus on the button that had it', async () => {
+    await panel.simulate({ kind: 'focus', selector: '.banner-button:last-child' });
     write('resolved\n');
     await gitRetry('add', 'conflict.txt');
     const s = await banner('rebaseResolved');
@@ -83,10 +84,16 @@ describe('operation banner', () => {
       'Conflicts resolved. Continue finishes "Topic one" and replays the remaining 1 commit.',
     );
     assert.deepEqual(s.banner.buttons, ['Continue', 'Abort...']);
+    assert.equal(s.focused, 'banner-button', 'Abort..., not the primary Continue');
   });
 
-  it('goes away when the rebase is aborted', async () => {
+  it('goes away when the rebase is aborted, handing focus to the list', async () => {
+    await panel.simulate({ kind: 'focus', selector: '.banner-button.primary' });
     await gitRetry('rebase', '--abort');
-    await waitFor('no banner', async () => (await panel.probe()).banner === undefined);
+    const s = await waitFor('no banner', async () => {
+      const p = await panel.probe();
+      return p.banner === undefined && p;
+    });
+    assert.equal(s.focused, 'scroller');
   });
 });

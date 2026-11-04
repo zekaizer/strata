@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
+import type { StashShown } from '../../src/core/stash.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { addBranchyStashes, storeStash } from '../fixtures/stashes.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
@@ -134,6 +135,22 @@ describe('stash rows', () => {
     await panel.simulate({ kind: 'key', key: 'Escape' });
   });
 
+  it("copies the selected stash's patch, untracked files included, with Ctrl+Shift+C", async () => {
+    const p = await probeAll();
+    await panel.simulate({ kind: 'clickRow', index: rowOf(p, stash[2]!) });
+    await waitFor('stash selected', async () => (await panel.probe()).selected === stash[2]);
+    await vscode.env.clipboard.writeText('');
+    const mod = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+    await panel.simulate({ kind: 'key', key: 'C', shiftKey: true, ...mod });
+    const patch = await waitFor(
+      'a patch on the clipboard',
+      async () => (await vscode.env.clipboard.readText()) || false,
+    );
+    assert.match(patch, /^diff --git a\/src\/ranking\.ts b\/src\/ranking\.ts$/m);
+    assert.match(patch, /^diff --git a\/notes\/ranking-ideas\.md b\/notes\/ranking-ideas\.md$/m);
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+  });
+
   it('keeps a selected stash selected across a reload', async () => {
     const p = await probeAll();
     await panel.simulate({ kind: 'clickRow', index: rowOf(p, stash[3]!) });
@@ -225,6 +242,28 @@ describe('stash rows', () => {
     await panel.simulate({ kind: 'click', selector: '.stash-button' });
   }
 
+  it('asks the graph which stash rows it draws when Show Stashes runs from the Command Palette', async () => {
+    const answers: Record<string, StashShown>[] = [];
+    const listening = panel.onDidReceiveMessage((m) => {
+      if (m.type === 'pickStash') answers.push(m.shown);
+    });
+    try {
+      void vscode.commands.executeCommand('strata.showStashes');
+      const [shown] = await waitFor('the graph to answer', () => answers.length > 0 && answers);
+      assert.deepEqual(shown, {
+        [stash[0]!]: 'drawn',
+        [stash[1]!]: 'drawn',
+        [stash[2]!]: 'drawn',
+        [stash[3]!]: 'drawn',
+        [stash[4]!]: 'notInView',
+      });
+    } finally {
+      listening.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+    }
+  });
+
+  // Show Stashes lists stash@{1} (on main, the current branch), then stash@{0}, {2}, {3} and {4}.
   it('opens a stash picked in Show Stashes, showing hidden stash rows again', async () => {
     await toggleStashRows();
     await waitFor('stash rows hidden', async () => !(await panel.probe()).options.showStashes);

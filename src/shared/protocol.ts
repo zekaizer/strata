@@ -48,6 +48,8 @@ export type HostToWebview =
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
+  /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
+  | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
   | { type: 'busy'; label: string | undefined }
   /**
