@@ -9,24 +9,31 @@ export class BannerView {
   readonly element = el('section', 'banner');
   private readonly run: (action: BannerAction) => void;
   private readonly select: (hash: string) => void;
+  /** Takes the focus the banner had when it goes away, so the keyboard does not land on nothing. */
+  private readonly leave: () => void;
   private shown = '';
 
-  constructor(run: (action: BannerAction) => void, select: (hash: string) => void) {
+  constructor(run: (action: BannerAction) => void, select: (hash: string) => void, leave: () => void) {
     this.run = run;
     this.select = select;
+    this.leave = leave;
     this.element.hidden = true;
     this.element.setAttribute('role', 'region');
   }
 
-  /** Renders only when the banner changed, so a focused button keeps focus. */
+  /**
+   * Renders only when the banner changed. Focus inside it stays on the button with the same text,
+   * else moves to the first action, and leaves with the banner.
+   */
   show(banner: Banner | undefined): void {
     const shown = JSON.stringify(banner ?? null);
     if (shown === this.shown) return;
     this.shown = shown;
-    const hadFocus = this.element.contains(document.activeElement);
+    const focused = this.element.contains(document.activeElement) ? document.activeElement : null;
     this.element.hidden = banner === undefined;
     if (!banner) {
       this.element.replaceChildren();
+      if (focused) this.leave();
       return;
     }
     this.element.classList.toggle('warning', banner.warning);
@@ -58,7 +65,9 @@ export class BannerView {
     });
     text.title = text.textContent;
     this.element.replaceChildren(icon, text, actions);
-    if (hadFocus) actions.querySelector('button')?.focus();
+    if (!focused) return;
+    const same = [...this.element.querySelectorAll('button')].find((b) => b.textContent === focused.textContent);
+    (same ?? actions.querySelector('button'))?.focus();
   }
 
   /** The banner's sentence as read: links by their text. */

@@ -182,6 +182,9 @@ class App {
     (hash) => {
       this.selectHash(hash);
     },
+    () => {
+      this.scroller.focus({ preventScroll: true });
+    },
   );
   /** What the banner last said aloud: a new stop or leftover, not a subject that arrived later. */
   private bannerSaid = '';
