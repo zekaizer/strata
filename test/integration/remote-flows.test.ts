@@ -73,6 +73,38 @@ describe('remote operations', () => {
     }
   });
 
+  it('refuses the force push when the remote moved after the confirmation read it', async () => {
+    await publish();
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    const theirs = (subject: string) => {
+      writeFileSync(join(other, 'theirs.txt'), `${subject}\n`);
+      execFileSync('git', [...IDENTITY, '-C', other, 'add', '.']);
+      execFileSync('git', [...IDENTITY, '-C', other, 'commit', '--quiet', '-m', subject]);
+      execFileSync('git', ['-C', other, 'push', '--quiet', 'origin', 'strata-pub']);
+      return execFileSync('git', ['-C', other, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    };
+    theirs('Their fix');
+    const mine = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Mine');
+    git('update-ref', 'refs/heads/strata-pub', mine);
+    await reload(panel());
+
+    const config = vscode.workspace.getConfiguration('git');
+    await config.update('allowForcePush', true, vscode.ConfigurationTarget.Global);
+    try {
+      let newest = '';
+      ui.press('Force Push (With Lease)...', 'Force Push').meanwhile(() => {
+        newest = theirs('Their second fix');
+      });
+      await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+      assert.match(ui.of('confirm')[1]?.detail ?? '', /\(newest "Their fix"\)/);
+      assert.match(errors()[0]?.message ?? '', /\[rejected\].*\(stale info\)/);
+      assert.equal(remote('rev-parse', 'strata-pub'), newest);
+    } finally {
+      await config.update('allowForcePush', undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
   it('asks before pushing to an upstream of another name, offering a branch of its own first', async () => {
     await publish();
     git('branch', '--track', 'strata-fix', 'origin/strata-pub');
