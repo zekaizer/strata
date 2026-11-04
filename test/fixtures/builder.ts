@@ -15,7 +15,7 @@ interface CommitSpec {
 }
 
 const SCRATCH = 'refs/strata-fixture/scratch';
-const EPOCH = 1_700_000_000; // 2023-11-14T22:13:20Z, fixed so object ids are stable.
+export const EPOCH = 1_700_000_000; // 2023-11-14T22:13:20Z, fixed so object ids are stable.
 
 /**
  * Builds a repository history in memory and materializes it with
@@ -28,6 +28,7 @@ export class RepoBuilder {
   private clock = 0;
   private head = 'refs/heads/main';
   private readonly remoteNames: string[] = [];
+  private readonly afterWrites: ((dir: string) => void)[] = [];
 
   /**
    * Adds a commit on `branch`. Parents default to the branch tip; pass
@@ -79,6 +80,12 @@ export class RepoBuilder {
   /** Configures a remote (no URL is needed for refs/remotes/<name>/* to mean something to git). */
   remote(name: string): this {
     this.remoteNames.push(name);
+    return this;
+  }
+
+  /** Runs `step` on the written repository, after the history and refs are in place. */
+  afterWrite(step: (dir: string) => void): this {
+    this.afterWrites.push(step);
     return this;
   }
 
@@ -153,6 +160,7 @@ export class RepoBuilder {
     git(['symbolic-ref', 'HEAD', this.head]);
     git(['checkout', '--quiet', '--force']);
     for (const r of this.remoteNames) git(['remote', 'add', r, `https://example.com/${r}.git`]);
+    for (const step of this.afterWrites) step(dir);
   }
 }
 
