@@ -145,6 +145,7 @@ class App {
   /** Graph and list widths the details were last laid out for. */
   private laidOutWidths = '';
   private mirrorTimer: ReturnType<typeof setTimeout> | undefined;
+  private metaCopiedTimer: ReturnType<typeof setTimeout> | undefined;
   /** Shows a message when requested details never arrive (the host went away). */
   private loadingTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -1032,6 +1033,7 @@ class App {
     if (!d) return;
     const pane = this.expansion;
     clearTimeout(this.copiedTimer);
+    clearTimeout(this.metaCopiedTimer);
 
     // The row truncates long subjects, so the details repeat it in full.
     const [subject = '', ...rest] = d.message.split('\n');
@@ -1178,7 +1180,8 @@ class App {
       this.copyHash(d.hash);
       copy.classList.replace('codicon-copy', 'codicon-check');
       copy.classList.add('copied');
-      setTimeout(() => {
+      clearTimeout(this.metaCopiedTimer);
+      this.metaCopiedTimer = setTimeout(() => {
         copy.classList.replace('codicon-check', 'codicon-copy');
         copy.classList.remove('copied');
       }, 1500);
