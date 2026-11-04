@@ -58,17 +58,22 @@ export function layoutPage(
   let nextColor = state.nextColor;
   const rows: Row[] = [];
 
-  /** Next color in rotation that differs from the lanes beside `lane` and from `avoid`. */
+  /**
+   * Next color in rotation that differs from the lanes beside `lane` and from
+   * `avoid`. When the palette is too small for both, neighbours win.
+   */
   const pickColor = (lane: number, avoid: number[]): number => {
-    const taken = new Set(avoid);
+    const neighbours = new Set<number>();
     for (const n of [lane - 1, lane + 1]) {
-      if (lanes[n] != null) taken.add(colors[n]!);
+      if (lanes[n] != null) neighbours.add(colors[n]!);
     }
-    for (let k = 0; k < opts.colors; k++) {
-      const c = (nextColor + k) % opts.colors;
-      if (!taken.has(c)) {
-        nextColor = (c + 1) % opts.colors;
-        return c;
+    for (const exclude of [new Set([...neighbours, ...avoid]), neighbours]) {
+      for (let k = 0; k < opts.colors; k++) {
+        const c = (nextColor + k) % opts.colors;
+        if (!exclude.has(c)) {
+          nextColor = (c + 1) % opts.colors;
+          return c;
+        }
       }
     }
     const c = nextColor;

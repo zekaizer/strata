@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { initialLaneState, layoutPage, type LaneState, type LayoutCommit, type Row } from '../../src/core/layout.ts';
-import { scenarios, type ScenarioName } from '../fixtures/scenarios.ts';
+import { large, scenarios, type ScenarioName } from '../fixtures/scenarios.ts';
 import { git, tempDir } from './helpers.ts';
 
 const C = (hash: string, ...parents: string[]): LayoutCommit => ({ hash, parents });
@@ -250,5 +250,29 @@ describe('layoutPage: fixture repositories', () => {
     const width =
       Math.max(...rows.flatMap((r) => [r.lane, ...r.passes.map((e) => e.lane), ...r.outgoing.map((e) => e.lane)])) + 1;
     assert.ok(width <= 40, `width ${width}`);
+  });
+});
+
+describe('layoutPage: color fallback', () => {
+  const root = tempDir('layout-colors');
+  it("never gives a newly opened lane a neighbour's color when a third color is free", () => {
+    const dir = join(root, 'large');
+    large(3000, 7).write(dir);
+    const commits = git(dir, 'log', '--date-order', '--format=%H %P', '--branches', '--remotes', '--tags', 'HEAD')
+      .split('\n')
+      .map((l) => {
+        const [hash, ...parents] = l.trim().split(' ');
+        return { hash: hash!, parents };
+      });
+    const { rows } = layoutPage(initialLaneState(), commits, { colors: 3 });
+    rows.forEach((row, i) => {
+      const bottom = new Map([...row.passes, ...row.outgoing].map((e) => [e.lane, e.color]));
+      const opened = row.outgoing.filter((e) => e.lane !== row.lane && !row.passes.some((p) => p.lane === e.lane));
+      for (const e of opened) {
+        for (const n of [e.lane - 1, e.lane + 1]) {
+          assert.notEqual(bottom.get(n), e.color, `row ${i}: new lane ${e.lane} matches neighbour ${n}`);
+        }
+      }
+    });
   });
 });
