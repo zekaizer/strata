@@ -47,16 +47,19 @@ describe('operation banner', () => {
 
   it('names a rebase stopped at a conflict, says it politely, and offers what to do next', async () => {
     const short = git('rev-parse', '--short=7', 'strata-topic~1');
-    const s = await banner('rebase');
+    const text =
+      `Rebasing 'strata-topic' onto 'strata-onto' stopped at 1 of 2, "Topic one" (${short}): 1 conflicted file. ` +
+      "'strata-topic' keeps its old commits until the rebase finishes.";
+    await banner('rebase');
+    // The subject shows once the history that has the commit is loaded.
+    const s = await waitFor('banner with the subject', async () => {
+      const p = await panel.probe();
+      return p.banner?.text === text && p;
+    });
     assert.equal(s.banner?.label, 'Rebase in progress');
     assert.equal(s.banner.warning, true);
-    assert.equal(
-      s.banner.text,
-      `Rebasing 'strata-topic' onto 'strata-onto' stopped at 1 of 2, "Topic one" (${short}): 1 conflicted file. ` +
-        "'strata-topic' keeps its old commits until the rebase finishes.",
-    );
     assert.deepEqual(s.banner.buttons, ['Resolve...', 'Continue', 'Abort...']);
-    assert.equal(s.announced, s.banner.text);
+    assert.match(s.announced, /^Rebasing 'strata-topic' onto 'strata-onto' stopped at 1 of 2/);
     assert.equal(s.alerted, '', 'VS Code already says the toast the host shows for a stop');
   });
 

@@ -11,4 +11,6 @@ export const testSettings = {
   'update.mode': 'none',
   'window.newWindowDimensions': 'maximized',
   'window.restoreWindows': 'all',
+  // VS Code's own context menus on Linux, which tests can close; 1.90 defaults to GTK menus there.
+  'window.titleBarStyle': 'custom',
 };
