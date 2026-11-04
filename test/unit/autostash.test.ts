@@ -86,6 +86,7 @@ describe('leftoverOf', () => {
     applying,
     conflicts: ['a'],
     conflictCount: 1,
+    empty: false,
     autostash: false,
   });
   const pushed = (hash: string, head?: string): StashMark => ({ kind: 'pushed', hash, ...(head ? { head } : {}) });
@@ -155,6 +156,7 @@ describe('settleMarks', () => {
     applying,
     conflicts: [],
     conflictCount: 0,
+    empty: false,
     autostash: false,
   });
   const w = 'a'.repeat(40);

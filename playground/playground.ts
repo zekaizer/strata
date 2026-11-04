@@ -184,6 +184,7 @@ function repoStates(state: string, d: PlaygroundData): [OperationState | undefin
     applying,
     conflicts: ['feature_search.txt', 'src/ranking.ts'],
     conflictCount: 2,
+    empty: false,
     autostash: true,
   };
   const resolved = { conflicts: [], conflictCount: 0 };
@@ -196,6 +197,7 @@ function repoStates(state: string, d: PlaygroundData): [OperationState | undefin
     applying: at('feature/login'),
     conflicts: ['main.txt'],
     conflictCount: 1,
+    empty: false,
   };
   const pick: OperationState = { ...merge, kind: 'cherryPick', applying, autostash: false };
   const states: Record<string, [OperationState | undefined, Leftover | undefined][]> = {

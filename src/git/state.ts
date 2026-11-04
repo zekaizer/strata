@@ -97,7 +97,15 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
   const conflicts = (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--']))
     .split('\0')
     .filter((p) => p !== '');
-  return { kind, ...state, conflicts: conflicts.slice(0, CONFLICTS_SHOWN), conflictCount: conflicts.length };
+  // git refuses to continue a cherry pick or revert that would commit nothing.
+  const empty =
+    (kind === 'cherryPick' || kind === 'revert') &&
+    conflicts.length === 0 &&
+    (await runGit(git, cwd, ['diff', '--cached', '--quiet', 'HEAD', '--']).then(
+      () => true,
+      () => false,
+    ));
+  return { kind, ...state, conflicts: conflicts.slice(0, CONFLICTS_SHOWN), conflictCount: conflicts.length, empty };
 }
 
 /** Uncommitted changes to tracked files. Untracked files are not scanned: slow on huge trees, and autostash ignores them. */

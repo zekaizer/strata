@@ -104,6 +104,16 @@ describe('repository state', () => {
     assert.equal(cs.applying, run(c, 'rev-parse', 'topic~1'));
     assert.equal(cs.autostash, false);
 
+    assert.equal(cs.empty, false, 'conflicts to resolve, not empty');
+
+    const e = repo();
+    run(e, 'checkout', '--quiet', 'topic');
+    stop(e, 'cherry-pick', 'topic~1');
+    const es = await readOperationState('git', e);
+    assert.equal(es?.kind, 'cherryPick');
+    assert.equal(es.conflictCount, 0);
+    assert.equal(es.empty, true, 'its change is already on topic');
+
     const r = repo();
     run(r, 'checkout', '--quiet', 'topic');
     writeFileSync(join(r, 'f.txt'), 'later\n');

@@ -13,6 +13,7 @@ export type BannerState =
   | 'sequencer'
   | 'sequencerResolved'
   | 'sequencerStopped'
+  | 'sequencerEmpty'
   | 'leftover'
   | 'leftoverResolved'
   | 'pending'
@@ -218,6 +219,12 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
         ` ${pick ? 'onto' : 'on'} ${quote(op.branch)}`,
       ];
       const noun = pick ? 'cherry pick' : 'revert';
+      if (op.empty && !conflicted)
+        return banner(
+          'sequencerEmpty',
+          [...doing, ' has nothing left to commit: its changes are already there. Skip leaves it out.'],
+          [SKIP, ABORT],
+        );
       if (kind === 'resolved')
         return banner(
           'sequencerResolved',

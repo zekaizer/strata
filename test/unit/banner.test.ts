@@ -23,6 +23,7 @@ const rebase: OperationState = {
   applying: h('a'),
   conflicts: ['src/lexer.ts', 'src/token.ts'],
   conflictCount: 2,
+  empty: false,
   autostash: true,
 };
 const merge: OperationState = {
@@ -33,6 +34,7 @@ const merge: OperationState = {
   applying: h('d'),
   conflicts: ['a.txt'],
   conflictCount: 1,
+  empty: false,
   autostash: true,
 };
 const pick: OperationState = { ...merge, kind: 'cherryPick', applying: h('c'), conflicts: ['p.ts'], autostash: false };
@@ -114,6 +116,19 @@ describe('the banner of a stopped operation', () => {
     assert.deepEqual(
       actions(resolved)?.map(([label]) => label),
       ['Commit Merge', 'Abort...'],
+    );
+  });
+
+  it('offers only Skip and Abort for a cherry pick with nothing left to commit', () => {
+    const b = bannerOf({ ...pick, conflicts: [], conflictCount: 0, empty: true }, undefined, facts());
+    assert.equal(b?.state, 'sequencerEmpty');
+    assert.equal(
+      text(b),
+      `Cherry picking ccccccc "Fix parser" onto 'main' has nothing left to commit: its changes are already there. Skip leaves it out.`,
+    );
+    assert.deepEqual(
+      actions(b)?.map(([label]) => label),
+      ['Skip...', 'Abort...'],
     );
   });
 

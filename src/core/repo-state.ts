@@ -15,6 +15,8 @@ export interface OperationState {
   /** Unmerged paths, at most CONFLICTS_SHOWN of them. */
   conflicts: string[];
   conflictCount: number;
+  /** Cherry pick or revert with nothing staged beyond HEAD: git refuses to continue, only skip or abort. */
+  empty: boolean;
   /** git holds an autostash it re-applies when the operation finishes or is aborted. */
   autostash: boolean;
 }
