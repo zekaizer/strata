@@ -12,6 +12,8 @@ export interface LogOptions {
   cwd: string;
   /** Follow first parents only; commits then report at most one parent. */
   firstParent?: boolean;
+  /** Full ref names (refs/...) to show history of; default: all branches, remotes, tags and HEAD. */
+  refs?: string[] | undefined;
 }
 
 export interface Page {
@@ -69,15 +71,20 @@ export class LogReader {
   }
 
   private async start(): Promise<void> {
-    const { git, cwd, firstParent } = this.opts;
+    const { git, cwd, firstParent, refs } = this.opts;
+    // Refs come from the webview; only full ref names may reach git, never options.
+    const bad = refs?.find((r) => !/^refs\/[^\s]+$/.test(r) || r.includes('..'));
+    if (bad !== undefined) throw new Error(`invalid ref name: ${bad}`);
     // Otherwise spawn reports a missing cwd as "spawn git ENOENT", blaming git.
     if (!existsSync(cwd)) throw new Error(`repository folder not found: ${cwd}`);
     // HEAD is listed explicitly so a detached HEAD shows up, but only when it
     // resolves: on an unborn branch `git log HEAD` fails.
-    const head = await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).then(
-      () => ['HEAD'],
-      () => [],
-    );
+    const head = refs
+      ? []
+      : await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).then(
+          () => ['HEAD'],
+          () => [],
+        );
     if (this.error) return;
     const args = [
       '-c',
@@ -90,10 +97,7 @@ export class LogReader {
       `--format=${LOG_FORMAT}`,
       '--no-color',
       ...(firstParent ? ['--first-parent'] : []),
-      '--branches',
-      '--remotes',
-      '--tags',
-      ...head,
+      ...(refs ?? ['--branches', '--remotes', '--tags', ...head]),
       '--',
     ];
     const proc = spawn(git, args, {

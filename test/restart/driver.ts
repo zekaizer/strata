@@ -7,7 +7,7 @@
 import { writeFileSync } from 'node:fs';
 import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
-import { git, waitFor } from '../integration/helpers.ts';
+import { delay, git, waitFor } from '../integration/helpers.ts';
 
 const SUBJECT = 'Login validation';
 
@@ -44,6 +44,10 @@ async function before(): Promise<Record<string, unknown>> {
   await waitFor('details', async () => (await panel.probe()).detailsShown === hash);
   await vscode.commands.executeCommand('workbench.action.pinEditor');
   await waitFor('pinned', () => vscode.window.tabGroups.activeTabGroup.activeTab?.isPinned);
+  await panel.simulate({ kind: 'click', selector: '.first-parent-button' });
+  await waitFor('first parent', async () => (await panel.probe()).options.firstParent);
+  // Webview state reaches the workbench asynchronously; let it arrive before quitting.
+  await delay(1000);
   return { selected: hash };
 }
 
@@ -60,5 +64,6 @@ async function after(): Promise<Record<string, unknown>> {
   const tab = vscode.window.tabGroups.all
     .flatMap((g) => g.tabs)
     .find((t) => t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith('strata.graph'));
-  return { restored: true, restoredSelection, pinned: tab?.isPinned ?? false };
+  const { options } = await panel.probe();
+  return { restored: true, restoredSelection, pinned: tab?.isPinned ?? false, firstParent: options.firstParent };
 }

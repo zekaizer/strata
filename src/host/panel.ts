@@ -1,5 +1,12 @@
 import * as vscode from 'vscode';
-import type { HostToWebview, ProbeState, SimulatedAction, ThemeKind, WebviewToHost } from '../shared/protocol.ts';
+import type {
+  HostToWebview,
+  ProbeState,
+  SimulatedAction,
+  ThemeKind,
+  ViewOptions,
+  WebviewToHost,
+} from '../shared/protocol.ts';
 import { GraphController } from './controller.ts';
 import { getGitApi } from './git-api.ts';
 
@@ -119,7 +126,7 @@ export class GraphPanel implements vscode.Disposable {
     switch (m.type) {
       case 'ready':
         this.post({ type: 'init', theme: themeKind() });
-        void this.startController();
+        void this.startController(m.options);
         break;
       case 'error':
         void vscode.window.showErrorMessage(`Strata: ${m.message}`);
@@ -134,12 +141,12 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   /** A reloaded webview (e.g. after being hidden) sends `ready` again and gets a fresh history. */
-  private async startController(): Promise<void> {
+  private async startController(options: ViewOptions | undefined): Promise<void> {
     try {
       this.controller ??= new GraphController(await getGitApi(), (m) => {
         this.post(m);
       });
-      await this.controller.start();
+      await this.controller.start(options);
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }

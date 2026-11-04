@@ -62,8 +62,9 @@ const second = await phase(2);
 const failures = [];
 if (second.restoredSelection !== first.selected) failures.push('selection not restored');
 if (!second.pinned) failures.push('pin not restored');
+if (!second.firstParent) failures.push('view options not restored');
 if (failures.length) {
   console.error(`restart test (${version}) FAILED: ${failures.join(', ')}`);
   process.exit(1);
 }
-console.log(`restart test (${version}) passed: panel, selection and pin restored`);
+console.log(`restart test (${version}) passed: panel, selection, pin and view options restored`);

@@ -4,7 +4,7 @@ import type { RefSnapshot } from '../core/refs.ts';
 import { readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readRefs } from '../git/refs.ts';
-import type { HostToWebview, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
+import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
 
 const REFRESH_DEBOUNCE_MS = 400;
@@ -19,7 +19,7 @@ export class GraphController implements vscode.Disposable {
   private repo: GitRepository | undefined;
   private reader: LogReader | undefined;
   private generation = 0;
-  private options: ViewOptions = { firstParent: false };
+  private options: ViewOptions = DEFAULT_OPTIONS;
   private refs: RefSnapshot | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private repoSubscription: vscode.Disposable | undefined;
@@ -39,7 +39,8 @@ export class GraphController implements vscode.Disposable {
   }
 
   /** Picks the repository of the active editor, else the first one, and starts a new history. */
-  async start(): Promise<void> {
+  async start(options?: ViewOptions): Promise<void> {
+    if (options) this.options = options;
     const active = vscode.window.activeTextEditor?.document.uri;
     const repo = (active && this.api.getRepository(active)) ?? this.api.repositories[0];
     if (repo !== this.repo) {
@@ -98,7 +99,16 @@ export class GraphController implements vscode.Disposable {
     const refs = await readRefs(this.api.git.path, cwd);
     if (generation !== this.generation) return;
     this.refs = refs;
-    this.reader = new LogReader({ git: this.api.git.path, cwd, firstParent: this.options.firstParent });
+    // Drop filtered refs that no longer exist; with none left, show everything.
+    const known = new Set(refs.refs.map((r) => r.name));
+    const kept = this.options.refs?.filter((r) => known.has(r)) ?? [];
+    this.options = { ...this.options, refs: kept.length > 0 ? kept : null };
+    this.reader = new LogReader({
+      git: this.api.git.path,
+      cwd,
+      firstParent: this.options.firstParent,
+      refs: this.options.refs ?? undefined,
+    });
     this.post({ type: 'reset', generation, repo: { name: basename(cwd), root: cwd }, refs, options: this.options });
   }
 

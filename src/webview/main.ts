@@ -2,6 +2,7 @@ import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange } from '../core/details.ts';
 import type { Row } from '../core/layout.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
+import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
   HostToWebview,
@@ -12,6 +13,7 @@ import type {
 } from '../shared/protocol.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
+import { RefFilter } from './ref-filter.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -22,6 +24,7 @@ const NEXT_PAGE = 1000;
 const LOAD_AHEAD = 200;
 const OVERSCAN = 8;
 const MAX_GRAPH_SHARE = 0.4;
+const MAX_BADGES = 3;
 
 /** Persisted with setState: survives hiding and VS Code restarts (the panel is restored by a serializer). */
 interface SavedState {
@@ -31,6 +34,7 @@ interface SavedState {
   detailsWidth?: number | undefined;
   /** Details pane size below the list (px). */
   detailsHeight?: number | undefined;
+  options?: ViewOptions | undefined;
 }
 
 const MIN_PANE = 120;
@@ -49,7 +53,11 @@ class App {
   private repo: RepoInfo | undefined;
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [] };
   private refsByHash = new Map<string, Ref[]>();
-  private options: ViewOptions = { firstParent: false };
+  // Declared before `options`, which is initialized from it.
+  private restore: SavedState | undefined = vscode.getState() as SavedState | undefined;
+  private options: ViewOptions = this.restore?.options ?? DEFAULT_OPTIONS;
+  private readonly refFilter: RefFilter;
+  private readonly firstParentButton = el('button', 'tool-button first-parent-button');
   private commits: Commit[] = [];
   private rows: Row[] = [];
   private lanes = 1;
@@ -58,7 +66,6 @@ class App {
   private selected = -1;
   private details: CommitDetails | undefined;
   private openedFile: string | undefined;
-  private restore: SavedState | undefined = vscode.getState() as SavedState | undefined;
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -83,7 +90,23 @@ class App {
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
-    this.toolbar.append(this.repoLabel, this.status, el('span', 'spacer'), refresh);
+    this.refFilter = new RefFilter(this.toolbar, (refs) => {
+      this.setOptions({ ...this.options, refs });
+    });
+    this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
+    this.firstParentButton.title = 'Follow only the first parent of merges';
+    this.firstParentButton.addEventListener('click', () => {
+      this.setOptions({ ...this.options, firstParent: !this.options.firstParent });
+    });
+    this.updateOptionControls();
+    this.toolbar.append(
+      this.repoLabel,
+      this.status,
+      el('span', 'spacer'),
+      this.refFilter.button,
+      this.firstParentButton,
+      refresh,
+    );
 
     this.scroller.tabIndex = 0;
     this.scroller.setAttribute('role', 'listbox');
@@ -140,7 +163,7 @@ class App {
     window.addEventListener('message', (e: MessageEvent<HostToWebview>) => {
       this.onHost(e.data);
     });
-    vscode.postMessage({ type: 'ready', workerOk });
+    vscode.postMessage({ type: 'ready', workerOk, options: this.options });
   }
 
   private onHost(m: HostToWebview): void {
@@ -222,6 +245,7 @@ class App {
     this.lanes = 1;
     this.done = false;
     this.selected = -1;
+    this.updateOptionControls();
     this.repoLabel.textContent = repo.name;
     this.repoLabel.title = repo.root;
     this.status.classList.remove('error');
@@ -259,6 +283,7 @@ class App {
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
       detailsWidth: this.detailsWidth,
       detailsHeight: this.detailsHeight,
+      options: this.options,
     };
     vscode.setState(state);
   }
@@ -303,6 +328,19 @@ class App {
     this.splitter.addEventListener('pointerup', up);
   }
 
+  private setOptions(options: ViewOptions): void {
+    this.options = options;
+    this.updateOptionControls();
+    this.saveState();
+    vscode.postMessage({ type: 'setOptions', options });
+  }
+
+  private updateOptionControls(): void {
+    this.firstParentButton.setAttribute('aria-pressed', String(this.options.firstParent));
+    this.firstParentButton.classList.toggle('active', this.options.firstParent);
+    this.refFilter.update(this.refs, this.options.refs);
+  }
+
   private loadMore(count: number): void {
     if (this.loading || this.done || this.generation < 0) return;
     this.loading = true;
@@ -313,7 +351,6 @@ class App {
   private updateStatus(): void {
     const n = this.commits.length.toLocaleString();
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
-    if (this.options.firstParent) this.status.textContent += ' · first parent';
   }
 
   private select(index: number, reveal = true): void {
@@ -439,8 +476,13 @@ class App {
       const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
       out.push(badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, r.name));
     }
-    // Current branch first.
-    return out.sort((a, b) => Number(b.classList.contains('head')) - Number(a.classList.contains('head')));
+    // Current branch first; beyond MAX_BADGES the rest collapse so the subject stays visible.
+    out.sort((a, b) => Number(b.classList.contains('head')) - Number(a.classList.contains('head')));
+    if (out.length <= MAX_BADGES) return out;
+    const rest = out.slice(MAX_BADGES - 1);
+    const more = el('span', 'badge badge-more', `+${rest.length}`);
+    more.title = rest.map((b) => b.title).join('\n');
+    return [...out.slice(0, MAX_BADGES - 1), more];
   }
 
   private renderDetails(): void {
@@ -565,6 +607,7 @@ class App {
       detailsShown: this.detailsPane.hidden ? undefined : this.details?.hash,
       visibleSubjects: [...this.sizer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
+      options: this.options,
       columns: [...(this.sizer.querySelector('.row')?.children ?? [])]
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
@@ -582,6 +625,17 @@ class App {
       case 'clickFile': {
         const files = this.detailsPane.querySelectorAll<HTMLElement>('.file');
         files[a.index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: a.altKey ?? false }));
+        break;
+      }
+      case 'click':
+        document.querySelector<HTMLElement>(a.selector)?.click();
+        break;
+      case 'type': {
+        const input = document.querySelector<HTMLInputElement>(a.selector);
+        if (input) {
+          input.value = a.text;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
         break;
       }
       case 'key': {

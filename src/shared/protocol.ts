@@ -9,7 +9,11 @@ export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-ligh
 
 export interface ViewOptions {
   firstParent: boolean;
+  /** Full ref names whose history is shown; null shows all branches, remotes, tags and HEAD. */
+  refs: string[] | null;
 }
+
+export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null };
 
 export interface RepoInfo {
   /** Folder name shown in the toolbar. */
@@ -33,7 +37,8 @@ export type HostToWebview =
   | { type: 'simulate'; action: SimulatedAction };
 
 export type WebviewToHost =
-  | { type: 'ready'; workerOk: boolean }
+  /** `options` carries view options saved by a previous session of this panel. */
+  | { type: 'ready'; workerOk: boolean; options: ViewOptions | undefined }
   | { type: 'loadMore'; generation: number; count: number }
   | { type: 'select'; generation: number; hash: string }
   | { type: 'openDiff'; generation: number; hash: string; base: string | undefined; file: FileChange; beside: boolean }
@@ -57,13 +62,16 @@ export interface ProbeState {
   openedFile: string | undefined;
   /** Columns currently shown in the commit list. */
   columns: string[];
+  options: ViewOptions;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */
 export type SimulatedAction =
   | { kind: 'clickRow'; index: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean }
-  | { kind: 'key'; key: string; target?: 'list' | 'files' };
+  | { kind: 'key'; key: string; target?: 'list' | 'files' }
+  | { kind: 'click'; selector: string }
+  | { kind: 'type'; selector: string; text: string };
 
 export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };
 

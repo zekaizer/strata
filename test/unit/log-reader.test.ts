@@ -61,6 +61,19 @@ describe('LogReader', () => {
     );
   });
 
+  it('limits history to the given refs', async () => {
+    const dir = join(root, 'branchy');
+    const refs = ['refs/heads/wip/experiment', 'refs/heads/feature/login'];
+    const expected = git(dir, 'rev-list', '--date-order', ...refs).split('\n');
+    assert.deepEqual(await readAll({ git: 'git', cwd: dir, refs }, 7), expected);
+  });
+
+  it('rejects ref names that are not full refs/ names', async () => {
+    const r = new LogReader({ git: 'git', cwd: join(root, 'branchy'), refs: ['--all'] });
+    await assert.rejects(r.next(1), /invalid ref/);
+    r.dispose();
+  });
+
   it('includes a detached HEAD that no ref points at', async () => {
     const dir = join(root, 'detached');
     scenarios.linear().write(dir);
