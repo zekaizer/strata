@@ -16,9 +16,14 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
   // Callers pass ids that came from the webview; never let them reach git as options.
   for (const h of [hash, base]) if (h !== undefined && !HASH.test(h)) throw new Error(`invalid commit id: ${h}`);
   const format = ['%H', '%P', '%aN', '%aE', '%at', '%cN', '%cE', '%ct', '%B'].join('%x00');
+  // `log -1 --no-walk`, not `show -s`: show prepares a merge's combined diff even when told not to
+  // print it, which took 0.5-1.5 s per merge commit on the Linux kernel (log: ~5 ms).
   const meta = await runGit(git, cwd, [
-    'show',
-    '-s',
+    '-c',
+    'log.showSignature=false',
+    'log',
+    '-1',
+    '--no-walk',
     '--no-color',
     '--encoding=UTF-8',
     `--format=${format}`,
