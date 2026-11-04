@@ -308,6 +308,8 @@ body:not(.hover-off) .popover-item:hover {
   position: absolute;
   inset: 0;
   overflow-y: auto;
+  /* The scrollbar coming and going (details make the list taller) must not change its width. */
+  scrollbar-gutter: stable;
   overflow-x: hidden;
   outline: none;
 }
