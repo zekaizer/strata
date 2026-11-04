@@ -16,7 +16,7 @@ import type {
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
 import { RefFilter } from './ref-filter.ts';
-import { RowGeometry } from './row-geometry.ts';
+import { pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -586,13 +586,18 @@ class App {
   }
 
   private onKey(e: KeyboardEvent): void {
-    const page = Math.max(1, Math.floor(this.scroller.clientHeight / ROW_HEIGHT) - 1);
-    const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
     const delta = moves[e.key];
+    const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
     if (delta !== undefined) {
       e.preventDefault();
       const next = Math.min(this.commits.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
       this.userSelect(next);
+    } else if (page !== 0 && this.commits.length > 0) {
+      e.preventDefault();
+      // Rows differ in height (refs), so a page is measured in pixels, not rows.
+      const from = Math.max(0, this.selected);
+      this.userSelect(pageFrom(this.geometry, from, this.scroller.clientHeight, page));
     } else if (e.key === 'Home') {
       e.preventDefault();
       this.userSelect(0);

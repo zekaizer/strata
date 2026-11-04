@@ -60,3 +60,20 @@ export class RowGeometry {
     return lo;
   }
 }
+
+/**
+ * Row a page away from `index` (PageDown: dir 1, PageUp: -1) in a view `view` px tall: the
+ * farthest row that still fits on one screen together with row `index`. Moves at least one row.
+ */
+export function pageFrom(g: RowGeometry, index: number, view: number, dir: 1 | -1): number {
+  if (dir > 0) {
+    // The row containing the offset one view below this row's top does not fit; the one before does.
+    const fits = g.indexAt(g.top(index) + view) - 1;
+    return Math.min(g.count - 1, Math.max(index + 1, fits));
+  }
+  const y = g.top(index) + g.height(index) - view;
+  if (y <= 0) return 0;
+  const at = g.indexAt(y);
+  const fits = g.top(at) < y ? at + 1 : at;
+  return Math.max(0, Math.min(index - 1, fits));
+}

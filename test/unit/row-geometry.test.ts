@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { RowGeometry } from '../../src/webview/row-geometry.ts';
+import { pageFrom, RowGeometry } from '../../src/webview/row-geometry.ts';
 
 const rows = (...banded: boolean[]) => {
   const g = new RowGeometry(24, 16);
@@ -52,5 +52,27 @@ describe('RowGeometry', () => {
     g.push(false);
     assert.equal(g.count, 1);
     assert.equal(g.total(), 24);
+  });
+});
+
+describe('pageFrom', () => {
+  it('moves one screen less one row through plain rows, like the fixed-height list did', () => {
+    const g = rows(...Array<boolean>(100).fill(false));
+    assert.equal(pageFrom(g, 0, 480, 1), 19);
+    assert.equal(pageFrom(g, 19, 480, -1), 0);
+  });
+  it('counts banded rows by their height', () => {
+    const g = rows(...Array<boolean>(100).fill(true));
+    // 12 rows of 40px fill 480px: the target and the start must fit on one screen.
+    assert.equal(pageFrom(g, 0, 480, 1), 11);
+    assert.equal(pageFrom(g, 11, 480, -1), 0);
+    assert.ok(g.top(pageFrom(g, 20, 480, 1)) + g.height(pageFrom(g, 20, 480, 1)) - g.top(20) <= 480);
+  });
+  it('moves at least one row and stays in the list', () => {
+    const g = rows(true, true, true);
+    assert.equal(pageFrom(g, 0, 10, 1), 1);
+    assert.equal(pageFrom(g, 2, 10, -1), 1);
+    assert.equal(pageFrom(g, 2, 480, 1), 2);
+    assert.equal(pageFrom(g, 0, 480, -1), 0);
   });
 });
