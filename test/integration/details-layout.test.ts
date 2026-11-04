@@ -97,13 +97,33 @@ describe('details layout', () => {
     assert.equal(clicked.selectionOutline, 'none', 'a click leaves no focus outline behind');
     await panel.simulate({ kind: 'clickRow', index: 3 });
     await waitFor('folded', async () => (await panel.probe()).expandedHeight === 0);
-    assert.equal((await panel.probe()).selectionOutline, 'none', 'nor does folding');
+    const folded = await panel.probe();
+    assert.equal(folded.selectionOutline, 'none', 'nor does folding');
+    assert.equal(folded.selectionShown, false, 'a closed commit is not drawn as selected');
+    assert.equal(folded.selected, order()[3], 'but stays where the keys continue from');
     await panel.simulate({ kind: 'key', key: 'ArrowDown' });
     const keyed = await waitFor('moved by key', async () => {
       const p = await panel.probe();
       return p.selected === order()[4] && p;
     });
     assert.equal(keyed.selectionOutline, 'solid', 'keyboard navigation shows where focus is');
+  });
+
+  it('shows Old | diff | New only where the pointer or keyboard focus is', async () => {
+    await openDetails(1);
+    const active = () => vscode.window.tabGroups.activeTabGroup.activeTab;
+    const graphLabel = active()?.label;
+    await panel.simulate({ kind: 'clickFile', index: 0 });
+    // Close the file's tab, not the graph: wait until it is the active one (tabs compare by label;
+    // VS Code may hand out new Tab objects).
+    const fileTab = await waitFor('file tab', () => active()?.label !== graphLabel && active()?.label);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await waitFor('file tab closed', () =>
+      vscode.window.tabGroups.all.every((g) => g.tabs.every((t) => t.label !== fileTab)),
+    );
+    await panel.simulate({ kind: 'focus', selector: '.scroller' });
+    const s = await panel.probe();
+    assert.equal(s.idleFileActions, false, 'a clicked file keeps no buttons');
   });
 
   it('folds with the fold button without touching the row under the pointer', async () => {

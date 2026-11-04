@@ -873,7 +873,8 @@ class App {
       row.append(band);
     }
     if (i === this.selected) {
-      row.classList.add('selected');
+      // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
+      row.classList.add(this.expanded ? 'selected' : 'cursor');
       row.setAttribute('aria-expanded', String(this.expanded));
     }
     if (c.hash === this.refs.head) row.classList.add('head');
@@ -1524,6 +1525,13 @@ class App {
           widestName: Math.max(0, ...cells.map(textWidth)),
         };
       })(),
+      selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
+      idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
+        (f) =>
+          !f.matches(':hover') &&
+          !f.matches(':has(:focus-visible), :focus-visible') &&
+          getComputedStyle(f.querySelector('.file-actions')!).visibility === 'visible',
+      ),
       selectionOutline: (() => {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
         if (!row) return 'none';

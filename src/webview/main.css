@@ -393,7 +393,8 @@ body:not(.hover-off) .row:hover {
  * VS Code outlines the focused row whenever its list has focus; here focus stays in the list after
  * a click (details fold in place), so the outline follows keyboard use only.
  */
-body.keyboard-nav .scroller:focus .row.selected {
+body.keyboard-nav .scroller:focus .row.selected,
+body.keyboard-nav .scroller:focus .row.cursor {
   outline: 1px solid
     var(--vscode-list-focusAndSelectionOutline, var(--vscode-list-focusOutline, var(--vscode-focusBorder)));
   outline-offset: -1px;
@@ -1054,13 +1055,14 @@ body:not(.hover-off) .file:hover {
 }
 
 /*
- * Shown where the pointer or keyboard is, and on the file opened last. Hover rules in this
+ * Shown only where the pointer or keyboard focus is (a click focuses the row too, but not
+ * visibly, so nothing stays behind after it). Hover rules in this
  * file apply only without .hover-off: when a click opens a diff the pointer can leave the
  * iframe without a pointerleave, which would leave a highlight stuck (see trackPointer).
  */
 body:not(.hover-off) .file:hover .file-actions,
-.file:focus-within .file-actions,
-.file.opened .file-actions {
+.file:focus-visible .file-actions,
+.file:has(:focus-visible) .file-actions {
   visibility: visible;
 }
 

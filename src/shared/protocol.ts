@@ -156,6 +156,10 @@ export interface ProbeState {
     | undefined;
   /** Width of the author column and of the widest author name rendered in it, in px. */
   authorColumn: { column: number; widestName: number };
+  /** Whether the selected row is drawn as selected (only while its details are open). */
+  selectionShown: boolean;
+  /** Whether any file row shows Old | diff | New with neither the pointer nor keyboard focus on it. */
+  idleFileActions: boolean;
   /** Computed outline style of the selected row ('none' when it has no visible outline). */
   selectionOutline: string;
   /** Text last announced to screen readers. */
