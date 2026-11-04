@@ -31,17 +31,29 @@ describe('runGitOp', () => {
     assert.match(stdout, /main/);
   });
 
-  it('rejects with the classified error, in English whatever the locale', async () => {
-    process.env['LANG'] = 'de_DE.UTF-8';
+  it('rejects with the classified error', async () => {
+    await assert.rejects(runGitOp('git', dir, ['branch', '-d', 'missing']), (e: unknown) => {
+      assert.ok(e instanceof GitOpError);
+      assert.equal(e.kind, 'other');
+      assert.match(e.message, /branch 'missing' not found/);
+      return true;
+    });
+  });
+
+  it("runs git in the C locale whatever the user's, so its messages stay English", async () => {
+    const german = { LANG: 'de_DE.UTF-8', LC_ALL: 'de_DE.UTF-8', LC_MESSAGES: 'de_DE.UTF-8', LANGUAGE: 'de' };
+    const saved = Object.fromEntries(Object.keys(german).map((k) => [k, process.env[k]]));
+    Object.assign(process.env, german);
     try {
-      await assert.rejects(runGitOp('git', dir, ['branch', '-d', 'missing']), (e: unknown) => {
-        assert.ok(e instanceof GitOpError);
-        assert.equal(e.kind, 'other');
-        assert.match(e.message, /branch 'missing' not found/);
-        return true;
-      });
+      // gettext ignores LANGUAGE once the locale is C; this git may have no German catalog to show.
+      const probe = '!printf %s "$LC_ALL"';
+      const { stdout } = await runGitOp('git', dir, ['-c', `alias.locale=${probe}`, 'locale']);
+      assert.equal(stdout, 'C');
     } finally {
-      delete process.env['LANG'];
+      for (const [k, v] of Object.entries(saved)) {
+        if (v === undefined) Reflect.deleteProperty(process.env, k);
+        else process.env[k] = v;
+      }
     }
   });
 
