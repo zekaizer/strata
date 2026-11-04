@@ -15,6 +15,8 @@ export type Operation =
   | { kind: 'detach'; commit: string; migrate: boolean }
   | { kind: 'createBranch'; name: string; at: string; migrate: boolean }
   | { kind: 'trackRemote'; name: string; remoteRef: string; migrate: boolean }
+  /** A branch at `at` without switching to it (Undo of a deletion). */
+  | { kind: 'branchAt'; name: string; at: string }
   | { kind: 'createTag'; name: string; at: string; message: string | undefined }
   | { kind: 'renameBranch'; from: string; to: string }
   | { kind: 'deleteBranch'; name: string }
@@ -55,6 +57,8 @@ export function argv(op: Operation): string[] {
       return ['switch', ...merge(op.migrate), '--create', op.name, op.at];
     case 'trackRemote':
       return ['switch', ...merge(op.migrate), '--create', op.name, '--track', op.remoteRef];
+    case 'branchAt':
+      return ['branch', op.name, op.at];
     case 'createTag':
       return op.message === undefined
         ? ['tag', op.name, op.at]

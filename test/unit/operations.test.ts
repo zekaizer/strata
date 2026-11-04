@@ -87,6 +87,15 @@ describe('operations', () => {
     assert.equal(run(d, 'tag', '--list'), 'v1');
   });
 
+  it('puts a deleted branch back without switching to it', async () => {
+    const d = repo();
+    const tip = run(d, 'rev-parse', 'topic');
+    run(d, 'branch', '--delete', '--force', '--quiet', 'topic');
+    await op(d, { kind: 'branchAt', name: 'topic', at: tip });
+    assert.equal(run(d, 'rev-parse', 'topic'), tip);
+    assert.equal(branch(d), 'main');
+  });
+
   it('merges with and without fast-forward, with autostash', async () => {
     const d = repo();
     run(d, 'checkout', '--quiet', '-b', 'ahead', 'main');
