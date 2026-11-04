@@ -129,7 +129,9 @@ describe('operations', () => {
   it('aborts and skips', async () => {
     const d = repo();
     const before = head(d);
-    await assert.rejects(op(d, { kind: 'merge', ref: 'refs/heads/topic', mode: 'auto', autostash: false }));
+    await assert.rejects(op(d, { kind: 'merge', ref: 'refs/heads/topic', mode: 'auto', autostash: false }), {
+      kind: 'conflict',
+    });
     await op(d, { kind: 'abort', operation: 'merge' });
     assert.equal(head(d), before);
     await assert.rejects(op(d, { kind: 'cherryPick', commit: run(d, 'rev-parse', 'topic~1') }));

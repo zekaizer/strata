@@ -8,7 +8,7 @@ export class GitOpError extends Error {
   readonly stderr: string;
   readonly stdout: string;
   constructor(kind: GitErrorKind, stdout: string, stderr: string) {
-    super(stderr.trim() || 'git failed');
+    super(stderr.trim() || stdout.trim() || 'git failed');
     this.kind = kind;
     this.stdout = stdout;
     this.stderr = stderr;
@@ -72,9 +72,15 @@ export function runGitOp(
     proc.on('close', (code) => {
       signal?.removeEventListener('abort', onAbort);
       if (code === 0) resolve({ stdout, stderr });
-      else reject(new GitOpError(classifyGitError(stderr), stdout, stderr));
+      else reject(new GitOpError(classify(stdout, stderr), stdout, stderr));
     });
   });
+}
+
+/** `merge` and `stash pop` print their conflicts on stdout only. */
+function classify(stdout: string, stderr: string): GitErrorKind {
+  const kind = classifyGitError(stderr);
+  return kind === 'other' ? classifyGitError(stdout) : kind;
 }
 
 function abortError(): Error {

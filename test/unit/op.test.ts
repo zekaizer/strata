@@ -45,6 +45,24 @@ describe('runGitOp', () => {
     }
   });
 
+  it('classifies a conflict that git reports only on stdout', async () => {
+    writeFileSync(join(dir, 'f.txt'), 'stashed\n');
+    run(dir, 'stash', 'push', '--quiet');
+    writeFileSync(join(dir, 'f.txt'), 'committed\n');
+    run(dir, 'commit', '--quiet', '-am', 'change f');
+    try {
+      await assert.rejects(runGitOp('git', dir, ['stash', 'pop']), (e: unknown) => {
+        assert.ok(e instanceof GitOpError);
+        assert.equal(e.kind, 'conflict');
+        assert.match(e.message, /CONFLICT \(content\)/);
+        return true;
+      });
+    } finally {
+      run(dir, 'reset', '--quiet', '--hard');
+      run(dir, 'stash', 'drop', '--quiet');
+    }
+  });
+
   it('kills git on abort', async () => {
     const ac = new AbortController();
     const p = runGitOp('git', dir, ['-c', 'alias.wait=!sleep 10', 'wait'], { signal: ac.signal });
