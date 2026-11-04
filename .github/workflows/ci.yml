@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same branch supersedes a running build.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Typecheck, lint, format, unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+
+  integration:
+    name: Integration tests (VS Code ${{ matrix.vscode }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - vscode: stable
+            script: test:integration
+          - vscode: 1.90.0
+            script: test:integration:min
+    steps:
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Xvfb
+        run: sudo apt-get update -q && sudo apt-get install -yq xvfb
+      - name: Cache VS Code downloads
+        uses: actions/cache@v6
+        with:
+          path: .vscode-test
+          key: vscode-${{ runner.os }}-${{ matrix.vscode }}-${{ hashFiles('.vscode-test.mjs') }}
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+
+  package:
+    name: Package VSIX
+    needs: [check, integration]
+    runs-on: ubuntu-24.04
+    steps:
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run package
+      - name: Name the VSIX after version and commit
+        id: name
+        run: |
+          version=$(node -p "require('./package.json').version")
+          file="strata-${version}-${GITHUB_SHA::7}.vsix"
+          mv artifacts/strata.vsix "artifacts/${file}"
+          echo "file=${file}" >> "$GITHUB_OUTPUT"
+      # Uploaded as-is, not zipped: the download is the .vsix itself, named after the file.
+      - uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/${{ steps.name.outputs.file }}
+          archive: false
+          retention-days: 30
+          if-no-files-found: error
