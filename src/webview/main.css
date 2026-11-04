@@ -2,6 +2,9 @@
 :root {
   color-scheme: light dark;
   --row-height: 24px;
+  /* Shared by the row grid and the details under a row, so both start at the same column. */
+  --col-gap: 12px;
+  --separator: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
   --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
   --badge-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));
   --badge-tag: var(--vscode-charts-yellow);
@@ -94,7 +97,7 @@ body:not(.hover-off) .tool-button:hover {
   flex-direction: column;
   width: min(320px, calc(100vw - 16px));
   max-height: min(420px, 70vh);
-  padding: 6px;
+  padding: 6px 0;
   box-sizing: border-box;
   border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
   border-radius: 6px;
@@ -108,6 +111,7 @@ body:not(.hover-off) .tool-button:hover {
 }
 
 .popover-search {
+  margin: 0 6px;
   padding: 4px 6px;
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 2px;
@@ -124,7 +128,7 @@ body:not(.hover-off) .tool-button:hover {
 .popover-actions {
   display: flex;
   gap: 12px;
-  padding: 6px 2px;
+  padding: 6px 13px;
 }
 
 .link-button {
@@ -135,8 +139,16 @@ body:not(.hover-off) .tool-button:hover {
   font: inherit;
   cursor: pointer;
 }
-body:not(.hover-off) .link-button:hover {
+body:not(.hover-off) .link-button:hover,
+body:not(.hover-off) .details-parents a:hover {
   text-decoration: underline;
+}
+
+.link-button:focus-visible,
+.details-parents a:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 
 .popover-list {
@@ -144,7 +156,7 @@ body:not(.hover-off) .link-button:hover {
 }
 
 .popover-group {
-  padding: 6px 4px 2px;
+  padding: 8px 13px 2px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -155,12 +167,45 @@ body:not(.hover-off) .link-button:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 4px;
+  margin: 0 6px;
+  padding: 2px 7px;
   border-radius: 3px;
   cursor: pointer;
 }
 body:not(.hover-off) .popover-item:hover {
   background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.popover-item input[type='checkbox'] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-widget-border, currentColor));
+  border-radius: 3px;
+  background: var(--vscode-checkbox-background, transparent);
+  color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  cursor: pointer;
+}
+
+.popover-item input[type='checkbox']:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  margin-top: -2px;
+  border: solid currentColor;
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+}
+
+.popover-item input[type='checkbox']:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 .popover-item-text {
@@ -170,7 +215,7 @@ body:not(.hover-off) .popover-item:hover {
 }
 
 .popover-more {
-  padding: 4px;
+  padding: 4px 13px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -255,7 +300,7 @@ canvas.graph {
   grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 160px) max-content max-content;
   grid-template-areas: 'graph subject author date hash';
   align-items: center;
-  column-gap: 12px;
+  column-gap: var(--col-gap);
   padding-right: 12px;
   cursor: default;
   white-space: nowrap;
@@ -269,8 +314,8 @@ body:not(.hover-off) .row:hover {
 .row.selected {
   background: var(--vscode-list-inactiveSelectionBackground);
   color: var(--vscode-list-inactiveSelectionForeground, inherit);
-  /* High contrast themes have no selection background; they mark selection with a border. */
-  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
+  /* High contrast themes have no selection background; they mark selection with a border, dotted until focused. */
+  outline: 1px dotted var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
 }
 
@@ -396,9 +441,9 @@ body:not(.hover-off) .row:hover {
   right: 0;
   box-sizing: border-box;
   overflow: auto;
-  padding: 4px 12px 8px calc(var(--graph-width, 40px) + 12px);
-  border-top: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
-  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  padding: 6px 12px 10px calc(var(--graph-width, 40px) + var(--col-gap));
+  border-top: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator);
   background: color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground, transparent) 45%, transparent);
   cursor: auto;
 }
@@ -414,7 +459,7 @@ body:not(.hover-off) .row:hover {
 
 .details-fold {
   position: absolute;
-  top: 2px;
+  top: 4px;
   right: 8px;
 }
 
@@ -457,6 +502,10 @@ body:not(.hover-off) .row:hover {
   user-select: all;
 }
 
+.details-date-short {
+  display: none;
+}
+
 .details-parents {
   display: inline-flex;
   align-items: center;
@@ -465,13 +514,15 @@ body:not(.hover-off) .row:hover {
 
 .details-parents a {
   color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+  outline: none;
 }
 
 .details-message {
   max-width: 80ch;
-  margin: 12px 0 0;
+  margin: 10px 0 0;
   padding-top: 8px;
-  border-top: 1px solid var(--vscode-panel-border, transparent);
+  border-top: 1px solid var(--separator);
   /* Commit bodies are written in a fixed-width editor: tables, code and trailers line up. */
   font-family: var(--vscode-editor-font-family);
   font-size: 0.92em;
@@ -482,7 +533,7 @@ body:not(.hover-off) .row:hover {
 
 .files-summary {
   color: var(--vscode-descriptionForeground);
-  margin: 8px 0 4px;
+  margin: 6px 0 2px;
 }
 
 .files-base {
@@ -526,6 +577,8 @@ body:not(.hover-off) .row:hover {
 
 body:not(.hover-off) .folder:hover {
   background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
 }
 
 .folder:focus-visible {
@@ -548,6 +601,8 @@ body:not(.hover-off) .folder:hover {
 }
 body:not(.hover-off) .file:hover {
   background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
 }
 
 .file:focus-visible {
@@ -653,9 +708,19 @@ body:not(.hover-off) .file-action:hover {
   font-size: 0.92em;
 }
 
-.file.opened {
-  /* An accent bar, not a background: a filled row reads as a stuck hover. */
-  box-shadow: inset 2px 0 0 var(--vscode-focusBorder);
+.file {
+  position: relative;
+}
+
+/* An accent bar, not a background: a filled row reads as a stuck hover. Square, unlike the row. */
+.file.opened::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 2px;
+  background: var(--vscode-focusBorder);
 }
 
 .empty {
@@ -673,10 +738,9 @@ body:not(.hover-off) .file-action:hover {
 }
 
 /*
- * Narrow editors (e.g. next to a chat or side panel): drop the least useful
- * columns first. Everything hidden here is shown in the details pane.
+ * Narrow editors (e.g. next to a chat or side panel) drop the date first and the
+ * author next; the SHA always stays. The details show everything hidden here.
  */
-/* Narrow editors drop the date first and the author next; the SHA always stays. */
 @container list (max-width: 760px) {
   .row {
     grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content max-content;
@@ -695,7 +759,10 @@ body:not(.hover-off) .file-action:hover {
 @container list (max-width: 600px) {
   .row {
     grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px) max-content;
-    column-gap: 8px;
+  }
+  .row,
+  .expansion {
+    --col-gap: 8px;
   }
   .row .date {
     display: none;
@@ -711,5 +778,11 @@ body:not(.hover-off) .file-action:hover {
   }
   .row .author {
     display: none;
+  }
+  .details-date-full {
+    display: none;
+  }
+  .details-date-short {
+    display: inline;
   }
 }

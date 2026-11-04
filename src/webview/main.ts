@@ -764,7 +764,12 @@ class App {
     const meta = el('div', 'details-meta');
     const hash = el('span', 'details-hash', shortHash(d.hash));
     hash.title = d.hash;
-    meta.append(hash, el('span', 'details-author', d.author), el('span', 'details-date', formatDate(d.authorTime)));
+    const date = el('span', 'details-date');
+    date.append(
+      el('span', 'details-date-full', formatDate(d.authorTime)),
+      el('span', 'details-date-short', formatShortDate(d.authorTime)),
+    );
+    meta.append(hash, el('span', 'details-author', d.author), date);
     meta.title =
       `Author: ${d.author} <${d.authorEmail}>, ${formatDate(d.authorTime)}` +
       (d.committer !== d.author || d.commitTime !== d.authorTime
