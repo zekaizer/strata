@@ -14,6 +14,7 @@ describe('remote operations', () => {
   let root: string;
   let bare: string;
   const remote = (...args: string[]) => execFileSync('git', args, { cwd: bare, encoding: 'utf8' }).trim();
+  const errors = () => ui.of('notify').filter((n) => n.level === 'error');
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'strata-remote-'));
@@ -78,6 +79,30 @@ describe('remote operations', () => {
     assert.equal(ui.first('confirm').message, "'strata-fix' tracks origin/strata-pub, which has another name.");
     assert.equal(remote('rev-parse', 'strata-fix'), fix);
     assert.notEqual(remote('rev-parse', 'strata-pub'), fix, 'the upstream of another name is untouched');
+  });
+
+  it('pulls from an upstream that is a local branch', async () => {
+    git('branch', 'strata-feat', 'main');
+    git('branch', '--track', 'strata-loc', 'strata-feat');
+    git('update-ref', 'refs/heads/strata-loc', 'main~1');
+    git('switch', '--quiet', 'strata-loc');
+    await reload(panel());
+    await run('strata.pull');
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'strata-loc'), git('rev-parse', 'strata-feat'));
+  });
+
+  it('pulls from an upstream whose short name a local branch shadows', async () => {
+    await publish();
+    const theirs = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Theirs');
+    git('push', '--quiet', 'origin', `${theirs}:refs/heads/strata-pub`);
+    git('update-ref', 'refs/remotes/origin/strata-pub', 'strata-pub');
+    git('branch', 'origin/strata-pub', 'main');
+    git('switch', '--quiet', 'strata-pub');
+    await reload(panel());
+    await run('strata.pull');
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'refs/heads/strata-pub'), theirs);
   });
 
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {

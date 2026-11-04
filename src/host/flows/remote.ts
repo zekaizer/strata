@@ -71,7 +71,7 @@ export async function pull(host: FlowHost): Promise<void> {
   }
   const fetch: Operation = { kind: 'fetch', remote: upstream.remote, ref: `refs/heads/${upstream.remoteBranch}` };
   if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch))) return;
-  const tracking = `refs/remotes/${upstream.name}`;
+  const tracking = upstream.ref;
   const [ahead, behind] = await Promise.all([
     countCommits(host.git, host.cwd, [`${tracking}..HEAD`]),
     countCommits(host.git, host.cwd, [`HEAD..${tracking}`]),
@@ -130,11 +130,14 @@ export async function push(host: FlowHost, branch: string | undefined): Promise<
   }
   const dest = `refs/heads/${destBranch}`;
   const destName = `${remote}/${destBranch}`;
+  // Where fetching dest from remote lands: the upstream's own ref (a local branch for remote ".").
+  const tracking =
+    remote === upstream.remote && destBranch === upstream.remoteBranch ? upstream.ref : `refs/remotes/${destName}`;
   const op: Operation = { kind: 'push', branch, remote, dest, setUpstream: false, forceWithLease: undefined };
   try {
     if (!(await remoteRun(host, REMOTE_DOING.pushing(branch, destName), remote, op))) return;
   } catch (e) {
-    if (e instanceof GitOpError && e.kind === 'rejected') return rejected(host, op, destName, local.hash);
+    if (e instanceof GitOpError && e.kind === 'rejected') return rejected(host, op, destName, tracking, local.hash);
     throw e;
   }
   await finish(host, { message: REMOTE_DONE.pushed(branch, destName) });
@@ -148,11 +151,11 @@ async function rejected(
   host: FlowHost,
   op: Extract<Operation, { kind: 'push' }>,
   destName: string,
+  tracking: string,
   local: string,
 ): Promise<void> {
   const fetch: Operation = { kind: 'fetch', remote: op.remote, ref: op.dest };
   if (!(await remoteRun(host, REMOTE_DOING.fetching(op.remote), op.remote, fetch))) return;
-  const tracking = `refs/remotes/${destName}`;
   const theirs = await runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', tracking]).then(
     (s) => s.trim(),
     () => undefined,

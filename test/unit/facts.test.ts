@@ -105,6 +105,7 @@ describe('confirmation facts', () => {
 
   it("reads a branch's upstream, and none for a branch without one", async () => {
     assert.deepEqual(await readUpstream('git', dir, 'main'), {
+      ref: 'refs/remotes/origin/main',
       name: 'origin/main',
       remote: 'origin',
       remoteBranch: 'main',

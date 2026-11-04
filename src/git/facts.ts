@@ -151,20 +151,23 @@ export async function readStash(
 export const readStashTop = (git: string, cwd: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['rev-parse', '--quiet', '--verify', 'refs/stash']));
 
-/** A branch's upstream: "origin/main", its remote and the branch on that remote. */
+/**
+ * A branch's upstream: its ref (refs/remotes/origin/main, or refs/heads/main for a local branch,
+ * whose remote is "."), its short name as git prints it, its remote and the branch on that remote.
+ */
 export async function readUpstream(
   git: string,
   cwd: string,
   branch: string,
-): Promise<{ name: string; remote: string; remoteBranch: string } | undefined> {
+): Promise<{ ref: string; name: string; remote: string; remoteBranch: string } | undefined> {
   const out = await runGit(git, cwd, [
     'for-each-ref',
-    '--format=%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
+    '--format=%(upstream)%00%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
     `refs/heads/${branch}`,
   ]);
-  const [name = '', remote = '', remoteRef = ''] = out.trim().split('\0');
-  if (name === '' || remote === '' || !remoteRef.startsWith('refs/heads/')) return undefined;
-  return { name, remote, remoteBranch: remoteRef.slice('refs/heads/'.length) };
+  const [ref = '', name = '', remote = '', remoteRef = ''] = out.trim().split('\0');
+  if (ref === '' || remote === '' || !remoteRef.startsWith('refs/heads/')) return undefined;
+  return { ref, name, remote, remoteBranch: remoteRef.slice('refs/heads/'.length) };
 }
 
 /** The branch HEAD is on (undefined when detached) and its commit. */

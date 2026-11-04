@@ -270,7 +270,7 @@ export async function rebase(host: FlowHost, onto: Source, ask: 'always' | 'when
   if (!(await deepEnough(host, h.hash, target.hash, [h.name, onto.name]))) return;
   const upstream = h.branch === undefined ? undefined : await readUpstream(host.git, host.cwd, h.branch);
   const [counts, c] = await Promise.all([
-    readRebaseCounts(host.git, host.cwd, target.hash, upstream?.name),
+    readRebaseCounts(host.git, host.cwd, target.hash, upstream?.ref),
     changes(host, 'rebase'),
   ]);
   const dirty = c.choices.choices.length > 0;
