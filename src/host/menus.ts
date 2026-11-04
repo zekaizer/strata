@@ -18,6 +18,7 @@ import {
   createTag,
   deleteBranch,
   deleteTag,
+  refActionsOf,
   renameBranch,
 } from './flows/refs.ts';
 import { resolveConflicts } from './flows/changes.ts';
@@ -197,6 +198,11 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
   'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),
+  'strata.refActions': (ctx) => {
+    const host = panel().flowHost();
+    parseTarget(ctx, ['commit'], host.refs);
+    return refActionsOf(host, (str(ctx?.['strataRefs']) ?? '').split(' ').filter(Boolean));
+  },
 
   'strata.merge': on(['commit', 'branch', 'remoteBranch'], async (host, t) => merge(host, await sourceOf(host, t))),
   'strata.rebase': on(['commit', 'branch', 'remoteBranch'], async (host, t) => rebase(host, await sourceOf(host, t))),

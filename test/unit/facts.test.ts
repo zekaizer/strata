@@ -21,6 +21,7 @@ import {
   readUnmergedCommits,
   readUntrackedAt,
   readUpstream,
+  readWorktreeBranches,
 } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
 
@@ -189,5 +190,16 @@ describe('confirmation facts', () => {
     assert.deepEqual(await readUntrackedAt('git', dir, 'main'), ['b.txt'], 'b.txt is tracked on main only');
     rmSync(join(dir, 'b.txt'));
     run(dir, 'checkout', '--quiet', 'main');
+  });
+
+  it('names the other worktrees branches are checked out in', async () => {
+    const other = join(root, 'other worktree');
+    run(dir, 'worktree', 'add', '--quiet', other, 'topic');
+    try {
+      assert.deepEqual([...(await readWorktreeBranches('git', dir))], [['refs/heads/topic', other]]);
+    } finally {
+      run(dir, 'worktree', 'remove', '--force', other);
+    }
+    assert.deepEqual([...(await readWorktreeBranches('git', dir))], []);
   });
 });

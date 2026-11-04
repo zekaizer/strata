@@ -1,7 +1,9 @@
 import * as assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as vscode from 'vscode';
 import { join } from 'node:path';
-import { branchMenu, commitMenu, flowSuite, run, selected, tagMenu } from './flow-helpers.ts';
+import { branchMenu, commitMenu, flowSuite, menu, run, selected, tagMenu } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('ref operations', () => {
@@ -172,5 +174,48 @@ describe('ref operations', () => {
     assert.equal(branches(), 'wip/renamed');
     await run('strata.undo');
     assert.equal(branches(), 'wip/experiment');
+  });
+
+  it("offers a row's badge actions from the row's menu, for keyboard users", async () => {
+    const tip = git('rev-parse', 'wip/experiment');
+    ui.choose('Copy Name');
+    await run(
+      'strata.refActions',
+      menu({ webviewSection: 'commit', strataHash: tip, strataHasRefs: true, strataRefs: 'refs/heads/wip/experiment' }),
+    );
+    assert.deepEqual(ui.first('pick'), {
+      kind: 'pick',
+      title: "Actions for 'wip/experiment'",
+      items: [
+        'Checkout',
+        'Merge into Current Branch...',
+        'Rebase Current Branch onto This...',
+        'Publish Branch...',
+        'Rename Branch...',
+        'Copy Name',
+        'Delete Branch...',
+      ],
+    });
+    assert.equal(await vscode.env.clipboard.readText(), 'wip/experiment');
+  });
+
+  it('refuses to rename a branch checked out in another worktree, naming it', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'strata-wt-'));
+    const other = join(root, 'other');
+    git('worktree', 'add', '--quiet', other, 'wip/experiment');
+    try {
+      await run('strata.renameBranch', branchMenu('wip/experiment', git('rev-parse', 'wip/experiment')));
+      assert.deepEqual(ui.asked, [
+        {
+          kind: 'notify',
+          level: 'error',
+          message: `'wip/experiment' is checked out in another worktree (${other}).`,
+          actions: [],
+        },
+      ]);
+    } finally {
+      git('worktree', 'remove', '--force', other);
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

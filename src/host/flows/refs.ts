@@ -5,6 +5,7 @@ import type { Operation } from '../../core/operations.ts';
 import { refNameProblem } from '../../core/ref-name.ts';
 import type { Ref, RefKind } from '../../core/refs.ts';
 import { remoteBranch } from '../../core/remote-branch.ts';
+import { COMMANDS, refActions, type Section } from '../../shared/commands.ts';
 import {
   checkedOutElsewhere,
   createBranchInput,
@@ -17,6 +18,7 @@ import {
   migrateConflicted,
   NEEDS_NEW_NAME,
   quote,
+  REF_ACTIONS,
   refExists,
   renameInput,
   stashButtons,
@@ -32,6 +34,7 @@ import {
   readUnmerged,
   readUnmergedCommits,
   readUpstream,
+  readWorktreeBranches,
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
@@ -106,7 +109,19 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   }
 }
 
+/**
+ * A branch checked out in another worktree cannot be checked out or deleted here, and renaming it
+ * would silently re-point that worktree's HEAD: says where it is. Resolves whether it is free.
+ */
+async function notElsewhere(host: FlowHost, ref: Ref): Promise<boolean> {
+  const path = (await readWorktreeBranches(host.git, host.cwd)).get(ref.name);
+  if (path === undefined) return true;
+  void host.ui.notify('error', checkedOutElsewhere(ref.short, path));
+  return false;
+}
+
 export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
+  if (!(await notElsewhere(host, ref))) return;
   const tip = await readCommit(host.git, host.cwd, ref.name);
   await switchTo(host, {
     to: quote(ref.short),
@@ -123,6 +138,7 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
   const rb = remoteBranch(ref.name, host.refs.remotes);
   if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
   const local = host.refs.refs.find((r) => r.kind === 'branch' && r.short === rb.branch);
+  if (local && !(await notElsewhere(host, local))) return;
   if (!local) {
     const tip = await readCommit(host.git, host.cwd, ref.name);
     await switchTo(host, {
@@ -222,6 +238,7 @@ export async function createTag(host: FlowHost, at: string): Promise<void> {
 }
 
 export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
+  if (!(await notElsewhere(host, ref))) return;
   const [tip, upstream] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
     readUpstream(host.git, host.cwd, ref.short),
@@ -262,6 +279,7 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
 }
 
 export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
+  if (!(await notElsewhere(host, ref))) return;
   const [tip, unmerged, upstream, config] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
     readUnmergedCommits(host.git, host.cwd, ref.short),
@@ -328,4 +346,42 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
 export async function copyRefName(host: FlowHost, ref: Ref): Promise<void> {
   await vscode.env.clipboard.writeText(ref.short);
   host.done(DONE.copied(ref.short));
+}
+
+const SECTION: Record<RefKind, Section> = { branch: 'branch', remote: 'remoteBranch', tag: 'tag' };
+
+/**
+ * Keyboard access to a row's badges: picks one of its refs (`names`, full), then one of the
+ * commands its badge menu shows, and runs it as that menu would.
+ */
+export async function refActionsOf(host: FlowHost, names: readonly string[]): Promise<void> {
+  const refs = names.map((n) => host.refs.refs.find((r) => r.name === n)).filter((r): r is Ref => r !== undefined);
+  const ref =
+    refs.length === 1
+      ? refs[0]
+      : await host.ui.pick({
+          title: REF_ACTIONS.title,
+          items: refs.map((r) => ({ label: r.short, description: REF_ACTIONS.kind[r.kind], value: r })),
+        });
+  if (!ref) return;
+  const section = SECTION[ref.kind];
+  const flags =
+    section === 'branch'
+      ? {
+          strataIsCurrent: ref.short === host.refs.headBranch,
+          strataUpstream: (await readUpstream(host.git, host.cwd, ref.short)) !== undefined,
+        }
+      : {};
+  const id = await host.ui.pick({
+    title: REF_ACTIONS.actionsFor(ref.short),
+    items: refActions(section, flags).map((c) => ({ label: COMMANDS[c].title, value: c })),
+  });
+  if (id === undefined) return;
+  await vscode.commands.executeCommand(id, {
+    webview: 'strata.graph',
+    webviewSection: section,
+    strataRef: ref.name,
+    strataHash: ref.hash,
+    ...flags,
+  });
 }

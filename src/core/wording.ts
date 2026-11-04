@@ -1,5 +1,6 @@
 import type { DirtyFacts, StashChoice, StashChoices, StashOp } from './autostash.ts';
 import type { ResetMode } from './operations.ts';
+import type { RefKind } from './refs.ts';
 import type { OperationKind } from './repo-state.ts';
 
 /** A commit as confirmations name it. */
@@ -318,7 +319,7 @@ export const renameInput = (branch: string, remote: string | undefined): { title
 export function deleteTagConfirmation(tag: string, at: CommitRef): Confirmation<'delete'> {
   return {
     message: `Delete tag '${tag}'?`,
-    detail: `It points at ${at.short} "${at.subject}". Tags already pushed stay on remotes.`,
+    detail: `It points at ${at.short} "${at.subject}". A tag already pushed stays on its remote, and a fetch brings it back.`,
     buttons: [{ id: 'delete', label: 'Delete Tag' }],
   };
 }
@@ -756,4 +757,11 @@ export const PULL_NOTES = {
   ffOnly: 'pull.ff is "only", so git would not merge.',
   rebaseMerges:
     'pull.rebase is "merges"; Strata\'s rebase replays the merged commits one by one instead of keeping the merges.',
+};
+
+/** The two picks behind Branch and Tag Actions...: which ref, then which of its menu's commands. */
+export const REF_ACTIONS = {
+  title: 'Branch and Tag Actions',
+  kind: { branch: 'branch', remote: 'remote branch', tag: 'tag' } as Record<RefKind, string>,
+  actionsFor: (name: string): string => `Actions for '${name}'`,
 };

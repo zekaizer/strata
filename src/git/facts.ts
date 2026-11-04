@@ -235,3 +235,18 @@ export async function readUntrackedAt(git: string, cwd: string, target: string):
 /** A git config value as written; undefined when unset. */
 export const readConfig = (git: string, cwd: string, key: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['config', '--get', key]));
+
+/** Branches checked out in other worktrees of the repository, by full ref, with the worktree's path. */
+export async function readWorktreeBranches(git: string, cwd: string): Promise<Map<string, string>> {
+  const [list, top] = await Promise.all([
+    runGit(git, cwd, ['worktree', 'list', '--porcelain']),
+    runGit(git, cwd, ['rev-parse', '--show-toplevel']).then((s) => s.trim()),
+  ]);
+  const found = new Map<string, string>();
+  for (const block of list.split('\n\n')) {
+    const path = /^worktree (.*)$/m.exec(block)?.[1];
+    const branch = /^branch (.*)$/m.exec(block)?.[1];
+    if (path !== undefined && branch !== undefined && path !== top) found.set(branch, path);
+  }
+  return found;
+}

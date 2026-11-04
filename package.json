@@ -167,6 +167,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.refActions",
+        "title": "Branch and Tag Actions...",
+        "category": "Strata"
+      },
+      {
         "command": "strata.reset",
         "title": "Reset Current Branch to Here...",
         "category": "Strata",
@@ -456,6 +461,11 @@
           "group": "5_copy@4"
         },
         {
+          "command": "strata.refActions",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataHasRefs",
+          "group": "7_refs@1"
+        },
+        {
           "command": "strata.reset",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
           "group": "6_reset@1"
@@ -623,6 +633,10 @@
         },
         {
           "command": "strata.commit.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.refActions",
           "when": "false"
         },
         {

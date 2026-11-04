@@ -9,7 +9,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataMerge'],
+  commit: ['strataIsHead', 'strataMerge', 'strataHasRefs'],
   stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],
@@ -115,6 +115,7 @@ export const COMMANDS = {
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },
   'strata.commit.copySubject': { title: 'Copy Commit Subject', menus: [commit('5_copy@3')] },
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
+  'strata.refActions': { title: 'Branch and Tag Actions...', menus: [commit('7_refs@1', 'strataHasRefs')] },
   'strata.reset': {
     title: 'Reset Current Branch to Here...',
     menus: [commit('6_reset@1', '!strataIsHead')],
@@ -274,4 +275,33 @@ export function manifestMenus(): Record<'webview/context' | 'editor/title' | 'co
     });
   }
   return { 'webview/context': context, 'editor/title': title, commandPalette: palette };
+}
+
+/** Evaluates a menu's extra when-clause (`flag && !flag`, the only form the table uses) against a context's flags. */
+export function whenHolds(when: string | undefined, flags: Readonly<Record<string, unknown>>): boolean {
+  if (when === undefined) return true;
+  return when.split('&&').every((term) => {
+    const t = term.trim();
+    return t.startsWith('!') ? !flags[t.slice(1)] : Boolean(flags[t]);
+  });
+}
+
+/** `group@order` as VS Code sorts menu items. */
+const position = (group: string): [string, number] => {
+  const [name = '', order = '0'] = group.split('@');
+  return [name, Number(order)];
+};
+
+/**
+ * The commands a badge's context menu shows for a ref of `section` with these flags, in menu
+ * order: what Branch and Tag Actions... offers for keyboard users, evaluated from the same table.
+ */
+export function refActions(section: Section, flags: Readonly<Record<string, unknown>>): CommandId[] {
+  const found: { id: CommandId; at: [string, number] }[] = [];
+  for (const id of COMMAND_IDS) {
+    const spec: CommandSpec = COMMANDS[id];
+    const m = spec.menus?.find((p) => p.section === section && whenHolds(p.when, flags));
+    if (m) found.push({ id, at: position(m.group) });
+  }
+  return found.sort((a, b) => a.at[0].localeCompare(b.at[0]) || a.at[1] - b.at[1]).map((f) => f.id);
 }

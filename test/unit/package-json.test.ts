@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { syncManifest } from '../../scripts/lib/manifest.ts';
-import { COMMAND_IDS, COMMANDS, SECTION_KEYS, type CommandSpec } from '../../src/shared/commands.ts';
+import { COMMAND_IDS, COMMANDS, refActions, SECTION_KEYS, type CommandSpec } from '../../src/shared/commands.ts';
 
 interface Command {
   command: string;
@@ -71,5 +71,26 @@ describe('package.json activation', () => {
     // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.
     assert.ok(pkg.activationEvents.includes('onStartupFinished'));
     assert.ok(pkg.activationEvents.includes('onWebviewPanel:strata.graph'));
+  });
+});
+
+describe('ref actions (keyboard access to badges)', () => {
+  it('lists what the menu of that badge would show, from the same table', () => {
+    assert.deepEqual(refActions('branch', { strataIsCurrent: true, strataUpstream: true }), [
+      'strata.push',
+      'strata.pull',
+      'strata.renameBranch',
+      'strata.copyRefName',
+    ]);
+    assert.deepEqual(refActions('branch', { strataIsCurrent: false, strataUpstream: false }), [
+      'strata.checkout',
+      'strata.merge',
+      'strata.rebase',
+      'strata.publish',
+      'strata.renameBranch',
+      'strata.copyRefName',
+      'strata.deleteBranch',
+    ]);
+    assert.deepEqual(refActions('tag', {}), ['strata.checkoutDetached', 'strata.copyRefName', 'strata.deleteTag']);
   });
 });

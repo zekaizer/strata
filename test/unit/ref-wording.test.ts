@@ -98,7 +98,10 @@ describe('wording of ref operations', () => {
   it('says what deleting a tag leaves', () => {
     const c = deleteTagConfirmation('v1', tip);
     assert.equal(c.message, "Delete tag 'v1'?");
-    assert.equal(c.detail, 'It points at abc1234 "Tip". Tags already pushed stay on remotes.');
+    assert.equal(
+      c.detail,
+      'It points at abc1234 "Tip". A tag already pushed stays on its remote, and a fetch brings it back.',
+    );
     assert.deepEqual(c.buttons, [{ id: 'delete', label: 'Delete Tag' }]);
   });
 
