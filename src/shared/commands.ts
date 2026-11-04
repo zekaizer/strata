@@ -70,6 +70,16 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.showOutput': { title: 'Show Git Output', palette: true, titleBar: { group: '9_output@1' } },
+
+  // The banner's buttons (src/webview/banner.ts).
+  'strata.operation.continue': { title: 'Continue Operation', writes: true },
+  'strata.operation.abort': { title: 'Abort Operation...', writes: true },
+  'strata.operation.skip': { title: 'Skip Commit...', writes: true },
+  'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
+  'strata.stash.pop': { title: 'Pop Stash', writes: true },
+  'strata.stash.drop': { title: 'Drop Stash...', writes: true },
+  'strata.showStash': { title: 'Show Stash' },
+  'strata.keepStash': { title: 'Keep Stash' },
 } as const satisfies Record<string, CommandSpec>;
 
 export type CommandId = keyof typeof COMMANDS;

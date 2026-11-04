@@ -27,6 +27,8 @@ import type {
   ViewOptions,
 } from '../shared/protocol.ts';
 import { rowBadges, type Badge } from './badges.ts';
+import { bannerOf } from './banner.ts';
+import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
@@ -167,6 +169,21 @@ class App {
   /** Announces results of actions (a copy) to screen readers. */
   private readonly announcer = el('div', 'sr-only');
   private announced = '';
+  /** Says errors at once (role=alert). */
+  private readonly alert = el('div', 'sr-only');
+  private alerted = '';
+  private readonly banner = new BannerView(
+    (action) => {
+      vscode.postMessage({ type: 'menuCommand', command: action.command, context: action.context ?? {} });
+    },
+    (hash) => {
+      this.selectHash(hash);
+    },
+  );
+  /** What the banner last said aloud: a new stop or leftover, not a subject that arrived later. */
+  private bannerSaid = '';
+  /** Stops seen with conflicts (stopKey): when none are left, they were resolved. */
+  private readonly conflictedStops = new Set<string>();
   /** Widest author name and dates of the loaded commits, in px (the row's own font). */
   private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
   private operation: OperationState | undefined;
@@ -265,7 +282,8 @@ class App {
     this.viewport.append(this.scroller, this.canvas);
     this.announcer.setAttribute('role', 'status');
     this.announcer.setAttribute('aria-live', 'polite');
-    root.replaceChildren(this.toolbar, this.viewport, this.announcer);
+    this.alert.setAttribute('role', 'alert');
+    root.replaceChildren(this.toolbar, this.banner.element, this.viewport, this.announcer, this.alert);
     // Escape from anywhere in the details goes back to the list; the selection stays.
     this.expansion.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -373,6 +391,9 @@ class App {
       case 'repoState':
         this.operation = m.operation;
         this.leftover = m.leftover;
+        if (!m.operation) this.conflictedStops.clear();
+        else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
+        this.updateBanner();
         // Stash rows carry whether restoring them conflicted.
         this.queueRender();
         break;
@@ -390,6 +411,8 @@ class App {
         });
         this.updateStatus();
         this.updateStashButton();
+        // Subjects the banner names may have arrived.
+        this.updateBanner();
         this.applyRestore();
         this.queueRender();
         break;
@@ -420,6 +443,9 @@ class App {
         this.refFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refFilter.update(this.refs, null);
+        this.operation = undefined;
+        this.leftover = undefined;
+        this.updateBanner();
         this.setStashes([]);
         this.commits = [];
         this.list = [];
@@ -432,6 +458,11 @@ class App {
         this.loading = false;
         this.status.textContent = m.message;
         this.status.classList.add('error');
+        this.alerted = m.message;
+        this.alert.textContent = '';
+        requestAnimationFrame(() => {
+          this.alert.textContent = m.message;
+        });
         break;
       case 'notice':
         this.announce(m.message);
@@ -494,6 +525,7 @@ class App {
     for (const [hash, list] of this.refsByHash)
       this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
     this.setStashes(stashes);
+    this.updateBanner();
     this.commits = [];
     this.list = [];
     this.geometry.clear();
@@ -641,6 +673,29 @@ class App {
   private reveal(hash: string): void {
     if (this.stashes.some((s) => s.hash === hash)) this.setShowStashes(true);
     this.selectHash(hash, true);
+  }
+
+  /**
+   * Shows the operation in progress or what one left behind. It is said politely when it says
+   * something new: VS Code already announces the toast the host shows for a stop.
+   */
+  private updateBanner(): void {
+    const op = this.operation;
+    const banner = bannerOf(op, this.leftover, {
+      subject: (hash) => this.commits.find((c) => c.hash === hash)?.subject,
+      name: (hash) => {
+        const refs = this.refsByHash.get(hash) ?? [];
+        return (refs.find((r) => r.kind === 'branch') ?? refs.find((r) => r.kind === 'remote') ?? refs[0])?.short;
+      },
+      hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
+    });
+    this.banner.show(banner);
+    const said = banner
+      ? JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null])
+      : '';
+    if (said === this.bannerSaid) return;
+    this.bannerSaid = said;
+    if (banner) this.announce(this.banner.text);
   }
 
   /**
@@ -2007,6 +2062,17 @@ class App {
       ),
       details: this.probeDetails(),
       announced: this.announced,
+      alerted: this.alerted,
+      banner: this.banner.element.hidden
+        ? undefined
+        : {
+            state: this.banner.element.dataset['state'] ?? '',
+            label: this.banner.element.getAttribute('aria-label') ?? '',
+            text: this.banner.text,
+            warning: this.banner.element.classList.contains('warning'),
+            buttons: [...this.banner.element.querySelectorAll('.banner-button')].map((b) => b.textContent),
+            links: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-link')].map((b) => b.title),
+          },
       status: this.status.textContent,
       listBusy: this.scroller.getAttribute('aria-busy') === 'true',
       authorColumn: (() => {
@@ -2205,6 +2271,9 @@ class App {
 }
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
+
+/** One stop of an operation: a later stop at another commit or step is another. */
+const stopKey = (op: OperationState) => `${op.kind} ${op.applying ?? ''} ${op.step?.current ?? ''}`;
 
 /** The commit changed files belong to and the commit they are compared with (none: all added). */
 interface FileSource {

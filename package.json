@@ -116,6 +116,51 @@
         "command": "strata.showOutput",
         "title": "Show Git Output",
         "category": "Strata"
+      },
+      {
+        "command": "strata.operation.continue",
+        "title": "Continue Operation",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.abort",
+        "title": "Abort Operation...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.skip",
+        "title": "Skip Commit...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.resolveConflicts",
+        "title": "Resolve Conflicts...",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.stash.pop",
+        "title": "Pop Stash",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.stash.drop",
+        "title": "Drop Stash...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.showStash",
+        "title": "Show Stash",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.keepStash",
+        "title": "Keep Stash",
+        "category": "Strata"
       }
     ],
     "menus": {
@@ -244,6 +289,38 @@
         {
           "command": "strata.showOutput",
           "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.operation.continue",
+          "when": "false"
+        },
+        {
+          "command": "strata.operation.abort",
+          "when": "false"
+        },
+        {
+          "command": "strata.operation.skip",
+          "when": "false"
+        },
+        {
+          "command": "strata.resolveConflicts",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.pop",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.drop",
+          "when": "false"
+        },
+        {
+          "command": "strata.showStash",
+          "when": "false"
+        },
+        {
+          "command": "strata.keepStash",
+          "when": "false"
         }
       ],
       "editor/title": [

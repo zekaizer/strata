@@ -79,6 +79,10 @@ const write = (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>) => async (
 
 type Handlers = Record<CommandId, (ctx: MenuArg) => unknown>;
 
+const notBuilt = () => {
+  throw new Error('This action is not available yet.');
+};
+
 const handlers = (env: FlowEnv): Handlers => ({
   'strata.file.openChanges': open('diff', false),
   'strata.file.openOld': open('before', false),
@@ -104,6 +108,14 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.showOutput': () => {
     env.runner.showOutput();
   },
+  'strata.operation.continue': notBuilt,
+  'strata.operation.abort': notBuilt,
+  'strata.operation.skip': notBuilt,
+  'strata.resolveConflicts': notBuilt,
+  'strata.stash.pop': notBuilt,
+  'strata.stash.drop': notBuilt,
+  'strata.showStash': notBuilt,
+  'strata.keepStash': notBuilt,
 });
 
 export function registerCommands(env: FlowEnv): vscode.Disposable[] {

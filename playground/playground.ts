@@ -3,7 +3,9 @@
 // Query: ?theme=dark|light|high-contrast|high-contrast-light&repo=<scenario>&select=<row>&showStashes=0
 //   &menu=<selector>: right-click that element, shown as while VS Code's menu is open
 //   &busy=<label>: a Strata operation running
+//   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import type { Commit } from '../src/core/commit.ts';
+import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import {
   DEFAULT_OPTIONS,
   type HostToWebview,
@@ -38,6 +40,7 @@ const selectRow = params.get('select');
 const openPopover = params.get('open');
 const menuAt = params.get('menu');
 const busy = params.get('busy');
+const bannerState = params.get('banner');
 
 for (const [k, v] of Object.entries(themes[theme])) document.documentElement.style.setProperty(k, v);
 document.body.classList.add(...bodyClass[theme]);
@@ -120,6 +123,9 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         }, 50);
       }
       if (busy !== null && offset === commits.length) toWebview({ type: 'busy', label: busy });
+      if (bannerState !== null && offset === commits.length)
+        for (const [operation, leftover] of repoStates(bannerState, data))
+          toWebview({ type: 'repoState', operation, leftover });
       if (menuAt !== null && offset === commits.length) {
         setTimeout(() => {
           toWebview({ type: 'simulate', action: { kind: 'contextMenu', selector: menuAt } });
@@ -136,6 +142,54 @@ async function onMessage(m: WebviewToHost): Promise<void> {
     default:
       break;
   }
+}
+
+/** repoState messages that bring the banner into `state`, from the scenario's commits and refs. */
+function repoStates(state: string, d: PlaygroundData): [OperationState | undefined, Leftover | undefined][] {
+  const at = (short: string) => d.refs.refs.find((r) => r.short === short)?.hash ?? d.commits[0]!.hash;
+  const applying = d.commits.find((c) => c.subject === 'Search UI')?.hash ?? d.commits[1]!.hash;
+  const stash = { hash: d.stashes[0]?.hash ?? d.commits[0]!.hash, index: 0 };
+  const rebase: OperationState = {
+    kind: 'rebase',
+    branch: 'feature/search',
+    onto: at('main'),
+    step: { current: 2, total: 4 },
+    applying,
+    conflicts: ['feature_search.txt', 'src/ranking.ts'],
+    conflictCount: 2,
+    autostash: true,
+  };
+  const resolved = { conflicts: [], conflictCount: 0 };
+  const merge: OperationState = {
+    ...rebase,
+    kind: 'merge',
+    branch: 'main',
+    onto: undefined,
+    step: undefined,
+    applying: at('feature/login'),
+    conflicts: ['main.txt'],
+    conflictCount: 1,
+  };
+  const pick: OperationState = { ...merge, kind: 'cherryPick', applying, autostash: false };
+  const states: Record<string, [OperationState | undefined, Leftover | undefined][]> = {
+    rebase: [[rebase, undefined]],
+    rebaseResolved: [
+      [rebase, undefined],
+      [{ ...rebase, ...resolved }, undefined],
+    ],
+    rebaseStopped: [[{ ...rebase, ...resolved }, undefined]],
+    merge: [[merge, undefined]],
+    mergeResolved: [
+      [merge, undefined],
+      [{ ...merge, ...resolved }, undefined],
+    ],
+    sequencer: [[pick, { kind: 'pendingStash', stash, operation: 'cherry pick' }]],
+    leftover: [[undefined, { kind: 'restoreConflicted', stash, files: ['src/lexer.ts'] }]],
+    leftoverResolved: [[undefined, { kind: 'restoreConflicted', stash, files: [] }]],
+    pending: [[undefined, { kind: 'pendingStash', stash, operation: 'cherry pick' }]],
+    conflicts: [[undefined, { kind: 'unmerged', files: ['a.txt', 'b.txt'], count: 2, autostash: stash }]],
+  };
+  return states[state] ?? [];
 }
 
 Object.assign(window, {

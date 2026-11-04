@@ -220,6 +220,11 @@ export interface ProbeState {
   selectionOutline: string;
   /** Text last announced to screen readers. */
   announced: string;
+  /** Text last said at once (role=alert). */
+  alerted: string;
+  /** The banner above the list: its state, region name, sentence, look, buttons and the commits it links. */
+  banner:
+    { state: string; label: string; text: string; warning: boolean; buttons: string[]; links: string[] } | undefined;
   /** The toolbar's status text. */
   status: string;
   /** The list's aria-busy. */

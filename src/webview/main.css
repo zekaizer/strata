@@ -344,6 +344,107 @@ body.vscode-reduce-motion .toolbar .status.busy::before {
   outline-offset: -1px;
 }
 
+/*
+ * The operation in progress, or what one left behind, between the toolbar and the list: the
+ * sentence first, the buttons at the end of the line, or on a line of their own when narrow.
+ */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  flex: none;
+  padding: 5px 8px 5px 16px;
+  border-bottom: 1px solid var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
+  background: var(--vscode-inputValidation-infoBackground, transparent);
+  color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground));
+  line-height: 18px;
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner.warning {
+  border-bottom-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+}
+
+body.vscode-high-contrast .banner {
+  border-top: 1px solid var(--vscode-contrastBorder);
+  border-bottom-color: var(--vscode-contrastBorder);
+}
+
+.banner-icon.codicon {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 1px;
+  font-size: 16px;
+  color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-foreground));
+}
+
+.banner.warning .banner-icon.codicon {
+  color: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground));
+}
+
+/*
+ * The icon and the sentence share the first line; the buttons take the rest of it or wrap below.
+ * At most two lines of the sentence show; its tooltip and screen readers have all of it.
+ */
+.banner-text {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin-left: -6px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.banner-link {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+}
+
+.banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.banner-button {
+  padding: 1px 8px;
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font: inherit;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.banner-button.primary {
+  border-color: var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+body:not(.hover-off) .banner-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+body:not(.hover-off) .banner-button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.banner-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
 .viewport {
   position: relative;
   flex: 1;
