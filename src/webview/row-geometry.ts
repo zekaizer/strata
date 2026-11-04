@@ -77,3 +77,14 @@ export function pageFrom(g: RowGeometry, index: number, view: number, dir: 1 | -
   const fits = g.top(at) < y ? at + 1 : at;
   return Math.max(0, Math.min(index - 1, fits));
 }
+
+/**
+ * Most height the details under row `selected` may take in a view `view` px tall: `share` of the
+ * view, or more when the history ends before the view does, but never so much that the selected
+ * row and the row after it cannot both be seen.
+ */
+export function expansionCap(g: RowGeometry, selected: number, view: number, share: number): number {
+  const unused = view - (g.total() - g.top(selected));
+  const next = selected + 1 < g.count ? g.height(selected + 1) : 0;
+  return Math.floor(Math.min(view - g.height(selected) - next, Math.max(view * share, unused)));
+}

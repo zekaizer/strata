@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { pageFrom, RowGeometry } from '../../src/webview/row-geometry.ts';
+import { expansionCap, pageFrom, RowGeometry } from '../../src/webview/row-geometry.ts';
 
 const rows = (...banded: boolean[]) => {
   const g = new RowGeometry(24, 16);
@@ -74,5 +74,23 @@ describe('pageFrom', () => {
     assert.equal(pageFrom(g, 2, 10, -1), 1);
     assert.equal(pageFrom(g, 2, 480, 1), 2);
     assert.equal(pageFrom(g, 0, 480, -1), 0);
+  });
+});
+
+describe('expansionCap', () => {
+  it('takes the share of a long list', () => {
+    const g = rows(...Array<boolean>(100).fill(false));
+    assert.equal(expansionCap(g, 10, 600, 0.45), 270);
+  });
+  it('fills the room a short history leaves below its last row', () => {
+    const g = rows(false, false, false, false);
+    // Rows from the selected one down take 48px of 600px.
+    assert.equal(expansionCap(g, 2, 600, 0.45), 600 - 24 - 24);
+  });
+  it('keeps the selected row and the next one, at its own height, in a short view', () => {
+    const g = rows(true, true, true, true);
+    assert.equal(expansionCap(g, 0, 100, 0.45), 100 - 40 - 40);
+    const last = rows(false, true);
+    assert.equal(expansionCap(last, 1, 100, 0.45), 100 - 40, 'no row after the last');
   });
 });

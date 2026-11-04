@@ -16,7 +16,7 @@ import type {
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
 import { RefFilter } from './ref-filter.ts';
-import { pageFrom, RowGeometry } from './row-geometry.ts';
+import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -529,14 +529,9 @@ class App {
    * leave empty at the end of a short history; the selected row and one more always stay in view.
    */
   private placeExpansion(): void {
-    const view = this.scroller.clientHeight;
-    const unused = view - (this.geometry.total() - this.geometry.top(this.selected));
-    const cap = Math.min(
-      view - this.geometry.height(this.selected) - ROW_HEIGHT,
-      Math.max(view * MAX_EXPANSION_SHARE, unused),
-    );
+    const cap = expansionCap(this.geometry, this.selected, this.scroller.clientHeight, MAX_EXPANSION_SHARE);
     this.expansion.style.top = `${this.geometry.top(this.selected + 1)}px`;
-    this.expansion.style.maxHeight = `${Math.max(ROW_HEIGHT, Math.floor(cap))}px`;
+    this.expansion.style.maxHeight = `${Math.max(ROW_HEIGHT, cap)}px`;
   }
 
   /** Marks details that continue below their visible part, which then fade out at the bottom. */
