@@ -2,6 +2,7 @@ import type { Commit } from '../core/commit.ts';
 import { fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
+import { reflowBody } from '../core/message.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
@@ -747,7 +748,7 @@ class App {
       `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed${d.base ? ` vs ${shortHash(d.base)}` : ''}`,
     );
     const children: HTMLElement[] = [close, el('h2', 'details-subject', subject), meta, summary, files];
-    if (body) children.push(el('pre', 'details-message', body));
+    if (body) children.push(el('pre', 'details-message', reflowBody(body)));
     pane.style.minHeight = '';
     pane.replaceChildren(...children);
     pane.scrollTop = 0;
