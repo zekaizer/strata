@@ -79,11 +79,17 @@ Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
 `.github/workflows/ci.yml` runs on every push and pull request: typecheck,
 lint, format and unit tests; integration and restart tests under Xvfb on VS
 Code stable and 1.90.0; then packages the extension. Each successful run
-uploads `strata-<version>-<short sha>.vsix` as a workflow artifact, kept for
-30 days: open the run under the repository's **Actions** tab and download
-it from **Artifacts** (requires a GitHub login). The download is the
+uploads `strata-<version>-ci.<run>-<short sha>.vsix` as a workflow artifact,
+kept for 30 days: open the run under the repository's **Actions** tab and
+download it from **Artifacts** (requires a GitHub login). The download is the
 `.vsix` itself, not a zip. These are the test builds to share; there are no
 GitHub releases. Runners are pinned to `ubuntu-24.04`.
+
+Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes
+`<version>-ci.<run number>` and the README (the extension's details page in
+the Extensions view) starts with the build's commit and date, so an installed
+CI build says which one it is. A release of the same version sorts above it.
+Release packaging (`npm run package`) does not stamp.
 
 `package.json` overrides the `glob` used by mocha (through
 `@vscode/test-cli`) with glob 13: mocha 11 pins the deprecated glob 10,
