@@ -466,6 +466,11 @@
           "group": "7_refs@1"
         },
         {
+          "command": "strata.refActions",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'refs'",
+          "group": "1_refs@1"
+        },
+        {
           "command": "strata.reset",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
           "group": "6_reset@1"

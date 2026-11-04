@@ -70,6 +70,7 @@ describe('stash rows', () => {
       preventDefaultContextMenuItems: true,
       strataHash: stash[2],
       strataSubject: 'On feature/search: half-done ranking UI',
+      strataLeftover: false,
     });
     assert.equal(p.rowHeights[i], 24);
   });

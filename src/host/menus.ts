@@ -200,7 +200,8 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),
   'strata.refActions': (ctx) => {
     const host = panel().flowHost();
-    parseTarget(ctx, ['commit'], host.refs);
+    // A row's menu names all its refs; a "+N" badge's, the ones it hides.
+    if (ctx?.['webviewSection'] !== 'refs') parseTarget(ctx, ['commit'], host.refs);
     return refActionsOf(host, (str(ctx?.['strataRefs']) ?? '').split(' ').filter(Boolean));
   },
 

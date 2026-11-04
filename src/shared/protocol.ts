@@ -48,6 +48,8 @@ export type HostToWebview =
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
+  /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
+  | { type: 'busy'; label: string | undefined }
   /**
    * The operation in progress, or else what an earlier one left behind, sent after every reset and
    * when it changes.
@@ -114,8 +116,19 @@ export interface ProbeState {
   >;
   /** Path of the file whose diff was opened last in the details pane. */
   openedFile: string | undefined;
-  /** `data-vscode-context` of the changed files and of the selected row (context menu arguments). */
-  menuContexts: { files: Record<string, unknown>[]; selectedRow: Record<string, unknown> | undefined };
+  /**
+   * `data-vscode-context` of the changed files, of the selected row, and of the badges and remote
+   * names of each rendered row by row index, in document order (context menu arguments).
+   */
+  menuContexts: {
+    files: Record<string, unknown>[];
+    selectedRow: Record<string, unknown> | undefined;
+    badges: Record<number, Record<string, unknown>[]>;
+  };
+  /** The element marked as the open context menu's target: its context, text and outline style. */
+  menuTarget: { context: Record<string, unknown>; text: string; outline: string } | undefined;
+  /** VS Code's body.vscode-context-menu-visible. */
+  menuShown: boolean;
   /** Per changed file in the details, which views can be opened. */
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
@@ -207,6 +220,17 @@ export interface ProbeState {
   selectionOutline: string;
   /** Text last announced to screen readers. */
   announced: string;
+  /** Text last said at once (role=alert). */
+  alerted: string;
+  /** Rendered elements marked as moved by the last operation: a badge's refs or "stash:<hash>", and how they show it. */
+  landed: { refs: string; animation: string; outline: string }[];
+  /** The banner above the list: its state, region name, sentence, look, buttons and the commits it links. */
+  banner:
+    { state: string; label: string; text: string; warning: boolean; buttons: string[]; links: string[] } | undefined;
+  /** The toolbar's status text. */
+  status: string;
+  /** The list's aria-busy. */
+  listBusy: boolean;
   /** Class name of the focused element. */
   focused: string;
   options: ViewOptions;
@@ -227,11 +251,16 @@ export type SimulatedAction =
       key: string;
       target?: 'list' | 'files' | 'focused';
       shiftKey?: boolean;
+      ctrlKey?: boolean;
       altKey?: boolean;
       metaKey?: boolean;
     }
   | { kind: 'click'; selector: string }
   | { kind: 'contextMenu'; selector: string }
+  /** Selects the text of the element, as a drag over it would; none when nothing matches. */
+  | { kind: 'selectText'; selector: string }
+  /** What Chromium sends for Shift+F10 or the Menu key: a contextmenu on the focused list (button -1). */
+  | { kind: 'keyboardContextMenu' }
   | { kind: 'focus'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 

@@ -601,6 +601,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
 
   busy(label: string | undefined): void {
     this.running = label;
+    this.post({ type: 'busy', label });
     if (label === undefined) this.scheduleRefresh();
   }
 

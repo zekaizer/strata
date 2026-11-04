@@ -15,9 +15,10 @@ export interface StashCache {
 export const stashCache = (): StashCache => ({ files: new Map(), onBranch: new Map() });
 
 /**
- * The stash list, newest first; empty when there is no stash. Each stash whose base is no longer
- * on the branch it was made on is anchored at that branch's tip. Checks that take longer than
- * `budgetMs` in all leave their stashes at their base, uncounted.
+ * The stash list, newest first; empty when there is no stash. A stash whose base left the branch it
+ * was made on, and which no branch, remote-tracking branch or HEAD (the graph's start points) still
+ * holds, is anchored at that branch's tip. Checks that take longer than `budgetMs` in all leave their
+ * stashes at their base, uncounted.
  */
 export async function readStashes(
   git: string,
@@ -79,7 +80,20 @@ async function classify(
     tip === undefined || tip === s.base ? true : isAncestor(git, cwd, s.base, tip, cache),
     countFiles(git, cwd, s, cache),
   ]);
-  return { ...s, anchor: onBranch || tip === undefined ? { kind: 'base' } : { kind: 'tip', tip }, files };
+  const displaced = tip !== undefined && !onBranch && !(await isDrawn(git, cwd, s.base));
+  return { ...s, anchor: displaced ? { kind: 'tip', tip } : { kind: 'base' }, files };
+}
+
+/** Whether the graph's start points (LogReader's default) reach `commit`; not cached, since any ref moving changes it. */
+async function isDrawn(git: string, cwd: string, commit: string): Promise<boolean> {
+  const [byRef, byHead] = await Promise.all([
+    runGit(git, cwd, ['for-each-ref', `--contains=${commit}`, '--count=1', '--format=x', 'refs/heads', 'refs/remotes']),
+    runGit(git, cwd, ['merge-base', '--is-ancestor', commit, 'HEAD']).then(
+      () => true,
+      () => false,
+    ),
+  ]);
+  return byRef.trim() !== '' || byHead;
 }
 
 async function isAncestor(git: string, cwd: string, base: string, tip: string, cache: StashCache): Promise<boolean> {

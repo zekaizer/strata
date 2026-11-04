@@ -8,6 +8,8 @@ export interface Ref {
   kind: RefKind;
   /** Commit the ref points at (annotated tags are peeled). */
   hash: string;
+  /** A local branch's upstream, full name (refs/remotes/origin/main); absent without one. */
+  upstream?: string;
 }
 
 export interface RefSnapshot {

@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
 import { ScriptedUi } from './scripted-ui.ts';
 
 /** What VS Code passes to a webview/context command: the element's data-vscode-context plus the webview id. */
@@ -107,6 +107,25 @@ describe('context menus', () => {
     await vscode.env.clipboard.writeText('');
     await panel.simulate({ kind: 'key', key: 'C', target: 'files', shiftKey: true, altKey: true });
     await waitFor('clipboard', async () => (await vscode.env.clipboard.readText()) === file);
+  });
+
+  const mod = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+
+  it("copies the selected row's hash with Ctrl+C and its patch with Ctrl+Shift+C", async () => {
+    await vscode.env.clipboard.writeText('');
+    await panel.simulate({ kind: 'key', key: 'c', ...mod });
+    await waitFor('hash copied', async () => (await vscode.env.clipboard.readText()) === hash);
+    await panel.simulate({ kind: 'key', key: 'C', shiftKey: true, ...mod });
+    await waitFor('patch copied', async () => (await vscode.env.clipboard.readText()).startsWith(`From ${hash} `));
+  });
+
+  it('leaves Ctrl+C to VS Code while text is selected in the details', async () => {
+    await vscode.env.clipboard.writeText('unchanged');
+    await panel.simulate({ kind: 'selectText', selector: '.details-subject' });
+    await panel.simulate({ kind: 'key', key: 'c', ...mod });
+    await delay(500);
+    assert.notEqual(await vscode.env.clipboard.readText(), hash);
+    await panel.simulate({ kind: 'selectText', selector: '.no-such-element' });
   });
 
   it('refuses menu arguments that are not a commit id and repository path, and says why', async () => {
