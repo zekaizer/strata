@@ -68,9 +68,27 @@ body {
   font: inherit;
   cursor: pointer;
 }
-body:not(.hover-off) .tool-button:hover {
+/*
+ * One language for every button: toolbar hover background, toolbar active background while
+ * pressed, a dashed outline in high contrast themes, a solid focus ring for the keyboard.
+ */
+body:not(.hover-off) .tool-button:hover,
+body:not(.hover-off) .icon-button:hover,
+body:not(.hover-off) .file-action:hover,
+body:not(.hover-off) .byline-hash:hover,
+body:not(.hover-off) .byline-toggle:hover {
   background: var(--vscode-toolbar-hoverBackground);
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline: 1px dashed var(--vscode-toolbar-hoverOutline, var(--vscode-contrastActiveBorder, transparent));
+  outline-offset: -1px;
+}
+
+body:not(.hover-off) .tool-button:not(.active):active,
+body:not(.hover-off) .icon-button:active,
+body:not(.hover-off) .file-action:active,
+body:not(.hover-off) .byline-hash:active,
+body:not(.hover-off) .byline-toggle:active,
+.tool-button[aria-expanded='true']:not(.active) {
+  background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
 .tool-button:focus-visible {
@@ -78,10 +96,16 @@ body:not(.hover-off) .tool-button:hover {
   outline-offset: -1px;
 }
 
-.tool-button.active {
+.tool-button.active,
+body:not(.hover-off) .tool-button.active:hover {
   background: var(--vscode-inputOption-activeBackground);
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
+
+/* The focus ring would land on the 1px active border, which is nearly the same color. */
+.tool-button.active:focus-visible {
+  outline-offset: 1px;
 }
 
 .tool-label {
@@ -142,7 +166,14 @@ body:not(.hover-off) .tool-button:hover {
   cursor: pointer;
 }
 body:not(.hover-off) .link-button:hover {
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
   text-decoration: underline;
+}
+
+.link-button:disabled {
+  color: var(--vscode-disabledForeground);
+  cursor: default;
+  text-decoration: none;
 }
 
 /* High contrast themes mark links by more than their color. */
@@ -259,10 +290,6 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
   cursor: pointer;
 }
-body:not(.hover-off) .icon-button:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
-}
 
 .icon-button:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
@@ -334,8 +361,13 @@ canvas.graph {
   overflow: hidden;
 }
 
-body:not(.hover-off) .row:hover {
+/* Like VS Code lists: hover never paints over the selection. */
+body:not(.hover-off) .row:not(.selected):hover {
   background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-list-hoverForeground, inherit);
+}
+
+body:not(.hover-off) .row:hover {
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
 }
@@ -425,10 +457,6 @@ body.keyboard-nav .scroller:focus .row.selected {
   background: color-mix(in srgb, var(--badge-color) 16%, transparent);
   font-size: 9px;
   line-height: 10px;
-  transition:
-    background-color 0.12s,
-    border-color 0.12s,
-    color 0.12s;
 }
 
 .badge .codicon {
@@ -526,6 +554,8 @@ body.vscode-high-contrast .badge-remotes {
 .expansion {
   --details-bg: color-mix(in srgb, var(--vscode-editor-background) 94%, #000);
   --details-shadow: rgb(0 0 0 / 28%);
+  /* The list's hover color is too close to the darker details background in light themes. */
+  --details-hover: color-mix(in srgb, var(--vscode-list-hoverBackground) 94%, #000);
   position: absolute;
   left: 0;
   right: 0;
@@ -547,6 +577,7 @@ body.vscode-high-contrast .badge-remotes {
 body.vscode-dark .expansion {
   --details-bg: color-mix(in srgb, var(--vscode-editor-background) 72%, #000);
   --details-shadow: rgb(0 0 0 / 75%);
+  --details-hover: var(--vscode-list-hoverBackground);
 }
 
 /* More below the visible part: a deeper bottom edge. The text itself is cut cleanly, not faded. */
@@ -558,6 +589,7 @@ body.vscode-dark .expansion {
 
 body.vscode-high-contrast .expansion {
   --details-bg: var(--vscode-editor-background);
+  --details-hover: var(--vscode-list-hoverBackground);
   box-shadow: none;
   border-color: var(--vscode-contrastBorder);
 }
@@ -687,10 +719,6 @@ body:not(.hover-off) .byline-hash:hover,
   color: var(--vscode-foreground);
 }
 
-body:not(.hover-off) .byline-hash:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
-
 body:not(.hover-off) .byline-hash:hover .hash-icon,
 .byline-hash:focus-visible .hash-icon,
 .byline-hash.copied .hash-icon {
@@ -716,8 +744,13 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   cursor: pointer;
 }
 
-body:not(.hover-off) .byline-toggle:hover {
-  background: var(--vscode-toolbar-hoverBackground);
+.meta-copy.copied {
+  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+}
+
+/* The meta table clips its cells, so the ring goes inside. */
+.meta-parent:focus-visible {
+  outline-offset: -1px;
 }
 
 .byline-hash:focus-visible,
@@ -933,7 +966,7 @@ body:not(.hover-off) .byline-toggle:hover {
 }
 
 body:not(.hover-off) .folder:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--details-hover);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
 }
@@ -957,7 +990,7 @@ body:not(.hover-off) .folder:hover {
   cursor: pointer;
 }
 body:not(.hover-off) .file:hover {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: var(--details-hover);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
 }
@@ -1037,11 +1070,6 @@ body:not(.hover-off) .file:hover .file-actions,
 .file-action.codicon {
   font-size: 14px;
 }
-body:not(.hover-off) .file-action:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
-  outline-offset: -1px;
-}
 
 .file-old,
 .file-dir {
@@ -1087,7 +1115,8 @@ body:not(.hover-off) .file-action:hover {
   position: absolute;
   top: 2px;
   bottom: 2px;
-  left: 0;
+  /* At the row's own indent, not on the indent guides of its ancestors. */
+  left: calc(var(--depth, 0) * 16px + 1px);
   width: 2px;
   background: var(--vscode-focusBorder);
 }

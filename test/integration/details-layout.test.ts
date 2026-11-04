@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
-import { git, strata, waitFor } from './helpers.ts';
+import { delay, git, strata, waitFor } from './helpers.ts';
 
 const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
 const IDENTITY = ['-c', 'user.name=Ada Lovelace', '-c', 'user.email=ada@example.com'];
@@ -94,6 +94,18 @@ describe('details layout', () => {
       return p.selected === order()[4] && p;
     });
     assert.equal(keyed.selectionOutline, 'solid', 'keyboard navigation shows where focus is');
+  });
+
+  it('folds with the fold button without touching the row under the pointer', async () => {
+    await openDetails(2);
+    await panel.simulate({ kind: 'click', selector: '.details-fold' });
+    const s = await waitFor('folded', async () => {
+      const p = await panel.probe();
+      return p.expandedHeight === 0 && p;
+    });
+    assert.equal(s.selected, order()[2], 'the same commit stays selected');
+    await delay(300);
+    assert.equal((await panel.probe()).expandedHeight, 0, 'and nothing else unfolded');
   });
 
   it('copies the full hash when the hash is clicked', async () => {

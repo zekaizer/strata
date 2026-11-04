@@ -212,7 +212,9 @@ class App {
     });
     // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
-      if (this.expansion.contains(e.target as Node)) return;
+      // By the dispatch path: the target may already be detached (a fold or a parent link
+      // rebuilds the details), and its position would then hit the row under the pointer.
+      if (e.composedPath().includes(this.expansion)) return;
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.commits.length) return;
@@ -905,7 +907,8 @@ class App {
     const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
-    close.addEventListener('click', () => {
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
       this.userCollapse();
       this.scroller.focus();
     });
@@ -930,7 +933,8 @@ class App {
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
-    pane.replaceChildren(close, layout);
+    // The fold button is positioned top right; after the content, it comes last in tab order.
+    pane.replaceChildren(layout, close);
     this.applyMetaOpen();
     this.measureTree();
     pane.scrollTop = 0;
@@ -1034,6 +1038,12 @@ class App {
     copy.setAttribute('aria-label', copy.title);
     copy.addEventListener('click', () => {
       this.copyHash(d.hash);
+      copy.classList.replace('codicon-copy', 'codicon-check');
+      copy.classList.add('copied');
+      setTimeout(() => {
+        copy.classList.replace('codicon-check', 'codicon-copy');
+        copy.classList.remove('copied');
+      }, 1500);
     });
     row('Commit', el('code', undefined, d.hash), copy);
     // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
