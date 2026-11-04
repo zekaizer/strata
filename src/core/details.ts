@@ -40,14 +40,18 @@ export function fileViews(file: FileChange, base: string | undefined): FileView[
 }
 
 /**
- * The line above the changed files. `base` is set when the comparison is not
- * the obvious one (the only parent): for merges and explicit bases.
+ * The line above the changed files: what was compared with what. `base` is the commit the files
+ * are relative to; `baseLabel` says which parent it is when that is not obvious (merges).
  */
-export function filesSummary(d: CommitDetails): { text: string; base: string | undefined } {
-  const text = `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed`;
-  if (d.base === undefined || (d.parents.length === 1 && d.base === d.parents[0])) return { text, base: undefined };
-  return {
-    text: d.parents.length > 1 && d.base === d.parents[0] ? `${text} vs first parent` : `${text} vs`,
-    base: d.base,
-  };
+export function filesSummary(d: CommitDetails): {
+  text: string;
+  base: string | undefined;
+  baseLabel: '' | 'first parent';
+  root: boolean;
+} {
+  const n = d.files.length;
+  const files = `${n} file${n === 1 ? '' : 's'}`;
+  if (d.base === undefined) return { text: `${files} added`, base: undefined, baseLabel: '', root: true };
+  const first = d.parents.length > 1 && d.base === d.parents[0];
+  return { text: `${files} changed`, base: d.base, baseLabel: first ? 'first parent' : '', root: false };
 }

@@ -855,10 +855,11 @@ class App {
     const files = this.fileTree(d);
     const s = filesSummary(d);
     const summary = el('div', 'files-summary', s.text);
+    if (s.root) summary.append(' · root commit');
     if (s.base !== undefined) {
       const base = el('span', 'files-base', shortHash(s.base));
       base.title = s.base;
-      summary.append(' ', base);
+      summary.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, base);
     }
     const children: HTMLElement[] = [close, el('h2', 'details-subject', subject), meta, summary, files];
     if (body) children.push(el('pre', 'details-message', reflowBody(body)));
