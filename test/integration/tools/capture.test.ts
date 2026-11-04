@@ -3,7 +3,7 @@
 //   STRATA_SHOT_DIR=<dir>        screenshot the graph panel per built-in theme
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { delay, screenshot, setTheme, strata, THEMES, type ThemeId } from '../helpers.ts';
+import { delay, screenshot, setTheme, strata, THEMES, waitFor, type ThemeId } from '../helpers.ts';
 
 const themeIds = Object.keys(THEMES) as ThemeId[];
 const themesDir = process.env['STRATA_CAPTURE_THEMES'];
@@ -34,6 +34,10 @@ after(() => setTheme('dark'));
       await setTheme(id);
       const panel = (await strata()).show();
       await panel.whenReady();
+      // Show a merge commit with its details, the most informative state.
+      await waitFor('history', async () => (await panel.probe()).done);
+      await panel.simulate({ kind: 'clickRow', index: 1 });
+      await waitFor('details', async () => (await panel.probe()).detailsShown !== undefined);
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `${id}.png`));
