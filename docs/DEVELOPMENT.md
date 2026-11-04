@@ -73,3 +73,13 @@ scripts/             build, xvfb wrapper, screenshot tooling
 ```
 
 Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request: typecheck,
+lint, format and unit tests; integration and restart tests under Xvfb on VS
+Code stable and 1.90.0; then packages the extension. Each successful run
+uploads `strata-<version>-<short sha>.vsix` as a workflow artifact, kept for
+30 days: open the run under the repository's **Actions** tab and download
+it from **Artifacts** (requires a GitHub login). These are the test builds
+to share; there are no GitHub releases.
