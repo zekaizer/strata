@@ -42,6 +42,9 @@ page, so it opens quickly even on very large repositories.
 
 ## Large repositories
 
+On the Linux kernel (1.5 million commits) the graph opens in about 0.2
+seconds once the repository has a commit-graph.
+
 Strata asks git for history in topological order, which is fast when the
 repository has a commit-graph file. Without one, git reads the whole history
 before showing the first commit (about 20 seconds on the Linux kernel). When

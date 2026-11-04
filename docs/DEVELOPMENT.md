@@ -24,6 +24,8 @@ npm ci
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
 | Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
 | Fixture repos → `out/fixtures/<name>`  | `npm run fixtures [name ...]`                       |
+| Performance (git + layout)             | `npm run perf -- <repo>`                            |
+| Performance in VS Code                 | `STRATA_PERF_REPO=<repo> npm run perf:e2e`          |
 | Package                                | `npm run package` → `artifacts/strata.vsix`         |
 
 Interactive debugging: F5 ("Run Extension") generates the fixture repositories,
@@ -68,3 +70,5 @@ test/integration/    @vscode/test-cli suites (bundled to out/)
 playground/          browser host for the webview + captured theme variables
 scripts/             build, xvfb wrapper, screenshot tooling
 ```
+
+Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
