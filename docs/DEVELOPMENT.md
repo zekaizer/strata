@@ -81,5 +81,10 @@ lint, format and unit tests; integration and restart tests under Xvfb on VS
 Code stable and 1.90.0; then packages the extension. Each successful run
 uploads `strata-<version>-<short sha>.vsix` as a workflow artifact, kept for
 30 days: open the run under the repository's **Actions** tab and download
-it from **Artifacts** (requires a GitHub login). These are the test builds
+it from **Artifacts** (requires a GitHub login). The download is the
+`.vsix` itself, not a zip. Runners are pinned to `ubuntu-24.04`.
+
+`package.json` overrides the `glob` used by mocha (through
+`@vscode/test-cli`) with glob 13: mocha 11 pins the deprecated glob 10,
+and mocha 12 is ESM-only, which VS Code 1.90's extension host cannot load. These are the test builds
 to share; there are no GitHub releases.

@@ -15,10 +15,12 @@ permissions:
 jobs:
   check:
     name: Typecheck, lint, format, unit tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -27,7 +29,7 @@ jobs:
 
   integration:
     name: Integration tests (VS Code ${{ matrix.vscode }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -37,15 +39,17 @@ jobs:
           - vscode: 1.90.0
             script: test:integration:min
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - name: Install Xvfb
         run: sudo apt-get update -q && sudo apt-get install -yq xvfb
       - name: Cache VS Code downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vscode-test
           key: vscode-${{ runner.os }}-${{ matrix.vscode }}-${{ hashFiles('.vscode-test.mjs') }}
@@ -55,10 +59,12 @@ jobs:
   package:
     name: Package VSIX
     needs: [check, integration]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -71,9 +77,10 @@ jobs:
           file="strata-${version}-${GITHUB_SHA::7}.vsix"
           mv artifacts/strata.vsix "artifacts/${file}"
           echo "file=${file}" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      # Uploaded as-is, not zipped: the download is the .vsix itself, named after the file.
+      - uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.name.outputs.file }}
           path: artifacts/${{ steps.name.outputs.file }}
+          archive: false
           retention-days: 30
           if-no-files-found: error
