@@ -29,6 +29,7 @@ describe('filesSummary', () => {
     committerEmail: 'a@example.com',
     commitTime: 0,
     message: 's',
+    parentSubjects: parents.map(() => 'p'),
     base,
     files: Array.from({ length: n }, (_, i) => ({ status: 'M' as const, path: `f${i}` })),
   });

@@ -43,15 +43,19 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
   ];
   const parentList = parents ? parents.split(' ') : [];
   const from = base ?? parentList[0];
-  const diff = await runGit(git, cwd, [
-    'diff-tree',
-    '-z',
-    '-r',
-    '-M',
-    '--no-commit-id',
-    '--name-status',
-    ...(from === undefined ? ['--root', hash] : [from, hash]),
-    '--',
+  // Independent of each other: run the parents' subjects and the file list together.
+  const [subjects, diff] = await Promise.all([
+    parentSubjects(git, cwd, parentList),
+    runGit(git, cwd, [
+      'diff-tree',
+      '-z',
+      '-r',
+      '-M',
+      '--no-commit-id',
+      '--name-status',
+      ...(from === undefined ? ['--root', hash] : [from, hash]),
+      '--',
+    ]),
   ]);
   return {
     hash: h,
@@ -63,9 +67,30 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
     committerEmail,
     commitTime: Number(ct),
     message: message.replace(/\n+$/, ''),
+    parentSubjects: parentList.map((p) => subjects.get(p) ?? ''),
     base: from,
     files: parseNameStatus(diff),
   };
+}
+
+/** Subjects of `parents` by hash. --no-walk=unsorted reads exactly these commits, in this order. */
+async function parentSubjects(git: string, cwd: string, parents: string[]): Promise<Map<string, string>> {
+  const subjects = new Map<string, string>();
+  if (parents.length === 0) return subjects;
+  const out = await runGit(git, cwd, [
+    'log',
+    '--no-walk=unsorted',
+    '--no-color',
+    '--encoding=UTF-8',
+    '--format=%H%x00%s',
+    ...parents,
+    '--',
+  ]);
+  for (const line of out.split('\n')) {
+    const [id, subject] = line.split('\0');
+    if (id && subject !== undefined) subjects.set(id, subject);
+  }
+  return subjects;
 }
 
 /** Parses `git diff-tree -z --name-status`: status NUL path NUL, with two paths for renames and copies. */

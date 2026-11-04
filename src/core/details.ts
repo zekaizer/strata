@@ -18,6 +18,8 @@ export interface CommitDetails {
   commitTime: number;
   /** Full message: subject, blank line, body. */
   message: string;
+  /** Subject of each parent, in `parents` order. */
+  parentSubjects: string[];
   /** Parent the file list is relative to; undefined for a root commit (compared with the empty tree). */
   base: string | undefined;
   files: FileChange[];

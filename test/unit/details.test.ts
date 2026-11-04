@@ -64,6 +64,7 @@ describe('readCommitDetails', () => {
   it('compares a root commit with the empty tree', async () => {
     const d = await readCommitDetails('git', dir, git(dir, 'rev-parse', 'HEAD~'));
     assert.equal(d.base, undefined);
+    assert.deepEqual(d.parentSubjects, []);
     assert.deepEqual(d.files.map((f) => `${f.status} ${f.path}`).sort(), [
       'A gone.txt',
       'A keep.txt',
@@ -82,6 +83,11 @@ describe('readCommitDetails', () => {
       first.files.map((f) => f.path),
       ['feature_login.txt'],
     );
+    // Subjects line up with the parents, whatever their dates.
+    assert.deepEqual(first.parentSubjects, [
+      git(b, 'log', '-1', '--format=%s', p1!),
+      git(b, 'log', '-1', '--format=%s', p2!),
+    ]);
     const second = await readCommitDetails('git', b, merge, p2);
     assert.equal(second.base, p2);
     assert.deepEqual(
