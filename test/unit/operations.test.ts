@@ -189,7 +189,7 @@ describe('operations', () => {
     assert.equal(branch(d), 'from-stash');
   });
 
-  it('fetches, pulls and pushes, setting the upstream and forcing with a lease', async () => {
+  it('fetches, and pushes, setting the upstream and forcing with a lease', async () => {
     const origin = repo();
     const c = join(root, `clone${n++}`);
     run(root, 'clone', '--quiet', origin, c);
@@ -198,23 +198,37 @@ describe('operations', () => {
     run(origin, 'commit', '--quiet', '-m', 'upstream');
     await op(c, { kind: 'fetch', remote: undefined });
     assert.equal(run(c, 'rev-parse', 'origin/main'), head(origin));
-    await op(c, { kind: 'pull', rebase: false, autostash: false });
-    assert.equal(head(c), head(origin));
     run(origin, 'checkout', '--quiet', 'topic');
     run(c, 'checkout', '--quiet', '-b', 'published');
-    await op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: true, forceWithLease: undefined });
+    const publish = { kind: 'push', branch: 'published', remote: 'origin', dest: 'refs/heads/published' } as const;
+    await op(c, { ...publish, setUpstream: true, forceWithLease: undefined });
     assert.equal(run(c, 'rev-parse', '--abbrev-ref', 'published@{upstream}'), 'origin/published');
     const pushed = head(c);
     run(c, 'reset', '--quiet', '--hard', 'HEAD~1');
-    await assert.rejects(
-      op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: false, forceWithLease: undefined }),
-      { kind: 'rejected' },
-    );
-    await assert.rejects(
-      op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: false, forceWithLease: head(c) }),
-      'a stale lease fails',
-    );
-    await op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: false, forceWithLease: pushed });
+    await assert.rejects(op(c, { ...publish, setUpstream: false, forceWithLease: undefined }), { kind: 'rejected' });
+    await assert.rejects(op(c, { ...publish, setUpstream: false, forceWithLease: head(c) }), 'a stale lease fails');
+    await op(c, { ...publish, setUpstream: false, forceWithLease: pushed });
     assert.equal(run(origin, 'rev-parse', 'published'), head(c));
+  });
+
+  it('pushes to an upstream branch of another name', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', origin, c);
+    run(origin, 'checkout', '--quiet', 'topic');
+    run(c, 'checkout', '--quiet', '-b', 'fix', '--track', 'origin/main');
+    writeFileSync(join(c, 'fix.txt'), 'fix\n');
+    run(c, 'add', '.');
+    run(c, 'commit', '--quiet', '-m', 'fix');
+    await op(c, {
+      kind: 'push',
+      branch: 'fix',
+      remote: 'origin',
+      dest: 'refs/heads/main',
+      setUpstream: false,
+      forceWithLease: undefined,
+    });
+    assert.equal(run(origin, 'rev-parse', 'main'), head(c));
+    assert.equal(run(origin, 'branch', '--list', 'fix'), '');
   });
 });

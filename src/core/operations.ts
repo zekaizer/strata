@@ -33,8 +33,18 @@ export type Operation =
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
   | { kind: 'fetch'; remote: string | undefined }
-  | { kind: 'pull'; rebase: boolean; autostash: boolean }
-  | { kind: 'push'; branch: string; remote: string; setUpstream: boolean; forceWithLease: string | undefined };
+  /**
+   * Local `branch` to `dest`, a full ref on `remote` (the upstream's branch may have another name).
+   * `forceWithLease`: the commit `dest` must still be at.
+   */
+  | {
+      kind: 'push';
+      branch: string;
+      remote: string;
+      dest: string;
+      setUpstream: boolean;
+      forceWithLease: string | undefined;
+    };
 
 const GIT_COMMAND: Record<OperationKind, string> = {
   rebase: 'rebase',
@@ -114,16 +124,14 @@ export function argv(op: Operation): string[] {
       return ['stash', 'store', '--message', op.message, op.commit];
     case 'fetch':
       return ['fetch', '--progress', ...(op.remote === undefined ? ['--all'] : [op.remote])];
-    case 'pull':
-      return ['pull', '--progress', op.rebase ? '--rebase' : '--no-rebase', ...autostash(op.autostash)];
     case 'push':
       return [
         'push',
         '--progress',
         ...(op.setUpstream ? ['--set-upstream'] : []),
-        ...(op.forceWithLease === undefined ? [] : [`--force-with-lease=refs/heads/${op.branch}:${op.forceWithLease}`]),
+        ...(op.forceWithLease === undefined ? [] : [`--force-with-lease=${op.dest}:${op.forceWithLease}`]),
         op.remote,
-        `refs/heads/${op.branch}:refs/heads/${op.branch}`,
+        `refs/heads/${op.branch}:${op.dest}`,
       ];
   }
 }
