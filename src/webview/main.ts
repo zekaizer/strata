@@ -67,6 +67,8 @@ interface SavedState {
   reveal?: boolean | undefined;
   /** Whether the selected commit's details were expanded. */
   expanded?: boolean | undefined;
+  /** Loaded commits past which a restore stops looking; default RESTORE_SEARCH_LIMIT. Not saved. */
+  searchLimit?: number | undefined;
   /** Whether the meta table under the byline is unfolded: a view preference, not tied to a commit. */
   metaOpen?: boolean | undefined;
   options?: ViewOptions | undefined;
@@ -458,6 +460,8 @@ class App {
         scrollAnchor: sameView ? this.scrollAnchor() : undefined,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
         expanded: this.expanded,
+        // What was in the history before a reload is within what was loaded; past one more page, it is gone.
+        searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
       };
     }
     if (focus !== undefined) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
@@ -501,7 +505,7 @@ class App {
     const r = this.restore;
     if (!r) return;
     if (r.scrollTop !== undefined || r.scrollAnchor !== undefined) r.keepScroll = true;
-    const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
+    const searchable = !this.done && this.commits.length < (r.searchLimit ?? RESTORE_SEARCH_LIMIT);
     if (r.scrollAnchor !== undefined) {
       const anchor = r.scrollAnchor;
       const index = this.indexOf(anchor.hash);
