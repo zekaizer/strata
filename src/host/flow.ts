@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
-import type { Operation } from '../core/operations.ts';
+import { argv, type Operation } from '../core/operations.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import { shellCommand, shellKind } from '../core/shell.ts';
 import {
   changedMeanwhile,
+  commandCopied,
   gitFailure,
   quote,
   signInConfirmation,
@@ -155,9 +157,16 @@ export async function fail(
   if (e instanceof GitOpError && remote && (e.kind === 'auth' || e.kind === 'hostKey')) {
     const choice = await host.ui.confirm(signInConfirmation(remote.name, e.kind));
     if (choice === 'terminal') {
+      const line = shellCommand(['git', ...argv(remote.op)], shellKind(vscode.env.shell));
+      if (line === undefined) {
+        await vscode.env.clipboard.writeText(commandLine(remote.op));
+        void host.ui.notify('info', commandCopied(commandLine(remote.op)));
+        return;
+      }
       const terminal = vscode.window.createTerminal({ name: 'Strata git', cwd: remote.cwd });
       terminal.show();
-      terminal.sendText(commandLine(remote.op));
+      // Typed, not run: the user sees what will run and presses Enter.
+      terminal.sendText(line, false);
     } else if (choice === 'output') host.runner.showOutput();
     return;
   }

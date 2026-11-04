@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import { resolveStashChoices } from '../../src/core/autostash.ts';
 import {
   abortConfirmation,
+  commandCopied,
   deleteBranchConfirmation,
   dirtySection,
   fileList,
@@ -150,6 +151,13 @@ describe('wording of undo and failures', () => {
     assert.equal(
       signInConfirmation('origin', 'hostKey').detail,
       'Connect to the host once from a terminal to accept its key.',
+    );
+  });
+
+  it('says why a command was copied instead of typed into the terminal', () => {
+    assert.equal(
+      commandCopied("git push origin 'a&b'"),
+      "Strata can't quote this command safely for your terminal's shell, so it copied it instead: git push origin 'a&b'",
     );
   });
 

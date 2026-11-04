@@ -346,3 +346,7 @@ export const DOING = {
   deletingBranch: (branch: string): string => `Deleting branch '${branch}'`,
   deletingTag: (tag: string): string => `Deleting tag '${tag}'`,
 };
+
+/** Run in Terminal could not quote the command for the terminal's shell. */
+export const commandCopied = (line: string): string =>
+  `Strata can't quote this command safely for your terminal's shell, so it copied it instead: ${line}`;

@@ -63,6 +63,13 @@ describe('runGitOp', () => {
     }
   });
 
+  it('runs git without a terminal ssh could prompt on', async () => {
+    // Opening /dev/tty fails without a controlling terminal; ssh would otherwise wait there for a passphrase.
+    const probe = "!sh -c 'if (exec 3</dev/tty) 2>/dev/null; then echo terminal; else echo none; fi'";
+    const { stdout } = await runGitOp('git', dir, ['-c', `alias.probe=${probe}`, 'probe']);
+    assert.equal(stdout.trim(), 'none');
+  });
+
   it('kills git on abort', async () => {
     const ac = new AbortController();
     const p = runGitOp('git', dir, ['-c', 'alias.wait=!sleep 10', 'wait'], { signal: ac.signal });
