@@ -34,6 +34,8 @@ export type HostToWebview =
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
+  /** The panel was hidden behind another editor (VS Code knows; the webview's own events may not tell). */
+  | { type: 'hidden' }
   | { type: 'error'; message: string }
   | { type: 'dumpThemeVars' }
   | { type: 'probe' }
@@ -79,20 +81,51 @@ export interface ProbeState {
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
   columns: string[];
+  /** Visible entries of the changed-files tree: folders end with "/", two spaces per level. */
+  fileTree: string[];
+  /** Full subject shown at the top of the expanded details. */
+  detailsSubject: string | undefined;
+  /** Whether hover highlights are off because the pointer left the webview (or it was hidden). */
+  hoverSuppressed: boolean;
+  /** Width of the commit list in CSS px. */
+  listWidth: number;
   /** Height in px of the details expanded under the selected row; 0 when collapsed. */
   expandedHeight: number;
   /** Top offset in px of each rendered row within the list, by row index. */
   rowTops: Record<number, number>;
+  /** Scroll offset of the commit list in px. */
+  scrollTop: number;
+  /** Rendered height in px of each rendered row, by row index. */
+  rowHeights: Record<number, number>;
+  /**
+   * Ref badges of each rendered row that has any, by row index: the badge texts and where the
+   * band holding them ends relative to where the subject starts (both in px from the row top).
+   */
+  refBands: Record<
+    number,
+    { badges: string[]; bandBottom: number; subjectTop: number; subjectLeft: number; bandLeft: number }
+  >;
   options: ViewOptions;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */
 export type SimulatedAction =
-  | { kind: 'clickRow'; index: number }
+  /** `y`: px below the row's top to click at (default: its middle). */
+  | { kind: 'clickRow'; index: number; y?: number }
+  /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
+  | { kind: 'scrollToRow'; index: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
-  | { kind: 'key'; key: string; target?: 'list' | 'files'; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
+  | {
+      kind: 'key';
+      key: string;
+      target?: 'list' | 'files' | 'focused';
+      shiftKey?: boolean;
+      altKey?: boolean;
+      metaKey?: boolean;
+    }
   | { kind: 'click'; selector: string }
   | { kind: 'contextMenu'; selector: string }
+  | { kind: 'focus'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 
 export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };

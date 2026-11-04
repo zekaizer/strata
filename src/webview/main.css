@@ -2,6 +2,11 @@
 :root {
   color-scheme: light dark;
   --row-height: 24px;
+  /* Band above the commit line of rows with refs; REF_BAND in main.ts. */
+  --ref-band: 16px;
+  /* Shared by the row grid and the details under a row, so both start at the same column. */
+  --col-gap: 12px;
+  --separator: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
   --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
   --badge-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));
   --badge-tag: var(--vscode-charts-yellow);
@@ -63,8 +68,7 @@ body {
   font: inherit;
   cursor: pointer;
 }
-
-.tool-button:hover {
+body:not(.hover-off) .tool-button:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
 }
@@ -95,7 +99,7 @@ body {
   flex-direction: column;
   width: min(320px, calc(100vw - 16px));
   max-height: min(420px, 70vh);
-  padding: 6px;
+  padding: 6px 0;
   box-sizing: border-box;
   border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
   border-radius: 6px;
@@ -109,6 +113,7 @@ body {
 }
 
 .popover-search {
+  margin: 0 6px;
   padding: 4px 6px;
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 2px;
@@ -125,7 +130,7 @@ body {
 .popover-actions {
   display: flex;
   gap: 12px;
-  padding: 6px 2px;
+  padding: 6px 13px;
 }
 
 .link-button {
@@ -136,9 +141,16 @@ body {
   font: inherit;
   cursor: pointer;
 }
-
-.link-button:hover {
+body:not(.hover-off) .link-button:hover,
+body:not(.hover-off) .details-parents a:hover {
   text-decoration: underline;
+}
+
+.link-button:focus-visible,
+.details-parents a:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 
 .popover-list {
@@ -146,7 +158,7 @@ body {
 }
 
 .popover-group {
-  padding: 6px 4px 2px;
+  padding: 8px 13px 2px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -157,13 +169,45 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 4px;
+  margin: 0 6px;
+  padding: 2px 7px;
   border-radius: 3px;
   cursor: pointer;
 }
-
-.popover-item:hover {
+body:not(.hover-off) .popover-item:hover {
   background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.popover-item input[type='checkbox'] {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-widget-border, currentColor));
+  border-radius: 3px;
+  background: var(--vscode-checkbox-background, transparent);
+  color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
+  cursor: pointer;
+}
+
+.popover-item input[type='checkbox']:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  margin-top: -2px;
+  border: solid currentColor;
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+}
+
+.popover-item input[type='checkbox']:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
 }
 
 .popover-item-text {
@@ -173,7 +217,7 @@ body {
 }
 
 .popover-more {
-  padding: 4px;
+  padding: 4px 13px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -212,8 +256,7 @@ body {
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
   cursor: pointer;
 }
-
-.icon-button:hover {
+body:not(.hover-off) .icon-button:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
 }
@@ -259,13 +302,33 @@ canvas.graph {
   grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 160px) max-content max-content;
   grid-template-areas: 'graph subject author date hash';
   align-items: center;
-  column-gap: 12px;
+  column-gap: var(--col-gap);
   padding-right: 12px;
   cursor: default;
   white-space: nowrap;
 }
+/* Rows with refs: the badges get a line of their own above the subject column. */
+.row.banded {
+  height: calc(var(--ref-band) + var(--row-height));
+  grid-template-rows: var(--ref-band) var(--row-height);
+}
 
-.row:hover {
+.row.banded > :not(.refs) {
+  grid-row: 2;
+}
+
+.refs {
+  grid-row: 1;
+  grid-column: 2 / -1;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+body:not(.hover-off) .row:hover {
   background: var(--vscode-list-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
@@ -274,8 +337,8 @@ canvas.graph {
 .row.selected {
   background: var(--vscode-list-inactiveSelectionBackground);
   color: var(--vscode-list-inactiveSelectionForeground, inherit);
-  /* High contrast themes have no selection background; they mark selection with a border. */
-  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
+  /* High contrast themes have no selection background; they mark selection with a border, dotted until focused. */
+  outline: 1px dotted var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
 }
 
@@ -332,20 +395,24 @@ canvas.graph {
   --badge-color: var(--badge-branch);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  flex: none;
-  max-width: 220px;
-  height: 18px;
-  padding: 0 6px 0 4px;
+  gap: 2px;
+  /* Long names give way before short ones disappear; each keeps at least its icon. */
+  flex: 0 1 auto;
+  min-width: 22px;
+  box-sizing: border-box;
+  max-width: 200px;
+  height: 14px;
+  padding: 0 5px 0 3px;
   border: 1px solid var(--badge-color);
-  border-radius: 9px;
+  border-radius: 7px;
   background: color-mix(in srgb, var(--badge-color) 16%, transparent);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 10px;
+  line-height: 12px;
 }
 
 .badge .codicon {
-  font-size: 12px;
+  flex: none;
+  font-size: 10px;
   color: var(--badge-color);
 }
 
@@ -368,7 +435,8 @@ canvas.graph {
 
 .badge-more {
   --badge-color: var(--vscode-descriptionForeground);
-  padding: 0 6px;
+  flex: none;
+  padding: 0 5px;
 }
 
 .badge-head {
@@ -387,9 +455,9 @@ canvas.graph {
   right: 0;
   box-sizing: border-box;
   overflow: auto;
-  padding: 4px 12px 8px calc(var(--graph-width, 40px) + 12px);
-  border-top: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
-  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  padding: 6px 12px 10px calc(var(--graph-width, 40px) + var(--col-gap));
+  border-top: 1px solid var(--separator);
+  border-bottom: 1px solid var(--separator);
   background: color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground, transparent) 45%, transparent);
   cursor: auto;
 }
@@ -398,13 +466,29 @@ canvas.graph {
   display: none;
 }
 
+/* More details below the visible part: fade the last lines out instead of cutting them. */
+.expansion.more-below {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
 .details-fold {
   position: absolute;
-  top: 2px;
+  top: 4px;
   right: 8px;
 }
 
-.expansion .details-meta {
+.expansion .details-subject {
+  margin: 2px 0 2px;
+  /* Room for the fold button. */
+  padding-right: 28px;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.details-meta {
   /* Room for the fold button. */
   padding-right: 28px;
 }
@@ -432,6 +516,10 @@ canvas.graph {
   user-select: all;
 }
 
+.details-date-short {
+  display: none;
+}
+
 .details-parents {
   display: inline-flex;
   align-items: center;
@@ -440,47 +528,95 @@ canvas.graph {
 
 .details-parents a {
   color: var(--vscode-textLink-foreground);
+  text-decoration: none;
+  outline: none;
 }
 
 .details-message {
-  margin: 12px 0 0;
+  max-width: 80ch;
+  margin: 10px 0 0;
   padding-top: 8px;
-  border-top: 1px solid var(--vscode-panel-border, transparent);
-  font-family: var(--vscode-font-family);
+  border-top: 1px solid var(--separator);
+  /* Commit bodies are written in a fixed-width editor: tables, code and trailers line up. */
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+  line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .files-summary {
   color: var(--vscode-descriptionForeground);
-  margin: 8px 0 4px;
+  margin: 6px 0 2px;
+}
+
+.files-base {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
 }
 
 .files {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  /* Several columns when the editor is wide; one in narrow editors. */
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
-  column-gap: 16px;
+}
+
+.files li[hidden] {
+  display: none;
+}
+
+/* Tree rows: 16px per level; a folder's chevron sits where a file's status letter does. */
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 6px 0 calc(var(--depth, 0) * 16px + 6px);
+  border-radius: 3px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.folder-chevron {
+  width: 12px;
+  font-size: 12px;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+}
+
+.folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body:not(.hover-off) .folder:hover {
+  background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.folder:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .file {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   /* Tall enough for the Old | diff | New control, so hovering does not shift the rows below. */
   min-height: 22px;
   box-sizing: border-box;
-  padding: 1px 6px;
+  /* 16px per tree level, matching .folder. */
+  padding: 1px 6px 1px calc(var(--depth, 0) * 16px + 6px);
   border-radius: 3px;
   cursor: pointer;
 }
-
-.file:hover {
+body:not(.hover-off) .file:hover {
   background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
 }
 
 .file:focus-visible {
@@ -489,7 +625,8 @@ canvas.graph {
 }
 
 .file-status {
-  width: 1ch;
+  width: 12px;
+  text-align: center;
   font-family: var(--vscode-editor-font-family);
   font-weight: 600;
 }
@@ -522,8 +659,12 @@ canvas.graph {
   overflow: hidden;
 }
 
-/* Shown where the pointer or keyboard is, and on the file opened last. */
-.file:hover .file-actions,
+/*
+ * Shown where the pointer or keyboard is, and on the file opened last. Hover rules in this
+ * file apply only without .hover-off: when a click opens a diff the pointer can leave the
+ * iframe without a pointerleave, which would leave a highlight stuck (see trackPointer).
+ */
+body:not(.hover-off) .file:hover .file-actions,
 .file:focus-within .file-actions,
 .file.opened .file-actions {
   display: inline-flex;
@@ -551,8 +692,7 @@ canvas.graph {
 .file-action.codicon {
   font-size: 14px;
 }
-
-.file-action:hover {
+body:not(.hover-off) .file-action:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
@@ -582,55 +722,75 @@ canvas.graph {
   font-size: 0.92em;
 }
 
-.file.opened {
-  background: var(--vscode-list-inactiveSelectionBackground);
-  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
-  outline-offset: -1px;
+.file {
+  position: relative;
+}
+
+/* An accent bar, not a background: a filled row reads as a stuck hover. Square, unlike the row. */
+.file.opened::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  width: 2px;
+  background: var(--vscode-focusBorder);
 }
 
 .empty {
-  padding: 12px 16px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 16px;
   color: var(--vscode-descriptionForeground);
+  text-align: center;
+}
+
+.empty[hidden] {
+  display: none;
 }
 
 /*
- * Narrow editors (e.g. next to a chat or side panel): drop the least useful
- * columns first. Everything hidden here is shown in the details pane.
+ * Narrow editors (e.g. next to a chat or side panel) drop the date first and the
+ * author next; the SHA always stays. The details show everything hidden here.
  */
 @container list (max-width: 760px) {
   .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content;
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content max-content;
   }
-  .row .hash,
   .date-full {
     display: none;
   }
   .date-short {
     display: inline;
   }
-  .badge {
-    max-width: 140px;
-  }
 }
 
 @container list (max-width: 600px) {
   .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px);
-    column-gap: 8px;
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px) max-content;
+  }
+  .row,
+  .expansion {
+    --col-gap: 8px;
   }
   .row .date {
     display: none;
-  }
-  .badge {
-    max-width: 96px;
   }
 }
 
 @container list (max-width: 480px) {
   .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr);
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
   }
   .row .author {
     display: none;
+  }
+  .details-date-full {
+    display: none;
+  }
+  .details-date-short {
+    display: inline;
   }
 }

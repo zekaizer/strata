@@ -1,6 +1,8 @@
 import type { Commit } from '../core/commit.ts';
-import { fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
+import { filesSummary, fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
+import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
+import { reflowBody } from '../core/message.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
@@ -14,6 +16,7 @@ import type {
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
 import { RefFilter } from './ref-filter.ts';
+import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -24,13 +27,25 @@ const NEXT_PAGE = 1000;
 const LOAD_AHEAD = 200;
 const OVERSCAN = 8;
 const MAX_GRAPH_SHARE = 0.4;
-const MAX_BADGES = 3;
+/** Narrow lists keep most of their width for the text. */
+const NARROW_LIST = 600;
+const NARROW_GRAPH_SHARE = 0.25;
+/** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
+const MAX_BADGES = 6;
+/** Height of the band above the commit line of rows with refs; matches --ref-band in main.css. */
+const REF_BAND = 16;
 /** The inline details never take more than this share of the list height. */
 const MAX_EXPANSION_SHARE = 0.45;
 
 /** Persisted with setState: survives hiding and VS Code restarts (the panel is restored by a serializer). */
 interface SavedState {
   selectedHash?: string | undefined;
+  /**
+   * The first row in view and how far into it the list is scrolled. Row heights depend on the
+   * refs, so a pixel offset alone points at other rows once refs above it change.
+   */
+  scrollAnchor?: { hash: string; offset: number } | undefined;
+  /** Pixel offset; used when the anchor's commit is not found (and by states saved before anchors). */
   scrollTop?: number | undefined;
   /** Set when a scroll position was restored together with the selection; do not scroll to the selection. */
   keepScroll?: boolean | undefined;
@@ -75,7 +90,15 @@ class App {
   private commits: Commit[] = [];
   private rows: Row[] = [];
   private readonly spans = new SpanIndex();
-  private lanes = 1;
+  /**
+   * Columns the graph column is sized for: the widest rows seen on screen so far. It only grows
+   * within one history, so the text does not shift back and forth while scrolling.
+   */
+  private shownLanes = 1;
+  /** Row tops without the inline details; rows with refs are taller. */
+  private readonly geometry = new RowGeometry(ROW_HEIGHT, REF_BAND);
+  private noRepository = false;
+  private readonly empty = el('div', 'empty');
   private done = false;
   private loading = false;
   private selected = -1;
@@ -83,6 +106,8 @@ class App {
   /** Commit whose details were last requested; replies for any other commit are stale. */
   private pendingDetails: string | undefined;
   private openedFile: string | undefined;
+  /** Folders folded in the changed-files tree of the expanded commit. */
+  private foldedFolders = new Set<string>();
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -135,13 +160,18 @@ class App {
     this.expansion.hidden = true;
     this.expansion.setAttribute('role', 'region');
     this.expansion.setAttribute('aria-label', 'Commit details');
-    this.sizer.append(this.rowsLayer, this.expansion);
+    this.empty.hidden = true;
+    this.sizer.append(this.rowsLayer, this.expansion, this.empty);
     this.scroller.append(this.sizer);
     this.viewport.append(this.scroller, this.canvas);
     root.replaceChildren(this.toolbar, this.viewport);
     new ResizeObserver(() => {
       this.onExpansionResize();
+      this.updateExpansionOverflow();
     }).observe(this.expansion);
+    this.expansion.addEventListener('scroll', () => {
+      this.updateExpansionOverflow();
+    });
 
     this.scroller.addEventListener('scroll', () => {
       this.queueRender();
@@ -157,13 +187,16 @@ class App {
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
     });
+    // List keys only when the list itself has focus: keys typed in the details (file tree, links)
+    // bubble up through the scroller and must not move the commit selection.
     this.scroller.addEventListener('keydown', (e) => {
-      this.onKey(e);
+      if (e.target === this.scroller) this.onKey(e);
     });
     new ResizeObserver(() => {
       this.queueRender();
     }).observe(this.viewport);
     this.watchPixelRatio();
+    this.trackPointer();
     // VS Code rewrites the theme variables on <html> when the color theme changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
@@ -204,6 +237,7 @@ class App {
         this.loading = false;
         this.done = m.done;
         this.commits.push(...m.commits);
+        for (const c of m.commits) this.geometry.push(this.hasBadges(c.hash));
         this.worker?.postMessage({
           type: 'layout',
           generation: m.generation,
@@ -219,11 +253,16 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'hidden':
+        document.body.classList.add('hover-off');
+        break;
       case 'noRepository':
         this.generation = -1;
+        this.noRepository = true;
         this.repoLabel.textContent = 'No git repository';
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.commits = [];
+        this.geometry.clear();
         this.rows = [];
         this.spans.clear();
         this.queueRender();
@@ -247,8 +286,6 @@ class App {
 
   private onWorker(m: FromWorker): void {
     if (m.type !== 'rows' || m.generation !== this.generation) return;
-    for (const r of m.rows) this.lanes = Math.max(this.lanes, rowWidth(r));
-    this.lanes = Math.max(this.lanes, m.state.lanes.length);
     this.rows.push(...m.rows);
     this.spans.add(m.spans);
     this.spans.setOpen(m.state);
@@ -262,6 +299,7 @@ class App {
       const sameView = JSON.stringify(options) === JSON.stringify(this.options);
       this.restore = {
         selectedHash: this.commits[this.selected]?.hash,
+        scrollAnchor: sameView ? this.scrollAnchor() : undefined,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
         expanded: this.expanded,
       };
@@ -279,9 +317,11 @@ class App {
       this.refsByHash.set(r.hash, list);
     }
     this.commits = [];
+    this.geometry.clear();
     this.rows = [];
     this.spans.clear();
-    this.lanes = 1;
+    this.shownLanes = 1;
+    this.noRepository = false;
     this.done = false;
     this.selected = -1;
     this.updateOptionControls();
@@ -299,9 +339,24 @@ class App {
   private applyRestore(): void {
     const r = this.restore;
     if (!r) return;
-    if (r.scrollTop !== undefined) r.keepScroll = true;
+    if (r.scrollTop !== undefined || r.scrollAnchor !== undefined) r.keepScroll = true;
     const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
-    if (r.scrollTop !== undefined) {
+    if (r.scrollAnchor !== undefined) {
+      const anchor = r.scrollAnchor;
+      const index = this.commits.findIndex((c) => c.hash === anchor.hash);
+      if (index >= 0) {
+        this.syncSizer();
+        this.scroller.scrollTop = this.rowTop(index) + anchor.offset;
+        r.scrollAnchor = undefined;
+        r.scrollTop = undefined;
+      } else if (searchable) {
+        this.loadMore(NEXT_PAGE);
+      } else {
+        // Gone from the history: fall back to the pixel offset.
+        r.scrollAnchor = undefined;
+      }
+    }
+    if (r.scrollAnchor === undefined && r.scrollTop !== undefined) {
       // The sizer normally grows in the next render; it must be tall enough now or the browser clamps scrollTop.
       this.syncSizer();
       this.scroller.scrollTop = r.scrollTop;
@@ -321,18 +376,49 @@ class App {
         r.selectedHash = undefined;
       }
     }
-    if (r.scrollTop === undefined && r.selectedHash === undefined) this.restore = undefined;
+    if (r.scrollAnchor === undefined && r.scrollTop === undefined && r.selectedHash === undefined)
+      this.restore = undefined;
   }
 
   private saveState(): void {
     // While a restore is pending, keep the saved position rather than the not yet restored one.
     const state: SavedState = {
       selectedHash: this.restore?.selectedHash ?? this.commits[this.selected]?.hash,
+      scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
       expanded: this.restore?.expanded ?? this.expanded,
       options: this.options,
     };
     vscode.setState(state);
+  }
+
+  /** The row at the top of the view and the offset into it; undefined with no rows. */
+  private scrollAnchor(): SavedState['scrollAnchor'] {
+    const top = this.scroller.scrollTop;
+    const index = Math.min(this.rowFloor(top), this.commits.length - 1);
+    const commit = this.commits[index];
+    return commit && { hash: commit.hash, offset: top - this.rowTop(index) };
+  }
+
+  /**
+   * Turns hover highlights off when the pointer may have left without the webview noticing
+   * (focus moves to an editor, the panel is hidden, the pointer leaves the iframe) and back on
+   * at the next pointer movement.
+   */
+  private trackPointer(): void {
+    const off = () => {
+      document.body.classList.add('hover-off');
+    };
+    window.addEventListener('blur', off);
+    document.documentElement.addEventListener('mouseleave', off);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) off();
+    });
+    // Chromium also sends pointermove without movement when content changes under a still
+    // pointer (e.g. when the panel comes back); only a real movement turns hover back on.
+    document.addEventListener('pointermove', (e) => {
+      if (e.movementX !== 0 || e.movementY !== 0) document.body.classList.remove('hover-off');
+    });
   }
 
   /** Redraws the canvas at the new resolution when the window moves to a display with another pixel ratio. */
@@ -342,6 +428,7 @@ class App {
       () => {
         this.queueRender();
         this.watchPixelRatio();
+        this.trackPointer();
       },
       { once: true },
     );
@@ -379,16 +466,16 @@ class App {
 
   /** Top of row `index` in list coordinates: rows below the expanded one move down by the gap. */
   private rowTop(index: number): number {
-    return index * ROW_HEIGHT + (index > this.selected ? this.gapHeight() : 0);
+    return this.geometry.top(index) + (index > this.selected ? this.gapHeight() : 0);
   }
 
-  /** Row at list offset `y`, or -1 inside the expansion. */
+  /** Row at list offset `y` (clamped to [0, count]), or -1 inside the expansion. */
   private rowAt(y: number): number {
     const gap = this.gapHeight();
-    const gapTop = (this.selected + 1) * ROW_HEIGHT;
-    if (gap === 0 || y < gapTop) return Math.floor(y / ROW_HEIGHT);
+    const gapTop = this.geometry.top(this.selected + 1);
+    if (gap === 0 || y < gapTop) return this.geometry.indexAt(y);
     if (y < gapTop + gap) return -1;
-    return Math.floor((y - gap) / ROW_HEIGHT);
+    return this.geometry.indexAt(y - gap);
   }
 
   /** Row at or above offset `y`; the expansion counts as part of its row. */
@@ -410,6 +497,7 @@ class App {
     this.expanded = opts.expand ?? this.expanded;
     this.details = undefined;
     this.openedFile = undefined;
+    this.foldedFolders = new Set();
     this.pendingDetails = undefined;
     if (this.expanded) {
       this.pendingDetails = commit.hash;
@@ -468,16 +556,32 @@ class App {
     this.placeExpansion();
   }
 
+  /**
+   * The details take at most MAX_EXPANSION_SHARE of the list, but may fill the room the rows below
+   * leave empty at the end of a short history; the selected row and one more always stay in view.
+   */
   private placeExpansion(): void {
-    this.expansion.style.top = `${(this.selected + 1) * ROW_HEIGHT}px`;
-    this.expansion.style.maxHeight = `${Math.floor(this.scroller.clientHeight * MAX_EXPANSION_SHARE)}px`;
+    const cap = expansionCap(this.geometry, this.selected, this.scroller.clientHeight, MAX_EXPANSION_SHARE);
+    this.expansion.style.top = `${this.geometry.top(this.selected + 1)}px`;
+    this.expansion.style.maxHeight = `${Math.max(ROW_HEIGHT, cap)}px`;
+  }
+
+  /** Marks details that continue below their visible part, which then fade out at the bottom. */
+  private updateExpansionOverflow(): void {
+    const e = this.expansion;
+    e.classList.toggle('more-below', e.scrollTop + e.clientHeight < e.scrollHeight - 1);
   }
 
   private onExpansionResize(): void {
     const h = this.expansion.hidden ? 0 : this.expansion.offsetHeight;
     if (h === this.gap) return;
+    // Details opening or growing above the view (e.g. restored under a row scrolled past) would
+    // push the rows in view down; keep them where they are.
+    const above = this.selected >= 0 && this.geometry.top(this.selected + 1) < this.scroller.scrollTop;
+    const delta = h - this.gap;
     this.gap = h;
     this.syncSizer();
+    if (above) this.scroller.scrollTop += delta;
     if (this.revealExpansion && this.details) {
       this.revealExpansion = false;
       this.ensureVisible(this.selected, true);
@@ -487,7 +591,7 @@ class App {
 
   /** The list's height must be right before scrollTop is set, or the browser clamps it. */
   private syncSizer(): void {
-    this.sizer.style.height = `${this.commits.length * ROW_HEIGHT + this.gapHeight()}px`;
+    this.sizer.style.height = `${this.geometry.total() + this.gapHeight()}px`;
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
@@ -506,20 +610,26 @@ class App {
   /** Scrolls row `index` into view; with `withExpansion`, also as much of its details as fits below it. */
   private ensureVisible(index: number, withExpansion = false): void {
     const top = this.rowTop(index);
-    const bottom = top + ROW_HEIGHT + (withExpansion && index === this.selected ? this.gapHeight() : 0);
+    const bottom =
+      top + this.geometry.height(index) + (withExpansion && index === this.selected ? this.gapHeight() : 0);
     const view = this.scroller.clientHeight;
     if (top < this.scroller.scrollTop) this.scroller.scrollTop = top;
     else if (bottom > this.scroller.scrollTop + view) this.scroller.scrollTop = Math.min(top, bottom - view);
   }
 
   private onKey(e: KeyboardEvent): void {
-    const page = Math.max(1, Math.floor(this.scroller.clientHeight / ROW_HEIGHT) - 1);
-    const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1, PageDown: page, PageUp: -page };
+    const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
     const delta = moves[e.key];
+    const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
     if (delta !== undefined) {
       e.preventDefault();
       const next = Math.min(this.commits.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
       this.userSelect(next);
+    } else if (page !== 0 && this.commits.length > 0) {
+      e.preventDefault();
+      // Rows differ in height (refs), so a page is measured in pixels, not rows.
+      const from = Math.max(0, this.selected);
+      this.userSelect(pageFrom(this.geometry, from, this.scroller.clientHeight, page));
     } else if (e.key === 'Home') {
       e.preventDefault();
       this.userSelect(0);
@@ -553,7 +663,12 @@ class App {
     const scrollTop = this.scroller.scrollTop;
     const first = Math.max(0, this.rowFloor(scrollTop) - OVERSCAN);
     const last = Math.min(this.commits.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
-    const gw = Math.min(graphWidth(this.lanes), Math.max(graphWidth(1), Math.floor(width * MAX_GRAPH_SHARE)));
+    for (let i = first; i < Math.min(last, this.rows.length); i++) {
+      this.shownLanes = Math.max(this.shownLanes, rowWidth(this.rows[i]!));
+      for (const e of this.spans.passesAt(i)) this.shownLanes = Math.max(this.shownLanes, e.lane + 1);
+    }
+    const share = width <= NARROW_LIST ? NARROW_GRAPH_SHARE : MAX_GRAPH_SHARE;
+    const gw = Math.min(graphWidth(this.shownLanes), Math.max(graphWidth(1), Math.floor(width * share)));
 
     this.syncSizer();
     if (this.expanded) this.placeExpansion();
@@ -595,12 +710,25 @@ class App {
         merge: (this.commits[i]?.parents.length ?? 0) > 1,
       }),
       (i) => this.rowTop(i),
+      (i) => this.geometry.height(i),
       this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
     );
     ctx.restore();
-    if (graphWidth(this.lanes) > gw) fadeRightEdge(ctx, gw, height, this.theme.background);
+    if (graphWidth(this.shownLanes) > gw) fadeRightEdge(ctx, gw, height);
+    this.renderEmpty();
 
     if (!this.done && !this.loading && last + LOAD_AHEAD > this.commits.length) this.loadMore(NEXT_PAGE);
+  }
+
+  /** A message in place of the list when there is nothing to show. */
+  private renderEmpty(): void {
+    let text: string | undefined;
+    if (this.commits.length === 0) {
+      if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
+      else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
+    }
+    this.empty.hidden = text === undefined;
+    this.empty.textContent = text ?? '';
   }
 
   private renderRow(i: number): HTMLElement {
@@ -622,6 +750,14 @@ class App {
     row.setAttribute('aria-posinset', String(i + 1));
     row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
     row.style.top = `${this.rowTop(i)}px`;
+    const badges = this.badges(c.hash);
+    if (badges.length > 0) {
+      // Refs get a band of their own above the commit line, so the subject keeps its column.
+      row.classList.add('banded');
+      const band = el('span', 'refs');
+      band.append(...badges);
+      row.append(band);
+    }
     if (i === this.selected) {
       row.classList.add('selected');
       row.setAttribute('aria-expanded', String(this.expanded));
@@ -629,7 +765,6 @@ class App {
     if (c.hash === this.refs.head) row.classList.add('head');
 
     const subject = el('span', 'subject');
-    for (const b of this.badges(c.hash)) subject.append(b);
     subject.append(el('span', 'text', c.subject));
     row.append(
       el('span', 'graph-spacer'),
@@ -649,6 +784,11 @@ class App {
     return cell;
   }
 
+  /** Whether a commit shows ref badges; must agree with badges(). */
+  private hasBadges(hash: string): boolean {
+    return this.refsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
+  }
+
   private badges(hash: string): HTMLElement[] {
     const out: HTMLElement[] = [];
     const refs = this.refsByHash.get(hash) ?? [];
@@ -658,7 +798,7 @@ class App {
       const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
       out.push(badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, r.name));
     }
-    // Current branch first; beyond MAX_BADGES the rest collapse so the subject stays visible.
+    // Current branch first; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
     out.sort((a, b) => Number(b.classList.contains('head')) - Number(a.classList.contains('head')));
     if (out.length <= MAX_BADGES) return out;
     const rest = out.slice(MAX_BADGES - 1);
@@ -672,8 +812,9 @@ class App {
     if (!d) return;
     const pane = this.expansion;
 
-    // The subject is already on the row above; only the body is shown here.
-    const body = d.message.split('\n').slice(1).join('\n').trim();
+    // The row truncates long subjects, so the details repeat it in full.
+    const [subject = '', ...rest] = d.message.split('\n');
+    const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
     close.addEventListener('click', () => {
@@ -685,7 +826,12 @@ class App {
     const meta = el('div', 'details-meta');
     const hash = el('span', 'details-hash', shortHash(d.hash));
     hash.title = d.hash;
-    meta.append(hash, el('span', 'details-author', d.author), el('span', 'details-date', formatDate(d.authorTime)));
+    const date = el('span', 'details-date');
+    date.append(
+      el('span', 'details-date-full', formatDate(d.authorTime)),
+      el('span', 'details-date-short', formatShortDate(d.authorTime)),
+    );
+    meta.append(hash, el('span', 'details-author', d.author), date);
     meta.title =
       `Author: ${d.author} <${d.authorEmail}>, ${formatDate(d.authorTime)}` +
       (d.committer !== d.author || d.commitTime !== d.authorTime
@@ -707,17 +853,16 @@ class App {
       meta.append(parents);
     }
 
-    const files = el('ul', 'files');
-    files.setAttribute('role', 'listbox');
-    files.setAttribute('aria-label', 'Changed files');
-    for (const f of d.files) files.append(this.fileItem(d, f));
-    const summary = el(
-      'div',
-      'files-summary',
-      `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed${d.base ? ` vs ${shortHash(d.base)}` : ''}`,
-    );
-    const children: HTMLElement[] = [close, meta, summary, files];
-    if (body) children.push(el('pre', 'details-message', body));
+    const files = this.fileTree(d);
+    const s = filesSummary(d);
+    const summary = el('div', 'files-summary', s.text);
+    if (s.base !== undefined) {
+      const base = el('span', 'files-base', shortHash(s.base));
+      base.title = s.base;
+      summary.append(' ', base);
+    }
+    const children: HTMLElement[] = [close, el('h2', 'details-subject', subject), meta, summary, files];
+    if (body) children.push(el('pre', 'details-message', reflowBody(body)));
     pane.style.minHeight = '';
     pane.replaceChildren(...children);
     pane.scrollTop = 0;
@@ -725,23 +870,111 @@ class App {
     this.queueRender();
   }
 
-  private fileItem(d: CommitDetails, f: FileChange): HTMLElement {
+  /**
+   * The changed files as a tree (role=tree): folders fold with a click, Left/Right or Enter;
+   * Up/Down move between visible entries. Folded folders are remembered per commit.
+   */
+  private fileTree(d: CommitDetails): HTMLElement {
+    const list = el('ul', 'files');
+    list.setAttribute('role', 'tree');
+    list.setAttribute('aria-label', 'Changed files');
+    const add = (nodes: FileTreeNode[], depth: number) => {
+      for (const n of nodes) {
+        if (n.kind === 'file') {
+          list.append(this.fileItem(d, n.change, n.name, depth));
+          continue;
+        }
+        const li = el('li', 'folder');
+        li.tabIndex = 0;
+        li.dataset['path'] = n.path;
+        li.setAttribute('role', 'treeitem');
+        li.setAttribute('aria-level', String(depth + 1));
+        li.style.setProperty('--depth', String(depth));
+        li.title = n.path;
+        li.append(el('span', 'codicon codicon-chevron-down folder-chevron'), el('span', 'folder-name', n.name));
+        li.addEventListener('click', () => {
+          this.toggleFolder(list, n.path);
+        });
+        list.append(li);
+        add(n.children, depth + 1);
+      }
+    };
+    add(buildFileTree(d.files), 0);
+    list.addEventListener('keydown', (e) => {
+      this.onTreeKey(list, e);
+    });
+    this.applyFolds(list);
+    return list;
+  }
+
+  private toggleFolder(list: HTMLElement, path: string, fold?: boolean): void {
+    const folded = fold ?? !this.foldedFolders.has(path);
+    if (folded) this.foldedFolders.add(path);
+    else this.foldedFolders.delete(path);
+    this.applyFolds(list);
+  }
+
+  /** Hides entries under folded folders and updates the chevrons. */
+  private applyFolds(list: HTMLElement): void {
+    const folded = [...this.foldedFolders];
+    for (const item of list.querySelectorAll<HTMLElement>('li')) {
+      const path = item.dataset['path'] ?? '';
+      item.hidden = folded.some((f) => path.startsWith(`${f}/`));
+      if (item.classList.contains('folder')) {
+        const open = !this.foldedFolders.has(path);
+        item.setAttribute('aria-expanded', String(open));
+        item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-right', !open);
+        item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-down', open);
+      }
+    }
+  }
+
+  private onTreeKey(list: HTMLElement, e: KeyboardEvent): void {
+    const item = (e.target as HTMLElement).closest<HTMLElement>('li');
+    if (!item) return;
+    const visible = [...list.querySelectorAll<HTMLElement>('li')].filter((i) => !i.hidden);
+    const at = visible.indexOf(item);
+    const isFolder = item.classList.contains('folder');
+    const path = item.dataset['path'] ?? '';
+    const parent = () =>
+      visible
+        .slice(0, at)
+        .reverse()
+        .find((i) => i.classList.contains('folder') && path.startsWith(`${i.dataset['path']}/`));
+    let next: HTMLElement | undefined;
+    if (e.key === 'ArrowDown') next = visible[at + 1];
+    else if (e.key === 'ArrowUp') next = visible[at - 1];
+    else if (e.key === 'ArrowLeft') {
+      if (isFolder && !this.foldedFolders.has(path)) this.toggleFolder(list, path, true);
+      else next = parent();
+    } else if (e.key === 'ArrowRight' && isFolder) {
+      if (this.foldedFolders.has(path)) this.toggleFolder(list, path, false);
+      else next = visible[at + 1];
+    } else if (isFolder && (e.key === 'Enter' || e.key === ' ')) {
+      this.toggleFolder(list, path);
+    } else return;
+    e.preventDefault();
+    next?.focus();
+  }
+
+  private fileItem(d: CommitDetails, f: FileChange, name: string, depth: number): HTMLElement {
     const views = fileViews(f, d.base);
     const li = el('li', `file status-${f.status}`);
     li.tabIndex = 0;
-    li.setAttribute('role', 'option');
+    li.setAttribute('role', 'treeitem');
+    li.setAttribute('aria-level', String(depth + 1));
+    li.style.setProperty('--depth', String(depth));
+    li.dataset['path'] = f.path;
     li.dataset['views'] = views.join(' ');
     const menu = fileMenuContext(d, f, views);
     li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
     li.append(el('span', 'file-status', f.status));
-    const name = el('span', 'file-path');
-    const slash = f.path.lastIndexOf('/');
-    if (f.oldPath !== undefined) name.append(el('span', 'file-old', f.oldPath), ' → ');
-    // File name first: in a narrow pane the directory is what gets truncated.
-    name.append(el('span', 'file-name', f.path.slice(slash + 1)));
-    if (slash >= 0) name.append(el('span', 'file-dir', f.path.slice(0, slash)));
-    li.append(name);
+    const label = el('span', 'file-path');
+    // The folder is the tree around it; a rename also shows where the file came from.
+    label.append(el('span', 'file-name', name));
+    if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
+    li.append(label);
 
     const open = (view: FileView, beside: boolean) => {
       this.openedFile = f.path;
@@ -780,15 +1013,10 @@ class App {
     li.addEventListener('click', (e) => {
       open(primary, e.altKey);
     });
+    // Arrow keys are handled by the tree (onTreeKey).
     li.addEventListener('keydown', (e) => {
-      const sibling = (
-        e.key === 'ArrowDown' ? li.nextElementSibling : e.key === 'ArrowUp' ? li.previousElementSibling : null
-      ) as HTMLElement | null;
       const keyed = views.find((v) => FILE_VIEW_KEY[v] === e.key.toUpperCase() && !e.ctrlKey && !e.metaKey);
-      if (sibling) {
-        e.preventDefault();
-        sibling.focus();
-      } else if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         open(primary, e.altKey);
       } else if (keyed && e.key.length === 1) {
@@ -820,6 +1048,20 @@ class App {
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
+      fileTree: [...this.expansion.querySelectorAll<HTMLElement>('.files li')]
+        .filter((li) => !li.hidden)
+        .map((li) => {
+          const depth = Number(li.style.getPropertyValue('--depth') || 0);
+          const text = li.classList.contains('folder')
+            ? `${li.querySelector('.folder-name')?.textContent ?? ''}/`
+            : (li.querySelector('.file-name')?.textContent ?? '');
+          return `${'  '.repeat(depth)}${text}`;
+        }),
+      detailsSubject: this.expanded
+        ? (this.expansion.querySelector('.details-subject')?.textContent ?? undefined)
+        : undefined,
+      hoverSuppressed: document.body.classList.contains('hover-off'),
+      listWidth: this.scroller.clientWidth,
       menuContexts: {
         files: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map(
           (li) => JSON.parse(li.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,
@@ -842,7 +1084,37 @@ class App {
           parseFloat(r.style.top),
         ]),
       ),
+      scrollTop: this.scroller.scrollTop,
+      rowHeights: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [
+          Number(r.dataset['index']),
+          r.offsetHeight,
+        ]),
+      ),
+      refBands: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+          const band = r.querySelector<HTMLElement>('.refs');
+          const subject = r.querySelector<HTMLElement>('.subject')!.getBoundingClientRect();
+          const top = r.getBoundingClientRect().top;
+          const badges = [...r.querySelectorAll('.badge-text, .badge-more')].map((b) => b.textContent);
+          if (badges.length === 0) return [];
+          const b = (band ?? r).getBoundingClientRect();
+          return [
+            [
+              Number(r.dataset['index']),
+              {
+                badges,
+                bandBottom: band ? b.bottom - top : -1,
+                subjectTop: subject.top - top,
+                subjectLeft: subject.left,
+                bandLeft: band ? b.left : -1,
+              },
+            ],
+          ];
+        }),
+      ),
       columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
+        .filter((e) => !e.classList.contains('refs'))
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
     };
@@ -851,18 +1123,23 @@ class App {
   private simulate(a: SimulatedAction): void {
     switch (a.kind) {
       case 'clickRow': {
-        this.scroller.scrollTop = Math.max(0, this.rowTop(a.index) - ROW_HEIGHT * 3);
+        // A real click hits a row on screen; scroll only when it is not.
+        this.ensureVisible(a.index);
         this.render();
         // A real click carries the pointer position, which is what selection uses.
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${a.index}`);
         if (row) {
           const r = row.getBoundingClientRect();
           row.dispatchEvent(
-            new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + r.height / 2 }),
+            new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + (a.y ?? r.height / 2) }),
           );
         }
         break;
       }
+      case 'scrollToRow':
+        this.scroller.scrollTop = this.rowTop(a.index);
+        this.render();
+        break;
       case 'clickFile': {
         const file = this.expansion.querySelectorAll<HTMLElement>('.file')[a.index];
         const target = a.view ? file?.querySelector<HTMLElement>(`.file-action-${a.view}`) : file;
@@ -871,6 +1148,9 @@ class App {
       }
       case 'click':
         document.querySelector<HTMLElement>(a.selector)?.click();
+        break;
+      case 'focus':
+        document.querySelector<HTMLElement>(a.selector)?.focus();
         break;
       case 'contextMenu': {
         const target = document.querySelector<HTMLElement>(a.selector);
@@ -892,9 +1172,11 @@ class App {
       }
       case 'key': {
         const target =
-          a.target === 'files'
-            ? (document.activeElement?.closest('.file') ?? this.expansion.querySelector<HTMLElement>('.file'))
-            : this.scroller;
+          a.target === 'focused'
+            ? document.activeElement
+            : a.target === 'files'
+              ? (document.activeElement?.closest('.file') ?? this.expansion.querySelector<HTMLElement>('.file'))
+              : this.scroller;
         if (target instanceof HTMLElement) target.focus();
         target?.dispatchEvent(
           new KeyboardEvent('keydown', {
@@ -933,14 +1215,20 @@ function fileMenuContext(d: CommitDetails, f: FileChange, views: FileView[]): Re
   };
 }
 
-/** Fades the graph out at the right edge when lanes beyond the column are cut off. */
-function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: number, background: string): void {
+/**
+ * Fades the graph out at the right edge when lanes beyond the column are cut off. It erases
+ * rather than paints, so whatever is under the canvas (selection, details) shows through.
+ */
+function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: number): void {
   const fade = 16;
   const g = ctx.createLinearGradient(width - fade, 0, width, 0);
-  g.addColorStop(0, `${background}00`);
-  g.addColorStop(1, background);
+  g.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  g.addColorStop(1, 'rgba(0, 0, 0, 1)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
   ctx.fillStyle = g;
   ctx.fillRect(width - fade, 0, fade, height);
+  ctx.restore();
 }
 
 function badge(kind: string, icon: string, text: string, title: string): HTMLElement {

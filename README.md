@@ -32,6 +32,8 @@ page, so it opens quickly even on very large repositories.
 - Click a commit to unfold its details under it; click it again, or press
   <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
   selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
+- Changed files are listed as a folder tree; click a folder (or use ←/→) to
+  fold it.
 - Click a file in the details to open its diff against the parent commit.
   Hover a file (or focus it) for **Old**, the compare icon and **New**: the
   file as it was before the commit, the diff, and the file as of the
@@ -44,8 +46,10 @@ page, so it opens quickly even on very large repositories.
   **Copy Old Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd>
   (<kbd>⌥⇧⌘C</kbd> on macOS) copies the relative path of the focused file.
   Right-click a commit to copy its hash, short hash or subject.
-- The details show the commit message body (and trailers such as
-  `Signed-off-by`) below the files; the subject is the row itself.
+- The details start with the full subject and show the message body (and
+  trailers such as `Signed-off-by`) below the files, in the editor font.
+  Wrapped paragraphs flow to the width of the view; code, lists and trailers
+  keep their lines.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.

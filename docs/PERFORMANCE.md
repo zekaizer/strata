@@ -51,6 +51,15 @@ commit-graph when the first page takes longer than 2 s.
   page is 14 lanes wide instead of 58.
 - Unordered output is not used: the layout needs children before parents.
 
+## Commit details
+
+Clicking a commit reads its message (`git log -1 --no-walk`) and changed
+files (`git diff-tree`). `git show -s` was used first and took 0.5-1.5 s on
+the kernel's merge commits (show prepares the combined diff even when told
+not to print it), which made opening a merge — usually the first commits on
+screen — feel slow. With `log`: 8-16 ms per merge commit; click to details
+in VS Code 37-56 ms (`test/perf/details-latency.test.ts`).
+
 ## Layout
 
 100,000 kernel commits in topological order, laid out in pages of 1,000:
