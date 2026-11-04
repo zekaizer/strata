@@ -6,7 +6,9 @@ page, so it opens quickly even on very large repositories.
 ## Features
 
 - Commit graph of all local branches, remote-tracking branches, tags and HEAD,
-  with branch, remote, tag and stash badges on their commits.
+  with branch, remote, tag and stash badges above their commits. A branch and
+  its same-named remote-tracking branches on the same commit share one badge
+  (`main │ origin`); when they differ, both show, so unpushed work stands out.
 - Commit details: author, committer, full message, parents and changed files.
 - Click a changed file to open its diff in the VS Code diff editor; browse
   file after file without losing your place in the graph.
@@ -30,7 +32,8 @@ page, so it opens quickly even on very large repositories.
   commit-graph button in the Source Control view title bar.
 - Scroll to load more history.
 - Click a commit to unfold its details under it; click it again, or press
-  <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
+  <kbd>Esc</kbd> in the list, to fold them. <kbd>Esc</kbd> inside the details
+  takes you back to the list. With the list focused, ↑/↓ move the
   selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
 - Changed files are listed as a folder tree; click a folder (or use ←/→) to
   fold it.
@@ -46,10 +49,16 @@ page, so it opens quickly even on very large repositories.
   **Copy Old Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd>
   (<kbd>⌥⇧⌘C</kbd> on macOS) copies the relative path of the focused file.
   Right-click a commit to copy its hash, short hash or subject.
-- The details start with the full subject and show the message body (and
-  trailers such as `Signed-off-by`) below the files, in the editor font.
+- The details start with who and when: author, date and the short hash. Click
+  the hash to copy the full hash; the arrow after it shows the full hash,
+  author, committer and parents (with their subjects) and stays open for other
+  commits until you close it.
+- Below come the full subject and the message body, in the editor font.
   Wrapped paragraphs flow to the width of the view; code, lists and trailers
-  keep their lines.
+  keep their lines. Long bodies show their first lines and **Show more**.
+- The changed files follow the message, with the commit they are compared
+  with (click it to select that commit). In wide editors the message and the
+  files sit side by side, and a tree that fits flows into columns.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
