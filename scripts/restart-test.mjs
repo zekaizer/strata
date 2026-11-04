@@ -4,7 +4,7 @@
 // Usage: node scripts/restart-test.mjs [stable|1.90.0]
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import { spawn } from 'node:child_process';
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { userDataDir } from './lib/test-paths.ts';
 import { testSettings } from './lib/test-settings.ts';
@@ -32,15 +32,23 @@ const args = [
   '--disable-workspace-trust',
   '--skip-welcome',
   '--skip-release-notes',
-  ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
+  // As @vscode/test-electron does for every test run: Chromium's sandbox cannot start as root
+  // or where unprivileged user namespaces are restricted (Ubuntu 24.04 CI runners).
+  '--no-sandbox',
+  '--disable-gpu-sandbox',
+  '--disable-updates',
 ];
 
 async function phase(n) {
   rmSync(result, { force: true });
+  let stderr = '';
   await new Promise((done, fail) => {
     const p = spawn(code, args, {
       env: { ...process.env, STRATA_RESTART_PHASE: String(n), STRATA_RESTART_RESULT: result },
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    p.stderr.on('data', (d) => {
+      stderr = (stderr + d).slice(-8000);
     });
     const timer = setTimeout(() => {
       p.kill();
@@ -51,6 +59,10 @@ async function phase(n) {
       done();
     });
   });
+  if (!existsSync(result)) {
+    console.error(`phase ${n}: VS Code exited without a result. Last stderr:\n${stderr}`);
+    process.exit(1);
+  }
   const out = JSON.parse(readFileSync(result, 'utf8'));
   console.log(`phase ${n}:`, out);
   if (out.error) throw new Error(`phase ${n}: ${out.error}`);

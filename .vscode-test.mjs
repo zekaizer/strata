@@ -21,8 +21,6 @@ const launchArgs = (label) => {
     '--disable-workspace-trust',
     '--skip-welcome',
     '--skip-release-notes',
-    // Chromium refuses to start as root without this (containers, CI).
-    ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
   ];
 };
 
