@@ -153,16 +153,28 @@ describe('details layout', () => {
     assert.match(merge.filesSummary, / · vs first parent [0-9a-f]{7}$/);
   });
 
-  it('clamps a long body with a line count and expands it in place', async () => {
+  it('shows a long body in full beside the files, and folds it to a few lines above them', async () => {
     const body = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long explanation.`).join('\n');
     const tip = git(...IDENTITY, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', `Long body\n\n${body}`);
     git('update-ref', `refs/heads/${longBranch}`, tip);
     try {
       await reload();
       const index = order().indexOf(tip);
-      const d = await openDetails(index);
-      assert.equal(d.bodyClamp.clamped, true);
-      assert.ok(d.bodyClamp.hiddenLines >= 2, String(d.bodyClamp.hiddenLines));
+      // Beside the files the body needs no folding: the details scroll.
+      const first = await openDetails(index);
+      // Folded exactly when the files are below the message (the window may be narrow already).
+      assert.equal(first.bodyClamp.clamped, first.stacked, `list ${first.listWidth}px, stacked ${first.stacked}`);
+      if (!first.stacked)
+        assert.ok(!first.blocks.includes('link-button details-more'), 'no Show more beside the files');
+      // Narrow (an editor beside the graph): the files are below, so the body folds to keep them close.
+      const doc = await vscode.workspace.openTextDocument({ content: 'beside' });
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+      await vscode.commands.executeCommand('workbench.action.evenEditorWidths');
+      const narrow = await waitFor('stacked', async () => {
+        const p = await panel.probe();
+        return p.details?.stacked && p.details.bodyClamp.clamped && p.details;
+      });
+      assert.ok(narrow.bodyClamp.hiddenLines >= 2, String(narrow.bodyClamp.hiddenLines));
       await panel.simulate({ kind: 'click', selector: '.details-more' });
       const open = await waitFor('expanded', async () => {
         const p = await panel.probe();
@@ -170,6 +182,9 @@ describe('details layout', () => {
       });
       assert.equal(open.moreBelow, open.overflowing, 'more-below follows the expanded body');
     } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      panel = (await strata()).show();
+      await panel.whenReady();
       git('update-ref', '-d', `refs/heads/${longBranch}`);
       await reload();
     }

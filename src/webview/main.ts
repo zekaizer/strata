@@ -59,7 +59,7 @@ interface SavedState {
 
 /** Details that take longer than this are reported as not coming (the extension host went away). */
 const DETAILS_TIMEOUT_MS = 15_000;
-/** A long body shows this many lines until "Show more" when the files are below it. */
+/** Above the files, a long body shows this many lines until "Show more"; beside them it is never folded. */
 const BODY_LINES = 6;
 /** A tree column is as wide as the tree's widest row, but at least this (and at most the files' room). */
 const TREE_MIN = 200;
@@ -1203,12 +1203,10 @@ class App {
       more.textContent = 'Show more · 999 more lines';
       const line = parseFloat(getComputedStyle(pre).lineHeight) || 18;
       const total = Math.round(pre.scrollHeight / line);
-      const tail = more.getBoundingClientRect().bottom - pre.getBoundingClientRect().bottom + below;
-      // Beside the files, the body may use the height the files take anyway.
-      const room = Math.floor((cap - top(pre) - tail) / line);
-      const lines = stacked ? BODY_LINES : Math.max(BODY_LINES, room);
-      // Hiding a line or two behind a link saves nothing.
-      const clampable = total >= lines + 2;
+      const lines = BODY_LINES;
+      // Only above the files, to keep them close; beside them the details just scroll. Hiding a
+      // line or two behind a link saves nothing.
+      const clampable = stacked && total >= lines + 2;
       const clamped = clampable && !this.bodyExpanded;
       pre.classList.toggle('clamped', clamped);
       if (clamped) pre.style.maxHeight = `${lines * line}px`;
