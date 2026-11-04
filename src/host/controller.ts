@@ -2,7 +2,7 @@ import { basename, posix } from 'node:path';
 import * as vscode from 'vscode';
 import type { RefSnapshot } from '../core/refs.ts';
 import { hasCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
-import { readCommitDetails } from '../git/details.ts';
+import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readRefs } from '../git/refs.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
@@ -18,7 +18,8 @@ const SLOW_FIRST_PAGE_MS = 2000;
  */
 export class GraphController implements vscode.Disposable {
   private readonly api: GitApi;
-  private readonly post: (m: HostToWebview) => void;
+  private readonly send: (m: HostToWebview) => void;
+  private disposed = false;
   private repo: GitRepository | undefined;
   private reader: LogReader | undefined;
   private generation = 0;
@@ -34,7 +35,7 @@ export class GraphController implements vscode.Disposable {
 
   constructor(api: GitApi, post: (m: HostToWebview) => void) {
     this.api = api;
-    this.post = post;
+    this.send = post;
     this.disposables.push(
       api.onDidOpenRepository(() => {
         if (!this.repo) void this.start();
@@ -60,6 +61,11 @@ export class GraphController implements vscode.Disposable {
     await this.reset();
   }
 
+  /** Replies arrive after awaits; once the panel is gone there is nobody to send them to. */
+  private post(m: HostToWebview): void {
+    if (!this.disposed) this.send(m);
+  }
+
   async handle(m: WebviewToHost): Promise<void> {
     try {
       switch (m.type) {
@@ -81,7 +87,7 @@ export class GraphController implements vscode.Disposable {
           }
           break;
         case 'openDiff':
-          if (this.repo) await this.openDiff(this.repo, m);
+          if (this.repo && m.generation === this.generation) await this.openDiff(this.repo, m);
           break;
         case 'setOptions':
           this.options = m.options;
@@ -149,6 +155,11 @@ export class GraphController implements vscode.Disposable {
    */
   private async openDiff(repo: GitRepository, m: Extract<WebviewToHost, { type: 'openDiff' }>): Promise<void> {
     const { file, hash, base } = m;
+    // Everything here came from the webview: only well-formed commit ids and paths inside the repository.
+    if (!isCommitId(hash) || (base !== undefined && !isCommitId(base))) throw new Error('invalid commit id');
+    for (const p of [file.path, file.oldPath]) {
+      if (p !== undefined && !isRepoPath(p)) throw new Error(`invalid path: ${p}`);
+    }
     const uri = (path: string) => vscode.Uri.joinPath(repo.rootUri, ...path.split('/'));
     const short = (h: string) => h.slice(0, 8);
     // Preview tabs: browsing through files replaces one tab instead of piling them up.
@@ -223,9 +234,20 @@ export class GraphController implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.disposed = true;
     clearTimeout(this.refreshTimer);
     this.reader?.dispose();
     this.repoSubscription?.dispose();
     for (const d of this.disposables.splice(0)) d.dispose();
   }
+}
+
+/** A repository-relative path as git prints it: '/'-separated, no empty, '.' or '..' segments. */
+function isRepoPath(p: string): boolean {
+  return (
+    p.length > 0 &&
+    !p.includes('\0') &&
+    !p.includes('\\') &&
+    p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
+  );
 }

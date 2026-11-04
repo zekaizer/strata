@@ -2,6 +2,9 @@ import type { CommitDetails, FileChange, FileStatus } from '../core/details.ts';
 import { runGit } from './run.ts';
 
 const HASH = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
+
+/** A full SHA-1 or SHA-256 object id. */
+export const isCommitId = (s: string): boolean => HASH.test(s);
 const STATUSES: readonly string[] = ['A', 'M', 'D', 'R', 'C', 'T'] satisfies FileStatus[];
 const isStatus = (s: string): s is FileStatus => STATUSES.includes(s);
 

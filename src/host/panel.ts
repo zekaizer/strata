@@ -139,6 +139,11 @@ export class GraphPanel implements vscode.Disposable {
       case 'themeVars':
       case 'probe':
         break;
+      case 'refresh':
+        // Also retries when the git API was not available at startup.
+        if (this.controller) void this.controller.handle(m);
+        else void this.startController(undefined);
+        break;
       default:
         void this.controller?.handle(m);
     }
@@ -158,7 +163,12 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   private post(m: HostToWebview): void {
-    void this.panel.webview.postMessage(m);
+    // Fails once the webview is disposed; replies to it no longer matter.
+    try {
+      this.panel.webview.postMessage(m).then(undefined, () => undefined);
+    } catch {
+      // disposed
+    }
   }
 
   dispose(): void {
