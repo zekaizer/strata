@@ -154,6 +154,12 @@ export interface ProbeState {
         filesLeft: number;
         /** The graph column's width when this was probed (the details start after it). */
         graphWidth: number;
+        /** Widths in px of the details layout, of the message column, and of 80 columns of the body font. */
+        layoutWidth: number;
+        messageWidth: number;
+        bodyColumns80: number;
+        /** Whether a line of the shown (unfolded) body wraps. */
+        bodyWraps: boolean;
       }
     | undefined;
   /** Width of the author column and of the widest author name rendered in it, in px. */

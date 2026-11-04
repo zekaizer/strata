@@ -261,10 +261,11 @@ class App {
     this.watchPixelRatio();
     this.trackPointer();
     this.trackInputModality();
-    // VS Code rewrites the theme variables on <html> when the color theme changes.
+    // VS Code rewrites the theme and font variables on <html> when the theme or a font setting changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
       this.queueRender();
+      this.layoutDetails();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   }
 
@@ -1048,7 +1049,9 @@ class App {
 
     // The commit's text in one column, the change in the other (side by side on wide lists).
     const main = el('div', 'details-main');
-    main.append(this.byline(d), this.metaTable(d), el('h2', 'details-subject', subject));
+    // Carries the body font, whose 80 columns size the message column (layoutDetails).
+    const ruler = el('span', 'column-ruler');
+    main.append(ruler, this.byline(d), this.metaTable(d), el('h2', 'details-subject', subject));
     if (body) {
       const pre = el('pre', 'details-message', reflowBody(body));
       pre.id = 'details-body';
@@ -1247,6 +1250,11 @@ class App {
     // Measured unstuck: a stuck message reports its scrolled position.
     main.classList.remove('stick');
 
+    const ruler = main.querySelector<HTMLElement>('.column-ruler');
+    if (ruler) {
+      const columns = this.textWidth('0'.repeat(80), getComputedStyle(ruler).font);
+      layout.style.setProperty('--message-w', `${Math.ceil(columns)}px`);
+    }
     // Side by side or stacked is decided by CSS from the list width alone (flex-wrap); read back.
     const stacked = files.offsetTop > main.offsetTop + 1;
     layout.classList.toggle('stacked', stacked);
@@ -1616,7 +1624,7 @@ class App {
     const treeLeft = tree?.getBoundingClientRect().left ?? 0;
     return {
       blocks: [...e.querySelectorAll<HTMLElement>('.details-main > *, .details-files > *')]
-        .filter((b) => !b.hidden)
+        .filter((b) => !b.hidden && !b.classList.contains('column-ruler'))
         .map((b) => b.className),
       sideBySide:
         !!main && !!files && Math.abs(main.getBoundingClientRect().top - files.getBoundingClientRect().top) < 2,
@@ -1645,7 +1653,21 @@ class App {
       listWidth: this.scroller.clientWidth,
       filesLeft: files && main ? files.getBoundingClientRect().left - main.getBoundingClientRect().left : 0,
       graphWidth: parseFloat(this.root.style.getPropertyValue('--graph-width')) || 0,
+      layoutWidth: e.querySelector<HTMLElement>('.details-layout')?.getBoundingClientRect().width ?? 0,
+      messageWidth: main?.getBoundingClientRect().width ?? 0,
+      bodyColumns80: pre ? this.textWidth('0'.repeat(80), getComputedStyle(pre).font) : 0,
+      bodyWraps:
+        !!pre &&
+        pre.scrollHeight >
+          pre.textContent.split('\n').length * (parseFloat(getComputedStyle(pre).lineHeight) || 18) + 1,
     };
+  }
+
+  private textWidth(text: string, font: string): number {
+    this.measureContext ??= el('canvas').getContext('2d');
+    if (!this.measureContext) return 0;
+    this.measureContext.font = font;
+    return this.measureContext.measureText(text).width;
   }
 
   private simulate(a: SimulatedAction): void {
