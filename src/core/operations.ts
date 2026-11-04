@@ -19,6 +19,8 @@ export type Operation =
   | { kind: 'branchAt'; name: string; at: string }
   | { kind: 'createTag'; name: string; at: string; message: string | undefined }
   | { kind: 'renameBranch'; from: string; to: string }
+  /** Adds a config value (Undo of a deletion puts back the branch's configuration). */
+  | { kind: 'configAdd'; key: string; value: string }
   | { kind: 'deleteBranch'; name: string }
   | { kind: 'deleteTag'; name: string }
   /** `ref` as the merge commit's message should name it: a short ref name or a commit id. */
@@ -76,6 +78,8 @@ export function argv(op: Operation): string[] {
         : ['tag', '--annotate', '--message', op.message, op.name, op.at];
     case 'renameBranch':
       return ['branch', '--move', op.from, op.to];
+    case 'configAdd':
+      return ['config', '--add', op.key, op.value];
     case 'deleteBranch':
       // Strata confirms with the exact commits that become unreachable; -d's merged check is narrower.
       return ['branch', '--delete', '--force', op.name];

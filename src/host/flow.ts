@@ -5,12 +5,14 @@ import type { RefSnapshot } from '../core/refs.ts';
 import {
   changedMeanwhile,
   gitFailure,
+  quote,
   signInConfirmation,
+  undoGone,
   undoLabel,
   undoMovedConfirmation,
   undone,
 } from '../core/wording.ts';
-import { readCommit } from '../git/facts.ts';
+import { readCommit, readHead } from '../git/facts.ts';
 import { GitOpError } from '../git/op.ts';
 import { runGit } from '../git/run.ts';
 import { commandLine, type Exec, type OpRunner, type RunnerHost } from './runner.ts';
@@ -27,13 +29,24 @@ export interface FlowSettings {
   mergeEditor: boolean;
 }
 
-/** What Undo Last Operation runs. */
+/**
+ * What Undo Last Operation runs, and what must still hold for it to run. The graph drops it when
+ * the repository changes or HEAD moves to another branch.
+ */
 export interface Undo {
   /** What it undoes, as in "Undid the {label}": "merge", "branch deletion". */
   label: string;
-  ops: Operation[];
-  /** HEAD right after the operation, and where Undo moves it back to; Undo asks first when HEAD has moved since. */
-  guard?: { head: string; back: string };
+  /** The repository it belongs to (its root). */
+  repo: string;
+  /**
+   * `head`: the operation moved the branch HEAD is on (`ref`, or 'HEAD' when detached) from
+   * `before` to `after`; Undo needs HEAD still on `ref`, and asks first when `ref` moved since.
+   * `deletes` names a branch Undo deletes (create branch). `refs`: refs HEAD is not on, which
+   * must still be where the operation left them.
+   */
+  guard:
+    { kind: 'head'; ref: string; before: string; after: string; deletes?: string } | { kind: 'refs'; expect: Expect[] };
+  inverse: Operation[];
   /** The commit to select afterwards. */
   focus?: string;
 }
@@ -59,10 +72,10 @@ export interface FlowHost extends RunnerHost {
   setUndo(undo: Undo | undefined): void;
 }
 
-/** What a confirmation described: `rev` still points at `hash` when the operation starts. */
+/** What a confirmation described: `rev` still points at `hash` (undefined: does not exist) when the operation starts. */
 export interface Expect {
   rev: string;
-  hash: string;
+  hash: string | undefined;
   /** As sentences name it: a quoted branch, or HEAD. */
   name: string;
 }
@@ -154,23 +167,45 @@ export async function fail(
   });
 }
 
-const head = (host: FlowHost) =>
-  runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', 'HEAD']).then((s) => s.trim());
+/** The ref HEAD is on, as an Undo guard names it. */
+export const headRef = (branch: string | undefined): string => (branch === undefined ? 'HEAD' : `refs/heads/${branch}`);
 
 export async function undoLast(host: FlowHost): Promise<void> {
   const undo = host.lastUndo;
   if (!undo) return;
-  if (undo.guard && (await head(host)) !== undo.guard.head) {
-    const [now, back] = await Promise.all([
-      readCommit(host.git, host.cwd, 'HEAD'),
-      readCommit(host.git, host.cwd, undo.guard.back),
-    ]);
-    const ask = undoMovedConfirmation(host.refs.headBranch, undo.label, now.short, back.short);
-    if (!(await host.ui.confirm(ask))) return;
+  if (undo.repo !== host.cwd) {
+    host.setUndo(undefined);
+    return;
   }
-  const ran = await run(host, undoLabel(undo.label), async (exec) => {
-    for (const op of undo.ops) await exec(op);
-    return true;
-  });
+  let expect: readonly Expect[];
+  if (undo.guard.kind === 'head') {
+    const g = undo.guard;
+    const head = await readHead(host.git, host.cwd);
+    const name = head.branch === undefined ? 'HEAD' : quote(head.branch);
+    // Never move another branch than the one the operation moved.
+    if (headRef(head.branch) !== g.ref) {
+      host.setUndo(undefined);
+      notify(host, 'error', undoGone(undo.label, name), [], () => undefined);
+      return;
+    }
+    if (head.hash !== g.after) {
+      const [now, back] = await Promise.all([
+        readCommit(host.git, host.cwd, head.hash),
+        readCommit(host.git, host.cwd, g.before),
+      ]);
+      const ask = undoMovedConfirmation(head.branch, undo.label, now.short, back.short, g.deletes);
+      if (!(await host.ui.confirm(ask))) return;
+    }
+    expect = [{ rev: 'HEAD', hash: head.hash, name }];
+  } else expect = undo.guard.expect;
+  const ran = await run(
+    host,
+    undoLabel(undo.label),
+    async (exec) => {
+      for (const op of undo.inverse) await exec(op);
+      return true;
+    },
+    { expect },
+  );
   if (ran) await finish(host, { message: undone(undo.label), ...(undo.focus ? { focus: undo.focus } : {}) });
 }

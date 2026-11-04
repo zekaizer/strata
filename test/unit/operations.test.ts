@@ -87,12 +87,16 @@ describe('operations', () => {
     assert.equal(run(d, 'tag', '--list'), 'v1');
   });
 
-  it('puts a deleted branch back without switching to it', async () => {
+  it('puts a deleted branch back without switching to it, with its configuration', async () => {
     const d = repo();
     const tip = run(d, 'rev-parse', 'topic');
+    run(d, 'config', 'branch.topic.description', 'first');
     run(d, 'branch', '--delete', '--force', '--quiet', 'topic');
+    assert.throws(() => run(d, 'config', 'branch.topic.description'), 'git drops the branch section');
     await op(d, { kind: 'branchAt', name: 'topic', at: tip });
+    await op(d, { kind: 'configAdd', key: 'branch.topic.description', value: 'first' });
     assert.equal(run(d, 'rev-parse', 'topic'), tip);
+    assert.equal(run(d, 'config', 'branch.topic.description'), 'first');
     assert.equal(branch(d), 'main');
   });
 

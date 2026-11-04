@@ -25,6 +25,7 @@ import {
 } from '../../core/wording.ts';
 import {
   countCommits,
+  readBranchConfig,
   readCommit,
   readHead,
   readMergeBase,
@@ -188,8 +189,9 @@ export async function createBranch(host: FlowHost, at: string): Promise<void> {
     done: DONE.branchCreated(name, commit.short),
     undo: {
       label: 'branch creation',
-      ops: [back, { kind: 'deleteBranch', name }],
-      guard: { head: commit.hash, back: head.hash },
+      repo: host.cwd,
+      guard: { kind: 'head', ref: `refs/heads/${name}`, before: head.hash, after: commit.hash, deletes: name },
+      inverse: [back, { kind: 'deleteBranch', name }],
       focus: head.hash,
     },
   });
@@ -205,10 +207,17 @@ export async function createTag(host: FlowHost, at: string): Promise<void> {
     exec({ kind: 'createTag', name, at: commit.hash, message: message === '' ? undefined : message }),
   );
   if (ran === undefined) return;
+  const object = (await runGit(host.git, host.cwd, ['rev-parse', '--verify', `refs/tags/${name}`])).trim();
   await finish(host, {
     message: DONE.tagCreated(name, commit.short),
     focus: commit.hash,
-    undo: { label: 'tag creation', ops: [{ kind: 'deleteTag', name }], focus: commit.hash },
+    undo: {
+      label: 'tag creation',
+      repo: host.cwd,
+      guard: { kind: 'refs', expect: [{ rev: `refs/tags/${name}`, hash: object, name: quote(name) }] },
+      inverse: [{ kind: 'deleteTag', name }],
+      focus: commit.hash,
+    },
   });
 }
 
@@ -236,15 +245,29 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
   await finish(host, {
     message: DONE.renamed(ref.short, to),
     focus: tip.hash,
-    undo: { label: 'rename', ops: [{ kind: 'renameBranch', from: to, to: ref.short }], focus: tip.hash },
+    undo: {
+      label: 'rename',
+      repo: host.cwd,
+      guard: {
+        kind: 'refs',
+        expect: [
+          { rev: `refs/heads/${to}`, hash: tip.hash, name: quote(to) },
+          { rev: ref.name, hash: undefined, name: quote(ref.short) },
+        ],
+      },
+      inverse: [{ kind: 'renameBranch', from: to, to: ref.short }],
+      focus: tip.hash,
+    },
   });
 }
 
 export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
-  const [tip, unmerged, upstream] = await Promise.all([
+  const [tip, unmerged, upstream, config] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
     readUnmergedCommits(host.git, host.cwd, ref.short),
     readUpstream(host.git, host.cwd, ref.short),
+    // `branch -D` drops the whole branch.<b> section; Undo puts it back.
+    readBranchConfig(host.git, host.cwd, ref.short),
   ]);
   if (!(await host.ui.confirm(deleteBranchConfirmation(ref.short, tip, unmerged, upstream?.name)))) return;
   // Where the branch hung off the current line, which stays in the graph.
@@ -265,7 +288,16 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
   await finish(host, {
     message: DONE.branchDeleted(ref.short),
     ...(forkPoint === undefined ? {} : { focus: forkPoint }),
-    undo: { label: 'branch deletion', ops: [{ kind: 'branchAt', name: ref.short, at: tip.hash }], focus: tip.hash },
+    undo: {
+      label: 'branch deletion',
+      repo: host.cwd,
+      guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: quote(ref.short) }] },
+      inverse: [
+        { kind: 'branchAt', name: ref.short, at: tip.hash },
+        ...config.map(([key, value]): Operation => ({ kind: 'configAdd', key, value })),
+      ],
+      focus: tip.hash,
+    },
   });
 }
 
@@ -285,7 +317,9 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
     focus: at.hash,
     undo: {
       label: 'tag deletion',
-      ops: [{ kind: 'createTag', name: ref.short, at: object, message: undefined }],
+      repo: host.cwd,
+      guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: quote(ref.short) }] },
+      inverse: [{ kind: 'createTag', name: ref.short, at: object, message: undefined }],
       focus: at.hash,
     },
   });

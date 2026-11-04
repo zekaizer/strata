@@ -10,6 +10,7 @@ import {
   gitTooOld,
   resetConfirmation,
   signInConfirmation,
+  undoGone,
   undoMovedConfirmation,
   undone,
   type ResetFacts,
@@ -117,6 +118,16 @@ describe('wording of undo and failures', () => {
       /^HEAD has moved since the cherry pick/,
     );
     assert.equal(undone('branch deletion'), 'Undid the branch deletion');
+    const created = undoMovedConfirmation('topic', 'branch creation', 'abc1234', 'def5678', 'topic');
+    assert.equal(created.message, "'topic' has moved since the branch creation (now at abc1234).");
+    assert.equal(
+      created.detail,
+      "Undo would switch back to def5678 and delete 'topic', with the commits made on it since.",
+    );
+    assert.equal(
+      undoGone('rebase', "'main'"),
+      "HEAD is now on 'main', not on the branch the rebase moved, so Undo was dropped.",
+    );
   });
 
   it("shows the first three lines of git's message", () => {

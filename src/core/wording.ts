@@ -157,19 +157,30 @@ export function abortConfirmation(
 
 const branchName = (branch: string | undefined) => (branch === undefined ? 'HEAD' : `'${branch}'`);
 
-/** `label` names what is undone ("merge", "branch deletion"); `back` is where Undo moves HEAD. */
+/**
+ * `label` names what is undone ("merge", "branch creation"); `back` is where Undo moves HEAD;
+ * `deletes`, a branch Undo deletes instead (it was created).
+ */
 export function undoMovedConfirmation(
   branch: string | undefined,
   label: string,
   now: string,
   back: string,
+  deletes?: string,
 ): Confirmation<'undo'> {
   return {
     message: `${branchName(branch)} has moved since the ${label} (now at ${now}).`,
-    detail: `Undo would move it back to ${back} and drop the newer commits.`,
+    detail:
+      deletes === undefined
+        ? `Undo would move it back to ${back} and drop the newer commits.`
+        : `Undo would switch back to ${back} and delete '${deletes}', with the commits made on it since.`,
     buttons: [{ id: 'undo', label: 'Undo Anyway' }],
   };
 }
+
+/** HEAD is on another branch than the one the operation moved, so Undo would move the wrong one. */
+export const undoGone = (label: string, head: string): string =>
+  `HEAD is now on ${head}, not on the branch the ${label} moved, so Undo was dropped.`;
 
 export const undone = (label: string): string => `Undid the ${label}`;
 

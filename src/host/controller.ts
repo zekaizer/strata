@@ -111,6 +111,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     const active = vscode.window.activeTextEditor?.document.uri;
     const repo = (active && this.api.getRepository(active)) ?? this.api.repositories[0];
     if (repo !== this.repo) {
+      this.setUndo(undefined);
       this.repoSubscription?.dispose();
       this.repo = repo;
       this.stashCache = stashCache();
@@ -225,6 +226,8 @@ export class GraphController implements vscode.Disposable, FlowHost {
       readStashes(this.api.git.path, cwd, this.stashCache),
     ]);
     if (generation !== this.generation) return;
+    // Undo moves the branch HEAD was on; once HEAD is on another one, it would move the wrong branch.
+    if (this.snapshot && refs.headBranch !== this.snapshot.headBranch) this.setUndo(undefined);
     this.snapshot = refs;
     this.stashes = stashes;
     // Drop filtered refs that no longer exist; with none left, show everything.

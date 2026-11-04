@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { branchMenu, commitMenu, flowSuite, run, selected, tagMenu } from './flow-helpers.ts';
-import { git, workspaceRoot } from './helpers.ts';
+import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('ref operations', () => {
   const { api, panel, ui } = flowSuite();
@@ -35,6 +35,17 @@ describe('ref operations', () => {
     assert.equal(api().contextValue('strata.canUndo'), false);
   });
 
+  it('drops Undo when HEAD moves to another branch outside Strata', async () => {
+    ui.type('strata/elsewhere');
+    await run('strata.createBranch', commitMenu(git('rev-parse', 'main~2')));
+    assert.equal(api().contextValue('strata.canUndo'), true);
+    git('switch', '--quiet', 'main');
+    await waitFor('Undo dropped', () => api().contextValue('strata.canUndo') === false);
+    await run('strata.undo');
+    assert.equal(git('branch', '--list', '--format=%(refname:short)', 'strata/elsewhere'), 'strata/elsewhere');
+    assert.equal(git('branch', '--show-current'), 'main');
+  });
+
   it('refuses a branch name that exists, naming where it is', async () => {
     ui.type('main');
     await run('strata.createBranch', commitMenu(git('rev-parse', 'main~1')));
@@ -47,6 +58,7 @@ describe('ref operations', () => {
 
   it('deletes a branch with commits no other ref has, after saying so, and undoes that', async () => {
     const tip = git('rev-parse', 'wip/experiment');
+    git('config', 'branch.wip/experiment.description', 'Trying things');
     ui.press('Delete Branch and Commits');
     await run('strata.deleteBranch', branchMenu('wip/experiment', tip));
     const asked = ui.first('confirm');
@@ -57,6 +69,7 @@ describe('ref operations', () => {
 
     await run('strata.undo');
     assert.equal(git('rev-parse', 'wip/experiment'), tip);
+    assert.equal(git('config', 'branch.wip/experiment.description'), 'Trying things', 'its configuration is back');
     await selected(panel(), tip);
   });
 

@@ -6,6 +6,7 @@ import { before, describe, it } from 'node:test';
 import {
   countCommits,
   isAncestor,
+  readBranchConfig,
   readCommit,
   readConfigBool,
   readHead,
@@ -151,5 +152,17 @@ describe('confirmation facts', () => {
     assert.deepEqual(await readHead('git', dir), { branch: undefined, hash: run(dir, 'rev-parse', 'keep') });
     run(dir, 'checkout', '--quiet', 'main');
     assert.equal(await readMergeBase('git', dir, 'main', 'topic'), run(dir, 'rev-parse', 'main~3'));
+  });
+
+  it("reads a branch's own configuration, not that of branches whose names extend it", async () => {
+    run(dir, 'config', 'branch.topic.description', 'mine');
+    run(dir, 'config', 'branch.topic.x.description', 'other');
+    assert.deepEqual(await readBranchConfig('git', dir, 'topic'), [['branch.topic.description', 'mine']]);
+    assert.deepEqual(await readBranchConfig('git', dir, 'main'), [
+      ['branch.main.remote', 'origin'],
+      ['branch.main.merge', 'refs/heads/main'],
+    ]);
+    run(dir, 'config', '--remove-section', 'branch.topic');
+    run(dir, 'config', '--remove-section', 'branch.topic.x');
   });
 });

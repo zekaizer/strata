@@ -171,3 +171,16 @@ export async function readHead(git: string, cwd: string): Promise<{ branch: stri
 /** The best common ancestor of two commits; undefined for unrelated histories. */
 export const readMergeBase = (git: string, cwd: string, a: string, b: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['merge-base', a, b]));
+
+/** Every `branch.<branch>.*` config entry, in order (multi-valued keys repeat). */
+export async function readBranchConfig(git: string, cwd: string, branch: string): Promise<[string, string][]> {
+  const out = (await optional(runGit(git, cwd, ['config', '-z', '--get-regexp', '^branch\\.']))) ?? '';
+  const prefix = `branch.${branch}.`;
+  return out
+    .split('\0')
+    .map((entry): [string, string] => {
+      const nl = entry.indexOf('\n');
+      return nl < 0 ? [entry, ''] : [entry.slice(0, nl), entry.slice(nl + 1)];
+    })
+    .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('.'));
+}
