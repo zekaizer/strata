@@ -474,6 +474,7 @@ class App {
         this.loading = false;
         this.status.textContent = m.message;
         this.status.classList.add('error');
+        this.status.classList.remove('busy');
         this.alerted = m.message;
         this.alert.textContent = '';
         requestAnimationFrame(() => {
