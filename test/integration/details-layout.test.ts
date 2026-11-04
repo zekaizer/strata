@@ -59,7 +59,6 @@ describe('details layout', () => {
     const d = await openDetails(1);
     assert.ok(d.treeWidth >= 150, `tree width ${d.treeWidth}`);
     assert.equal(d.stacked, !d.sideBySide);
-    if (d.listWidth >= 900) assert.equal(d.sideBySide, true, `list ${d.listWidth}px, tree ${d.treeWidth}px`);
     // Opening the meta table changes the height only, never the arrangement.
     await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
     const open = await waitFor('meta open', async () => {
@@ -201,6 +200,51 @@ describe('details layout', () => {
         return p.details && !p.details.bodyClamp.clamped && p.details;
       });
       assert.equal(open.moreBelow, open.overflowing, 'more-below follows the expanded body');
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      panel = (await strata()).show();
+      await panel.whenReady();
+      git('update-ref', '-d', `refs/heads/${longBranch}`);
+      await reload();
+    }
+  });
+
+  it('gives the body 80 columns beside the files, and the full width above them', async () => {
+    // A kernel-style body: prose filled to 72 columns, tab-indented code up to 79.
+    const body = [
+      "The module loader doesn't check for bounds of the ELF section index here.",
+      '',
+      '\tfor (i = 1; i < symsec->sh_size / sizeof(Elf_Sym); i++) {',
+      '\t\tconst char *name = info->strtab + sym[i].st_name;',
+      '\t\t\t/* Divert to percpu allocation if a percpu variable. */',
+      '',
+      'Signed-off-by: Ada Lovelace <ada@example.com>',
+    ].join('\n');
+    const tip = git(...IDENTITY, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', `Kernel body\n\n${body}`);
+    git('update-ref', `refs/heads/${longBranch}`, tip);
+    const check = (d: NonNullable<ProbeState['details']>, where: string) => {
+      const widths = `${where}: layout ${d.layoutWidth}px, message ${d.messageWidth}px, 80 columns ${d.bodyColumns80}px`;
+      // Beside each other when 80 columns, the gap and the files' minimum fit.
+      assert.equal(d.sideBySide, d.layoutWidth >= d.bodyColumns80 + 24 + 260, widths);
+      if (!d.sideBySide) assert.ok(Math.abs(d.messageWidth - Math.min(d.layoutWidth, d.bodyColumns80)) <= 1, widths);
+      // 80 columns whenever the layout has them, so a kernel-style body keeps its lines.
+      assert.ok(d.messageWidth >= Math.min(d.layoutWidth, d.bodyColumns80) - 1, widths);
+      if (d.layoutWidth >= d.bodyColumns80) assert.equal(d.bodyWraps, false, widths);
+      return widths;
+    };
+    try {
+      await reload();
+      const index = order().indexOf(tip);
+      // The window's own width decides which of the two this is (1.90 opens narrower).
+      check(await openDetails(index), 'as opened');
+      const doc = await vscode.workspace.openTextDocument({ content: 'beside' });
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+      await vscode.commands.executeCommand('workbench.action.evenEditorWidths');
+      const narrow = await waitFor('stacked', async () => {
+        const p = await panel.probe();
+        return p.details?.stacked && p.details;
+      });
+      check(narrow, 'narrow');
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       panel = (await strata()).show();
