@@ -95,7 +95,8 @@ describe('details layout', () => {
     await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
     const d = (await waitFor('meta open', async () => (await panel.probe()).details?.metaOpen && (await panel.probe())))
       .details!;
-    assert.deepEqual(d.metaRows.slice(0, 2), ['Commit', 'Author']);
+    // Author and committer always both, even when they are the same person.
+    assert.deepEqual(d.metaRows.slice(0, 3), ['Commit', 'Author', 'Committer']);
     // Row 2 is "Merge cross/x and cross/y": two parents, labelled in order.
     assert.ok(d.metaRows.includes('1st parent') && d.metaRows.includes('2nd parent'), d.metaRows.join(', '));
     const next = await openDetails(1);

@@ -993,7 +993,7 @@ class App {
     });
   }
 
-  /** Commit, author, committer (when it differs) and parents with their subjects. */
+  /** Commit, author and committer (both always, in full) and parents with their subjects. */
   private metaTable(d: CommitDetails): HTMLElement {
     const table = el('table', 'meta-table');
     table.id = 'details-meta';
@@ -1013,12 +1013,9 @@ class App {
       this.copyHash(d.hash);
     });
     row('Commit', el('code', undefined, d.hash), copy);
+    // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
     row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
-    if (d.committer !== d.author || d.committerEmail !== d.authorEmail) {
-      row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
-    } else if (d.commitTime !== d.authorTime) {
-      row('Committer', `same · ${formatDate(d.commitTime)}`);
-    }
+    row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
     d.parents.forEach((p, i) => {
       const subject = d.parentSubjects[i] ?? '';
       const link = el('button', 'link-button meta-parent');
