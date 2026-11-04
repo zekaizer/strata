@@ -276,11 +276,12 @@ export class GraphController implements vscode.Disposable, FlowHost {
       await this.setMarks(dir, marks);
       leftover = leftoverOf({ operation, stashes: this.stashes, unmerged, marks });
     }
-    const state = { operation, leftover };
+    // A running flow's own steps are not an operation that stopped; it reports how it ended.
+    const state = { operation: this.running === undefined ? operation : this.repoState?.operation, leftover };
     if (!force && JSON.stringify(state) === JSON.stringify(this.repoState)) return;
     this.repoState = state;
-    this.post({ type: 'repoState', operation, leftover });
-    await setContext('strata.operation', operation?.kind ?? '');
+    this.post({ type: 'repoState', ...state });
+    await setContext('strata.operation', state.operation?.kind ?? '');
   }
 
   /**

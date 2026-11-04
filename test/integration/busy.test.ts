@@ -1,8 +1,13 @@
 import * as assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import type { StrataTestApi } from '../../src/extension.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { git, strata, waitFor } from './helpers.ts';
+import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { gitRetry, setIdentity, snapshotRepo } from './repo-snapshot.ts';
 
 describe('while an operation runs', () => {
+  let api: StrataTestApi;
   let panel: GraphPanel;
   const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
   /** Runs `during` inside a Strata operation, as a flow's steps would run. */
@@ -16,7 +21,8 @@ describe('while an operation runs', () => {
   };
 
   before(async () => {
-    panel = (await strata()).show();
+    api = await strata();
+    panel = api.show();
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
   });
@@ -37,6 +43,28 @@ describe('while an operation runs', () => {
       return !p.listBusy && p;
     });
     assert.equal(s.status, `${order().length} commits`);
+  });
+
+  it('does not show its own unfinished steps as an operation that stopped, even when reloaded', async () => {
+    const restore = await snapshotRepo();
+    await setIdentity();
+    try {
+      await operation('Rebasing', async () => {
+        // Where a rebase Strata runs is between two commits: git's rebase state is on disk.
+        git('switch', '--quiet', '--create', 'strata-busy', 'main~1');
+        writeFileSync(join(workspaceRoot(), 'main.txt'), 'busy\n');
+        git('commit', '--quiet', '-am', 'Busy');
+        await assert.rejects(gitRetry('rebase', 'main'));
+        await panel.flowHost().refresh();
+        assert.equal((await panel.probe()).operation, undefined);
+        assert.equal(api.contextValue('strata.operation'), '');
+        git('rebase', '--abort');
+      });
+    } finally {
+      await restore();
+      await panel.flowHost().refresh();
+      await waitFor('history', async () => (await panel.probe()).done);
+    }
   });
 
   it('selects the commit an operation focused, unless the user moved the selection while it ran', async () => {
