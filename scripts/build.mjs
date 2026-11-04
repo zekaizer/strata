@@ -1,6 +1,7 @@
 // Single esbuild entry point for every bundle: extension host, webview, worker,
 // integration tests and the webview playground.
 import * as esbuild from 'esbuild';
+import { execFileSync } from 'node:child_process';
 import { cp, mkdir, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -79,6 +80,7 @@ if (playground) {
   });
   await copyCodicons(outdir);
   await cp('playground/index.html', join(outdir, 'index.html'));
+  execFileSync(process.execPath, ['playground/data.ts'], { stdio: 'inherit' });
 } else {
   configs.push(
     {
@@ -95,9 +97,9 @@ if (playground) {
   if (!production) {
     configs.push({
       ...common,
-      entryPoints: await listTests('test/integration'),
-      outdir: 'out/test/integration',
-      outbase: 'test/integration',
+      entryPoints: [...(await listTests('test/integration')), 'test/restart/driver.ts'],
+      outdir: 'out/test',
+      outbase: 'test',
       outExtension: { '.js': '.cjs' },
       format: 'cjs',
       platform: 'node',

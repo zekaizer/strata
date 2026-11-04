@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
-import type { HostToWebview, ThemeKind, WebviewToHost } from '../shared/protocol.ts';
+import type { HostToWebview, ProbeState, SimulatedAction, ThemeKind, WebviewToHost } from '../shared/protocol.ts';
+import { GraphController } from './controller.ts';
+import { getGitApi } from './git-api.ts';
 
 export type ReadyInfo = Extract<WebviewToHost, { type: 'ready' }>;
 
@@ -13,18 +15,38 @@ export class GraphPanel implements vscode.Disposable {
   /** Every message received from the webview. */
   readonly onDidReceiveMessage = this.messageEmitter.event;
   private readonly ready: Promise<ReadyInfo>;
+  private controller: GraphController | undefined;
 
   static show(extensionUri: vscode.Uri): GraphPanel {
     if (GraphPanel.current) {
       GraphPanel.current.panel.reveal();
       return GraphPanel.current;
     }
-    const panel = vscode.window.createWebviewPanel(GraphPanel.viewType, 'Commit Graph', vscode.ViewColumn.Active, {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist', 'webview')],
-    });
+    const panel = vscode.window.createWebviewPanel(
+      GraphPanel.viewType,
+      'Commit Graph',
+      vscode.ViewColumn.Active,
+      GraphPanel.webviewOptions(extensionUri),
+    );
     GraphPanel.current = new GraphPanel(panel, extensionUri);
     return GraphPanel.current;
+  }
+
+  /** Adopts a panel VS Code restored from the previous session. */
+  static revive(panel: vscode.WebviewPanel, extensionUri: vscode.Uri): GraphPanel {
+    panel.webview.options = GraphPanel.webviewOptions(extensionUri);
+    GraphPanel.current?.dispose();
+    GraphPanel.current = new GraphPanel(panel, extensionUri);
+    return GraphPanel.current;
+  }
+
+  private static webviewOptions(extensionUri: vscode.Uri): vscode.WebviewPanelOptions & vscode.WebviewOptions {
+    return {
+      enableScripts: true,
+      // Opening a diff hides the graph tab; keep its scroll position, selection and loaded history.
+      retainContextWhenHidden: true,
+      localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist', 'webview')],
+    };
   }
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
@@ -57,15 +79,39 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   /** Reads the `--vscode-*` theme variables currently applied in the webview. */
-  async readThemeVars(): Promise<Record<string, string>> {
+  readThemeVars(): Promise<Record<string, string>> {
+    return this.request({ type: 'dumpThemeVars' }, 'themeVars').then((m) => m.vars);
+  }
+
+  /** Webview state, for integration tests. */
+  probe(): Promise<ProbeState> {
+    return this.request({ type: 'probe' }, 'probe').then((m) => m.state);
+  }
+
+  /** Makes the webview perform a UI action through DOM events, for integration tests. */
+  async simulate(action: SimulatedAction): Promise<void> {
     await this.ready;
-    return new Promise((resolve) => {
-      const sub = this.onDidReceiveMessage((m) => {
-        if (m.type !== 'themeVars') return;
+    this.post({ type: 'simulate', action });
+  }
+
+  private async request<T extends WebviewToHost['type']>(
+    message: HostToWebview,
+    reply: T,
+    timeoutMs = 10_000,
+  ): Promise<Extract<WebviewToHost, { type: T }>> {
+    await this.ready;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
         sub.dispose();
-        resolve(m.vars);
+        reject(new Error(`webview did not answer ${message.type}`));
+      }, timeoutMs);
+      const sub = this.onDidReceiveMessage((m) => {
+        if (m.type !== reply) return;
+        clearTimeout(timer);
+        sub.dispose();
+        resolve(m as Extract<WebviewToHost, { type: T }>);
       });
-      this.post({ type: 'dumpThemeVars' });
+      this.post(message);
     });
   }
 
@@ -73,14 +119,30 @@ export class GraphPanel implements vscode.Disposable {
     switch (m.type) {
       case 'ready':
         this.post({ type: 'init', theme: themeKind() });
+        void this.startController();
         break;
       case 'error':
         void vscode.window.showErrorMessage(`Strata: ${m.message}`);
         break;
       case 'themeVars':
+      case 'probe':
         break;
+      default:
+        void this.controller?.handle(m);
     }
     this.messageEmitter.fire(m);
+  }
+
+  /** A reloaded webview (e.g. after being hidden) sends `ready` again and gets a fresh history. */
+  private async startController(): Promise<void> {
+    try {
+      this.controller ??= new GraphController(await getGitApi(), (m) => {
+        this.post(m);
+      });
+      await this.controller.start();
+    } catch (e) {
+      this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+    }
   }
 
   private post(m: HostToWebview): void {
@@ -89,6 +151,7 @@ export class GraphPanel implements vscode.Disposable {
 
   dispose(): void {
     if (GraphPanel.current === this) GraphPanel.current = undefined;
+    this.controller?.dispose();
     for (const d of this.disposables.splice(0)) d.dispose();
     this.panel.dispose();
   }

@@ -1,4 +1,4 @@
-import type { FromWorker, ToWorker } from '../shared/protocol.ts';
+import type { FromWorker } from '../shared/protocol.ts';
 
 /**
  * Starts the layout worker from a blob: URL. Webview resource URLs are
@@ -16,19 +16,20 @@ export async function startWorker(src: string): Promise<Worker> {
   }
 }
 
-export function request(worker: Worker, msg: ToWorker, timeoutMs = 5000): Promise<FromWorker> {
+/** Round-trips a ping to prove the worker runs. */
+export function ping(worker: Worker, timeoutMs = 5000): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error('worker timeout'));
+      worker.removeEventListener('message', onMessage);
+      reject(new Error('worker did not answer'));
     }, timeoutMs);
-    worker.addEventListener(
-      'message',
-      (e: MessageEvent<FromWorker>) => {
-        clearTimeout(timer);
-        resolve(e.data);
-      },
-      { once: true },
-    );
-    worker.postMessage(msg);
+    const onMessage = (e: MessageEvent<FromWorker>) => {
+      if (e.data.type !== 'pong') return;
+      clearTimeout(timer);
+      worker.removeEventListener('message', onMessage);
+      resolve();
+    };
+    worker.addEventListener('message', onMessage);
+    worker.postMessage({ type: 'ping' });
   });
 }

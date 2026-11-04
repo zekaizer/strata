@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
@@ -38,4 +38,25 @@ export const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Captures the whole X display. Requires DISPLAY (scripts/xvfb.mjs) and ImageMagick. */
 export async function screenshot(file: string): Promise<void> {
   await promisify(execFile)('import', ['-window', 'root', file]);
+}
+
+/** Polls `check` until it returns a value other than undefined/false. */
+export async function waitFor<T>(
+  what: string,
+  check: () => Promise<T | undefined | false> | T | undefined | false,
+  timeoutMs = 15_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const v = await check();
+    if (v !== undefined && v !== false) return v;
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    await delay(100);
+  }
+}
+
+export const workspaceRoot = () => vscode.workspace.workspaceFolders![0]!.uri.fsPath;
+
+export function git(...args: string[]): string {
+  return execFileSync('git', args, { cwd: workspaceRoot(), encoding: 'utf8' }).trim();
 }

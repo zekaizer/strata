@@ -1,5 +1,4 @@
 // Screenshots the webview playground in every captured theme with Playwright.
-// Usage: node scripts/playground-shot.mjs [outDir] [width]x[height]
 import { createServer } from 'node:http';
 import { mkdir, readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -17,8 +16,10 @@ try {
   process.exit(1);
 }
 
+// Usage: node scripts/playground-shot.mjs [outDir] [WxH] [query]   e.g. query "repo=octopus&select=1"
 const outDir = process.argv[2] ?? 'artifacts/playground';
 const [width, height] = (process.argv[3] ?? '1200x800').split('x').map(Number);
+const query = process.argv[4] ?? 'repo=branchy&select=1';
 const root = 'out/playground';
 const types = {
   '.html': 'text/html',
@@ -51,8 +52,10 @@ for (const theme of ['dark', 'light', 'high-contrast', 'high-contrast-light']) {
     failed = true;
     console.error(`[${theme}] ${e.message}`);
   });
-  await page.goto(`http://127.0.0.1:${port}/index.html?theme=${theme}`);
+  await page.goto(`http://127.0.0.1:${port}/index.html?theme=${theme}&${query}`);
   await page.waitForFunction(() => window.__strataSent.some((m) => m.type === 'ready'));
+  // Let pages, layout and any requested selection settle.
+  await page.waitForTimeout(400);
   const file = join(outDir, `${theme}.png`);
   await page.screenshot({ path: file });
   console.log(file);
