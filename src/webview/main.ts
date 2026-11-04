@@ -3,7 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
-import { badgeOrder, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -844,18 +844,26 @@ class App {
 
   private badges(hash: string): HTMLElement[] {
     const out: HTMLElement[] = [];
-    const refs = this.refsByHash.get(hash) ?? [];
-    if (hash === this.refs.head && this.refs.headBranch === undefined)
-      out.push(badge('head', 'target', 'HEAD', 'Detached HEAD'));
-    for (const r of refs) {
-      const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
-      out.push(badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, r.name));
+    if (hash === this.refs.head && this.refs.headBranch === undefined) {
+      const b = badge('head', 'target', 'HEAD', 'Detached HEAD');
+      b.dataset['refs'] = 'HEAD';
+      out.push(b);
     }
-    // In badgeOrder order; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
+    for (const { ref: r, remotes } of pairRefs(this.refsByHash.get(hash) ?? [], this.refs.remotes)) {
+      const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
+      const names = [r.name, ...remotes.map((x) => x.name)];
+      const b = badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, names.join('\n'));
+      b.dataset['refs'] = names.join(' ');
+      b.dataset['summary'] = remotes.length ? `${r.short} (also ${remotes.map((x) => x.short).join(', ')})` : r.name;
+      if (remotes.length > 0) b.append(remoteSegment(r, remotes));
+      out.push(b);
+    }
+    // In badgeOrder order (a merged badge counts once); beyond MAX_BADGES the rest collapse into one.
     if (out.length <= MAX_BADGES) return out;
     const rest = out.slice(MAX_BADGES - 1);
     const more = el('span', 'badge badge-more', `+${rest.length}`);
-    more.title = rest.map((b) => b.title).join('\n');
+    more.title = rest.map((b) => b.dataset['summary'] ?? b.title).join('\n');
+    more.dataset['refs'] = rest.map((b) => b.dataset['refs'] ?? '').join(' ');
     return [...out.slice(0, MAX_BADGES - 1), more];
   }
 
@@ -1331,6 +1339,7 @@ class App {
                 subjectTop: text.getBoundingClientRect().top - top,
                 subjectLeft: text.getBoundingClientRect().left,
                 bandLeft: band ? band.getBoundingClientRect().left : -1,
+                refNames: els.flatMap((b) => (b.dataset['refs'] ?? '').split(' ').filter(Boolean)),
               },
             ],
           ];
@@ -1481,6 +1490,20 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.fillStyle = g;
   ctx.fillRect(width - fade, 0, fade, height);
   ctx.restore();
+}
+
+/** "origin, upstream" after a branch's name: its same-named remote-tracking branches. */
+function remoteSegment(local: Ref, remotes: Ref[]): HTMLElement {
+  const seg = el('span', 'badge-remotes');
+  const icon = el('span', 'codicon codicon-cloud');
+  icon.setAttribute('aria-hidden', 'true');
+  // origin/main -> origin (remote names may contain slashes, branch names too).
+  const names = remotes.map((r) => r.short.slice(0, r.short.length - local.short.length - 1));
+  const shown = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ');
+  const text = el('span', 'badge-remote-names', shown);
+  text.setAttribute('aria-hidden', 'true');
+  seg.append(icon, text, el('span', 'sr-only', `, also ${remotes.map((r) => r.short).join(', ')}`));
+  return seg;
 }
 
 const ordinal = (n: number) =>

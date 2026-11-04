@@ -128,4 +128,19 @@ describe('details layout', () => {
     });
     assert.equal(s.selected, order()[2], 'the selection stays');
   });
+
+  it('merges a branch and its same-named remote-tracking branch into one badge', async () => {
+    git('remote', 'add', 'origin', 'https://example.com/origin.git');
+    git('update-ref', 'refs/remotes/origin/main', 'main');
+    try {
+      const s = await reload();
+      const band = s.refBands[0]!;
+      assert.deepEqual(band.badges, ['main'], 'one badge');
+      assert.deepEqual([...band.refNames].sort(), ['refs/heads/main', 'refs/remotes/origin/main']);
+    } finally {
+      git('update-ref', '-d', 'refs/remotes/origin/main');
+      git('remote', 'remove', 'origin');
+      await reload();
+    }
+  });
 });

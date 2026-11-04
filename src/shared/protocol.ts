@@ -116,6 +116,8 @@ export interface ProbeState {
       subjectTop: number;
       subjectLeft: number;
       bandLeft: number;
+      /** Full names of every ref behind the badges, merged badges included. */
+      refNames: string[];
     }
   >;
   /** The inline details as laid out, or undefined when collapsed. */

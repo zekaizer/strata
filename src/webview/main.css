@@ -408,6 +408,8 @@ body:not(.hover-off) .row:hover {
   box-sizing: border-box;
   max-width: 200px;
   height: 12px;
+  /* A badge shrunk to its minimum keeps everything inside its own border. */
+  overflow: hidden;
   padding: 0 4px 0 3px;
   border: 1px solid var(--badge-color);
   /* A callout: the square corner points down at the subject. */
@@ -458,6 +460,33 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-hea
 
 .badge-remote {
   --badge-color: var(--badge-remote);
+}
+
+/*
+ * Remote-tracking branches of the same name on the same commit, inside the local branch's badge:
+ * "main | origin". The names give way before the branch name does.
+ */
+.badge-remotes {
+  --badge-color: var(--badge-remote);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1000 auto;
+  min-width: 0;
+  margin-left: 2px;
+  padding-left: 3px;
+  border-left: 1px solid color-mix(in srgb, var(--badge-color) 60%, transparent);
+  font-weight: normal;
+}
+
+.badge-remote-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.vscode-high-contrast .badge-remotes {
+  border-left-color: var(--vscode-contrastBorder);
 }
 
 .badge-tag {
