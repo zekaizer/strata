@@ -34,8 +34,16 @@ export type Operation =
   | { kind: 'revert'; commit: string }
   | { kind: 'reset'; commit: string; mode: ResetMode }
   | { kind: 'continue' | 'abort' | 'skip'; operation: OperationKind }
-  /** `paths`: only these (a safety stash of exactly what an operation would overwrite). */
-  | { kind: 'stashPush'; message: string | undefined; includeUntracked: boolean; paths?: readonly string[] }
+  /**
+   * `untracked`: untracked files stashed too, none, those git does not ignore, or ignored ones as
+   * well. `paths`: only these (a safety stash of exactly what an operation would overwrite).
+   */
+  | {
+      kind: 'stashPush';
+      message: string | undefined;
+      untracked: 'none' | 'unignored' | 'all';
+      paths?: readonly string[];
+    }
   | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
@@ -129,7 +137,7 @@ export function argv(op: Operation): string[] {
       return [
         'stash',
         'push',
-        ...(op.includeUntracked ? ['--include-untracked'] : []),
+        ...({ none: [], unignored: ['--include-untracked'], all: ['--all'] } as const)[op.untracked],
         ...(op.message === undefined ? [] : ['--message', op.message]),
         ...(op.paths === undefined ? [] : ['--', ...op.paths.map((p) => `:(literal)${p}`)]),
       ];

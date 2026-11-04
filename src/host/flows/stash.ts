@@ -50,7 +50,11 @@ export async function stashPush(host: FlowHost, includeUntracked: boolean): Prom
   });
   if (message === undefined) return;
   const ran = await run(host, STASH_DOING.stashing, (exec) =>
-    exec({ kind: 'stashPush', message: message === '' ? undefined : message, includeUntracked }),
+    exec({
+      kind: 'stashPush',
+      message: message === '' ? undefined : message,
+      untracked: includeUntracked ? 'unignored' : 'none',
+    }),
   );
   if (ran === undefined) return;
   const top = await readStashTop(host.git, host.cwd);

@@ -47,7 +47,7 @@ describe('repository state', () => {
   it('is idle in a clean repository', async () => {
     const d = repo();
     assert.equal(await readOperationState('git', d), undefined);
-    assert.deepEqual(await readWorktree('git', d), { paths: [], staged: 0, unstaged: 0, submodules: 0 });
+    assert.deepEqual(await readWorktree('git', d), { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 });
   });
 
   it('counts staged and unstaged changes but not untracked files', async () => {
@@ -60,6 +60,15 @@ describe('repository state', () => {
     assert.deepEqual([...w.paths].sort(), ['f.txt', 'other.txt']);
     assert.equal(w.staged, 1);
     assert.equal(w.unstaged, 1);
+  });
+
+  it('tells deletions from the index (git rm) from deleted files git still tracks', async () => {
+    const d = repo();
+    run(d, 'rm', '--quiet', 'f.txt');
+    const w = await readWorktree('git', d);
+    assert.deepEqual(w.deleted, ['f.txt']);
+    run(d, 'reset', '--quiet', '--', 'f.txt');
+    assert.deepEqual((await readWorktree('git', d)).deleted, []);
   });
 
   it('reads a rebase stopped at a conflict, with its step, target and autostash', async () => {

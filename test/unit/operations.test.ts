@@ -92,7 +92,7 @@ describe('operations', () => {
     writeFileSync(join(d, 'f.txt'), 'dirty\n');
     writeFileSync(join(d, 'new [1].txt'), 'mine\n');
     writeFileSync(join(d, 'other.txt'), 'stays\n');
-    await op(d, { kind: 'stashPush', message: 'some', includeUntracked: true, paths: ['f.txt', 'new [1].txt'] });
+    await op(d, { kind: 'stashPush', message: 'some', untracked: 'unignored', paths: ['f.txt', 'new [1].txt'] });
     assert.equal(run(d, 'status', '--porcelain'), '?? other.txt');
     assert.equal(run(d, 'show', '--format=', '--name-only', 'stash@{0}^3'), 'new [1].txt');
   });
@@ -223,9 +223,9 @@ describe('operations', () => {
   it('pushes, stashes, applies, pops, drops, branches from and restores a stash', async () => {
     const d = repo();
     appendFileSync(join(d, 'f.txt'), 'one\n');
-    await op(d, { kind: 'stashPush', message: 'first', includeUntracked: false });
+    await op(d, { kind: 'stashPush', message: 'first', untracked: 'none' });
     writeFileSync(join(d, 'new.txt'), 'u\n');
-    await op(d, { kind: 'stashPush', message: 'second', includeUntracked: true });
+    await op(d, { kind: 'stashPush', message: 'second', untracked: 'unignored' });
     assert.equal(run(d, 'stash', 'list', '--format=%gs'), 'On main: second\nOn main: first');
     await op(d, { kind: 'stashApply', index: 1 });
     assert.match(run(d, 'diff', '--name-only'), /f\.txt/);

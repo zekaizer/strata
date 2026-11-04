@@ -99,7 +99,7 @@ export async function stashAround(
   body: () => Promise<unknown>,
 ): Promise<Restored> {
   const before = await readStashTop(host.git, host.cwd);
-  await exec({ kind: 'stashPush', message, includeUntracked: false });
+  await exec({ kind: 'stashPush', message, untracked: 'none' });
   const after = await readStashTop(host.git, host.cwd);
   // "No local changes to save" (e.g. only submodule changes) creates none, and there is nothing to pop.
   const created = after !== before ? after : undefined;

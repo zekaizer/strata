@@ -387,11 +387,14 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
     async (exec) => {
       if (safety) {
         // Never popped: it keeps what the reset would otherwise discard or overwrite.
+        // With paths, only those: --all for overwritten files that are ignored, and none of the
+        // staged deletions, which leave no file for a path to match (the reset restores them).
+        const changed = c?.worktree.paths.filter((p) => !c.worktree.deleted.includes(p)) ?? [];
         await exec({
           kind: 'stashPush',
           message: `Strata: before reset of ${h.branch ?? 'HEAD'} to ${t.short}`,
-          includeUntracked: overwritten.length > 0,
-          ...(overwritten.length > 0 ? { paths: [...(c?.worktree.paths ?? []), ...overwritten] } : {}),
+          untracked: overwritten.length > 0 ? 'all' : 'none',
+          ...(overwritten.length > 0 ? { paths: [...changed, ...overwritten] } : {}),
         });
       }
       await exec({ kind: 'reset', commit: t.hash, mode });

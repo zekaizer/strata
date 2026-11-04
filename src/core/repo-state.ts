@@ -25,6 +25,8 @@ export const CONFLICTS_SHOWN = 50;
 export interface Worktree {
   /** Paths with staged or unstaged changes, conflicts included. */
   paths: string[];
+  /** Of `paths`, those deleted from the index (`git rm`): no file is left there for a path to match. */
+  deleted: string[];
   staged: number;
   unstaged: number;
   /** Submodules with changes inside them, which git stash never records. */
@@ -33,7 +35,7 @@ export interface Worktree {
 
 /** Parses `git status --porcelain=v2 -z --untracked-files=no`. */
 export function parseStatus(out: string): Worktree {
-  const w: Worktree = { paths: [], staged: 0, unstaged: 0, submodules: 0 };
+  const w: Worktree = { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 };
   const records = out.split('\0');
   for (let i = 0; i < records.length; i++) {
     const r = records[i]!;
@@ -42,7 +44,9 @@ export function parseStatus(out: string): Worktree {
     if (fields === undefined) continue;
     const parts = r.split(' ');
     const [, xy = '..', sub = 'N...'] = parts;
-    w.paths.push(parts.slice(fields).join(' '));
+    const path = parts.slice(fields).join(' ');
+    w.paths.push(path);
+    if (r[0] === '1' && xy[0] === 'D') w.deleted.push(path);
     if (r[0] === '2') i++;
     if (r[0] !== 'u' && xy[0] !== '.') w.staged++;
     if (r[0] === 'u' || xy[1] !== '.') w.unstaged++;

@@ -254,6 +254,49 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), before);
   });
 
+  /** strata-reset, with HEAD on it: its tip untracks `file` (and ignores it), which its parent, returned, tracks. */
+  const untrackedAtTip = async (file: string, ignore: boolean) => {
+    branchWith('strata-reset', 'main', file, 'committed\n');
+    const target = git('rev-parse', 'HEAD');
+    git('rm', '--quiet', '--cached', file);
+    if (ignore) {
+      write('.gitignore', `${file}\n`);
+      git('add', '.gitignore');
+    }
+    git('commit', '--quiet', '-m', `Untrack ${file}`);
+    await reload(panel());
+    return target;
+  };
+
+  it('stashes an ignored file a hard reset would overwrite, along with the changes', async () => {
+    const target = await untrackedAtTip('local.cfg', true);
+    write('local.cfg', 'mine\n');
+    write('main.txt', 'dirty\n');
+    ui.choose('Hard').press('Stash Changes & Reset');
+    await run('strata.reset', commitMenu(target));
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level === 'error'),
+      [],
+    );
+    assert.equal(git('rev-parse', 'HEAD'), target);
+    assert.equal(git('show', 'stash@{0}^3:local.cfg'), 'mine');
+    assert.equal(git('show', 'stash@{0}:main.txt'), 'dirty');
+  });
+
+  it('stashes before a hard reset over a staged deletion', async () => {
+    const target = await untrackedAtTip('new.txt', false);
+    write('new.txt', 'mine\n');
+    git('rm', '--quiet', 'main.txt');
+    ui.choose('Hard').press('Stash Changes & Reset');
+    await run('strata.reset', commitMenu(target));
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level === 'error'),
+      [],
+    );
+    assert.equal(git('rev-parse', 'HEAD'), target);
+    assert.equal(git('show', 'stash@{0}^3:new.txt'), 'mine');
+  });
+
   it('undoes a mixed reset with a mixed reset, which keep could not', async () => {
     const before = git('rev-parse', 'main');
     ui.choose('Mixed').press("Reset 'main'");
