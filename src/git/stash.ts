@@ -14,6 +14,29 @@ export interface StashCache {
 
 export const stashCache = (): StashCache => ({ files: new Map(), onBranch: new Map() });
 
+/** The stash list as its reflog holds it, newest first, every stash at its base and uncounted; empty when there is none. */
+export async function readStashList(git: string, cwd: string): Promise<StashEntry[]> {
+  const exists = await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'refs/stash']).then(
+    () => true,
+    () => false,
+  );
+  if (!exists) return [];
+  return parseStashList(
+    await runGit(git, cwd, [
+      '-c',
+      'log.showSignature=false',
+      'log',
+      '--walk-reflogs',
+      '-z',
+      '--no-color',
+      '--encoding=UTF-8',
+      '--format=%H%x00%P%x00%gd%x00%gs%x00%s%x00%ct',
+      'refs/stash',
+      '--',
+    ]),
+  );
+}
+
 /**
  * The stash list, newest first; empty when there is no stash. A stash whose base left the branch it
  * was made on, and which no branch, remote-tracking branch or HEAD (the graph's start points) still
@@ -26,33 +49,17 @@ export async function readStashes(
   cache: StashCache = stashCache(),
   budgetMs = 1500,
 ): Promise<StashEntry[]> {
-  const exists = await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'refs/stash']).then(
-    () => true,
-    () => false,
-  );
-  if (!exists) return [];
-  const [out, heads] = await Promise.all([
-    runGit(git, cwd, [
-      '-c',
-      'log.showSignature=false',
-      'log',
-      '--walk-reflogs',
-      '-z',
-      '--no-color',
-      '--encoding=UTF-8',
-      '--format=%H%x00%P%x00%gd%x00%gs%x00%s%x00%ct',
-      'refs/stash',
-      '--',
-    ]),
+  const [list, heads] = await Promise.all([
+    readStashList(git, cwd),
     runGit(git, cwd, ['for-each-ref', '--format=%(refname:strip=2)%00%(objectname)', 'refs/heads']),
   ]);
+  if (list.length === 0) return [];
   const tips = new Map(
     heads
       .split('\n')
       .filter(Boolean)
       .map((l) => l.split('\0') as [string, string]),
   );
-  const list = parseStashList(out);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<undefined>((resolve) => {
     timer = setTimeout(() => {

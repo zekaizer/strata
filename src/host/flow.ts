@@ -3,6 +3,7 @@ import type { AutostashSetting } from '../core/autostash.ts';
 import { argv, type Operation } from '../core/operations.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 import type { OperationState } from '../core/repo-state.ts';
+import type { StashEntry } from '../core/stash.ts';
 import { shellCommand, shellKind } from '../core/shell.ts';
 import {
   changedMeanwhile,
@@ -79,6 +80,8 @@ export interface FlowHost extends RunnerHost {
   readonly runner: OpRunner;
   /** The refs the graph shows, which its menus were built from. */
   readonly refs: RefSnapshot;
+  /** The stash list the graph shows, as last read. */
+  readonly stashes: readonly StashEntry[];
   readonly lastUndo: Undo | undefined;
   settings(): FlowSettings;
   /** Reloads the graph; `focus` is selected and revealed once it has loaded. */

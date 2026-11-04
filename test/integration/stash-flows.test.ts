@@ -37,6 +37,7 @@ describe('stash operations', () => {
     ui.press('Drop Stash');
     await run('strata.stash.drop', stashMenu(again));
     assert.match(ui.first('confirm').message, /^Drop stash@\{0\} \("WIP on main: /);
+    assert.match(ui.first('confirm').detail, /^1 changed file on [0-9a-f]+ "/);
     assert.equal(git('stash', 'list'), '');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'refs/stash'), again, 'the same stash is back');

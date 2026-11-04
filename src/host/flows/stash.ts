@@ -11,7 +11,6 @@ import {
 } from '../../core/wording.ts';
 import { readCommit, readHead, readStash, readStashTop } from '../../git/facts.ts';
 import { runGit } from '../../git/run.ts';
-import { readStashes } from '../../git/stash.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
 import { Outdated } from '../target.ts';
@@ -85,7 +84,8 @@ export async function restoreStash(host: FlowHost, hash: string, pop: boolean): 
 
 export async function dropStash(host: FlowHost, hash: string): Promise<void> {
   const s = await current(host, hash);
-  const entry = (await readStashes(host.git, host.cwd)).find((e) => e.hash === hash);
+  // As the graph read it: a stash commit's base and files never change.
+  const entry = host.stashes.find((e) => e.hash === hash);
   const base = await readCommit(host.git, host.cwd, entry?.base ?? `${hash}^1`);
   if (!(await host.ui.confirm(dropStashConfirmation(s.index, s.message, entry?.files, base)))) return;
   const ran = await run(host, STASH_DOING.dropping(s.label), async (exec) => {

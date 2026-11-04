@@ -49,7 +49,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private generation = 0;
   private options: ViewOptions = DEFAULT_OPTIONS;
   private snapshot: RefSnapshot | undefined;
-  private stashes: StashEntry[] = [];
+  private stashList: StashEntry[] = [];
   private stashCache = stashCache();
   /** What the graph was last told is in progress or left behind. */
   private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
@@ -239,7 +239,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     // Undo moves the branch HEAD was on; once HEAD is on another one, it would move the wrong branch.
     if (this.snapshot && refs.headBranch !== this.snapshot.headBranch) this.setUndo(undefined);
     this.snapshot = refs;
-    this.stashes = stashes;
+    this.stashList = stashes;
     // Drop filtered refs that no longer exist; with none left, show everything.
     const known = new Set(refs.refs.map((r) => r.name));
     const kept = this.options.refs?.filter((r) => known.has(r)) ?? [];
@@ -393,7 +393,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
         return;
       }
       if (JSON.stringify(stashes) !== JSON.stringify(this.stashes)) {
-        this.stashes = stashes;
+        this.stashList = stashes;
         this.post({ type: 'stashes', generation, stashes });
       }
       await this.syncRepoState(false);
@@ -594,6 +594,10 @@ export class GraphController implements vscode.Disposable, FlowHost {
   get refs(): RefSnapshot {
     if (!this.snapshot) throw new Error('the commit graph has not loaded a repository');
     return this.snapshot;
+  }
+
+  get stashes(): readonly StashEntry[] {
+    return this.stashList;
   }
 
   get lastUndo(): Undo | undefined {

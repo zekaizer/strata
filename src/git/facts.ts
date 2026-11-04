@@ -1,5 +1,6 @@
 import type { CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
+import { readStashList } from './stash.ts';
 
 /** A commit as flows name it. */
 export interface CommitInfo extends CommitRef {
@@ -138,13 +139,8 @@ export async function readStash(
   cwd: string,
   hash: string,
 ): Promise<{ hash: string; index: number; message: string } | undefined> {
-  const out = await optional(
-    runGit(git, cwd, ['log', '--walk-reflogs', '-z', '--format=%H%x00%gs', 'refs/stash', '--']),
-  );
-  const f = (out ?? '').split('\0');
-  for (let i = 0; i + 1 < f.length; i += 2)
-    if (f[i]!.replace(/^\n/, '') === hash) return { hash, index: i / 2, message: f[i + 1]! };
-  return undefined;
+  const s = (await readStashList(git, cwd)).find((e) => e.hash === hash);
+  return s && { hash, index: s.index, message: s.message };
 }
 
 /** The stash commit of stash@{0}. */
