@@ -42,7 +42,10 @@ interface SavedState {
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
 
-const FILE_VIEW_LABEL: Record<FileView, string> = { diff: 'Diff', before: 'Before', after: 'After' };
+/** Same icons as VS Code's Source Control for "Open Changes" and "Open File"; history for the earlier version. */
+const FILE_VIEW_ICON: Record<FileView, string> = { before: 'history', diff: 'git-compare', after: 'go-to-file' };
+/** Buttons follow time: before, the change, after. */
+const FILE_VIEW_ORDER: readonly FileView[] = ['before', 'diff', 'after'];
 const FILE_VIEW_TITLE: Record<FileView, string> = {
   diff: 'Open the changes',
   before: 'Open the file as it was before this commit',
@@ -736,9 +739,10 @@ class App {
     // The row opens the first view that exists: the diff, or the only side an added/deleted file has.
     const primary = views[0]!;
     const actions = el('span', 'file-actions');
-    for (const view of views) {
-      const b = el('button', `file-action file-action-${view}`, FILE_VIEW_LABEL[view]);
+    for (const view of FILE_VIEW_ORDER.filter((v) => views.includes(v))) {
+      const b = el('button', `file-action file-action-${view} codicon codicon-${FILE_VIEW_ICON[view]}`);
       b.tabIndex = -1;
+      b.setAttribute('aria-label', FILE_VIEW_TITLE[view]);
       b.title = `${FILE_VIEW_TITLE[view]} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;
       b.addEventListener('click', (e) => {
         e.stopPropagation();
