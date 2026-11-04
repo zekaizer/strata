@@ -17,7 +17,12 @@ describe('keeping the commit-graph updated', () => {
     } catch {
       parent = git('rev-parse', 'HEAD');
     }
-    git('update-ref', `refs/heads/${branch}`, git('commit-tree', `${parent}^{tree}`, '-p', parent, '-m', message));
+    // CI runners have no git identity; give the commit the fixtures' one.
+    const commit = git(
+      ...['-c', 'user.name=Ada Lovelace', '-c', 'user.email=ada@example.com'],
+      ...['commit-tree', `${parent}^{tree}`, '-p', parent, '-m', message],
+    );
+    git('update-ref', `refs/heads/${branch}`, commit);
     const before = (await panel.probe()).generation;
     await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
     await waitFor('reloaded', async () => (await panel.probe()).generation > before);

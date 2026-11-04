@@ -6,6 +6,8 @@ import { graphCommitCount } from '../fixtures/graph-files.ts';
 import { scenarios } from '../fixtures/scenarios.ts';
 import { git, tempDir } from './helpers.ts';
 
+const IDENTITY = ['-c', 'user.name=Ada Lovelace', '-c', 'user.email=ada@example.com'];
+
 describe('commit-graph', () => {
   const root = tempDir('commit-graph');
 
@@ -40,7 +42,17 @@ describe('commit-graph', () => {
     await writeCommitGraph('git', dir);
     const before = graphCommitCount(dir);
     assert.equal(before, Number(git(dir, 'rev-list', '--count', '--all')));
-    const tip = git(dir, 'commit-tree', `${git(dir, 'rev-parse', 'HEAD')}^{tree}`, '-p', 'HEAD', '-m', 'new');
+    // CI runners have no git identity; give the commit the fixtures' one.
+    const tip = git(
+      dir,
+      ...IDENTITY,
+      'commit-tree',
+      `${git(dir, 'rev-parse', 'HEAD')}^{tree}`,
+      '-p',
+      'HEAD',
+      '-m',
+      'new',
+    );
     git(dir, 'update-ref', 'refs/heads/new', tip);
     assert.equal(await updateCommitGraph('git', dir), true);
     assert.equal(graphCommitCount(dir), before + 1);
