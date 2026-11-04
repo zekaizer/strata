@@ -1085,7 +1085,8 @@ class App {
   private simulate(a: SimulatedAction): void {
     switch (a.kind) {
       case 'clickRow': {
-        this.scroller.scrollTop = Math.max(0, this.rowTop(a.index) - ROW_HEIGHT * 3);
+        // A real click hits a row on screen; scroll only when it is not.
+        this.ensureVisible(a.index);
         this.render();
         // A real click carries the pointer position, which is what selection uses.
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${a.index}`);
