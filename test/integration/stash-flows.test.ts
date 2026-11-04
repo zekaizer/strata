@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { flowSuite, menu, reload, run } from './flow-helpers.ts';
@@ -179,6 +179,39 @@ describe('stash operations', () => {
     assert.equal(git('stash', 'list', '--format=%gs'), 'On main: with new');
     assert.equal(git('show', 'stash@{0}^3:strata-new.txt'), 'new');
     assert.equal(git('status', '--porcelain'), '');
+  });
+
+  it('applies nothing of a stash whose untracked files exist here, says which, and applies once they are gone', async () => {
+    const before = notes();
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
+    writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');
+    git('stash', 'push', '--quiet', '--include-untracked', '--message', 'with new');
+    const w = git('rev-parse', 'refs/stash');
+    writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'mine\n');
+    await reload(panel());
+    await run('strata.stash.pop', stashMenu(w));
+    assert.deepEqual(ui.of('notify'), [
+      {
+        kind: 'notify',
+        level: 'error',
+        message:
+          'stash@{0} ("On main: with new") adds a file that already exists here: strata-new.txt. Move it away and apply again.',
+        actions: [],
+      },
+    ]);
+    assert.equal(notes(), before, 'nothing applied');
+    assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'mine\n');
+    assert.equal(git('rev-parse', 'refs/stash'), w);
+
+    ui.clear();
+    rmSync(join(workspaceRoot(), 'strata-new.txt'));
+    await run('strata.stash.apply', stashMenu(w));
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+    assert.equal(notes(), 'changed\n');
+    assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'new\n');
   });
 
   it('copies the patch of a stash, untracked files included', async () => {

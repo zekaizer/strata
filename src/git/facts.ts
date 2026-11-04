@@ -1,3 +1,5 @@
+import { lstat } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
 import { readStashList } from './stash.ts';
@@ -257,6 +259,27 @@ export async function readUntrackedIn(
   }
   const named = (p: string) => found.some((f) => f === p || f.startsWith(`${p}/`));
   return paths.length > 0 && paths.every(named) ? found : undefined;
+}
+
+/**
+ * The files of stash `hash`'s untracked part that exist in the work tree. git would apply the rest
+ * of the stash and leave these as they are ("already exists, no checkout").
+ */
+export async function readStashFilesHere(git: string, cwd: string, hash: string): Promise<string[]> {
+  const untracked = await optional(runGit(git, cwd, ['rev-parse', '--verify', '--quiet', `${hash}^3`]));
+  if (untracked === undefined) return [];
+  const files = (await runGit(git, cwd, ['ls-tree', '-r', '-z', '--name-only', untracked]))
+    .split('\0')
+    .filter((p) => p !== '');
+  const here = await Promise.all(
+    files.map((f) =>
+      lstat(join(cwd, f)).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return files.filter((_, i) => here[i]);
 }
 
 /** A git config value as written; undefined when unset. */

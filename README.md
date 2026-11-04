@@ -100,7 +100,9 @@ operation is stopped, Continue, Abort and Skip.
   Branch to Here in any of git's modes. Each confirmation says what happens to
   which commits.
 - **Stashes:** Stash Changes (optionally with untracked files), Apply, Pop,
-  Drop, Create Branch from Stash and Copy Patch.
+  Drop, Create Branch from Stash and Copy Patch. Apply and Pop leave a stash
+  untouched when files its untracked part adds already exist in your work
+  tree, and name those files so you can move them away first.
 - **Remotes:** Fetch, Pull (fast-forward, merge or rebase, following
   `pull.rebase`), Push and Publish Branch. A rejected push says how many
   commits the remote has that your branch doesn't, and offers a force push

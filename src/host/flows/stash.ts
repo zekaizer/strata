@@ -6,11 +6,12 @@ import {
   STASH_DONE,
   stashBranchDirty,
   stashBranchInput,
+  stashFilesExist,
   stashLabel,
   stashPushInput,
   staleTarget,
 } from '../../core/wording.ts';
-import { readCommit, readHead, readStash, readStashTop } from '../../git/facts.ts';
+import { readCommit, readHead, readStash, readStashFilesHere, readStashTop } from '../../git/facts.ts';
 import { runGit } from '../../git/run.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
@@ -66,6 +67,12 @@ export async function stashPush(host: FlowHost, includeUntracked: boolean): Prom
 /** Apply (`pop` false) or Pop, judged by what came back rather than by git's exit code. */
 export async function restoreStash(host: FlowHost, hash: string, pop: boolean): Promise<void> {
   const s = await current(host, hash);
+  // git would apply the rest and keep the stash, and applying it again later would apply the rest twice.
+  const here = await readStashFilesHere(host.git, host.cwd, hash);
+  if (here.length > 0) {
+    void host.ui.notify('error', stashFilesExist(s.label, here));
+    return;
+  }
   const r = await run(host, pop ? STASH_DOING.popping(s.label) : STASH_DOING.applying(s.label), (exec) =>
     restore(host, exec, hash, pop),
   );

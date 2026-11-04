@@ -16,6 +16,7 @@ import {
   readOverlap,
   readResetFacts,
   readStash,
+  readStashFilesHere,
   readStashTop,
   readUnmerged,
   readUnmergedCommits,
@@ -214,6 +215,26 @@ describe('confirmation facts', () => {
     } finally {
       run(dir, 'config', '--unset', 'core.excludesFile');
       for (const f of ['one.txt', 'notes', 'x*y.txt']) rmSync(join(dir, f), { recursive: true });
+    }
+  });
+
+  it("names the files of a stash's untracked part that exist here", async () => {
+    writeFileSync(join(dir, 'a.txt'), 'changed\n');
+    mkdirSync(join(dir, 'new'));
+    for (const f of ['new/one.txt', 'two.txt']) writeFileSync(join(dir, f), 'stashed\n');
+    run(dir, 'stash', 'push', '--quiet', '--include-untracked');
+    const withUntracked = run(dir, 'rev-parse', 'refs/stash');
+    writeFileSync(join(dir, 'a.txt'), 'changed again\n');
+    run(dir, 'stash', 'push', '--quiet');
+    const without = run(dir, 'rev-parse', 'refs/stash');
+    try {
+      assert.deepEqual(await readStashFilesHere('git', dir, withUntracked), []);
+      writeFileSync(join(dir, 'two.txt'), 'mine\n');
+      assert.deepEqual(await readStashFilesHere('git', dir, withUntracked), ['two.txt']);
+      assert.deepEqual(await readStashFilesHere('git', dir, without), [], 'no untracked part');
+    } finally {
+      rmSync(join(dir, 'two.txt'));
+      run(dir, 'stash', 'clear');
     }
   });
 
