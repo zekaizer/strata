@@ -16,6 +16,8 @@ export interface RefSnapshot {
   /** Branch HEAD is on (short name); undefined when detached or unborn. */
   headBranch: string | undefined;
   refs: Ref[];
+  /** Names of the configured remotes (`git remote`). */
+  remotes: string[];
 }
 
 const KIND_ORDER: Record<RefKind, number> = { branch: 0, remote: 1, tag: 2, stash: 3 };

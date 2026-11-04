@@ -27,6 +27,7 @@ export class RepoBuilder {
   private readonly tags: { name: string; target: Mark; message: string | undefined }[] = [];
   private clock = 0;
   private head = 'refs/heads/main';
+  private readonly remoteNames: string[] = [];
 
   /**
    * Adds a commit on `branch`. Parents default to the branch tip; pass
@@ -72,6 +73,12 @@ export class RepoBuilder {
   /** Lightweight tag when `message` is undefined, annotated otherwise. */
   tag(name: string, target: Mark, message?: string): this {
     this.tags.push({ name, target, message });
+    return this;
+  }
+
+  /** Configures a remote (no URL is needed for refs/remotes/<name>/* to mean something to git). */
+  remote(name: string): this {
+    this.remoteNames.push(name);
     return this;
   }
 
@@ -145,6 +152,7 @@ export class RepoBuilder {
     git(['update-ref', '-d', SCRATCH]);
     git(['symbolic-ref', 'HEAD', this.head]);
     git(['checkout', '--quiet', '--force']);
+    for (const r of this.remoteNames) git(['remote', 'add', r, `https://example.com/${r}.git`]);
   }
 }
 

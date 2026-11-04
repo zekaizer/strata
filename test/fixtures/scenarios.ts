@@ -102,6 +102,9 @@ export function refs(): RepoBuilder {
   b.tag('v0.2.0', c3, 'Release 0.2.0');
   b.tag('v0.2.0-rc1', c3, 'Release candidate');
   b.ref('release/0.2', c3);
+  // Pushed: the local branch and its remote-tracking branch on the same commit.
+  b.ref('refs/remotes/origin/release/0.2', c3);
+  b.remote('origin').remote('upstream');
   return b;
 }
 

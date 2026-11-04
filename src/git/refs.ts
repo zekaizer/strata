@@ -7,10 +7,13 @@ const PREFIXES: [string, RefKind][] = [
   ['refs/tags/', 'tag'],
 ];
 
-/** Reads HEAD and all branch, remote-tracking, tag and stash refs pointing (after peeling) at commits. */
+/**
+ * Reads HEAD, the remotes, and all branch, remote-tracking, tag and stash refs pointing (after
+ * peeling) at commits.
+ */
 export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
   const format = '%(refname)%00%(objecttype)%00%(objectname)%00%(*objecttype)%00%(*objectname)%00%(symref)';
-  const [list, headBranch, head] = await Promise.all([
+  const [list, headBranch, head, remotes] = await Promise.all([
     runGit(git, cwd, ['for-each-ref', `--format=${format}`, 'refs/heads', 'refs/remotes', 'refs/tags', 'refs/stash']),
     // Exit status 1 means detached HEAD.
     runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(
@@ -22,6 +25,7 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
       (s) => s.trim() || undefined,
       () => undefined,
     ),
+    runGit(git, cwd, ['remote']).then((s) => s.split('\n').filter(Boolean)),
   ]);
   const refs: Ref[] = [];
   // Ref names cannot contain NUL or newline, so one ref per line is unambiguous.
@@ -46,5 +50,5 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
     if (!match) continue;
     refs.push({ name, short: name.slice(match[0].length), kind: match[1], hash: target.hash });
   }
-  return { head, headBranch, refs };
+  return { head, headBranch, refs, remotes };
 }

@@ -79,7 +79,7 @@ class App {
 
   private generation = -1;
   private repo: RepoInfo | undefined;
-  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [] };
+  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private refsByHash = new Map<string, Ref[]>();
   // Declared before `options`, which is initialized from it.
   private restore: SavedState | undefined = vscode.getState() as SavedState | undefined;
