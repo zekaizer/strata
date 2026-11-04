@@ -3,7 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
-import type { Ref, RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, type Ref, type RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -33,7 +33,7 @@ const NARROW_GRAPH_SHARE = 0.25;
 /** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
 const MAX_BADGES = 6;
 /** Height of the band above the commit line of rows with refs; matches --ref-band in main.css. */
-const REF_BAND = 16;
+const REF_BAND = 14;
 /** The inline details never take more than this share of the list height. */
 const MAX_EXPANSION_SHARE = 0.45;
 
@@ -71,7 +71,6 @@ const FILE_VIEW_TITLE: Record<FileView, string> = {
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
-const REF_ORDER: Record<Ref['kind'], number> = { branch: 0, remote: 1, tag: 2, stash: 3 };
 const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag', stash: 'archive' };
 
 class App {
@@ -309,13 +308,14 @@ class App {
     this.refs = refs;
     this.options = options;
     this.refsByHash = new Map();
-    for (const r of [...refs.refs].sort(
-      (a, b) => REF_ORDER[a.kind] - REF_ORDER[b.kind] || a.short.localeCompare(b.short),
-    )) {
+    for (const r of refs.refs) {
       const list = this.refsByHash.get(r.hash) ?? [];
       list.push(r);
       this.refsByHash.set(r.hash, list);
     }
+    // Refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    for (const [hash, list] of this.refsByHash)
+      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
     this.commits = [];
     this.geometry.clear();
     this.rows = [];
@@ -798,8 +798,7 @@ class App {
       const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
       out.push(badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, r.name));
     }
-    // Current branch first; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
-    out.sort((a, b) => Number(b.classList.contains('head')) - Number(a.classList.contains('head')));
+    // In badgeOrder order; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
     if (out.length <= MAX_BADGES) return out;
     const rest = out.slice(MAX_BADGES - 1);
     const more = el('span', 'badge badge-more', `+${rest.length}`);
@@ -1094,20 +1093,23 @@ class App {
       refBands: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
           const band = r.querySelector<HTMLElement>('.refs');
-          const subject = r.querySelector<HTMLElement>('.subject')!.getBoundingClientRect();
+          const text = r.querySelector<HTMLElement>('.subject .text')!;
           const top = r.getBoundingClientRect().top;
-          const badges = [...r.querySelectorAll('.badge-text, .badge-more')].map((b) => b.textContent);
-          if (badges.length === 0) return [];
-          const b = (band ?? r).getBoundingClientRect();
+          const els = [...r.querySelectorAll<HTMLElement>('.badge')];
+          if (els.length === 0) return [];
           return [
             [
               Number(r.dataset['index']),
               {
-                badges,
-                bandBottom: band ? b.bottom - top : -1,
-                subjectTop: subject.top - top,
-                subjectLeft: subject.left,
-                bandLeft: band ? b.left : -1,
+                badges: els.map((b) => b.querySelector('.badge-text')?.textContent ?? b.textContent),
+                head: els.map((b) => b.classList.contains('badge-head')),
+                colors: els.map((b) => getComputedStyle(b).color),
+                subjectColor: getComputedStyle(text).color,
+                authorColor: getComputedStyle(r.querySelector('.author')!).color,
+                badgeBottom: band ? Math.max(...els.map((b) => b.getBoundingClientRect().bottom)) - top : -1,
+                subjectTop: text.getBoundingClientRect().top - top,
+                subjectLeft: text.getBoundingClientRect().left,
+                bandLeft: band ? band.getBoundingClientRect().left : -1,
               },
             ],
           ];

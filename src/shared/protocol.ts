@@ -103,7 +103,20 @@ export interface ProbeState {
    */
   refBands: Record<
     number,
-    { badges: string[]; bandBottom: number; subjectTop: number; subjectLeft: number; bandLeft: number }
+    {
+      badges: string[];
+      /** Whether each badge is the current branch's (or detached HEAD's). */
+      head: boolean[];
+      /** Computed text color of each badge, and of the row's subject and author for comparison. */
+      colors: string[];
+      subjectColor: string;
+      authorColor: string;
+      /** Lowest badge edge and the subject text's top, in px from the row top. */
+      badgeBottom: number;
+      subjectTop: number;
+      subjectLeft: number;
+      bandLeft: number;
+    }
   >;
   options: ViewOptions;
 }
