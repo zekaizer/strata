@@ -27,6 +27,7 @@ import {
   stashLabel,
   stillConflicted,
   stoppedMessage,
+  UNRELATED,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -121,14 +122,28 @@ const sourceExpect = (s: Source, hash: string): Expect[] =>
   s.ref === undefined ? [] : [{ rev: s.ref, hash, name: s.name }];
 
 /**
- * A shallow clone without the commits two lines share cannot merge or rebase them. Resolves true
- * when the operation can go ahead.
+ * Whether lines `a` and `b` (as sentences name them: `names`) share a commit here, as `op` needs.
+ * git refuses to merge unrelated histories but rebases onto them, replaying every commit; a
+ * shallow clone may just lack their common commit. Resolves true when `op` can go ahead.
  */
-async function deepEnough(host: FlowHost, a: string, b: string, names: [string, string]): Promise<boolean> {
+async function deepEnough(
+  host: FlowHost,
+  op: 'merge' | 'rebase',
+  a: string,
+  b: string,
+  names: [string, string],
+): Promise<boolean> {
   if ((await readMergeBase(host.git, host.cwd, a, b)) !== undefined) return true;
-  if (!(await isShallow(host.git, host.cwd))) return true;
-  await fetchHistory(host, shallowConfirmation(...names));
+  const shallow = await isShallow(host.git, host.cwd);
+  if (op === 'rebase' && !shallow) return true;
+  await noCommonCommit(host, names, shallow);
   return false;
+}
+
+/** For two lines with no common commit here, offers to fetch the history a shallow clone lacks, or says so. */
+async function noCommonCommit(host: FlowHost, names: [string, string], shallow: boolean): Promise<void> {
+  if (shallow) await fetchHistory(host, shallowConfirmation(...names));
+  else void host.ui.notify('error', UNRELATED);
 }
 
 /** Asks `question` about a shallow clone, then fetches more of its history or all of it, as answered. */
@@ -225,7 +240,7 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
     void host.ui.notify('info', alreadyContains(h.name, src.name));
     return;
   }
-  if (!(await deepEnough(host, h.hash, from.hash, [h.name, src.name]))) return;
+  if (!(await deepEnough(host, 'merge', h.hash, from.hash, [h.name, src.name]))) return;
   const [canFastForward, count, c, mergeFf] = await Promise.all([
     isAncestor(host.git, host.cwd, h.hash, from.hash),
     countCommits(host.git, host.cwd, [`${h.hash}..${from.hash}`]),
@@ -258,7 +273,12 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
       (exec) => exec({ kind: 'merge', ref: src.arg, mode, autostash }),
       [h.expect, ...sourceExpect(src, from.hash)],
     ),
-  );
+  ).catch(async (e: unknown) => {
+    // The history changed after deepEnough read it (a fetch, a replaced commit).
+    if (!(e instanceof GitOpError) || e.kind !== 'unrelated') throw e;
+    await noCommonCommit(host, [h.name, src.name], await isShallow(host.git, host.cwd));
+    return undefined;
+  });
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
   if (after.hash === h.hash) throw new Error(`git did not merge ${src.name}; see the output.`);
@@ -282,7 +302,7 @@ export async function rebase(
     void host.ui.notify('info', alreadyBased(h.name, onto.name));
     return;
   }
-  if (!(await deepEnough(host, h.hash, target.hash, [h.name, onto.name]))) return;
+  if (!(await deepEnough(host, 'rebase', h.hash, target.hash, [h.name, onto.name]))) return;
   const upstream = h.branch === undefined ? undefined : await readUpstream(host.git, host.cwd, h.branch);
   const [counts, c] = await Promise.all([
     readRebaseCounts(host.git, host.cwd, target.hash, upstream?.ref, from),

@@ -488,6 +488,59 @@ describe('history operations', () => {
     );
   });
 
+  it('says when a merge finds no common commit, before asking to merge', async () => {
+    const orphan = git('commit-tree', 'HEAD^{tree}', '-m', 'Orphan');
+    git('branch', 'strata-orphan', orphan);
+    await reload(panel());
+    await run('strata.merge', branchMenu('strata-orphan', orphan));
+    assert.deepEqual(ui.asked, [
+      { kind: 'notify', level: 'error', message: 'These histories have no commit in common here.', actions: [] },
+    ]);
+  });
+
+  /** strata-ahead: one commit on main; HEAD on main. */
+  const ahead = async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    return git('rev-parse', 'strata-ahead');
+  };
+
+  it('says when git finds no common commit to merge after all', async () => {
+    const tip = await ahead();
+    const main = git('rev-parse', 'main');
+    // Seen through a replacement without parents, strata-ahead's history no longer reaches main.
+    ui.press('Fast-Forward').meanwhile(() => git('replace', '--graft', tip));
+    await run('strata.merge', branchMenu('strata-ahead', tip));
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'error', message: 'These histories have no commit in common here.', actions: [] },
+    ]);
+    assert.equal(git('rev-parse', 'main'), main);
+  });
+
+  it('offers to fetch history when git finds no common commit to merge in a shallow clone', async () => {
+    const tip = await ahead();
+    ui.press('Fast-Forward', 'Fetch Full History').meanwhile(() => {
+      shallow(tip, git('rev-parse', 'main'));
+    });
+    await run('strata.merge', branchMenu('strata-ahead', tip));
+    assert.deepEqual(
+      ui.of('confirm').map((q) => [q.message, q.buttons]),
+      [
+        ["Merge 'strata-ahead' into 'main'?", ['Fast-Forward', 'Create Merge Commit']],
+        [
+          "This clone is shallow: 'main' and 'strata-ahead' have no common commit in it.",
+          ['Fetch More History', 'Fetch Full History'],
+        ],
+      ],
+    );
+    assert.equal(git('rev-parse', '--is-shallow-repository'), 'false');
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+  });
+
   it('reverts a commit, and undoes that', async () => {
     const before = git('rev-parse', 'main');
     const subject = git('log', '-1', '--format=%s', 'main');

@@ -591,6 +591,9 @@ export function conflictsInProgress(paths: readonly string[], count: number): Co
   };
 }
 
+/** Two lines to merge share no commit in this repository. */
+export const UNRELATED = 'These histories have no commit in common here.';
+
 /** What a shallow clone can fetch of its history: MORE_HISTORY commits further back, or all of it. */
 export type HistoryFetch = 'deepen' | 'unshallow';
 
