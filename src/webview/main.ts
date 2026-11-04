@@ -653,6 +653,7 @@ class App {
   /** Folds the details away; the selection stays. */
   private collapse(): void {
     this.expanded = false;
+    this.revealExpansion = false;
     this.details = undefined;
     this.pendingDetails = undefined;
     this.gap = 0;
@@ -710,19 +711,23 @@ class App {
 
   private onExpansionResize(): void {
     const h = this.expansion.hidden ? 0 : this.expansion.offsetHeight;
-    if (h === this.gap) return;
-    // Details opening or growing above the view (e.g. restored under a row scrolled past) would
-    // push the rows in view down; keep them where they are.
-    const above = this.selected >= 0 && this.geometry.top(this.selected + 1) < this.scroller.scrollTop;
-    const delta = h - this.gap;
-    this.gap = h;
-    this.syncSizer();
-    if (above) this.scroller.scrollTop += delta;
+    if (h !== this.gap) {
+      // Details opening or growing above the view (e.g. restored under a row scrolled past) would
+      // push the rows in view down; keep them where they are.
+      const above = this.selected >= 0 && this.geometry.top(this.selected + 1) < this.scroller.scrollTop;
+      const delta = h - this.gap;
+      this.gap = h;
+      this.syncSizer();
+      if (above) this.scroller.scrollTop += delta;
+      this.queueRender();
+    }
+    // Also when the new details are as tall as the previous ones (no resize): reveal them once,
+    // now, rather than at some later unrelated resize.
     if (this.revealExpansion && this.details) {
       this.revealExpansion = false;
       this.ensureVisible(this.selected, true);
+      this.queueRender();
     }
-    this.queueRender();
   }
 
   /** The list's height must be right before scrollTop is set, or the browser clamps it. */
@@ -1051,6 +1056,7 @@ class App {
     pane.scrollTop = 0;
     this.placeExpansion();
     this.layoutDetails();
+    this.onExpansionResize();
     this.queueRender();
   }
 
