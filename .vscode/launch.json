@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/out/workspace"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.cjs"],
+      "preLaunchTask": "watch"
+    },
+    {
+      "name": "Run Extension (no other extensions)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--disable-extensions",
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "${workspaceFolder}/out/workspace"
+      ],
+      "outFiles": ["${workspaceFolder}/dist/**/*.cjs"],
+      "preLaunchTask": "watch"
+    },
+    {
+      "name": "Unit Tests (current file)",
+      "type": "node",
+      "request": "launch",
+      "runtimeArgs": ["--test", "${file}"],
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ]
+}

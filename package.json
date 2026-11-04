@@ -1,0 +1,77 @@
+{
+  "name": "strata",
+  "displayName": "Strata",
+  "description": "Commit graph for git repositories",
+  "version": "0.0.1",
+  "publisher": "inhouse",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=22.18"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "SCM Providers"
+  ],
+  "main": "./dist/extension.cjs",
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "strata.show",
+        "title": "Show Commit Graph",
+        "category": "Strata",
+        "icon": "$(git-commit)"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "strata.show",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json && tsc -p src/worker/tsconfig.json && tsc -p playground/tsconfig.json",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit",
+    "test:unit": "node --test --test-reporter=spec \"test/unit/**/*.test.ts\"",
+    "test:integration": "npm run build && node scripts/xvfb.mjs -- vscode-test --label stable",
+    "test:integration:min": "npm run build && node scripts/xvfb.mjs -- vscode-test --label min",
+    "test": "npm run check && npm run test:integration",
+    "playground": "node scripts/build.mjs --playground",
+    "shot": "npm run build && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
+    "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies --skip-license --allow-missing-repository -o artifacts/strata.vsix",
+    "vscode:prepublish": "node scripts/build.mjs --production",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "capture-themes": "npm run build && node scripts/xvfb.mjs STRATA_CAPTURE_THEMES=playground/themes -- vscode-test --label stable",
+    "playground:shot": "node scripts/playground-shot.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.90.0",
+    "@vscode/codicons": "0.0.46-24",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.14.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

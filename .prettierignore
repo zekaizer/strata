@@ -1,0 +1,5 @@
+dist/
+out/
+.vscode-test/
+artifacts/
+package-lock.json

@@ -1,0 +1,67 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "watch",
+      "dependsOn": ["watch:esbuild", "watch:tsc", "watch:tsc:webview", "watch:tsc:worker"],
+      "presentation": {
+        "reveal": "never"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "watch:esbuild",
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "problemMatcher": "$esbuild-watch",
+      "presentation": {
+        "group": "watch",
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "watch:tsc",
+      "type": "shell",
+      "command": "npx tsc -p tsconfig.json --watch",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": {
+        "group": "watch",
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "watch:tsc:webview",
+      "type": "shell",
+      "command": "npx tsc -p src/webview/tsconfig.json --watch",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": {
+        "group": "watch",
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "watch:tsc:worker",
+      "type": "shell",
+      "command": "npx tsc -p src/worker/tsconfig.json --watch",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": {
+        "group": "watch",
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "playground",
+      "type": "npm",
+      "script": "playground",
+      "isBackground": true,
+      "problemMatcher": "$esbuild-watch"
+    }
+  ]
+}
