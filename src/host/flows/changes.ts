@@ -47,8 +47,6 @@ export async function changes(host: FlowHost, op: StashOp, target?: string): Pro
   return { worktree, overlap, dirty, choices, section };
 }
 
-export const isConflict = (e: unknown): e is GitOpError => e instanceof GitOpError && e.kind === 'conflict';
-
 /** A stash as Strata names it. */
 export interface StashedRef {
   hash: string;
@@ -90,8 +88,9 @@ export async function restore(host: FlowHost, exec: Exec, hash: string, pop = tr
 
 /**
  * Runs `body` between Strata's own `stash push` and a pop of the stash that push created. A body
- * that stops at conflicts leaves the stash to the stopped operation, whose Continue, Abort or Skip
- * restores it (the error propagates); one that fails otherwise gets the changes back at once.
+ * that stops (fails, leaving its operation in progress) leaves the stash to that operation, whose
+ * Continue, Abort or Skip restores it (the error propagates); one that fails otherwise gets the
+ * changes back at once.
  */
 export async function stashAround(
   host: FlowHost,
@@ -109,7 +108,8 @@ export async function stashAround(
     await body();
   } catch (e) {
     if (created !== undefined) {
-      if (isConflict(e)) await host.leftovers.pushed(created, (await readOperationState(host.git, host.cwd))?.applying);
+      const stopped = e instanceof GitOpError ? await readOperationState(host.git, host.cwd) : undefined;
+      if (stopped) await host.leftovers.pushed(created, stopped.applying);
       // Refused before changing anything: give the changes back now.
       else await restore(host, exec, created).catch(() => undefined);
     }

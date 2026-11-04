@@ -502,6 +502,7 @@ export const resetPick = (
 });
 
 /** `held`: where Strata stashed the uncommitted changes (stashLabel), when it did. */
+/** `reason`: what git said, for a stop without conflicts. */
 export function stoppedMessage(
   kind: OperationKind,
   step: { current: number; total: number } | undefined,
@@ -509,9 +510,13 @@ export function stoppedMessage(
   conflicts: readonly string[],
   count: number,
   held: string | undefined,
+  reason: string,
 ): string {
+  const where = `${OP_SENTENCE[kind]} stopped${step ? ` at ${step.current} of ${step.total}` : ''}${subject === undefined ? '' : ` ("${subject}")`}`;
   return [
-    `${OP_SENTENCE[kind]} stopped${step ? ` at ${step.current} of ${step.total}` : ''}${subject === undefined ? '' : ` ("${subject}")`} with conflicts in ${plural(count, 'file')} (${fileList(conflicts)}).`,
+    count > 0
+      ? `${where} with conflicts in ${plural(count, 'file')} (${fileList(conflicts)}).`
+      : `${where}: ${/[.!?]$/.test(reason) ? reason : `${reason}.`}`,
     ...(held === undefined ? [] : [`Your uncommitted changes are in ${held}.`]),
   ].join(' ');
 }

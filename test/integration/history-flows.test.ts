@@ -198,6 +198,27 @@ describe('history operations', () => {
     }
   });
 
+  it('stops at a cherry pick whose changes are already there, keeps its stash, and skips it', async () => {
+    const picked = git('rev-parse', 'wip/experiment');
+    git('cherry-pick', picked);
+    const notes = read('NOTES.md');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(picked));
+    const stop = ui.of('notify').at(-1);
+    assert.equal(stop?.level, 'warning');
+    assert.match(stop.message, /^Cherry pick stopped \("Unmerged experiment"\): The previous cherry-pick is now empty/);
+    assert.match(stop.message, /Your uncommitted changes are in stash@\{0\}/);
+    assert.deepEqual(stop.actions, ['Skip...', 'Abort Cherry Pick...']);
+    assert.equal(read('NOTES.md'), notes, 'not popped into the stopped cherry pick');
+
+    ui.press('Skip Commit');
+    await run('strata.operation.skip');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
   it('keeps uncommitted changes of a hard reset in a stash it never pops, and undoes the reset', async () => {
     const before = git('rev-parse', 'main');
     const target = git('rev-parse', 'main~2');

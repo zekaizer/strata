@@ -1,13 +1,14 @@
 import * as vscode from 'vscode';
 import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
 import type { MergeMode, Operation, ResetMode } from '../../core/operations.ts';
-import type { OperationKind, OperationState } from '../../core/repo-state.ts';
+import type { OperationState } from '../../core/repo-state.ts';
 import {
   abortButton,
   abortConfirmation,
   alreadyBased,
   alreadyContains,
   dirtySection,
+  gitFailure,
   HISTORY_DOING,
   HISTORY_DONE,
   mergeConfirmation,
@@ -40,6 +41,7 @@ import {
   readUpstream,
   type CommitInfo,
 } from '../../git/facts.ts';
+import { GitOpError } from '../../git/op.ts';
 import { readOperationState } from '../../git/state.ts';
 import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
@@ -47,7 +49,6 @@ import type { TargetOf } from '../target.ts';
 import {
   changes,
   gitRestoreConflicted,
-  isConflict,
   reportRestore,
   resolveConflicts,
   restore,
@@ -122,25 +123,36 @@ async function deepEnough(host: FlowHost, a: string, b: string, names: [string, 
   return false;
 }
 
-/** After an operation stopped with conflicts: show where, and how to go on. */
-export async function stopped(host: FlowHost, kind: OperationKind): Promise<void> {
-  const state = await readOperationState(host.git, host.cwd);
+/**
+ * After an operation stopped, git keeping it in progress: shows where, and how to go on. `reason`:
+ * git's own words, for a stop without conflicts (a cherry pick with nothing left to commit).
+ */
+async function stopped(host: FlowHost, state: OperationState, reason: string): Promise<void> {
   await host.refresh((await readHead(host.git, host.cwd)).hash);
-  if (!state) return;
   const [subject, held] = await Promise.all([
     state.applying === undefined ? undefined : readCommit(host.git, host.cwd, state.applying).then((c) => c.subject),
     heldStash(host, state),
   ]);
   const message = stoppedMessage(
-    kind,
+    state.kind,
     state.step,
     subject,
     state.conflicts,
     state.conflictCount,
     held && stashLabel(held.index, held.message),
+    reason,
   );
-  notify(host, 'warning', message, ['Resolve...', abortButton(kind)], (a) =>
-    a === 'Resolve...' ? resolveConflicts(host, state.conflicts) : abortOperation(host),
+  const skips = state.kind === 'cherryPick' || state.kind === 'revert';
+  const actions =
+    state.conflictCount > 0
+      ? ['Resolve...', abortButton(state.kind)]
+      : [...(skips ? ['Skip...'] : []), abortButton(state.kind)];
+  notify(host, 'warning', message, actions, (a) =>
+    a === 'Resolve...'
+      ? resolveConflicts(host, state.conflicts)
+      : a === 'Skip...'
+        ? skipCommit(host)
+        : abortOperation(host),
   );
 }
 
@@ -153,10 +165,12 @@ async function heldStash(host: FlowHost, state: OperationState) {
   return hash === undefined ? undefined : readStash(host.git, host.cwd, hash);
 }
 
-/** Runs an operation that may stop at conflicts; resolves its stderr, or undefined when it stopped or did not run. */
+/**
+ * Runs an operation that may stop; resolves its stderr, or undefined when it stopped or did not
+ * run. It stopped when git failed and left it in progress (at conflicts, or with nothing to commit).
+ */
 async function runStoppable(
   host: FlowHost,
-  kind: OperationKind,
   label: string,
   steps: (exec: Exec) => Promise<{ stderr: string; restored?: Restored }>,
   expect: readonly Expect[],
@@ -164,8 +178,10 @@ async function runStoppable(
   try {
     return await run(host, label, steps, { expect });
   } catch (e) {
-    if (!isConflict(e)) throw e;
-    await stopped(host, kind);
+    if (!(e instanceof GitOpError)) throw e;
+    const state = await readOperationState(host.git, host.cwd);
+    if (!state) throw e;
+    await stopped(host, state, gitFailure(e.message).split('\n')[0]!);
     return undefined;
   }
 }
@@ -217,7 +233,6 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
   } else mode = 'ff';
   const r = await runStoppable(
     host,
-    'merge',
     HISTORY_DOING.merging(src.name, h.name),
     (exec) => exec({ kind: 'merge', ref: src.arg, mode, autostash }),
     [h.expect, ...sourceExpect(src, from.hash)],
@@ -255,7 +270,6 @@ export async function rebase(host: FlowHost, onto: Source, ask: 'always' | 'when
   }
   const r = await runStoppable(
     host,
-    'rebase',
     HISTORY_DOING.rebasing(h.name, onto.name),
     (exec) => exec({ kind: 'rebase', onto: target.hash, autostash: dirty }),
     [h.expect, ...sourceExpect(onto, target.hash)],
@@ -292,7 +306,6 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
   const label = kind === 'cherryPick' ? HISTORY_DOING.picking(c.short) : HISTORY_DOING.reverting(c.short);
   const r = await runStoppable(
     host,
-    kind,
     label,
     async (exec) => {
       if (choice !== 'stash') return exec(op);
@@ -408,7 +421,6 @@ async function settle(
 ): Promise<void> {
   const r = await runStoppable(
     host,
-    state.kind,
     label,
     async (exec) => {
       const { stderr } = await exec(op);

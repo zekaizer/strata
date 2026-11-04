@@ -78,7 +78,7 @@ describe('wording of history operations', () => {
 
   it('says where a stopped operation is and where the changes are', () => {
     assert.equal(
-      stoppedMessage('rebase', { current: 3, total: 4 }, 'Add lexer', ['a.ts', 'b.ts'], 2, undefined),
+      stoppedMessage('rebase', { current: 3, total: 4 }, 'Add lexer', ['a.ts', 'b.ts'], 2, undefined, 'CONFLICT'),
       'Rebase stopped at 3 of 4 ("Add lexer") with conflicts in 2 files (a.ts and b.ts).',
     );
     assert.equal(
@@ -89,8 +89,13 @@ describe('wording of history operations', () => {
         ['a.ts'],
         1,
         'stash@{0} ("On main: Strata autostash: cherry pick abc1234")',
+        'CONFLICT',
       ),
       'Cherry pick stopped with conflicts in 1 file (a.ts). Your uncommitted changes are in stash@{0} ("On main: Strata autostash: cherry pick abc1234").',
+    );
+    assert.equal(
+      stoppedMessage('cherryPick', undefined, 'Add lexer', [], 0, undefined, 'The previous cherry-pick is now empty'),
+      'Cherry pick stopped ("Add lexer"): The previous cherry-pick is now empty.',
     );
     assert.equal(stillConflicted(['a.ts'], 1).message, '1 file still has conflicts: a.ts.');
     assert.equal(skipConfirmation(c, "'main'").detail, "Its changes won't be in 'main'.");
