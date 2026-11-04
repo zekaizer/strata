@@ -1,5 +1,5 @@
 import type { Commit } from '../core/commit.ts';
-import { fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
+import { filesSummary, fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
@@ -742,11 +742,13 @@ class App {
     }
 
     const files = this.fileTree(d);
-    const summary = el(
-      'div',
-      'files-summary',
-      `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed${d.base ? ` vs ${shortHash(d.base)}` : ''}`,
-    );
+    const s = filesSummary(d);
+    const summary = el('div', 'files-summary', s.text);
+    if (s.base !== undefined) {
+      const base = el('span', 'files-base', shortHash(s.base));
+      base.title = s.base;
+      summary.append(' ', base);
+    }
     const children: HTMLElement[] = [close, el('h2', 'details-subject', subject), meta, summary, files];
     if (body) children.push(el('pre', 'details-message', reflowBody(body)));
     pane.style.minHeight = '';
