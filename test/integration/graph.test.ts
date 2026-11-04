@@ -3,6 +3,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
+import type { FileView } from '../../src/shared/protocol.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('graph panel', () => {
@@ -106,6 +107,42 @@ describe('graph panel', () => {
     assert.equal(s.selected, hash);
     assert.equal(s.detailsShown, hash);
     assert.equal(s.openedFile, git('diff-tree', '--no-commit-id', '--name-only', '-r', `${hash}^`, hash));
+  });
+
+  async function openView(subject: string, view: FileView): Promise<{ hash: string; file: string; input: unknown }> {
+    const hash = await selectCommit(subject);
+    const file = git('diff-tree', '--no-commit-id', '--name-only', '-r', `${hash}^`, hash);
+    const before = vscode.window.tabGroups.activeTabGroup.activeTab;
+    await panel.simulate({ kind: 'clickFile', index: 0, view });
+    const input = await waitFor(`${view} tab`, () => {
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+      return tab !== before && tab?.input;
+    });
+    return { hash, file, input };
+  }
+
+  it('opens the whole file as it was before the change', async () => {
+    const { hash, file, input } = await openView('Search ranking', 'before');
+    assert.ok(input instanceof vscode.TabInputText);
+    assert.equal(input.uri.scheme, 'git');
+    assert.equal(
+      (await vscode.workspace.openTextDocument(input.uri)).getText(),
+      git('show', `${hash}^:${file}`) + '\n',
+    );
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+
+  it('opens the whole file as it is after the change', async () => {
+    const { hash, file, input } = await openView('Search ranking', 'after');
+    assert.ok(input instanceof vscode.TabInputText);
+    assert.equal((await vscode.workspace.openTextDocument(input.uri)).getText(), git('show', `${hash}:${file}`) + '\n');
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+
+  it('offers only the views that exist for added files', async () => {
+    await selectCommit('Search index');
+    const { fileViews } = await panel.probe();
+    assert.deepEqual(fileViews, [{ path: 'feature_search.txt', views: ['after'] }]);
   });
 
   it('opens a diff beside the graph on Alt+click', async () => {

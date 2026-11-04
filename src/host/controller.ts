@@ -2,6 +2,7 @@ import { basename, posix } from 'node:path';
 import * as vscode from 'vscode';
 import type { RefSnapshot } from '../core/refs.ts';
 import { hasCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
+import { fileViews } from '../core/details.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readRefs } from '../git/refs.ts';
@@ -86,8 +87,8 @@ export class GraphController implements vscode.Disposable {
             if (m.generation === this.generation) this.post({ type: 'details', generation: m.generation, details });
           }
           break;
-        case 'openDiff':
-          if (this.repo && m.generation === this.generation) await this.openDiff(this.repo, m);
+        case 'openFile':
+          if (this.repo && m.generation === this.generation) await this.openFile(this.repo, m);
           break;
         case 'setOptions':
           this.options = m.options;
@@ -149,54 +150,55 @@ export class GraphController implements vscode.Disposable {
   }
 
   /**
-   * Modified and renamed files open in the diff editor. The git file system
-   * fails for a path missing at a ref instead of returning an empty document,
-   * so added and deleted files open the side that exists.
+   * Opens a changed file as a diff or as its whole content before or after
+   * the commit. The git file system fails for a path missing at a ref instead
+   * of returning an empty document, so only views with both sides present
+   * (see fileViews) are allowed.
    */
-  private async openDiff(repo: GitRepository, m: Extract<WebviewToHost, { type: 'openDiff' }>): Promise<void> {
+  private async openFile(repo: GitRepository, m: Extract<WebviewToHost, { type: 'openFile' }>): Promise<void> {
     const { file, hash, base } = m;
     // Everything here came from the webview: only well-formed commit ids and paths inside the repository.
     if (!isCommitId(hash) || (base !== undefined && !isCommitId(base))) throw new Error('invalid commit id');
     for (const p of [file.path, file.oldPath]) {
       if (p !== undefined && !isRepoPath(p)) throw new Error(`invalid path: ${p}`);
     }
+    if (!fileViews(file, base).includes(m.view)) throw new Error(`cannot open ${m.view} of ${file.path}`);
     const uri = (path: string) => vscode.Uri.joinPath(repo.rootUri, ...path.split('/'));
     const short = (h: string) => h.slice(0, 8);
+    const name = posix.basename(file.path);
     // Preview tabs: browsing through files replaces one tab instead of piling them up.
     const options: vscode.TextDocumentShowOptions = {
       preview: true,
       ...(m.beside ? { viewColumn: vscode.ViewColumn.Beside } : {}),
     };
-    if (file.status === 'A' || base === undefined) {
-      await vscode.commands.executeCommand(
-        'vscode.open',
-        this.api.toGitUri(uri(file.path), hash),
-        options,
-        `${posix.basename(file.path)} (${short(hash)})`,
-      );
-      return;
+    // fileViews guarantees a base for 'diff' and 'before'.
+    switch (m.view) {
+      case 'after':
+        await vscode.commands.executeCommand(
+          'vscode.open',
+          this.api.toGitUri(uri(file.path), hash),
+          options,
+          `${name} (${short(hash)})`,
+        );
+        break;
+      case 'before': {
+        const path = file.oldPath ?? file.path;
+        const title = `${posix.basename(path)} (before ${short(hash)}, at ${short(base!)})`;
+        await vscode.commands.executeCommand('vscode.open', this.api.toGitUri(uri(path), base!), options, title);
+        break;
+      }
+      case 'diff': {
+        const label = file.oldPath ? `${posix.basename(file.oldPath)} → ${name}` : name;
+        await vscode.commands.executeCommand(
+          'vscode.diff',
+          this.api.toGitUri(uri(file.oldPath ?? file.path), base!),
+          this.api.toGitUri(uri(file.path), hash),
+          `${label} (${short(base!)} ↔ ${short(hash)})`,
+          options,
+        );
+        break;
+      }
     }
-    if (file.status === 'D') {
-      await vscode.commands.executeCommand(
-        'vscode.open',
-        this.api.toGitUri(uri(file.path), base),
-        options,
-        `${posix.basename(file.path)} (deleted, ${short(base)})`,
-      );
-      return;
-    }
-    const left = this.api.toGitUri(uri(file.oldPath ?? file.path), base);
-    const right = this.api.toGitUri(uri(file.path), hash);
-    const label = file.oldPath
-      ? `${posix.basename(file.oldPath)} → ${posix.basename(file.path)}`
-      : posix.basename(file.path);
-    await vscode.commands.executeCommand(
-      'vscode.diff',
-      left,
-      right,
-      `${label} (${short(base)} ↔ ${short(hash)})`,
-      options,
-    );
   }
 
   /** Writes a commit-graph with progress, then reloads the history. */

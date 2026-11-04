@@ -32,9 +32,15 @@ page, so it opens quickly even on very large repositories.
 - Click a commit to unfold its details under it; click it again, or press
   <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
   selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
-- Click a file in the details to open its diff against the parent commit
-  (<kbd>Alt</kbd>+click opens it to the side). With a file focused, ↑/↓ move
-  between files and <kbd>Enter</kbd> opens one.
+- Click a file in the details to open its diff against the parent commit.
+  Hover a file (or focus it) for **Diff**, **Before** and **After**: the
+  change, or the whole file as it was before the commit or as of the commit.
+  Added files only have **After** and deleted files only **Before**.
+  <kbd>Alt</kbd> opens to the side. With a file focused, ↑/↓ move between
+  files, <kbd>Enter</kbd> opens it, and <kbd>D</kbd>, <kbd>B</kbd>,
+  <kbd>A</kbd> open the diff, before and after.
+- The details show the commit message body (and trailers such as
+  `Signed-off-by`) below the files; the subject is the row itself.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.

@@ -468,6 +468,7 @@ canvas.graph {
 
 .file {
   display: flex;
+  align-items: center;
   gap: 8px;
   min-width: 0;
   padding: 1px 6px;
@@ -506,6 +507,37 @@ canvas.graph {
 .status-R .file-status,
 .status-C .file-status {
   color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-modifiedResourceForeground));
+}
+
+.file-actions {
+  display: none;
+  margin-left: auto;
+  gap: 2px;
+  flex: none;
+}
+
+/* Shown where the pointer or keyboard is, and on the file opened last. */
+.file:hover .file-actions,
+.file:focus-within .file-actions,
+.file.opened .file-actions {
+  display: inline-flex;
+}
+
+.file-action {
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--vscode-textLink-foreground);
+  font: inherit;
+  font-size: 0.92em;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.file-action:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
 }
 
 .file-old,

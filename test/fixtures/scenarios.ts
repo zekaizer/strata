@@ -107,6 +107,50 @@ export function clockSkew(): RepoBuilder {
   return b;
 }
 
+/** Commit messages with bodies, trailers and a long explanation, as in kernel-style histories. */
+export function messages(): RepoBuilder {
+  const b = new RepoBuilder();
+  b.commit('main', 'Initial import', { files: { 'driver.c': 'int probe(void) { return 0; }\n', README: 'driver\n' } });
+  b.commit(
+    'main',
+    [
+      'driver: fix use-after-free in remove path',
+      '',
+      'The remove callback freed the device state before the interrupt',
+      'handler was unregistered, so an interrupt arriving in between read',
+      'freed memory.',
+      '',
+      'Unregister the handler first and free the state last.',
+      '',
+      'Fixes: 1234567890ab ("driver: add remove callback")',
+      'Signed-off-by: Ada Lovelace <ada@example.com>',
+      'Change-Id: I8f2a6c1e0b9d4e7a3c5b1f0e2d4c6a8b9e1f3a5c',
+    ].join('\n'),
+    { files: { 'driver.c': 'int probe(void) { return 0; }\nvoid remove(void) {}\n' } },
+  );
+  b.commit('main', 'README: typo', { files: { README: 'Driver\n' } });
+  b.commit(
+    'main',
+    [
+      'driver: rework power management',
+      '',
+      ...Array.from(
+        { length: 24 },
+        (_, i) => `Step ${i + 1}: move part ${i + 1} of the suspend path into its own helper.`,
+      ),
+      '',
+      'Signed-off-by: Ada Lovelace <ada@example.com>',
+    ].join('\n'),
+    {
+      files: {
+        'driver.c': 'int probe(void) { return 0; }\nvoid remove(void) {}\nint suspend(void) { return 0; }\n',
+        'pm.c': 'int pm(void);\n',
+      },
+    },
+  );
+  return b;
+}
+
 /** Mulberry32: tiny seeded PRNG so large fixtures are reproducible. */
 function rng(seed: number): () => number {
   let s = seed >>> 0;
@@ -169,6 +213,7 @@ export const scenarios = {
   'multi-root': multiRoot,
   refs,
   'clock-skew': clockSkew,
+  messages,
   large: () => large(),
 } as const;
 

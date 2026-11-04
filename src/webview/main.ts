@@ -1,5 +1,5 @@
 import type { Commit } from '../core/commit.ts';
-import type { CommitDetails, FileChange } from '../core/details.ts';
+import { fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
@@ -41,6 +41,14 @@ interface SavedState {
 
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
+
+const FILE_VIEW_LABEL: Record<FileView, string> = { diff: 'Diff', before: 'Before', after: 'After' };
+const FILE_VIEW_TITLE: Record<FileView, string> = {
+  diff: 'Open the changes',
+  before: 'Open the file as it was before this commit',
+  after: 'Open the file as of this commit',
+};
+const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'B', after: 'A' };
 
 const REF_ORDER: Record<Ref['kind'], number> = { branch: 0, remote: 1, tag: 2, stash: 3 };
 const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag', stash: 'archive' };
@@ -682,9 +690,11 @@ class App {
   }
 
   private fileItem(d: CommitDetails, f: FileChange): HTMLElement {
+    const views = fileViews(f, d.base);
     const li = el('li', `file status-${f.status}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'option');
+    li.dataset['views'] = views.join(' ');
     if (f.path === this.openedFile) li.classList.add('opened');
     li.append(el('span', 'file-status', f.status));
     const name = el('span', 'file-path');
@@ -694,12 +704,13 @@ class App {
     name.append(el('span', 'file-name', f.path.slice(slash + 1)));
     if (slash >= 0) name.append(el('span', 'file-dir', f.path.slice(0, slash)));
     li.append(name);
-    li.title = `${f.path}\nClick: open diff · Alt+Click: open to the side`;
-    const open = (beside: boolean) => {
+
+    const open = (view: FileView, beside: boolean) => {
       this.openedFile = f.path;
       for (const e of li.parentElement?.children ?? []) e.classList.toggle('opened', e === li);
       vscode.postMessage({
-        type: 'openDiff',
+        type: 'openFile',
+        view,
         generation: this.generation,
         hash: d.hash,
         base: d.base,
@@ -707,19 +718,38 @@ class App {
         beside,
       });
     };
+    // The row opens the first view that exists: the diff, or the only side an added/deleted file has.
+    const primary = views[0]!;
+    const actions = el('span', 'file-actions');
+    for (const view of views) {
+      const b = el('button', `file-action file-action-${view}`, FILE_VIEW_LABEL[view]);
+      b.tabIndex = -1;
+      b.title = `${FILE_VIEW_TITLE[view]} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        open(view, e.altKey);
+      });
+      actions.append(b);
+    }
+    li.append(actions);
+    li.title = `${f.path}\nClick: ${FILE_VIEW_TITLE[primary].toLowerCase()} · Alt+Click: to the side`;
     li.addEventListener('click', (e) => {
-      open(e.altKey);
+      open(primary, e.altKey);
     });
     li.addEventListener('keydown', (e) => {
       const sibling = (
         e.key === 'ArrowDown' ? li.nextElementSibling : e.key === 'ArrowUp' ? li.previousElementSibling : null
       ) as HTMLElement | null;
+      const keyed = views.find((v) => FILE_VIEW_KEY[v] === e.key.toUpperCase() && !e.ctrlKey && !e.metaKey);
       if (sibling) {
         e.preventDefault();
         sibling.focus();
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        open(e.altKey);
+        open(primary, e.altKey);
+      } else if (keyed && e.key.length === 1) {
+        e.preventDefault();
+        open(keyed, e.altKey);
       } else if (e.key === 'Escape') {
         this.scroller.focus();
       }
@@ -737,6 +767,10 @@ class App {
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
+      fileViews: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map((li) => ({
+        path: li.querySelector('.file-name')?.textContent ?? '',
+        views: (li.dataset['views'] ?? '').split(' ').filter(Boolean) as FileView[],
+      })),
       options: this.options,
       expandedHeight: this.gapHeight(),
       rowTops: Object.fromEntries(
@@ -767,8 +801,9 @@ class App {
         break;
       }
       case 'clickFile': {
-        const files = this.expansion.querySelectorAll<HTMLElement>('.file');
-        files[a.index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: a.altKey ?? false }));
+        const file = this.expansion.querySelectorAll<HTMLElement>('.file')[a.index];
+        const target = a.view ? file?.querySelector<HTMLElement>(`.file-action-${a.view}`) : file;
+        target?.dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: a.altKey ?? false }));
         break;
       }
       case 'click':

@@ -1,7 +1,9 @@
 // Message contract between the extension host, the webview and the layout worker.
 // Every side imports this file; it must stay free of host- and DOM-only types.
 import type { Commit } from '../core/commit.ts';
-import type { CommitDetails, FileChange } from '../core/details.ts';
+import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
+
+export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 
@@ -41,7 +43,15 @@ export type WebviewToHost =
   | { type: 'ready'; workerOk: boolean; options: ViewOptions | undefined }
   | { type: 'loadMore'; generation: number; count: number }
   | { type: 'select'; generation: number; hash: string }
-  | { type: 'openDiff'; generation: number; hash: string; base: string | undefined; file: FileChange; beside: boolean }
+  | {
+      type: 'openFile';
+      generation: number;
+      hash: string;
+      base: string | undefined;
+      file: FileChange;
+      view: FileView;
+      beside: boolean;
+    }
   | { type: 'setOptions'; options: ViewOptions }
   | { type: 'refresh' }
   | { type: 'themeVars'; vars: Record<string, string> }
@@ -60,6 +70,8 @@ export interface ProbeState {
   visibleSubjects: string[];
   /** Path of the file whose diff was opened last in the details pane. */
   openedFile: string | undefined;
+  /** Per changed file in the details, which views can be opened. */
+  fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
   columns: string[];
   /** Height in px of the details expanded under the selected row; 0 when collapsed. */
@@ -72,7 +84,7 @@ export interface ProbeState {
 /** UI actions integration tests ask the webview to perform through real DOM events. */
 export type SimulatedAction =
   | { kind: 'clickRow'; index: number }
-  | { kind: 'clickFile'; index: number; altKey?: boolean }
+  | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
   | { kind: 'key'; key: string; target?: 'list' | 'files' }
   | { kind: 'click'; selector: string }
   | { kind: 'type'; selector: string; text: string };

@@ -10,7 +10,7 @@ import { readRefs } from '../src/git/refs.ts';
 import { scenarios, type ScenarioName } from '../test/fixtures/scenarios.ts';
 import type { PlaygroundData } from './types.ts';
 
-const NAMES: ScenarioName[] = ['branchy', 'octopus', 'multi-root', 'refs', 'large'];
+const NAMES: ScenarioName[] = ['branchy', 'octopus', 'multi-root', 'refs', 'messages', 'large'];
 const DETAILS = 40;
 
 const out = join('out', 'playground', 'data');
