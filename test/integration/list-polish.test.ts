@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { git, strata, waitFor } from './helpers.ts';
+import { delay, git, strata, waitFor } from './helpers.ts';
 
 describe('commit list polish', () => {
   let panel: GraphPanel;
@@ -44,8 +44,10 @@ describe('commit list polish', () => {
   });
 
   it('drops a stuck hover once the graph comes back after opening a file', async () => {
-    // Closing the extra groups may close the graph too; start from a fresh one.
+    // Start from one editor group with a fresh graph: closing editors leaves the extra groups of
+    // the previous test, and a diff opened in another group would not hide the graph at all.
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.commands.executeCommand('workbench.action.editorLayoutSingle');
     panel = (await strata()).show();
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
@@ -57,8 +59,14 @@ describe('commit list polish', () => {
     const before = vscode.window.tabGroups.activeTabGroup.activeTab;
     await panel.simulate({ kind: 'clickFile', index: 0 });
     await waitFor('diff tab', () => vscode.window.tabGroups.activeTabGroup.activeTab !== before);
+    // Like a user reading the diff: the graph stays hidden long enough for VS Code to report it.
+    await waitFor(
+      'hover suppressed while the diff covers the graph',
+      async () => (await panel.probe()).hoverSuppressed,
+    );
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-    await waitFor('hover suppressed after returning', async () => (await panel.probe()).hoverSuppressed);
+    await delay(300);
+    assert.equal((await panel.probe()).hoverSuppressed, true, 'still off until the pointer moves');
   });
 
   it('shows the full subject at the top of the details', async () => {
