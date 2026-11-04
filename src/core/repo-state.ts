@@ -1,0 +1,52 @@
+/** Operations git can stop in the middle of, waiting for the user (conflicts, or `edit` in a rebase). */
+export type OperationKind = 'rebase' | 'merge' | 'cherryPick' | 'revert';
+
+/** An operation in progress in the worktree, started by Strata or anywhere else. */
+export interface OperationState {
+  kind: OperationKind;
+  /** Branch being rebased (rebase), or the branch HEAD is on; undefined when detached. */
+  branch: string | undefined;
+  /** Rebase: the commit being rebased onto. */
+  onto: string | undefined;
+  /** Rebase: which of how many commits it stopped at (1-based). */
+  step: { current: number; total: number } | undefined;
+  /** The commit being applied: the rebase stop, or CHERRY_PICK_HEAD / REVERT_HEAD / MERGE_HEAD. */
+  applying: string | undefined;
+  /** Unmerged paths, at most CONFLICTS_SHOWN of them. */
+  conflicts: string[];
+  conflictCount: number;
+  /** git holds an autostash it re-applies when the operation finishes or is aborted. */
+  autostash: boolean;
+}
+
+export const CONFLICTS_SHOWN = 50;
+
+/** Uncommitted changes to tracked files (untracked files are not counted: autostash leaves them alone). */
+export interface Worktree {
+  /** Paths with staged or unstaged changes, conflicts included. */
+  paths: string[];
+  staged: number;
+  unstaged: number;
+  /** Submodules with changes inside them, which git stash never records. */
+  submodules: number;
+}
+
+/** Parses `git status --porcelain=v2 -z --untracked-files=no`. */
+export function parseStatus(out: string): Worktree {
+  const w: Worktree = { paths: [], staged: 0, unstaged: 0, submodules: 0 };
+  const records = out.split('\0');
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i]!;
+    // Fields before the path: ordinary 8, renamed/copied 9 (its original path is the next record), unmerged 10.
+    const fields = { '1': 8, '2': 9, u: 10 }[r[0] ?? ''];
+    if (fields === undefined) continue;
+    const parts = r.split(' ');
+    const [, xy = '..', sub = 'N...'] = parts;
+    w.paths.push(parts.slice(fields).join(' '));
+    if (r[0] === '2') i++;
+    if (r[0] !== 'u' && xy[0] !== '.') w.staged++;
+    if (r[0] === 'u' || xy[1] !== '.') w.unstaged++;
+    if (sub[0] === 'S' && (sub[2] === 'M' || sub[3] === 'U')) w.submodules++;
+  }
+  return w;
+}
