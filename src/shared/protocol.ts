@@ -237,11 +237,14 @@ export type SimulatedAction =
       key: string;
       target?: 'list' | 'files' | 'focused';
       shiftKey?: boolean;
+      ctrlKey?: boolean;
       altKey?: boolean;
       metaKey?: boolean;
     }
   | { kind: 'click'; selector: string }
   | { kind: 'contextMenu'; selector: string }
+  /** Selects the text of the element, as a drag over it would; none when nothing matches. */
+  | { kind: 'selectText'; selector: string }
   /** What Chromium sends for Shift+F10 or the Menu key: a contextmenu on the focused list (button -1). */
   | { kind: 'keyboardContextMenu' }
   | { kind: 'focus'; selector: string }

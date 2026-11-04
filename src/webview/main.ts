@@ -1018,6 +1018,7 @@ class App {
   }
 
   private onKey(e: KeyboardEvent): void {
+    if (this.copyKey(e)) return;
     // Rows move under a still pointer; a hover there would follow the keys around.
     if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'Enter', 'Escape'].includes(e.key))
       document.body.classList.add('hover-off');
@@ -1043,6 +1044,28 @@ class App {
     } else if (e.key === 'Escape') {
       this.userCollapse();
     }
+  }
+
+  /**
+   * Ctrl+C copies the selected row's hash, Ctrl+Shift+C its patch (Cmd on macOS); with text
+   * selected in the details, VS Code copies that text instead, as anywhere else.
+   */
+  private copyKey(e: KeyboardEvent): boolean {
+    const row = this.list[this.selected];
+    if (!(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'c' || !row) return false;
+    if ((getSelection()?.toString() ?? '') !== '') return false;
+    // Kept from VS Code too, whose Ctrl+Shift+C opens an external terminal.
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.shiftKey) this.copyHash(rowHash(row));
+    // A stash's patch is not a commit's (its untracked files); there is no command for it yet.
+    else if (row.kind === 'commit')
+      vscode.postMessage({
+        type: 'menuCommand',
+        command: 'strata.commit.copyPatch',
+        context: { strataHash: row.commit.hash },
+      });
+    return true;
   }
 
   private queueRender(): void {
@@ -2102,6 +2125,12 @@ class App {
         }
         break;
       }
+      case 'selectText': {
+        const target = document.querySelector(a.selector);
+        if (target) getSelection()?.selectAllChildren(target);
+        else getSelection()?.removeAllRanges();
+        break;
+      }
       case 'keyboardContextMenu': {
         this.scroller.focus();
         const r = this.scroller.getBoundingClientRect();
@@ -2137,6 +2166,7 @@ class App {
             key: a.key,
             bubbles: true,
             shiftKey: a.shiftKey ?? false,
+            ctrlKey: a.ctrlKey ?? false,
             altKey: a.altKey ?? false,
             metaKey: a.metaKey ?? false,
           }),
