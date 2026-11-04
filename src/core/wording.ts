@@ -691,10 +691,13 @@ export function dropStashConfirmation(
   };
 }
 
-/** Applying stash `label` (stashLabel) would leave `files`, which its untracked part adds, as they are here. */
-export function stashFilesExist(label: string, files: readonly string[]): string {
+/**
+ * Applying stash `label` (stashLabel), or creating a branch from it (`again`), would leave `files`,
+ * which its untracked part adds, as they are here.
+ */
+export function stashFilesExist(label: string, files: readonly string[], again = 'apply again'): string {
   const one = files.length === 1;
-  return `${label} adds ${one ? 'a file that already exists' : 'files that already exist'} here: ${fileList(files)}. Move ${one ? 'it' : 'them'} away and apply again.`;
+  return `${label} adds ${one ? 'a file that already exists' : 'files that already exist'} here: ${fileList(files)}. Move ${one ? 'it' : 'them'} away and ${again}.`;
 }
 
 export const stashBranchInput = (index: number, message: string, short: string): { title: string; prompt: string } => ({

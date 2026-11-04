@@ -11,7 +11,14 @@ import {
   stashPushInput,
   staleTarget,
 } from '../../core/wording.ts';
-import { readCommit, readHead, readStash, readStashFilesHere, readStashTop } from '../../git/facts.ts';
+import {
+  readCommit,
+  readHead,
+  readStash,
+  readStashFilesHere,
+  readStashFilesUntrackedHere,
+  readStashTop,
+} from '../../git/facts.ts';
 import { runGit } from '../../git/run.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
@@ -119,6 +126,12 @@ export async function stashBranch(host: FlowHost, hash: string): Promise<void> {
   const [base, wt] = await Promise.all([readCommit(host.git, host.cwd, `${hash}^1`), readWorktree(host.git, host.cwd)]);
   if (wt.paths.length > 0) {
     void host.ui.notify('info', stashBranchDirty(base.short));
+    return;
+  }
+  // git would create the branch, apply the rest and keep the stash.
+  const here = await readStashFilesUntrackedHere(host.git, host.cwd, hash);
+  if (here.length > 0) {
+    void host.ui.notify('error', stashFilesExist(s.label, here, 'create the branch again'));
     return;
   }
   const name = await host.ui.input({

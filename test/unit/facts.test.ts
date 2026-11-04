@@ -18,6 +18,7 @@ import {
   readResetFacts,
   readStash,
   readStashFilesHere,
+  readStashFilesUntrackedHere,
   readStashTop,
   readUnmerged,
   readUnmergedCommits,
@@ -233,7 +234,11 @@ describe('confirmation facts', () => {
       writeFileSync(join(dir, 'two.txt'), 'mine\n');
       assert.deepEqual(await readStashFilesHere('git', dir, withUntracked), ['two.txt']);
       assert.deepEqual(await readStashFilesHere('git', dir, without), [], 'no untracked part');
+      assert.deepEqual(await readStashFilesUntrackedHere('git', dir, withUntracked), ['two.txt']);
+      run(dir, 'add', 'two.txt');
+      assert.deepEqual(await readStashFilesUntrackedHere('git', dir, withUntracked), [], 'git tracks it here');
     } finally {
+      run(dir, 'rm', '--quiet', '--cached', '--ignore-unmatch', 'two.txt');
       rmSync(join(dir, 'two.txt'));
       run(dir, 'stash', 'clear');
     }

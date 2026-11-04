@@ -282,6 +282,17 @@ export async function readStashFilesHere(git: string, cwd: string, hash: string)
   return files.filter((_, i) => here[i]);
 }
 
+/**
+ * The files of stash `hash`'s untracked part that exist here and that git does not track:
+ * switching to the stash's base leaves them, so creating a branch from it leaves them too.
+ */
+export async function readStashFilesUntrackedHere(git: string, cwd: string, hash: string): Promise<string[]> {
+  const here = await readStashFilesHere(git, cwd, hash);
+  if (here.length === 0) return [];
+  const tracked = new Set((await runGit(git, cwd, ['ls-files', '-z'])).split('\0'));
+  return here.filter((f) => !tracked.has(f));
+}
+
 /** Whether commit `hash` (a full id) is one a shallow clone has without its parents. */
 export async function isShallowEdge(git: string, cwd: string, hash: string): Promise<boolean> {
   const path = resolve(cwd, (await runGit(git, cwd, ['rev-parse', '--git-path', 'shallow'])).trim());

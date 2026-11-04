@@ -214,6 +214,46 @@ describe('stash operations', () => {
     assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'new\n');
   });
 
+  it('creates no branch from a stash whose untracked files exist here, and creates it once git tracks them here', async () => {
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
+    writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');
+    git('stash', 'push', '--quiet', '--include-untracked', '--message', 'with new');
+    const w = git('rev-parse', 'refs/stash');
+    const base = git('rev-parse', 'HEAD');
+    writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'mine\n');
+    await reload(panel());
+    ui.type('strata-from-stash');
+    await run('strata.stash.branch', stashMenu(w));
+    assert.deepEqual(ui.asked, [
+      {
+        kind: 'notify',
+        level: 'error',
+        message:
+          'stash@{0} ("On main: with new") adds a file that already exists here: strata-new.txt. Move it away and create the branch again.',
+        actions: [],
+      },
+    ]);
+    assert.equal(git('branch', '--list', 'strata-from-stash'), '');
+    assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'mine\n');
+    assert.equal(git('rev-parse', 'refs/stash'), w);
+
+    // Switching to the stash's base takes away a file git tracks here but not there.
+    git('add', 'strata-new.txt');
+    git('commit', '--quiet', '-m', 'Track it');
+    ui.clear();
+    ui.type('strata-from-stash');
+    await run('strata.stash.branch', stashMenu(w));
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+    assert.equal(git('branch', '--show-current'), 'strata-from-stash');
+    assert.equal(git('rev-parse', 'HEAD'), base);
+    assert.equal(notes(), 'changed\n');
+    assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'new\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
   it('copies the patch of a stash, untracked files included', async () => {
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
     writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');
