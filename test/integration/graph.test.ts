@@ -99,14 +99,18 @@ describe('graph panel', () => {
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   });
 
-  it('keeps its state while a diff is open and marks the opened file', async () => {
+  it('keeps its state while a diff is open and marks the file only while its diff is shown', async () => {
     const hash = await selectCommit('Search ranking');
+    const file = git('diff-tree', '--no-commit-id', '--name-only', '-r', `${hash}^`, hash);
     await activeTabInput();
+    await waitFor('marked while shown', async () => (await panel.probe()).openedFile === file);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
-    const s = await panel.probe();
+    const s = await waitFor('unmarked once closed', async () => {
+      const p = await panel.probe();
+      return p.openedFile === undefined && p;
+    });
     assert.equal(s.selected, hash);
     assert.equal(s.detailsShown, hash);
-    assert.equal(s.openedFile, git('diff-tree', '--no-commit-id', '--name-only', '-r', `${hash}^`, hash));
   });
 
   async function openView(subject: string, view: FileView): Promise<{ hash: string; file: string; input: unknown }> {

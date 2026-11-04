@@ -32,6 +32,9 @@ export class GraphController implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private repoSubscription: vscode.Disposable | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The file last opened from the graph and the URIs of its tab; `shown` is what the graph was told. */
+  private opened: { path: string; uris: Set<string> } | undefined;
+  private shownFile: string | undefined;
   /** Generation whose first page has been served (and timed). */
   private timedGeneration = -1;
   /** Repositories already offered a commit-graph in this session. */
@@ -45,6 +48,12 @@ export class GraphController implements vscode.Disposable {
     this.api = api;
     this.send = post;
     this.disposables.push(
+      vscode.window.tabGroups.onDidChangeTabs(() => {
+        this.syncShownFile();
+      }),
+      vscode.window.tabGroups.onDidChangeTabGroups(() => {
+        this.syncShownFile();
+      }),
       api.onDidOpenRepository(() => {
         if (!this.repo) void this.start();
       }),
@@ -52,6 +61,25 @@ export class GraphController implements vscode.Disposable {
         if (r === this.repo) void this.start();
       }),
     );
+  }
+
+  /** Tells the graph which of its files has a tab on screen (the active tab of any group). */
+  private syncShownFile(): void {
+    const opened = this.opened;
+    const onScreen = vscode.window.tabGroups.all.some((g) => {
+      const input = g.activeTab?.input;
+      const uris =
+        input instanceof vscode.TabInputTextDiff
+          ? [input.original, input.modified]
+          : input instanceof vscode.TabInputText
+            ? [input.uri]
+            : [];
+      return !!opened && uris.some((u) => opened.uris.has(u.toString()));
+    });
+    const shown = onScreen ? opened?.path : undefined;
+    if (shown === this.shownFile) return;
+    this.shownFile = shown;
+    this.post({ type: 'activeFile', path: shown });
   }
 
   /** Picks the repository of the active editor, else the first one, and starts a new history. */
@@ -203,6 +231,14 @@ export class GraphController implements vscode.Disposable {
     }
     if (!fileViews(file, base).includes(m.view)) throw new Error(`cannot open ${m.view} of ${file.path}`);
     const uri = (path: string) => vscode.Uri.joinPath(repo.rootUri, ...path.split('/'));
+    const git = (path: string, ref: string) => {
+      const u = this.api.toGitUri(uri(path), ref);
+      opened.add(u.toString());
+      return u;
+    };
+    // Remembered so the graph can mark the file while this tab is on screen.
+    const opened = new Set<string>();
+    this.opened = { path: file.path, uris: opened };
     const short = (h: string) => h.slice(0, 8);
     const name = posix.basename(file.path);
     // Preview tabs: browsing through files replaces one tab instead of piling them up.
@@ -213,31 +249,27 @@ export class GraphController implements vscode.Disposable {
     // fileViews guarantees a base for 'diff' and 'before'.
     switch (m.view) {
       case 'after':
-        await vscode.commands.executeCommand(
-          'vscode.open',
-          this.api.toGitUri(uri(file.path), hash),
-          options,
-          `${name} (${short(hash)})`,
-        );
+        await vscode.commands.executeCommand('vscode.open', git(file.path, hash), options, `${name} (${short(hash)})`);
         break;
       case 'before': {
         const path = file.oldPath ?? file.path;
         const title = `${posix.basename(path)} (before ${short(hash)}, at ${short(base!)})`;
-        await vscode.commands.executeCommand('vscode.open', this.api.toGitUri(uri(path), base!), options, title);
+        await vscode.commands.executeCommand('vscode.open', git(path, base!), options, title);
         break;
       }
       case 'diff': {
         const label = file.oldPath ? `${posix.basename(file.oldPath)} → ${name}` : name;
         await vscode.commands.executeCommand(
           'vscode.diff',
-          this.api.toGitUri(uri(file.oldPath ?? file.path), base!),
-          this.api.toGitUri(uri(file.path), hash),
+          git(file.oldPath ?? file.path, base!),
+          git(file.path, hash),
           `${label} (${short(base!)} ↔ ${short(hash)})`,
           options,
         );
         break;
       }
     }
+    this.syncShownFile();
   }
 
   /** Opens a changed file from a context menu; `primary` is what clicking the file opens. */

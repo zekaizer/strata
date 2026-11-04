@@ -36,6 +36,8 @@ export type HostToWebview =
   | { type: 'noRepository' }
   /** The panel was hidden behind another editor (VS Code knows; the webview's own events may not tell). */
   | { type: 'hidden' }
+  /** Path of the commit's file whose tab (opened from the graph) is on screen, if any. */
+  | { type: 'activeFile'; path: string | undefined }
   | { type: 'error'; message: string }
   | { type: 'dumpThemeVars' }
   | { type: 'probe' }

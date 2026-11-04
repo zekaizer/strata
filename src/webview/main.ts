@@ -305,6 +305,10 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'activeFile':
+        // The host says which file's tab is on screen; the marker follows it and goes when it closes.
+        this.markOpenedFile(m.path);
+        break;
       case 'hidden':
         document.body.classList.add('hover-off');
         break;
@@ -941,6 +945,13 @@ class App {
     return cell;
   }
 
+  private markOpenedFile(path: string | undefined): void {
+    this.openedFile = path;
+    for (const e of this.expansion.querySelectorAll<HTMLElement>('.file')) {
+      e.classList.toggle('opened', path !== undefined && e.dataset['path'] === path);
+    }
+  }
+
   /** Whether a commit shows ref badges; must agree with badges(). */
   private hasBadges(hash: string): boolean {
     return this.refsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
@@ -1370,8 +1381,6 @@ class App {
     li.append(label);
 
     const open = (view: FileView, beside: boolean) => {
-      this.openedFile = f.path;
-      for (const e of li.parentElement?.children ?? []) e.classList.toggle('opened', e === li);
       vscode.postMessage({
         type: 'openFile',
         view,
