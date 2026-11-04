@@ -1,6 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import type { Commit } from '../core/commit.ts';
 import { LOG_FORMAT, LogParser } from '../core/log-parser.ts';
+import { gitEnv } from './env.ts';
 import { runGit } from './run.ts';
 
 export interface LogOptions {
@@ -14,7 +16,11 @@ export interface LogOptions {
 
 export interface Page {
   commits: Commit[];
-  /** True when history is exhausted; later calls return no commits. */
+  /**
+   * True when history is exhausted; later calls return no commits. A page that
+   * ends exactly at the last commit may report false while git is still
+   * finishing; the next call then returns an empty page with done = true.
+   */
   done: boolean;
 }
 
@@ -45,6 +51,7 @@ export class LogReader {
   }
 
   next(count: number): Promise<Page> {
+    if (!Number.isSafeInteger(count) || count < 0) return Promise.reject(new RangeError(`invalid page size ${count}`));
     if (this.error) return Promise.reject(this.error);
     this.prefetch = Math.max(this.prefetch, count);
     const page = new Promise<Page>((resolve, reject) => {
@@ -63,6 +70,8 @@ export class LogReader {
 
   private async start(): Promise<void> {
     const { git, cwd, firstParent } = this.opts;
+    // Otherwise spawn reports a missing cwd as "spawn git ENOENT", blaming git.
+    if (!existsSync(cwd)) throw new Error(`repository folder not found: ${cwd}`);
     // HEAD is listed explicitly so a detached HEAD shows up, but only when it
     // resolves: on an unborn branch `git log HEAD` fails.
     const head = await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).then(
@@ -74,6 +83,8 @@ export class LogReader {
       '-c',
       'log.showSignature=false',
       'log',
+      // Output is decoded as UTF-8 whatever i18n.logOutputEncoding is configured to.
+      '--encoding=UTF-8',
       '--date-order',
       '-z',
       `--format=${LOG_FORMAT}`,
@@ -87,7 +98,7 @@ export class LogReader {
     ];
     const proc = spawn(git, args, {
       cwd,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      env: gitEnv(),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     this.proc = proc;
@@ -110,10 +121,12 @@ export class LogReader {
     proc.on('error', (e) => {
       this.fail(e);
     });
-    proc.on('close', (code) => {
+    proc.on('close', (code, signal) => {
       if (this.error) return;
       if (code !== 0) {
-        this.fail(new Error(stderr.trim() || `git log exited with ${code}`));
+        // Hand out the complete pages already read before failing the rest.
+        this.pump();
+        this.fail(new Error(stderr.trim() || `git log ${signal ? `killed by ${signal}` : `exited with ${code}`}`));
         return;
       }
       try {

@@ -13,7 +13,15 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
   // Callers pass ids that came from the webview; never let them reach git as options.
   for (const h of [hash, base]) if (h !== undefined && !HASH.test(h)) throw new Error(`invalid commit id: ${h}`);
   const format = ['%H', '%P', '%aN', '%aE', '%at', '%cN', '%cE', '%ct', '%B'].join('%x00');
-  const meta = await runGit(git, cwd, ['show', '-s', '--no-color', `--format=${format}`, hash, '--']);
+  const meta = await runGit(git, cwd, [
+    'show',
+    '-s',
+    '--no-color',
+    '--encoding=UTF-8',
+    `--format=${format}`,
+    hash,
+    '--',
+  ]);
   const [h, parents, author, authorEmail, at, committer, committerEmail, ct, message] = meta.split('\0') as [
     string,
     string,
