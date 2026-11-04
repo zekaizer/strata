@@ -377,65 +377,40 @@ canvas.graph {
   background: color-mix(in srgb, var(--badge-color) 30%, transparent);
 }
 
-/* List and details: details beside the list when there is room, below it otherwise. */
-.main {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  container: main / inline-size;
-}
-
-.layout {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.splitter {
-  flex: none;
-  height: 4px;
-  margin: -2px 0;
-  z-index: 1;
-  cursor: row-resize;
-  background: transparent;
-  transition: background-color 0.1s 0.2s;
-  /* High contrast themes show the sash as a border. */
-  box-shadow: 0 0 0 1px var(--vscode-contrastBorder, transparent) inset;
-}
-
-.splitter:hover,
-.splitter:focus-visible {
-  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
-  outline: none;
-}
-
-.details {
-  flex: none;
-  /* Fits its content up to a cap until the user drags the splitter. */
-  height: var(--details-height, auto);
-  /* The list always keeps at least 120px. */
-  max-height: min(var(--details-max-height, 45%), calc(100% - 120px));
-  min-height: 96px;
-  overflow: auto;
-  padding: 8px 16px 12px;
-  border-top: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
-  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+/*
+ * Commit details unfold inline under the selected row. The left gutter is the
+ * graph column, where the canvas keeps drawing the lines that run through.
+ */
+.expansion {
+  position: absolute;
+  left: 0;
+  right: 0;
   box-sizing: border-box;
+  overflow: auto;
+  padding: 4px 12px 8px calc(var(--graph-width, 40px) + 12px);
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  background: color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground, transparent) 45%, transparent);
+  cursor: auto;
 }
 
-.details-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+.expansion[hidden] {
+  display: none;
 }
 
-.details-subject {
-  flex: 1;
-  margin: 2px 0 0;
-  font-size: 1.05em;
-  font-weight: 600;
-  word-break: break-word;
+.details-fold {
+  position: absolute;
+  top: 2px;
+  right: 8px;
+}
+
+.expansion .details-meta {
+  /* Room for the fold button. */
+  padding-right: 28px;
+}
+
+.expansion-loading {
+  color: var(--vscode-descriptionForeground);
 }
 
 .details-meta {
@@ -443,7 +418,7 @@ canvas.graph {
   flex-wrap: wrap;
   align-items: center;
   gap: 2px 12px;
-  margin: 4px 0 8px;
+  margin: 0 0 4px;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -485,6 +460,10 @@ canvas.graph {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: grid;
+  /* Several columns when the editor is wide; one in narrow editors. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  column-gap: 16px;
 }
 
 .file {
@@ -603,27 +582,5 @@ canvas.graph {
   }
   .row .author {
     display: none;
-  }
-}
-
-/* Wide panels: details on the right, so the graph keeps the full height. */
-@container main (min-width: 1000px) {
-  .layout {
-    flex-direction: row;
-  }
-  .splitter {
-    width: 4px;
-    height: auto;
-    margin: 0 -2px;
-    cursor: col-resize;
-  }
-  .details {
-    width: var(--details-width, 380px);
-    height: auto;
-    max-height: none;
-    max-width: calc(100% - 240px);
-    min-width: 240px;
-    border-top: none;
-    border-left: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
   }
 }

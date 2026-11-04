@@ -16,8 +16,9 @@ page, so it opens quickly even on very large repositories.
   branch shows when you select it in the filter.
 - The graph comes back after restarting VS Code, pinned if you pinned it, at
   the commit you had selected and with the same filters.
-- Works in narrow editors: columns collapse as space shrinks and the details
-  move below the list.
+- Works in narrow editors: columns collapse as space shrinks, and commit
+  details unfold right under the commit instead of taking a side or bottom
+  pane.
 - Works in local folders, WSL, SSH and other remote workspaces: Strata runs
   where the repository is.
 - Follows your color theme, including high contrast themes; graph colors adapt
@@ -28,16 +29,15 @@ page, so it opens quickly even on very large repositories.
 - Run **Strata: Show Commit Graph** from the Command Palette, or click the
   commit-graph button in the Source Control view title bar.
 - Scroll to load more history.
-- Select a commit (click, or ↑/↓ with the list focused) to show its details;
-  <kbd>Esc</kbd> closes them.
+- Click a commit to unfold its details under it; click it again, or press
+  <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
+  selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
 - Click a file in the details to open its diff against the parent commit
   (<kbd>Alt</kbd>+click opens it to the side). With a file focused, ↑/↓ move
   between files and <kbd>Enter</kbd> opens one.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
-- Drag the edge of the details pane to resize it. The pane sits beside the
-  list in wide editors and below it in narrow ones.
 - Use the refresh button after changing the repository outside VS Code.
 
 ## Large repositories

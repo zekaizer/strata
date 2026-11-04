@@ -62,6 +62,10 @@ export interface ProbeState {
   openedFile: string | undefined;
   /** Columns currently shown in the commit list. */
   columns: string[];
+  /** Height in px of the details expanded under the selected row; 0 when collapsed. */
+  expandedHeight: number;
+  /** Top offset in px of each rendered row within the list, by row index. */
+  rowTops: Record<number, number>;
   options: ViewOptions;
 }
 

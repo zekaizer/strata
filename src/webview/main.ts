@@ -25,6 +25,8 @@ const LOAD_AHEAD = 200;
 const OVERSCAN = 8;
 const MAX_GRAPH_SHARE = 0.4;
 const MAX_BADGES = 3;
+/** The inline details never take more than this share of the list height. */
+const MAX_EXPANSION_SHARE = 0.45;
 
 /** Persisted with setState: survives hiding and VS Code restarts (the panel is restored by a serializer). */
 interface SavedState {
@@ -32,14 +34,10 @@ interface SavedState {
   scrollTop?: number | undefined;
   /** Set when a scroll position was restored together with the selection; do not scroll to the selection. */
   keepScroll?: boolean | undefined;
-  /** Details pane size beside the list (px). */
-  detailsWidth?: number | undefined;
-  /** Details pane size below the list (px). */
-  detailsHeight?: number | undefined;
+  /** Whether the selected commit's details were expanded. */
+  expanded?: boolean | undefined;
   options?: ViewOptions | undefined;
 }
-
-const MIN_PANE = 120;
 
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
@@ -79,12 +77,16 @@ class App {
   private readonly scroller = el('div', 'scroller');
   private readonly sizer = el('div', 'sizer');
   private readonly canvas = el('canvas', 'graph');
-  private readonly main = el('div', 'main');
-  private readonly layout = el('div', 'layout');
-  private readonly splitter = el('div', 'splitter');
-  private readonly detailsPane = el('section', 'details');
-  private detailsWidth: number | undefined;
-  private detailsHeight: number | undefined;
+  /** Rendered rows; kept apart from the expansion so re-rendering rows does not touch it. */
+  private readonly rowsLayer = el('div', 'rows');
+  /** Commit details shown inline under the selected row. */
+  private readonly expansion = el('section', 'expansion');
+  /** Whether the selected commit's details are open under it. */
+  private expanded = false;
+  /** Measured height of the expansion in px; 0 when collapsed. */
+  private gap = 0;
+  /** Keep the expansion in view once it has its final height. */
+  private revealExpansion = false;
   private renderQueued = false;
   private readonly root: HTMLElement;
 
@@ -116,26 +118,16 @@ class App {
     this.scroller.tabIndex = 0;
     this.scroller.setAttribute('role', 'listbox');
     this.scroller.setAttribute('aria-label', 'Commits');
+    this.expansion.hidden = true;
+    this.expansion.setAttribute('role', 'region');
+    this.expansion.setAttribute('aria-label', 'Commit details');
+    this.sizer.append(this.rowsLayer, this.expansion);
     this.scroller.append(this.sizer);
     this.viewport.append(this.scroller, this.canvas);
-    this.detailsPane.hidden = true;
-    this.splitter.hidden = true;
-    this.splitter.setAttribute('role', 'separator');
-    this.splitter.setAttribute('aria-label', 'Resize commit details');
-    this.splitter.tabIndex = 0;
-    this.splitter.title = 'Drag to resize';
-    this.splitter.addEventListener('keydown', (e) => {
-      this.resizeByKey(e);
-    });
-    this.layout.append(this.viewport, this.splitter, this.detailsPane);
-    this.main.append(this.layout);
-    root.replaceChildren(this.toolbar, this.main);
-    this.detailsWidth = this.restore?.detailsWidth;
-    this.detailsHeight = this.restore?.detailsHeight;
-    this.applyPaneSize();
-    this.splitter.addEventListener('pointerdown', (e) => {
-      this.startResize(e);
-    });
+    root.replaceChildren(this.toolbar, this.viewport);
+    new ResizeObserver(() => {
+      this.onExpansionResize();
+    }).observe(this.expansion);
 
     this.scroller.addEventListener('scroll', () => {
       this.queueRender();
@@ -143,9 +135,13 @@ class App {
     });
     // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
+      if (this.expansion.contains(e.target as Node)) return;
       const top = this.scroller.getBoundingClientRect().top;
-      const index = Math.floor((e.clientY - top + this.scroller.scrollTop) / ROW_HEIGHT);
-      if (index >= 0 && index < this.commits.length) this.select(index);
+      const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
+      if (index < 0 || index >= this.commits.length) return;
+      // Clicking the expanded row folds it; any other row opens its details.
+      if (index === this.selected && this.expanded) this.collapse();
+      else this.select(index, { expand: true });
     });
     this.scroller.addEventListener('keydown', (e) => {
       this.onKey(e);
@@ -204,7 +200,7 @@ class App {
         this.queueRender();
         break;
       case 'details':
-        if (m.generation !== this.generation || m.details.hash !== this.pendingDetails) return;
+        if (m.generation !== this.generation || m.details.hash !== this.pendingDetails || !this.expanded) return;
         this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
@@ -253,6 +249,7 @@ class App {
       this.restore = {
         selectedHash: this.commits[this.selected]?.hash,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
+        expanded: this.expanded,
       };
     }
     this.generation = generation;
@@ -280,7 +277,7 @@ class App {
     // Replies to requests of the previous generation are dropped, so nothing is in flight any more.
     this.loading = false;
     this.loadMore(FIRST_PAGE);
-    this.closeDetails();
+    this.collapse();
     this.queueRender();
   }
 
@@ -292,7 +289,7 @@ class App {
     const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
     if (r.scrollTop !== undefined) {
       // The sizer normally grows in the next render; it must be tall enough now or the browser clamps scrollTop.
-      this.sizer.style.height = `${this.commits.length * ROW_HEIGHT}px`;
+      this.syncSizer();
       this.scroller.scrollTop = r.scrollTop;
       if (Math.abs(this.scroller.scrollTop - r.scrollTop) < 1 || !searchable) r.scrollTop = undefined;
       else this.loadMore(NEXT_PAGE);
@@ -300,8 +297,9 @@ class App {
     if (r.selectedHash !== undefined) {
       const index = this.commits.findIndex((c) => c.hash === r.selectedHash);
       if (index >= 0) {
-        // Reveal it only when no scroll position is being restored with it.
-        this.select(index, r.scrollTop === undefined && !r.keepScroll);
+        // Reveal it only when no scroll position is being restored with it. Older saved states have no
+        // `expanded`; a selection then meant visible details.
+        this.select(index, { reveal: r.scrollTop === undefined && !r.keepScroll, expand: r.expanded ?? true });
         r.selectedHash = undefined;
       } else if (searchable) {
         this.loadMore(NEXT_PAGE);
@@ -317,52 +315,10 @@ class App {
     const state: SavedState = {
       selectedHash: this.restore?.selectedHash ?? this.commits[this.selected]?.hash,
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
-      detailsWidth: this.detailsWidth,
-      detailsHeight: this.detailsHeight,
+      expanded: this.restore?.expanded ?? this.expanded,
       options: this.options,
     };
     vscode.setState(state);
-  }
-
-  /** The details pane sits beside the list in wide panels and below it in narrow ones (see main.css). */
-  private paneBeside(): boolean {
-    return getComputedStyle(this.layout).flexDirection === 'row';
-  }
-
-  private applyPaneSize(): void {
-    if (this.detailsWidth !== undefined) this.main.style.setProperty('--details-width', `${this.detailsWidth}px`);
-    if (this.detailsHeight !== undefined) {
-      this.main.style.setProperty('--details-height', `${this.detailsHeight}px`);
-      // The CSS cap (list keeps a minimum height) still applies to a stored size.
-      this.main.style.setProperty('--details-max-height', '100%');
-    }
-  }
-
-  private startResize(e: PointerEvent): void {
-    e.preventDefault();
-    const beside = this.paneBeside();
-    const bounds = this.layout.getBoundingClientRect();
-    this.splitter.setPointerCapture(e.pointerId);
-    const move = (ev: PointerEvent) => {
-      if (beside) {
-        this.detailsWidth = Math.round(
-          Math.min(bounds.width - MIN_PANE * 2, Math.max(MIN_PANE * 2, bounds.right - ev.clientX)),
-        );
-      } else {
-        this.detailsHeight = Math.round(
-          Math.min(bounds.height - MIN_PANE, Math.max(MIN_PANE, bounds.bottom - ev.clientY)),
-        );
-      }
-      this.applyPaneSize();
-      this.queueRender();
-    };
-    const up = () => {
-      this.splitter.removeEventListener('pointermove', move);
-      this.splitter.removeEventListener('pointerup', up);
-      this.saveState();
-    };
-    this.splitter.addEventListener('pointermove', move);
-    this.splitter.addEventListener('pointerup', up);
   }
 
   /** Redraws the canvas at the new resolution when the window moves to a display with another pixel ratio. */
@@ -375,24 +331,6 @@ class App {
       },
       { once: true },
     );
-  }
-
-  private resizeByKey(e: KeyboardEvent): void {
-    const beside = this.paneBeside();
-    const step = { ArrowLeft: 16, ArrowUp: 16, ArrowRight: -16, ArrowDown: -16 }[e.key];
-    if (step === undefined) return;
-    e.preventDefault();
-    const bounds = this.layout.getBoundingClientRect();
-    if (beside) {
-      const current = this.detailsWidth ?? this.detailsPane.getBoundingClientRect().width;
-      this.detailsWidth = Math.round(Math.min(bounds.width - MIN_PANE * 2, Math.max(MIN_PANE * 2, current + step)));
-    } else {
-      const current = this.detailsHeight ?? this.detailsPane.getBoundingClientRect().height;
-      this.detailsHeight = Math.round(Math.min(bounds.height - MIN_PANE, Math.max(MIN_PANE, current + step)));
-    }
-    this.applyPaneSize();
-    this.saveState();
-    this.queueRender();
   }
 
   private setOptions(options: ViewOptions): void {
@@ -420,17 +358,107 @@ class App {
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
   }
 
-  private select(index: number, reveal = true): void {
+  /** Height of the space open under the selected row. */
+  private gapHeight(): number {
+    return this.expanded && this.selected >= 0 ? this.gap : 0;
+  }
+
+  /** Top of row `index` in list coordinates: rows below the expanded one move down by the gap. */
+  private rowTop(index: number): number {
+    return index * ROW_HEIGHT + (index > this.selected ? this.gapHeight() : 0);
+  }
+
+  /** Row at list offset `y`, or -1 inside the expansion. */
+  private rowAt(y: number): number {
+    const gap = this.gapHeight();
+    const gapTop = (this.selected + 1) * ROW_HEIGHT;
+    if (gap === 0 || y < gapTop) return Math.floor(y / ROW_HEIGHT);
+    if (y < gapTop + gap) return -1;
+    return Math.floor((y - gap) / ROW_HEIGHT);
+  }
+
+  /** Row at or above offset `y`; the expansion counts as part of its row. */
+  private rowFloor(y: number): number {
+    const r = this.rowAt(y);
+    return r < 0 ? this.selected : r;
+  }
+
+  /**
+   * Selects a commit. `expand` opens its details inline (default: keep the
+   * current state, so arrow keys move an open expansion along). The selected
+   * row keeps its place on screen when the expansion moves.
+   */
+  private select(index: number, opts: { reveal?: boolean; expand?: boolean } = {}): void {
     const commit = this.commits[index];
     if (!commit) return;
+    const screenTop = this.rowTop(index) - this.scroller.scrollTop;
     this.selected = index;
+    this.expanded = opts.expand ?? this.expanded;
     this.details = undefined;
-    this.pendingDetails = commit.hash;
     this.openedFile = undefined;
-    vscode.postMessage({ type: 'select', generation: this.generation, hash: commit.hash });
-    if (reveal) this.ensureVisible(index);
+    this.pendingDetails = undefined;
+    if (this.expanded) {
+      this.pendingDetails = commit.hash;
+      this.showLoading();
+      vscode.postMessage({ type: 'select', generation: this.generation, hash: commit.hash });
+    }
+    this.syncSizer();
+    this.scroller.scrollTop = this.rowTop(index) - screenTop;
+    if (opts.reveal ?? true) {
+      this.ensureVisible(index);
+      this.revealExpansion = this.expanded;
+    }
     this.saveState();
     this.queueRender();
+  }
+
+  /** Opens the details of the selected commit (Enter). */
+  private expand(): void {
+    if (this.selected >= 0 && !this.expanded) this.select(this.selected, { expand: true });
+  }
+
+  /** Folds the details away; the selection stays. */
+  private collapse(): void {
+    this.expanded = false;
+    this.details = undefined;
+    this.pendingDetails = undefined;
+    this.gap = 0;
+    this.expansion.hidden = true;
+    this.expansion.replaceChildren();
+    this.expansion.style.minHeight = '';
+    this.syncSizer();
+    this.saveState();
+    this.queueRender();
+  }
+
+  /** Placeholder while details load; keeps the previous height so moving with the arrow keys does not jump. */
+  private showLoading(): void {
+    this.expansion.style.minHeight = this.gap > 0 ? `${this.gap}px` : '';
+    this.expansion.hidden = false;
+    this.expansion.replaceChildren(el('div', 'expansion-loading', 'Loading…'));
+    this.placeExpansion();
+  }
+
+  private placeExpansion(): void {
+    this.expansion.style.top = `${(this.selected + 1) * ROW_HEIGHT}px`;
+    this.expansion.style.maxHeight = `${Math.floor(this.scroller.clientHeight * MAX_EXPANSION_SHARE)}px`;
+  }
+
+  private onExpansionResize(): void {
+    const h = this.expansion.hidden ? 0 : this.expansion.offsetHeight;
+    if (h === this.gap) return;
+    this.gap = h;
+    this.syncSizer();
+    if (this.revealExpansion && this.details) {
+      this.revealExpansion = false;
+      this.ensureVisible(this.selected, true);
+    }
+    this.queueRender();
+  }
+
+  /** The list's height must be right before scrollTop is set, or the browser clamps it. */
+  private syncSizer(): void {
+    this.sizer.style.height = `${this.commits.length * ROW_HEIGHT + this.gapHeight()}px`;
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
@@ -446,11 +474,13 @@ class App {
     this.applyRestore();
   }
 
-  private ensureVisible(index: number): void {
-    const top = index * ROW_HEIGHT;
+  /** Scrolls row `index` into view; with `withExpansion`, also as much of its details as fits below it. */
+  private ensureVisible(index: number, withExpansion = false): void {
+    const top = this.rowTop(index);
+    const bottom = top + ROW_HEIGHT + (withExpansion && index === this.selected ? this.gapHeight() : 0);
     const view = this.scroller.clientHeight;
     if (top < this.scroller.scrollTop) this.scroller.scrollTop = top;
-    else if (top + ROW_HEIGHT > this.scroller.scrollTop + view) this.scroller.scrollTop = top + ROW_HEIGHT - view;
+    else if (bottom > this.scroller.scrollTop + view) this.scroller.scrollTop = Math.min(top, bottom - view);
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -464,8 +494,12 @@ class App {
     } else if (e.key === 'Home') {
       e.preventDefault();
       this.select(0);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (this.expanded) this.collapse();
+      else this.expand();
     } else if (e.key === 'Escape') {
-      this.closeDetails();
+      this.collapse();
     }
   }
 
@@ -482,17 +516,18 @@ class App {
     const height = this.scroller.clientHeight;
     const width = this.scroller.clientWidth;
     const scrollTop = this.scroller.scrollTop;
-    const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-    const last = Math.min(this.commits.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + OVERSCAN);
+    const first = Math.max(0, this.rowFloor(scrollTop) - OVERSCAN);
+    const last = Math.min(this.commits.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
     const gw = Math.min(graphWidth(this.lanes), Math.max(graphWidth(1), Math.floor(width * MAX_GRAPH_SHARE)));
 
-    this.sizer.style.height = `${this.commits.length * ROW_HEIGHT}px`;
+    this.syncSizer();
+    if (this.expanded) this.placeExpansion();
     // Not on <html>: VS Code owns its style attribute, which is observed for theme changes.
     this.root.style.setProperty('--graph-width', `${gw}px`);
 
     const rows: HTMLElement[] = [];
     for (let i = first; i < last; i++) rows.push(this.renderRow(i));
-    this.sizer.replaceChildren(...rows);
+    this.rowsLayer.replaceChildren(...rows);
     // Only point at a row that exists in the DOM.
     if (this.selected >= first && this.selected < last) {
       this.scroller.setAttribute('aria-activedescendant', `row-${this.selected}`);
@@ -512,10 +547,21 @@ class App {
     ctx.beginPath();
     ctx.rect(0, 0, gw, height);
     ctx.clip();
-    drawGraph(ctx, this.rows, this.spans, first, last, scrollTop, this.theme, (i) => ({
-      head: this.commits[i]?.hash === this.refs.head,
-      merge: (this.commits[i]?.parents.length ?? 0) > 1,
-    }));
+    drawGraph(
+      ctx,
+      this.rows,
+      this.spans,
+      first,
+      last,
+      scrollTop,
+      this.theme,
+      (i) => ({
+        head: this.commits[i]?.hash === this.refs.head,
+        merge: (this.commits[i]?.parents.length ?? 0) > 1,
+      }),
+      (i) => this.rowTop(i),
+      this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
+    );
     ctx.restore();
     if (graphWidth(this.lanes) > gw) fadeRightEdge(ctx, gw, height, this.theme.background);
 
@@ -531,8 +577,11 @@ class App {
     row.setAttribute('aria-selected', String(i === this.selected));
     row.setAttribute('aria-posinset', String(i + 1));
     row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
-    row.style.top = `${i * ROW_HEIGHT}px`;
-    if (i === this.selected) row.classList.add('selected');
+    row.style.top = `${this.rowTop(i)}px`;
+    if (i === this.selected) {
+      row.classList.add('selected');
+      row.setAttribute('aria-expanded', String(this.expanded));
+    }
     if (c.hash === this.refs.head) row.classList.add('head');
 
     const subject = el('span', 'subject');
@@ -577,19 +626,16 @@ class App {
   private renderDetails(): void {
     const d = this.details;
     if (!d) return;
-    const pane = this.detailsPane;
-    pane.hidden = false;
-    this.splitter.hidden = false;
+    const pane = this.expansion;
 
-    const [subject = '', ...rest] = d.message.split('\n');
-    const body = rest.join('\n').trim();
-    const header = el('div', 'details-header');
-    const close = el('button', 'icon-button codicon codicon-close');
-    close.title = 'Close (Esc)';
+    // The subject is already on the row above; only the body is shown here.
+    const body = d.message.split('\n').slice(1).join('\n').trim();
+    const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
+    close.title = 'Fold (Esc)';
     close.addEventListener('click', () => {
-      this.closeDetails();
+      this.collapse();
+      this.scroller.focus();
     });
-    header.append(el('h2', 'details-subject', subject), close);
 
     // One compact line: files are what people come here for, so they come right after it.
     const meta = el('div', 'details-meta');
@@ -626,13 +672,12 @@ class App {
       'files-summary',
       `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed${d.base ? ` vs ${shortHash(d.base)}` : ''}`,
     );
-    const children: HTMLElement[] = [header, meta, summary, files];
+    const children: HTMLElement[] = [close, meta, summary, files];
     if (body) children.push(el('pre', 'details-message', body));
+    pane.style.minHeight = '';
     pane.replaceChildren(...children);
-    // A pane opening below the list shrinks it; keep the selected commit in view once layout settles.
-    requestAnimationFrame(() => {
-      if (!this.paneBeside() && this.selected >= 0) this.ensureVisible(this.selected);
-    });
+    pane.scrollTop = 0;
+    this.placeExpansion();
     this.queueRender();
   }
 
@@ -682,14 +727,6 @@ class App {
     return li;
   }
 
-  private closeDetails(): void {
-    this.details = undefined;
-    this.pendingDetails = undefined;
-    this.detailsPane.hidden = true;
-    this.splitter.hidden = true;
-    this.detailsPane.replaceChildren();
-  }
-
   private probe(): ProbeState {
     return {
       generation: this.generation,
@@ -697,11 +734,18 @@ class App {
       laidOut: this.rows.length,
       done: this.done,
       selected: this.commits[this.selected]?.hash,
-      detailsShown: this.detailsPane.hidden ? undefined : this.details?.hash,
-      visibleSubjects: [...this.sizer.querySelectorAll('.row .text')].map((e) => e.textContent),
+      detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
+      visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
       options: this.options,
-      columns: [...(this.sizer.querySelector('.row')?.children ?? [])]
+      expandedHeight: this.gapHeight(),
+      rowTops: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [
+          Number(r.dataset['index']),
+          parseFloat(r.style.top),
+        ]),
+      ),
+      columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
     };
@@ -710,10 +754,10 @@ class App {
   private simulate(a: SimulatedAction): void {
     switch (a.kind) {
       case 'clickRow': {
-        this.scroller.scrollTop = Math.max(0, a.index * ROW_HEIGHT - ROW_HEIGHT * 3);
+        this.scroller.scrollTop = Math.max(0, this.rowTop(a.index) - ROW_HEIGHT * 3);
         this.render();
         // A real click carries the pointer position, which is what selection uses.
-        const row = this.sizer.querySelector<HTMLElement>(`#row-${a.index}`);
+        const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${a.index}`);
         if (row) {
           const r = row.getBoundingClientRect();
           row.dispatchEvent(
@@ -723,7 +767,7 @@ class App {
         break;
       }
       case 'clickFile': {
-        const files = this.detailsPane.querySelectorAll<HTMLElement>('.file');
+        const files = this.expansion.querySelectorAll<HTMLElement>('.file');
         files[a.index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, altKey: a.altKey ?? false }));
         break;
       }
@@ -741,7 +785,7 @@ class App {
       case 'key': {
         const target =
           a.target === 'files'
-            ? (document.activeElement?.closest('.file') ?? this.detailsPane.querySelector<HTMLElement>('.file'))
+            ? (document.activeElement?.closest('.file') ?? this.expansion.querySelector<HTMLElement>('.file'))
             : this.scroller;
         if (target instanceof HTMLElement) target.focus();
         target?.dispatchEvent(new KeyboardEvent('keydown', { key: a.key, bubbles: true }));

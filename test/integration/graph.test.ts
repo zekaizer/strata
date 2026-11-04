@@ -45,6 +45,8 @@ describe('graph panel', () => {
 
   async function selectCommit(subject: string): Promise<string> {
     const hash = git('log', '--all', '--format=%H', '--fixed-strings', `--grep=${subject}`, '-n1');
+    // Clicking the row whose details are already open folds them.
+    if ((await panel.probe()).detailsShown === hash) return hash;
     await panel.simulate({ kind: 'clickRow', index: order().indexOf(hash) });
     await waitFor(`details of ${subject}`, async () => (await panel.probe()).detailsShown === hash);
     return hash;
