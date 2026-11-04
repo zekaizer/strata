@@ -2,6 +2,23 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "prelaunch",
+      "dependsOn": ["fixtures", "watch"],
+      "dependsOrder": "sequence",
+      "presentation": {
+        "reveal": "never"
+      }
+    },
+    {
+      "label": "fixtures",
+      "type": "npm",
+      "script": "fixtures",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent"
+      }
+    },
+    {
       "label": "watch",
       "dependsOn": ["watch:esbuild", "watch:tsc", "watch:tsc:webview", "watch:tsc:worker"],
       "presentation": {

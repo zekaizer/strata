@@ -29,10 +29,20 @@ npm ci
 | Webview playground in a browser        | `npm run playground` → http://localhost:5173/       |
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
 | Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
+| Fixture repos → `out/fixtures/<name>`  | `npm run fixtures [name ...]`                       |
 | Package                                | `npm run package` → `artifacts/strata.vsix`         |
 
-Interactive debugging: F5 ("Run Extension") starts the watch tasks and an
-Extension Development Host.
+Interactive debugging: F5 ("Run Extension") generates the fixture repositories,
+starts the watch tasks and opens the chosen fixture in an Extension Development
+Host.
+
+### Fixtures
+
+`test/fixtures/` builds repositories with `git fast-import` from fixed dates
+and identities, so object ids are identical on every machine. Scenarios:
+`linear`, `branchy` (criss-cross, unmerged branch), `octopus`, `multi-root`,
+`refs` (annotated/lightweight tags, remotes, ahead/behind), `clock-skew`,
+`large` (5000 seeded random commits).
 
 ### Headless environments
 

@@ -3,9 +3,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { userDataDir } from './scripts/lib/test-paths.ts';
+import { scenarios } from './test/fixtures/scenarios.ts';
 
-const workspace = join(import.meta.dirname, 'out', 'workspace');
-mkdirSync(workspace, { recursive: true });
+// Integration tests open the deterministic `branchy` fixture repository.
+const workspace = join(import.meta.dirname, 'out', 'fixtures', 'branchy');
+scenarios.branchy().write(workspace);
 
 // Deterministic, uncluttered window for tests and screenshots.
 const settings = {

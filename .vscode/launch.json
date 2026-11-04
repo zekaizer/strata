@@ -5,9 +5,9 @@
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/out/workspace"],
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}", "${workspaceFolder}/out/fixtures/${input:fixture}"],
       "outFiles": ["${workspaceFolder}/dist/**/*.cjs"],
-      "preLaunchTask": "watch"
+      "preLaunchTask": "prelaunch"
     },
     {
       "name": "Run Extension (no other extensions)",
@@ -16,10 +16,10 @@
       "args": [
         "--disable-extensions",
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "${workspaceFolder}/out/workspace"
+        "${workspaceFolder}/out/fixtures/${input:fixture}"
       ],
       "outFiles": ["${workspaceFolder}/dist/**/*.cjs"],
-      "preLaunchTask": "watch"
+      "preLaunchTask": "prelaunch"
     },
     {
       "name": "Unit Tests (current file)",
@@ -27,6 +27,15 @@
       "request": "launch",
       "runtimeArgs": ["--test", "${file}"],
       "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "fixture",
+      "type": "pickString",
+      "description": "Fixture repository to open",
+      "options": ["branchy", "octopus", "multi-root", "refs", "clock-skew", "linear", "large"],
+      "default": "branchy"
     }
   ]
 }
