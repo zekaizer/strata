@@ -32,6 +32,8 @@ page, so it opens quickly even on very large repositories.
 - Click a commit to unfold its details under it; click it again, or press
   <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
   selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
+- Changed files are listed as a folder tree; click a folder (or use ←/→) to
+  fold it.
 - Click a file in the details to open its diff against the parent commit.
   Hover a file (or focus it) for **Old**, the compare icon and **New**: the
   file as it was before the commit, the diff, and the file as of the

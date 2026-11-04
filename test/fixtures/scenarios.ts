@@ -37,6 +37,15 @@ export function branchy(): RepoBuilder {
   b.commit('cross/x', 'Merge y into x', { parents: [x1, y1] });
   b.commit('cross/y', 'Merge x into y', { parents: [y1, x1] });
   b.merge('main', [b.tip('cross/x'), b.tip('cross/y')], 'Merge cross/x and cross/y');
+  b.commit('main', 'Add docs and sources', {
+    files: {
+      'docs/guide/intro.md': '# Intro\n',
+      'docs/guide/setup.md': '# Setup\n',
+      'docs/index.md': '# Docs\n',
+      'src/app/main.ts': 'export {};\n',
+      'NOTES.md': 'notes\n',
+    },
+  });
   b.commit('main', 'Release prep');
   return b;
 }

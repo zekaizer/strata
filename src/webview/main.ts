@@ -1,5 +1,6 @@
 import type { Commit } from '../core/commit.ts';
 import { fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
+import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
@@ -83,6 +84,8 @@ class App {
   /** Commit whose details were last requested; replies for any other commit are stale. */
   private pendingDetails: string | undefined;
   private openedFile: string | undefined;
+  /** Folders folded in the changed-files tree of the expanded commit. */
+  private foldedFolders = new Set<string>();
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -436,6 +439,7 @@ class App {
     this.expanded = opts.expand ?? this.expanded;
     this.details = undefined;
     this.openedFile = undefined;
+    this.foldedFolders = new Set();
     this.pendingDetails = undefined;
     if (this.expanded) {
       this.pendingDetails = commit.hash;
@@ -734,10 +738,7 @@ class App {
       meta.append(parents);
     }
 
-    const files = el('ul', 'files');
-    files.setAttribute('role', 'listbox');
-    files.setAttribute('aria-label', 'Changed files');
-    for (const f of d.files) files.append(this.fileItem(d, f));
+    const files = this.fileTree(d);
     const summary = el(
       'div',
       'files-summary',
@@ -752,23 +753,111 @@ class App {
     this.queueRender();
   }
 
-  private fileItem(d: CommitDetails, f: FileChange): HTMLElement {
+  /**
+   * The changed files as a tree (role=tree): folders fold with a click, Left/Right or Enter;
+   * Up/Down move between visible entries. Folded folders are remembered per commit.
+   */
+  private fileTree(d: CommitDetails): HTMLElement {
+    const list = el('ul', 'files');
+    list.setAttribute('role', 'tree');
+    list.setAttribute('aria-label', 'Changed files');
+    const add = (nodes: FileTreeNode[], depth: number) => {
+      for (const n of nodes) {
+        if (n.kind === 'file') {
+          list.append(this.fileItem(d, n.change, n.name, depth));
+          continue;
+        }
+        const li = el('li', 'folder');
+        li.tabIndex = 0;
+        li.dataset['path'] = n.path;
+        li.setAttribute('role', 'treeitem');
+        li.setAttribute('aria-level', String(depth + 1));
+        li.style.setProperty('--depth', String(depth));
+        li.title = n.path;
+        li.append(el('span', 'codicon codicon-chevron-down folder-chevron'), el('span', 'folder-name', n.name));
+        li.addEventListener('click', () => {
+          this.toggleFolder(list, n.path);
+        });
+        list.append(li);
+        add(n.children, depth + 1);
+      }
+    };
+    add(buildFileTree(d.files), 0);
+    list.addEventListener('keydown', (e) => {
+      this.onTreeKey(list, e);
+    });
+    this.applyFolds(list);
+    return list;
+  }
+
+  private toggleFolder(list: HTMLElement, path: string, fold?: boolean): void {
+    const folded = fold ?? !this.foldedFolders.has(path);
+    if (folded) this.foldedFolders.add(path);
+    else this.foldedFolders.delete(path);
+    this.applyFolds(list);
+  }
+
+  /** Hides entries under folded folders and updates the chevrons. */
+  private applyFolds(list: HTMLElement): void {
+    const folded = [...this.foldedFolders];
+    for (const item of list.querySelectorAll<HTMLElement>('li')) {
+      const path = item.dataset['path'] ?? '';
+      item.hidden = folded.some((f) => path.startsWith(`${f}/`));
+      if (item.classList.contains('folder')) {
+        const open = !this.foldedFolders.has(path);
+        item.setAttribute('aria-expanded', String(open));
+        item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-right', !open);
+        item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-down', open);
+      }
+    }
+  }
+
+  private onTreeKey(list: HTMLElement, e: KeyboardEvent): void {
+    const item = (e.target as HTMLElement).closest<HTMLElement>('li');
+    if (!item) return;
+    const visible = [...list.querySelectorAll<HTMLElement>('li')].filter((i) => !i.hidden);
+    const at = visible.indexOf(item);
+    const isFolder = item.classList.contains('folder');
+    const path = item.dataset['path'] ?? '';
+    const parent = () =>
+      visible
+        .slice(0, at)
+        .reverse()
+        .find((i) => i.classList.contains('folder') && path.startsWith(`${i.dataset['path']}/`));
+    let next: HTMLElement | undefined;
+    if (e.key === 'ArrowDown') next = visible[at + 1];
+    else if (e.key === 'ArrowUp') next = visible[at - 1];
+    else if (e.key === 'ArrowLeft') {
+      if (isFolder && !this.foldedFolders.has(path)) this.toggleFolder(list, path, true);
+      else next = parent();
+    } else if (e.key === 'ArrowRight' && isFolder) {
+      if (this.foldedFolders.has(path)) this.toggleFolder(list, path, false);
+      else next = visible[at + 1];
+    } else if (isFolder && (e.key === 'Enter' || e.key === ' ')) {
+      this.toggleFolder(list, path);
+    } else return;
+    e.preventDefault();
+    next?.focus();
+  }
+
+  private fileItem(d: CommitDetails, f: FileChange, name: string, depth: number): HTMLElement {
     const views = fileViews(f, d.base);
     const li = el('li', `file status-${f.status}`);
     li.tabIndex = 0;
-    li.setAttribute('role', 'option');
+    li.setAttribute('role', 'treeitem');
+    li.setAttribute('aria-level', String(depth + 1));
+    li.style.setProperty('--depth', String(depth));
+    li.dataset['path'] = f.path;
     li.dataset['views'] = views.join(' ');
     const menu = fileMenuContext(d, f, views);
     li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
     li.append(el('span', 'file-status', f.status));
-    const name = el('span', 'file-path');
-    const slash = f.path.lastIndexOf('/');
-    if (f.oldPath !== undefined) name.append(el('span', 'file-old', f.oldPath), ' → ');
-    // File name first: in a narrow pane the directory is what gets truncated.
-    name.append(el('span', 'file-name', f.path.slice(slash + 1)));
-    if (slash >= 0) name.append(el('span', 'file-dir', f.path.slice(0, slash)));
-    li.append(name);
+    const label = el('span', 'file-path');
+    // The folder is the tree around it; a rename also shows where the file came from.
+    label.append(el('span', 'file-name', name));
+    if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
+    li.append(label);
 
     const open = (view: FileView, beside: boolean) => {
       this.openedFile = f.path;
@@ -807,15 +896,10 @@ class App {
     li.addEventListener('click', (e) => {
       open(primary, e.altKey);
     });
+    // Arrow keys are handled by the tree (onTreeKey).
     li.addEventListener('keydown', (e) => {
-      const sibling = (
-        e.key === 'ArrowDown' ? li.nextElementSibling : e.key === 'ArrowUp' ? li.previousElementSibling : null
-      ) as HTMLElement | null;
       const keyed = views.find((v) => FILE_VIEW_KEY[v] === e.key.toUpperCase() && !e.ctrlKey && !e.metaKey);
-      if (sibling) {
-        e.preventDefault();
-        sibling.focus();
-      } else if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         open(primary, e.altKey);
       } else if (keyed && e.key.length === 1) {
@@ -847,6 +931,15 @@ class App {
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
+      fileTree: [...this.expansion.querySelectorAll<HTMLElement>('.files li')]
+        .filter((li) => !li.hidden)
+        .map((li) => {
+          const depth = Number(li.style.getPropertyValue('--depth') || 0);
+          const text = li.classList.contains('folder')
+            ? `${li.querySelector('.folder-name')?.textContent ?? ''}/`
+            : (li.querySelector('.file-name')?.textContent ?? '');
+          return `${'  '.repeat(depth)}${text}`;
+        }),
       detailsSubject: this.expanded
         ? (this.expansion.querySelector('.details-subject')?.textContent ?? undefined)
         : undefined,
@@ -904,6 +997,9 @@ class App {
       case 'click':
         document.querySelector<HTMLElement>(a.selector)?.click();
         break;
+      case 'focus':
+        document.querySelector<HTMLElement>(a.selector)?.focus();
+        break;
       case 'contextMenu': {
         const target = document.querySelector<HTMLElement>(a.selector);
         const r = target?.getBoundingClientRect();
@@ -924,9 +1020,11 @@ class App {
       }
       case 'key': {
         const target =
-          a.target === 'files'
-            ? (document.activeElement?.closest('.file') ?? this.expansion.querySelector<HTMLElement>('.file'))
-            : this.scroller;
+          a.target === 'focused'
+            ? document.activeElement
+            : a.target === 'files'
+              ? (document.activeElement?.closest('.file') ?? this.expansion.querySelector<HTMLElement>('.file'))
+              : this.scroller;
         if (target instanceof HTMLElement) target.focus();
         target?.dispatchEvent(
           new KeyboardEvent('keydown', {

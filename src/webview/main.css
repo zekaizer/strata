@@ -466,21 +466,55 @@ body:not(.hover-off) .row:hover {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  /* Several columns when the editor is wide; one in narrow editors. */
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
-  column-gap: 16px;
+}
+
+.files li[hidden] {
+  display: none;
+}
+
+/* Tree rows: 16px per level; a folder's chevron sits where a file's status letter does. */
+.folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding: 0 6px 0 calc(var(--depth, 0) * 16px + 6px);
+  border-radius: 3px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.folder-chevron {
+  width: 12px;
+  font-size: 12px;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+}
+
+.folder-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body:not(.hover-off) .folder:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.folder:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }
 
 .file {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   /* Tall enough for the Old | diff | New control, so hovering does not shift the rows below. */
   min-height: 22px;
   box-sizing: border-box;
-  padding: 1px 6px;
+  /* 16px per tree level, matching .folder. */
+  padding: 1px 6px 1px calc(var(--depth, 0) * 16px + 6px);
   border-radius: 3px;
   cursor: pointer;
 }
@@ -494,7 +528,8 @@ body:not(.hover-off) .file:hover {
 }
 
 .file-status {
-  width: 1ch;
+  width: 12px;
+  text-align: center;
   font-family: var(--vscode-editor-font-family);
   font-weight: 600;
 }

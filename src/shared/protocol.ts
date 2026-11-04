@@ -81,6 +81,8 @@ export interface ProbeState {
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
   columns: string[];
+  /** Visible entries of the changed-files tree: folders end with "/", two spaces per level. */
+  fileTree: string[];
   /** Full subject shown at the top of the expanded details. */
   detailsSubject: string | undefined;
   /** Whether hover highlights are off because the pointer left the webview (or it was hidden). */
@@ -98,9 +100,17 @@ export interface ProbeState {
 export type SimulatedAction =
   | { kind: 'clickRow'; index: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
-  | { kind: 'key'; key: string; target?: 'list' | 'files'; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
+  | {
+      kind: 'key';
+      key: string;
+      target?: 'list' | 'files' | 'focused';
+      shiftKey?: boolean;
+      altKey?: boolean;
+      metaKey?: boolean;
+    }
   | { kind: 'click'; selector: string }
   | { kind: 'contextMenu'; selector: string }
+  | { kind: 'focus'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 
 export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };
