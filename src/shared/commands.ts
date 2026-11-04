@@ -10,7 +10,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
   commit: ['strataIsHead', 'strataMerge'],
-  stash: [],
+  stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],
   tag: [],
@@ -54,6 +54,20 @@ export const COMMANDS = {
   'strata.file.copyOldRelativePath': { title: 'Copy Old Relative Path', menus: [file('2_copy@3', 'strataRenamed')] },
   'strata.file.copyPatch': { title: 'Copy Patch', menus: [file('2_copy@4')] },
 
+  'strata.stash.push': {
+    title: 'Stash Changes...',
+    menus: [commit('1_worktree@1', 'strataIsHead')],
+    palette: true,
+    titleBar: { group: '3_stash@1' },
+    writes: true,
+  },
+  'strata.stash.pushUntracked': {
+    title: 'Stash Changes (Include Untracked)...',
+    menus: [commit('1_worktree@2', 'strataIsHead')],
+    palette: true,
+    titleBar: { group: '3_stash@2' },
+    writes: true,
+  },
   'strata.checkout': {
     title: 'Checkout',
     menus: [
@@ -141,6 +155,25 @@ export const COMMANDS = {
     titleBar: { group: '2_operation@1', when: "strata.operation && strata.operation != 'merge'" },
     writes: true,
   },
+  'strata.stash.apply': {
+    title: 'Apply Stash',
+    menus: [{ section: 'stash', group: '1_apply@1', when: '!strataLeftover' }],
+    writes: true,
+  },
+  'strata.stash.pop': {
+    title: 'Pop Stash',
+    menus: [{ section: 'stash', group: '1_apply@2', when: '!strataLeftover' }],
+    writes: true,
+  },
+  'strata.stash.branch': {
+    title: 'Create Branch from Stash...',
+    menus: [{ section: 'stash', group: '1_apply@3' }],
+    writes: true,
+  },
+  'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
+  'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
+  'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '3_stash@3' } },
+
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
   'strata.showStash': { title: 'Show Stash' },

@@ -606,3 +606,56 @@ export const popRefused = (done: string, reason: string, stash: string): string 
   `${done}, but git could not restore your stashed changes: ${reason} They're safe in ${stash}.`;
 
 export const OPEN_SCM = 'Open Source Control View';
+
+export const NOTHING_TO_STASH = 'No local changes to stash.';
+
+/** `n` changed tracked files, `staged` of them staged; `untracked`: Include Untracked. */
+export function stashPushInput(n: number, staged: number, untracked: boolean): { title: string; prompt: string } {
+  const files = n > 0 ? `${plural(n, 'changed file')}${staged > 0 ? ` (${staged} staged)` : ''}` : '';
+  const what = [files, untracked ? 'untracked files' : ''].filter((s) => s !== '').join(' and ');
+  return { title: 'Stash Changes', prompt: `Message (optional). Stashes ${what}.` };
+}
+
+/** `files`: counted changes, undefined when not counted in time; `base`: the commit it was made on. */
+export function dropStashConfirmation(
+  index: number,
+  message: string,
+  files: { changed: number; untracked: number } | undefined,
+  base: CommitRef,
+): Confirmation<'drop'> {
+  const on = `${base.short} "${base.subject}"`;
+  const holds =
+    files === undefined
+      ? `Made on ${on}.`
+      : `${plural(files.changed, 'changed file')}${files.untracked > 0 ? ` and ${files.untracked} untracked` : ''} on ${on}.`;
+  return {
+    message: `Drop ${stashLabel(index, message)}?`,
+    detail: `${holds} Undo brings it back as stash@{0}; after that only git fsck can find it.`,
+    buttons: [{ id: 'drop', label: 'Drop Stash' }],
+  };
+}
+
+export const stashBranchInput = (index: number, message: string, short: string): { title: string; prompt: string } => ({
+  title: `Create Branch from ${stashLabel(index, message)}`,
+  prompt: `Creates the branch at ${short}, switches to it, restores the stash there and removes it from the stash list.`,
+});
+
+export const stashBranchDirty = (short: string): string =>
+  `Commit or stash your uncommitted changes first: the branch starts at ${short}.`;
+
+/** What a finished stash operation did; `label` is stashLabel(). */
+export const STASH_DONE = {
+  stashed: (n: number, label: string): string => `Stashed ${plural(n, 'file')} as ${label}`,
+  applied: (label: string): string => `Applied ${label}`,
+  popped: (label: string): string => `Popped ${label}`,
+  dropped: (label: string): string => `Dropped ${label}`,
+  branched: (name: string, label: string): string => `Created '${name}' from ${label} and applied it`,
+};
+
+export const STASH_DOING = {
+  stashing: 'Stashing changes',
+  applying: (label: string): string => `Applying ${label}`,
+  popping: (label: string): string => `Popping ${label}`,
+  dropping: (label: string): string => `Dropping ${label}`,
+  branching: (name: string): string => `Creating '${name}' from a stash`,
+};

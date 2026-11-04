@@ -160,7 +160,7 @@ export async function checkoutDetached(host: FlowHost, rev: string): Promise<voi
 }
 
 /** Validates a new branch or tag name against git's rules and the names the graph knows. */
-const newName =
+export const newName =
   (host: FlowHost, kind: Extract<RefKind, 'branch' | 'tag'>) =>
   (name: string): string | undefined => {
     const existing = host.refs.refs.find((r) => r.kind === kind && r.short === name);

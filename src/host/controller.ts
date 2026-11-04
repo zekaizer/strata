@@ -9,7 +9,7 @@ import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
-import { readCommitPatch, readFilePatch } from '../git/patch.ts';
+import { readCommitPatch, readFilePatch, readStashPatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { pickStash } from './stash-pick.ts';
@@ -478,6 +478,23 @@ export class GraphController implements vscode.Disposable, FlowHost {
       ),
     ]);
     await this.copyPatch(patch, merge ? `merge ${short} (against its first parent)` : short, `${short}.patch`);
+  }
+
+  /** Copies a stash's tracked and untracked changes as one plain diff. */
+  async copyStashPatch(hash: string): Promise<void> {
+    const repo = this.requireRepo();
+    const s = this.stashes.find((e) => e.hash === hash);
+    const [patch, short] = await Promise.all([
+      readPatch(readStashPatch(this.api.git.path, repo.rootUri.fsPath, hash)),
+      this.shortHash(hash),
+    ]);
+    await this.copyPatch(patch, s ? `stash@{${s.index}}` : `stash ${short}`, `stash-${short}.patch`);
+  }
+
+  /** The Show Stashes pick from the palette or title bar, where the graph's own row states are not at hand. */
+  async showStashes(): Promise<void> {
+    const hash = await pickStash(this.stashes, {}, this.snapshot?.headBranch);
+    if (hash) this.reveal(hash);
   }
 
   /** Copies the change to one file of a commit as a plain diff. */

@@ -137,6 +137,14 @@ export class GraphPanel implements vscode.Disposable {
     return this.requireController().copyCommitPatch(hash);
   }
 
+  copyStashPatch(hash: string): Promise<void> {
+    return this.requireController().copyStashPatch(hash);
+  }
+
+  showStashes(): Promise<void> {
+    return this.requireController().showStashes();
+  }
+
   copyFilePatch(hash: string, base: string | undefined, file: FileChange): Promise<void> {
     return this.requireController().copyFilePatch(hash, base, file);
   }

@@ -31,6 +31,7 @@ import {
   skipCommit,
   sourceOf,
 } from './flows/history.ts';
+import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { GraphPanel } from './panel.ts';
 import { parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
@@ -199,6 +200,17 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.operation.continue': write(continueOperation, { whileStopped: true }),
   'strata.operation.abort': write(abortOperation, { whileStopped: true }),
   'strata.operation.skip': write(skipCommit, { whileStopped: true }),
+  'strata.stash.push': write((host) => stashPush(host, false)),
+  'strata.stash.pushUntracked': write((host) => stashPush(host, true)),
+  'strata.stash.apply': on(['stash'], (host, t) => restoreStash(host, t.hash, false)),
+  'strata.stash.pop': write((host, ctx) => restoreStash(host, stashHash(ctx), true)),
+  'strata.stash.branch': on(['stash'], (host, t) => stashBranch(host, t.hash)),
+  'strata.stash.copyPatch': (ctx) => {
+    const host = panel().flowHost();
+    return panel().copyStashPatch(parseTarget(ctx, ['stash'], host.refs).hash);
+  },
+  'strata.stash.drop': write((host, ctx) => dropStash(host, stashHash(ctx))),
+  'strata.showStashes': () => panel().showStashes(),
   'strata.resolveConflicts': async () => {
     const host = panel().flowHost();
     await resolveConflicts(host, await readUnmerged(host.git, host.cwd));
