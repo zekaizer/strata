@@ -662,8 +662,8 @@ class App {
     if (c.hash === this.refs.head) row.classList.add('head');
 
     const subject = el('span', 'subject');
-    for (const b of this.badges(c.hash)) subject.append(b);
-    subject.append(el('span', 'text', c.subject));
+    // The subject leads; refs follow it and give way first when the column is narrow.
+    subject.append(el('span', 'text', c.subject), ...this.badges(c.hash));
     row.append(
       el('span', 'graph-spacer'),
       subject,
