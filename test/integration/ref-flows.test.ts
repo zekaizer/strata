@@ -1,9 +1,9 @@
 import * as assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
-import { branchMenu, commitMenu, flowSuite, menu, run, selected, tagMenu } from './flow-helpers.ts';
+import { branchMenu, commitMenu, flowSuite, menu, reload, run, selected, stashRow, tagMenu } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('ref operations', () => {
@@ -125,6 +125,104 @@ describe('ref operations', () => {
       "On main: Strata autostash: switch to 'feature/search'\nOn main: my own",
       'the stash Strata made is kept, the older one untouched',
     );
+  });
+
+  const write = (file: string, content: string) => {
+    writeFileSync(join(workspaceRoot(), file), content);
+  };
+  const read = (file: string) => readFileSync(join(workspaceRoot(), file), 'utf8');
+  /** strata-new: one commit on main writing `files` ("theirs"); HEAD stays on main. */
+  const adding = async (files: Record<string, string>) => {
+    git('switch', '--quiet', '--create', 'strata-new', 'main');
+    for (const [f, content] of Object.entries(files)) write(f, content);
+    git('add', '--', ...Object.keys(files));
+    git('commit', '--quiet', '-m', 'Theirs');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    return git('rev-parse', 'strata-new');
+  };
+
+  it('moves untracked files in the way of a checkout into a stash it never pops, when told to', async () => {
+    const tip = await adding({ 'new.txt': 'theirs\n', 'two words.txt': 'theirs\n' });
+    write('new.txt', 'mine\n');
+    write('two words.txt', 'mine too\n');
+    await run('strata.checkout', branchMenu('strata-new', tip));
+    assert.deepEqual(ui.of('confirm'), [
+      {
+        kind: 'confirm',
+        message: "2 untracked files are in the way of the switch to 'strata-new': new.txt and two words.txt.",
+        detail:
+          "Strata can move them into a stash and try again. That stash stays in the list; Strata does not bring the files back, because the switch to 'strata-new' puts its own versions there.",
+        buttons: ['Stash Them & Retry'],
+      },
+    ]);
+    assert.equal(git('branch', '--show-current'), 'main', 'cancelled: nothing changed');
+    assert.equal(read('new.txt'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+
+    ui.clear();
+    ui.press('Stash Them & Retry');
+    await run('strata.checkout', branchMenu('strata-new', tip));
+    assert.equal(git('branch', '--show-current'), 'strata-new');
+    assert.equal(read('new.txt'), 'theirs\n');
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+    assert.equal(
+      git('stash', 'list', '--format=%gs'),
+      "On main: Strata: untracked files in the way of switch to 'strata-new'",
+    );
+    assert.equal(git('show', 'stash@{0}^3:two words.txt'), 'mine too');
+    assert.equal(git('diff', '--stat', 'stash@{0}^1', 'stash@{0}'), '', 'no tracked changes in it');
+    const row = await stashRow(panel(), git('rev-parse', 'refs/stash'));
+    assert.equal(row.autostash, false, 'not an autostash Strata owes a restore');
+    assert.equal((await panel().probe()).leftover, undefined);
+  });
+
+  it('stashes around a checkout again after moving untracked files out of its way', async () => {
+    const lines = (first: string, last: string) => `${first}\n2\n3\n4\n${last}\n`;
+    write('lines.txt', lines('1', '5'));
+    git('add', 'lines.txt');
+    git('commit', '--quiet', '-m', 'Lines');
+    const tip = await adding({ 'lines.txt': lines('one', '5'), 'new.txt': 'theirs\n' });
+    write('lines.txt', lines('1', 'five'));
+    write('new.txt', 'mine\n');
+    ui.press('Stash & Switch', 'Stash It & Retry');
+    await run('strata.checkout', branchMenu('strata-new', tip));
+    assert.deepEqual(
+      ui.of('confirm').map((q) => q.message),
+      [
+        "Switching to 'strata-new' would overwrite your changes to 1 file.",
+        "1 untracked file is in the way of the switch to 'strata-new': new.txt.",
+      ],
+    );
+    assert.equal(git('branch', '--show-current'), 'strata-new');
+    assert.equal(read('lines.txt'), lines('one', 'five'), 'the stashed change came back');
+    assert.equal(
+      git('stash', 'list', '--format=%gs'),
+      "On main: Strata: untracked files in the way of switch to 'strata-new'",
+      "only the untracked files' stash is left",
+    );
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+    await stashRow(panel(), git('rev-parse', 'refs/stash'));
+    assert.equal((await panel().probe()).leftover, undefined);
+  });
+
+  it("shows git's error when the files it names in the way are not untracked files here", async () => {
+    // git lists names unquoted: one with a newline in it comes back as two that name no file.
+    const tip = await adding({ 'a\nb.txt': 'theirs\n' });
+    write('a\nb.txt', 'mine\n');
+    await run('strata.checkout', branchMenu('strata-new', tip));
+    assert.deepEqual(ui.of('confirm'), []);
+    assert.match(
+      ui.of('notify').find((n) => n.level === 'error')?.message ?? '',
+      /^error: The following untracked working tree files would be overwritten by checkout:\n\ta\nb\.txt$/,
+    );
+    assert.equal(git('branch', '--show-current'), 'main');
   });
 
   it('lets git merge the changes into the target, and says when that conflicted', async () => {

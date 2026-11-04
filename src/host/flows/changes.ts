@@ -1,21 +1,31 @@
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveStashChoices, type DirtyFacts, type StashChoices, type StashOp } from '../../core/autostash.ts';
+import { untrackedInTheWay } from '../../core/git-error.ts';
 import type { Worktree } from '../../core/repo-state.ts';
 import {
   dirtySection,
   gitFailure,
+  inTheWayConfirmation,
+  inTheWayStash,
   OPEN_SCM,
   popConflicted,
   popPartial,
   popRefused,
   stashLabel,
 } from '../../core/wording.ts';
-import { readConfigBool, readOverlap, readStash, readStashTop, readUnmerged } from '../../git/facts.ts';
+import {
+  readConfigBool,
+  readOverlap,
+  readStash,
+  readStashTop,
+  readUnmerged,
+  readUntrackedIn,
+} from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readOperationState, readWorktree } from '../../git/state.ts';
-import { notify, type FlowHost } from '../flow.ts';
+import { notify, run, type Expect, type FlowHost } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 
 /** Uncommitted changes as an operation meets them, read right before it confirms. */
@@ -116,6 +126,45 @@ export async function stashAround(
     throw e;
   }
   return created === undefined ? { kind: 'none' } : restore(host, exec, created);
+}
+
+/**
+ * Runs `steps` as run() does. When git refuses because untracked files are where `op` (as
+ * IN_THE_WAY_OF names it) puts files of its own, offers to move exactly those into a stash that
+ * Strata never pops, and runs `steps` once more. A first attempt that stashed around itself gave
+ * its changes back on the refusal, so the second stashes again.
+ */
+export async function runMovingUntracked<T>(
+  host: FlowHost,
+  label: string,
+  op: string,
+  steps: (exec: Exec) => Promise<T>,
+  expect: readonly Expect[] = [],
+): Promise<T | undefined> {
+  try {
+    return await run(host, label, steps, { expect });
+  } catch (e) {
+    const files = await inTheWay(host, e);
+    if (files === undefined) throw e;
+    if ((await host.ui.confirm(inTheWayConfirmation(op, files))) === undefined) return undefined;
+    return run(
+      host,
+      label,
+      async (exec) => {
+        await exec({ kind: 'stashPush', message: inTheWayStash(op), untracked: 'unignored', paths: files });
+        return steps(exec);
+      },
+      { expect },
+    );
+  }
+}
+
+/** The untracked files a refusal names, when that is all that stopped git and it left nothing in progress. */
+async function inTheWay(host: FlowHost, e: unknown): Promise<string[] | undefined> {
+  if (!(e instanceof GitOpError) || e.kind !== 'untrackedOverwrite') return undefined;
+  if (await readOperationState(host.git, host.cwd)) return undefined;
+  const listed = untrackedInTheWay(e.stderr);
+  return listed.length === 0 ? undefined : readUntrackedIn(host.git, host.cwd, listed);
 }
 
 /**

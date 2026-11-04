@@ -1,5 +1,6 @@
 import {
   dropStashConfirmation,
+  IN_THE_WAY_OF,
   NOTHING_TO_STASH,
   STASH_DOING,
   STASH_DONE,
@@ -14,7 +15,7 @@ import { runGit } from '../../git/run.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
 import { Outdated } from '../target.ts';
-import { reportRestore, restore } from './changes.ts';
+import { reportRestore, restore, runMovingUntracked } from './changes.ts';
 import { newName } from './refs.ts';
 
 /** A stash row's stash, as it is now; Outdated when it left the list. */
@@ -118,10 +119,16 @@ export async function stashBranch(host: FlowHost, hash: string): Promise<void> {
     validate: newName(host, 'branch'),
   });
   if (name === undefined) return;
-  const ran = await run(host, STASH_DOING.branching(name), async (exec) => {
-    const now = await current(host, hash);
-    return exec({ kind: 'stashBranch', name, index: now.index });
-  });
+  // Resolved again inside: a stash that moves untracked files out of the way shifts the numbers.
+  const ran = await runMovingUntracked(
+    host,
+    STASH_DOING.branching(name),
+    IN_THE_WAY_OF.stashBranch(name),
+    async (exec) => {
+      const now = await current(host, hash);
+      return exec({ kind: 'stashBranch', name, index: now.index });
+    },
+  );
   if (ran === undefined) return;
   await finish(host, { message: STASH_DONE.branched(name, s.label), focus: (await readHead(host.git, host.cwd)).hash });
 }

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import { untrackedInTheWay } from '../../src/core/git-error.ts';
 import { argv, type Operation } from '../../src/core/operations.ts';
 import { readOperationState } from '../../src/git/state.ts';
 import { GitOpError, runGitOp } from '../../src/git/op.ts';
@@ -282,5 +283,124 @@ describe('operations', () => {
     });
     assert.equal(run(origin, 'rev-parse', 'main'), head(c));
     assert.equal(run(origin, 'branch', '--list', 'fix'), '');
+  });
+});
+
+describe('operations refused by untracked files in the way', () => {
+  const root = tempDir('in-the-way');
+  let n = 0;
+  /**
+   * main: base (f.txt, gone.txt, s.txt), then main1 deleting gone.txt. side from base adds new.txt,
+   * "two words.txt" and a file `notes`, and changes s.txt. A clone of it tracks origin/side.
+   */
+  const repo = () => {
+    const d = join(root, `r${n++}`);
+    mkdirSync(d);
+    run(d, 'init', '--quiet', '-b', 'main');
+    for (const f of ['f.txt', 'gone.txt', 's.txt']) writeFileSync(join(d, f), 'base\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'base');
+    run(d, 'checkout', '--quiet', '-b', 'side');
+    for (const f of ['new.txt', 'two words.txt', 'notes', 's.txt']) writeFileSync(join(d, f), 'side\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'side');
+    run(d, 'checkout', '--quiet', 'main');
+    run(d, 'rm', '--quiet', 'gone.txt');
+    run(d, 'commit', '--quiet', '-m', 'main1');
+    return d;
+  };
+  const mine = (d: string, ...files: string[]) => {
+    for (const f of files) {
+      mkdirSync(join(d, f, '..'), { recursive: true });
+      writeFileSync(join(d, f), 'mine\n');
+    }
+  };
+  /** Runs `o`, which git must refuse, and resolves its error once nothing is left in progress. */
+  const refused = async (d: string, o: Operation) => {
+    const before = run(d, 'rev-parse', 'HEAD');
+    const e = await op(d, o).then(
+      () => assert.fail(`${o.kind} ran`),
+      (e: unknown) => e,
+    );
+    assert.ok(e instanceof GitOpError);
+    assert.equal(await readOperationState('git', d), undefined, 'nothing in progress');
+    assert.equal(run(d, 'rev-parse', 'HEAD'), before, 'HEAD did not move');
+    return e;
+  };
+  const blocks = async (d: string, o: Operation, paths: string[]) => {
+    const e = await refused(d, o);
+    assert.equal(e.kind, 'untrackedOverwrite');
+    assert.deepEqual(untrackedInTheWay(e.stderr), paths);
+  };
+  const side = (d: string) => run(d, 'rev-parse', 'side');
+  const both = ['new.txt', 'two words.txt'];
+
+  it('lists them for a switch, a detach and a new branch', async () => {
+    const d = repo();
+    mine(d, ...both);
+    await blocks(d, { kind: 'switch', branch: 'side', migrate: false }, both);
+    await blocks(d, { kind: 'detach', commit: side(d), migrate: false }, both);
+    await blocks(d, { kind: 'createBranch', name: 'nb', at: side(d), migrate: false }, both);
+  });
+
+  it('lists them for a checkout of a remote branch', async () => {
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', repo(), c);
+    mine(c, ...both);
+    await blocks(c, { kind: 'trackRemote', name: 'side', remoteRef: 'refs/remotes/origin/side', migrate: false }, both);
+  });
+
+  it('lists them for a merge and a rebase, with or without the autostash', async () => {
+    const d = repo();
+    mine(d, ...both);
+    await blocks(d, { kind: 'merge', ref: 'side', mode: 'ff', autostash: false }, both);
+    await blocks(d, { kind: 'rebase', onto: side(d), from: undefined, autostash: false }, both);
+    writeFileSync(join(d, 'f.txt'), 'dirty\n');
+    await blocks(d, { kind: 'merge', ref: 'side', mode: 'noFastForward', autostash: true }, both);
+    await blocks(d, { kind: 'rebase', onto: side(d), from: undefined, autostash: true }, both);
+    assert.equal(run(d, 'diff', '--name-only'), 'f.txt', 'git put its autostash back');
+  });
+
+  it('lists them for a cherry pick and a revert', async () => {
+    const d = repo();
+    mine(d, ...both);
+    await blocks(d, { kind: 'cherryPick', commit: side(d) }, both);
+    mine(d, 'gone.txt');
+    await blocks(d, { kind: 'revert', commit: run(d, 'rev-parse', 'main') }, ['gone.txt']);
+  });
+
+  it('lists them for a branch from a stash made on another commit', async () => {
+    const d = repo();
+    run(d, 'checkout', '--quiet', 'side');
+    writeFileSync(join(d, 'f.txt'), 'stashed\n');
+    run(d, 'stash', 'push', '--quiet');
+    const stash = run(d, 'rev-parse', 'refs/stash');
+    run(d, 'checkout', '--quiet', 'main');
+    mine(d, ...both);
+    await blocks(d, { kind: 'stashBranch', name: 'nb', index: 0 }, both);
+    assert.equal(run(d, 'rev-parse', 'refs/stash'), stash, 'the stash stays');
+    assert.equal(run(d, 'branch', '--list', 'nb'), '', 'no branch was made');
+  });
+
+  it('lists a directory whose untracked files a file would replace', async () => {
+    const d = repo();
+    mine(d, 'notes/a.txt', 'notes/b/c.txt');
+    await blocks(d, { kind: 'switch', branch: 'side', migrate: false }, ['notes']);
+    mine(d, 'new.txt');
+    await blocks(d, { kind: 'switch', branch: 'side', migrate: false }, ['notes', 'new.txt']);
+  });
+
+  it('lists none when local changes are in the way too', async () => {
+    const d = repo();
+    mine(d, ...both);
+    writeFileSync(join(d, 's.txt'), 'dirty\n');
+    for (const o of [
+      { kind: 'switch', branch: 'side', migrate: false },
+      { kind: 'merge', ref: 'side', mode: 'ff', autostash: false },
+      { kind: 'cherryPick', commit: side(d) },
+    ] satisfies Operation[]) {
+      const e = await refused(d, o);
+      assert.equal(e.kind, 'localChanges');
+    }
   });
 });

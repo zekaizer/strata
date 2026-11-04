@@ -342,6 +342,92 @@ describe('history operations', () => {
     assert.equal(git('stash', 'list'), '');
   });
 
+  /** strata-new from main: one commit adding new.txt; HEAD back on main, new.txt untracked there. */
+  const inTheWay = async () => {
+    branchWith('strata-new', 'main', 'new.txt', 'theirs\n');
+    git('switch', '--quiet', 'main');
+    write('new.txt', 'mine\n');
+    await reload(panel());
+    return git('rev-parse', 'strata-new');
+  };
+  const onlyStash = (op: string) => {
+    assert.equal(git('stash', 'list', '--format=%gs'), `On main: Strata: untracked files in the way of ${op}`);
+  };
+  const noTrouble = () => {
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+  };
+
+  it("merges after moving untracked files out of its way, with git's autostash both times", async () => {
+    const tip = await inTheWay();
+    write('NOTES.md', 'dirty\n');
+    ui.press('Stash & Merge', 'Stash It & Retry');
+    await run('strata.merge', branchMenu('strata-new', tip));
+    assert.equal(ui.of('confirm')[1]?.message, "1 untracked file is in the way of the merge of 'strata-new': new.txt.");
+    assert.equal(git('rev-parse', 'HEAD'), tip, 'fast-forwarded');
+    assert.equal(read('new.txt'), 'theirs\n');
+    assert.equal(read('NOTES.md'), 'dirty\n');
+    onlyStash("merge of 'strata-new'");
+    assert.equal(git('show', 'stash@{0}^3:new.txt'), 'mine');
+    noTrouble();
+  });
+
+  it('rebases after moving untracked files out of its way', async () => {
+    const onto = await inTheWay();
+    branchWith('strata-topic', 'main~1', 'topic.txt', 'topic\n');
+    await reload(panel());
+    ui.press('Rebase', 'Stash It & Retry');
+    await run('strata.rebase', branchMenu('strata-new', onto));
+    assert.equal(
+      ui.of('confirm')[1]?.message,
+      "1 untracked file is in the way of the rebase onto 'strata-new': new.txt.",
+    );
+    assert.equal(git('rev-parse', 'HEAD~1'), onto);
+    assert.equal(read('new.txt'), 'theirs\n');
+    assert.equal(
+      git('stash', 'list', '--format=%gs'),
+      "On strata-topic: Strata: untracked files in the way of rebase onto 'strata-new'",
+    );
+    noTrouble();
+  });
+
+  it('cherry picks after moving untracked files out of its way, stashing around it again', async () => {
+    const picked = await inTheWay();
+    const short = git('rev-parse', '--short', picked);
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Cherry Pick', 'Stash It & Retry');
+    await run('strata.cherryPick', commitMenu(picked));
+    assert.equal(
+      ui.of('confirm')[1]?.message,
+      `1 untracked file is in the way of the cherry pick of ${short}: new.txt.`,
+    );
+    assert.equal(git('log', '-1', '--format=%s'), 'new.txt: theirs');
+    assert.equal(read('new.txt'), 'theirs\n');
+    assert.equal(read('NOTES.md'), 'mine\n', 'the stashed change came back');
+    onlyStash(`cherry pick of ${short}`);
+    noTrouble();
+    assert.equal(await leftover(), undefined);
+  });
+
+  it('reverts after moving untracked files out of its way', async () => {
+    git('rm', '--quiet', 'NOTES.md');
+    git('commit', '--quiet', '-m', 'Drop notes');
+    const dropped = git('rev-parse', 'HEAD');
+    const notes = git('show', 'HEAD~1:NOTES.md');
+    write('NOTES.md', 'mine\n');
+    await reload(panel());
+    const short = git('rev-parse', '--short', dropped);
+    ui.press('Stash It & Retry');
+    await run('strata.revert', commitMenu(dropped));
+    assert.equal(ui.of('confirm')[0]?.message, `1 untracked file is in the way of the revert of ${short}: NOTES.md.`);
+    assert.equal(git('log', '-1', '--format=%s'), 'Revert "Drop notes"');
+    assert.equal(git('show', 'HEAD:NOTES.md'), notes);
+    onlyStash(`revert of ${short}`);
+    noTrouble();
+  });
+
   it('reverts a commit, and undoes that', async () => {
     const before = git('rev-parse', 'main');
     const subject = git('log', '-1', '--format=%s', 'main');

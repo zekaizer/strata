@@ -142,6 +142,35 @@ describe('stash operations', () => {
     assert.equal(git('stash', 'list'), '');
   });
 
+  it('creates a branch from a stash after moving untracked files out of the way of its checkout', async () => {
+    git('switch', '--quiet', '--create', 'strata-later', 'main');
+    writeFileSync(join(workspaceRoot(), 'later.txt'), 'theirs\n');
+    git('add', 'later.txt');
+    git('commit', '--quiet', '-m', 'Later');
+    const base = git('rev-parse', 'HEAD');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'stashed\n');
+    git('stash', 'push', '--quiet');
+    const w = git('rev-parse', 'refs/stash');
+    git('switch', '--quiet', 'main');
+    writeFileSync(join(workspaceRoot(), 'later.txt'), 'mine\n');
+    await reload(panel());
+    ui.type('strata-from-stash').press('Stash It & Retry');
+    await run('strata.stash.branch', stashMenu(w));
+    assert.equal(
+      ui.of('confirm')[0]?.message,
+      "1 untracked file is in the way of the switch to the new branch 'strata-from-stash': later.txt.",
+    );
+    assert.equal(git('branch', '--show-current'), 'strata-from-stash');
+    assert.equal(git('rev-parse', 'HEAD'), base);
+    assert.equal(notes(), 'stashed\n');
+    assert.equal(
+      git('stash', 'list', '--format=%gs'),
+      "On main: Strata: untracked files in the way of switch to the new branch 'strata-from-stash'",
+      'the stash it was made from is gone, the one that moved later.txt stays',
+    );
+    assert.equal(git('show', 'stash@{0}^3:later.txt'), 'mine');
+  });
+
   it('stashes untracked files too when asked to', async () => {
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
     writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');

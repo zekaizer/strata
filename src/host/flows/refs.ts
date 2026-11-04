@@ -14,6 +14,7 @@ import {
   deleteTagConfirmation,
   DOING,
   DONE,
+  IN_THE_WAY_OF,
   leaveBehindConfirmation,
   migrateConflicted,
   NEEDS_NEW_NAME,
@@ -39,7 +40,7 @@ import {
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { finish, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
-import { changes, reportRestore, resolveConflicts, stashAround, type Restored } from './changes.ts';
+import { changes, reportRestore, resolveConflicts, runMovingUntracked, stashAround, type Restored } from './changes.ts';
 
 /** A move of HEAD: checkout of a branch or commit, or creating a branch and switching to it. */
 interface SwitchTo {
@@ -80,14 +81,15 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   }
   let restored: Restored | undefined;
   try {
-    restored = await run(
+    restored = await runMovingUntracked(
       host,
       DOING.switching(s.to),
+      IN_THE_WAY_OF.switch(s.to),
       (exec) =>
         choice === 'stash'
           ? stashAround(host, exec, autostashMessage('switch', `to ${s.to}`), () => exec(s.op(false)))
           : exec(s.op(choice === 'migrate')).then((): Restored => ({ kind: 'none' })),
-      { expect },
+      expect,
     );
   } catch (e) {
     if (e instanceof GitOpError && e.kind === 'checkedOutElsewhere' && s.branch !== undefined) {

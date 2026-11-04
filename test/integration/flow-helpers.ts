@@ -37,6 +37,14 @@ export async function reload(panel: GraphPanel): Promise<void> {
 export const selected = (panel: GraphPanel, hash: string) =>
   waitFor(`selection of ${hash}`, async () => (await panel.probe()).selected === hash);
 
+/** The row of stash commit `hash`, once the graph draws it. */
+export const stashRow = (panel: GraphPanel, hash: string) =>
+  waitFor(`the row of stash ${hash}`, async () => {
+    const p = await panel.probe();
+    const i = Object.entries(p.rowHashes).find(([, h]) => h === hash)?.[0];
+    return i !== undefined && p.stashRows[Number(i)];
+  });
+
 /**
  * A graph whose flows answer from `ui`, on the workspace repository restored after every test.
  * Call in a describe body.

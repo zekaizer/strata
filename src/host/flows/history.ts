@@ -11,6 +11,7 @@ import {
   gitFailure,
   HISTORY_DOING,
   HISTORY_DONE,
+  IN_THE_WAY_OF,
   mergeConfirmation,
   pickConfirmation,
   quote,
@@ -53,6 +54,7 @@ import {
   reportRestore,
   resolveConflicts,
   restore,
+  runMovingUntracked,
   stashAround,
   type Restored,
 } from './changes.ts';
@@ -179,17 +181,16 @@ async function heldStash(host: FlowHost, state: OperationState) {
 }
 
 /**
- * Runs an operation that may stop; resolves its stderr, or undefined when it stopped or did not
- * run. It stopped when git failed and left it in progress (at conflicts, or with nothing to commit).
+ * Runs an operation that may stop (`attempt` runs it, as run() does); resolves its stderr, or
+ * undefined when it stopped or did not run. It stopped when git failed and left it in progress (at
+ * conflicts, or with nothing to commit).
  */
 async function runStoppable(
   host: FlowHost,
-  label: string,
-  steps: (exec: Exec) => Promise<{ stderr: string; restored?: Restored }>,
-  expect: readonly Expect[],
+  attempt: () => Promise<{ stderr: string; restored?: Restored } | undefined>,
 ): Promise<{ stderr: string; restored?: Restored } | undefined> {
   try {
-    return await run(host, label, steps, { expect });
+    return await attempt();
   } catch (e) {
     if (!(e instanceof GitOpError)) throw e;
     const state = await readOperationState(host.git, host.cwd);
@@ -244,11 +245,14 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
     if (answer === undefined) return;
     mode = answer === 'noFastForward' ? 'noFastForward' : 'ff';
   } else mode = 'ff';
-  const r = await runStoppable(
-    host,
-    HISTORY_DOING.merging(src.name, h.name),
-    (exec) => exec({ kind: 'merge', ref: src.arg, mode, autostash }),
-    [h.expect, ...sourceExpect(src, from.hash)],
+  const r = await runStoppable(host, () =>
+    runMovingUntracked(
+      host,
+      HISTORY_DOING.merging(src.name, h.name),
+      IN_THE_WAY_OF.merge(src.name),
+      (exec) => exec({ kind: 'merge', ref: src.arg, mode, autostash }),
+      [h.expect, ...sourceExpect(src, from.hash)],
+    ),
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
@@ -287,11 +291,14 @@ export async function rebase(
     const facts = { branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
     if ((await host.ui.confirm(rebaseConfirmation(facts, c.section, buttons))) === undefined) return;
   }
-  const r = await runStoppable(
-    host,
-    HISTORY_DOING.rebasing(h.name, onto.name),
-    (exec) => exec({ kind: 'rebase', onto: target.hash, from, autostash: dirty }),
-    [h.expect, ...sourceExpect(onto, target.hash)],
+  const r = await runStoppable(host, () =>
+    runMovingUntracked(
+      host,
+      HISTORY_DOING.rebasing(h.name, onto.name),
+      IN_THE_WAY_OF.rebase(onto.name),
+      (exec) => exec({ kind: 'rebase', onto: target.hash, from, autostash: dirty }),
+      [h.expect, ...sourceExpect(onto, target.hash)],
+    ),
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
@@ -323,19 +330,22 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
   const op: Operation =
     kind === 'cherryPick' ? { kind: 'cherryPick', commit: c.hash } : { kind: 'revert', commit: c.hash };
   const label = kind === 'cherryPick' ? HISTORY_DOING.picking(c.short) : HISTORY_DOING.reverting(c.short);
-  const r = await runStoppable(
-    host,
-    label,
-    async (exec) => {
-      if (choice !== 'stash') return exec(op);
-      const message = autostashMessage(kind, `${c.short} onto ${h.name}`);
-      let stderr = '';
-      const restored = await stashAround(host, exec, message, async () => {
-        stderr = (await exec(op)).stderr;
-      });
-      return { stderr, restored };
-    },
-    [h.expect],
+  const r = await runStoppable(host, () =>
+    runMovingUntracked(
+      host,
+      label,
+      IN_THE_WAY_OF[kind](c.short),
+      async (exec) => {
+        if (choice !== 'stash') return exec(op);
+        const message = autostashMessage(kind, `${c.short} onto ${h.name}`);
+        let stderr = '';
+        const restored = await stashAround(host, exec, message, async () => {
+          stderr = (await exec(op)).stderr;
+        });
+        return { stderr, restored };
+      },
+      [h.expect],
+    ),
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
@@ -441,14 +451,11 @@ async function settle(
   op: Operation,
   done: string,
 ): Promise<void> {
-  const r = await runStoppable(
-    host,
-    label,
-    async (exec) => {
+  const r = await runStoppable(host, () =>
+    run(host, label, async (exec) => {
       const { stderr } = await exec(op);
       return { stderr, restored: await restoreHeld(host, exec, state) };
-    },
-    [],
+    }),
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);

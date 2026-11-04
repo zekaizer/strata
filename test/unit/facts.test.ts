@@ -20,6 +20,7 @@ import {
   readUnmerged,
   readUnmergedCommits,
   readUntrackedAt,
+  readUntrackedIn,
   readUpstream,
   readWorktreeBranches,
 } from '../../src/git/facts.ts';
@@ -191,6 +192,29 @@ describe('confirmation facts', () => {
     assert.deepEqual(await readUntrackedAt('git', dir, 'main'), ['b.txt'], 'b.txt is tracked on main only');
     rmSync(join(dir, 'b.txt'));
     run(dir, 'checkout', '--quiet', 'main');
+  });
+
+  it('reads back the untracked files git named in the way, or none when it named one that is not', async () => {
+    mkdirSync(join(dir, 'notes', 'old'), { recursive: true });
+    for (const f of ['one.txt', 'notes/a.txt', 'notes/old/b.txt', 'notes/c.log', 'x*y.txt'])
+      writeFileSync(join(dir, f), 'mine\n');
+    run(dir, 'config', 'core.excludesFile', join(root, 'ignore'));
+    writeFileSync(join(root, 'ignore'), '*.log\n');
+    try {
+      assert.deepEqual(await readUntrackedIn('git', dir, ['one.txt', 'notes', 'x*y.txt']), [
+        'notes/a.txt',
+        'notes/old/b.txt',
+        'one.txt',
+        'x*y.txt',
+      ]);
+      assert.equal(await readUntrackedIn('git', dir, ['one.txt', 'a']), undefined, 'a names no file');
+      assert.equal(await readUntrackedIn('git', dir, ['a.txt']), undefined, 'tracked');
+      assert.equal(await readUntrackedIn('git', dir, ['notes/c.log']), undefined, 'ignored: git overwrites it');
+      assert.equal(await readUntrackedIn('git', dir, []), undefined);
+    } finally {
+      run(dir, 'config', '--unset', 'core.excludesFile');
+      for (const f of ['one.txt', 'notes', 'x*y.txt']) rmSync(join(dir, f), { recursive: true });
+    }
   });
 
   it('names the other worktrees branches are checked out in', async () => {

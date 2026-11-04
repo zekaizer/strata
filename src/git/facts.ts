@@ -240,6 +240,25 @@ export async function readUntrackedAt(git: string, cwd: string, target: string):
   return found;
 }
 
+/**
+ * The untracked files git does not ignore at `paths` or inside them (an error's untrackedInTheWay);
+ * undefined when one of `paths` has none, so the list was not what git meant.
+ */
+export async function readUntrackedIn(
+  git: string,
+  cwd: string,
+  paths: readonly string[],
+): Promise<string[] | undefined> {
+  const found: string[] = [];
+  for (let i = 0; i < paths.length; i += 500) {
+    const chunk = paths.slice(i, i + 500).map((p) => `:(literal)${p}`);
+    const out = await runGit(git, cwd, ['ls-files', '--others', '--exclude-standard', '-z', '--', ...chunk]);
+    found.push(...out.split('\0').filter((p) => p !== ''));
+  }
+  const named = (p: string) => found.some((f) => f === p || f.startsWith(`${p}/`));
+  return paths.length > 0 && paths.every(named) ? found : undefined;
+}
+
 /** A git config value as written; undefined when unset. */
 export const readConfig = (git: string, cwd: string, key: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['config', '--get', key]));

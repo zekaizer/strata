@@ -278,6 +278,30 @@ export function switchConfirmation<C extends StashChoice>(
   };
 }
 
+/** Operations as "untracked files in the way of the …" names them. */
+export const IN_THE_WAY_OF = {
+  /** `to`: as DOING.switching names it. */
+  switch: (to: string): string => `switch to ${to}`,
+  merge: (src: string): string => `merge of ${src}`,
+  rebase: (onto: string): string => `rebase onto ${onto}`,
+  cherryPick: (short: string): string => `cherry pick of ${short}`,
+  revert: (short: string): string => `revert of ${short}`,
+  stashBranch: (name: string): string => `switch to the new branch '${name}'`,
+};
+
+/** The stash that moves untracked files out of the way of `op` (IN_THE_WAY_OF); Strata never pops it. */
+export const inTheWayStash = (op: string): string => `Strata: untracked files in the way of ${op}`;
+
+/** git refused `op` (IN_THE_WAY_OF) because untracked `files` are where it puts files of its own. */
+export function inTheWayConfirmation(op: string, files: readonly string[]): Confirmation<'stash'> {
+  const one = files.length === 1;
+  return {
+    message: `${plural(files.length, 'untracked file')} ${one ? 'is' : 'are'} in the way of the ${op}: ${fileList(files)}.`,
+    detail: `Strata can move ${one ? 'it' : 'them'} into a stash and try again. That stash stays in the list; Strata does not bring the ${one ? 'file' : 'files'} back, because the ${op} puts its own ${one ? 'version' : 'versions'} there.`,
+    buttons: [{ id: 'stash', label: one ? 'Stash It & Retry' : 'Stash Them & Retry' }],
+  };
+}
+
 /** HEAD is detached on `head`, with `count` commits no ref reaches. */
 export function leaveBehindConfirmation(count: number, head: CommitRef): Confirmation<'switch'> {
   return {
