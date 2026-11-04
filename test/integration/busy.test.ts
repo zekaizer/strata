@@ -83,3 +83,39 @@ describe('while an operation runs', () => {
     assert.equal(s.selected, order()[7], "the user's choice stays");
   });
 });
+
+describe('while history loads', () => {
+  let panel: GraphPanel;
+
+  before(async () => {
+    panel = (await strata()).show();
+    await panel.whenReady();
+    await waitFor('history', async () => (await panel.probe()).done);
+  });
+  after(() => {
+    panel.dispose();
+  });
+
+  it('drops a page that a newer history made moot, instead of reporting it as an error', async () => {
+    const host = panel.flowHost();
+    const { alerted, generation } = await panel.probe();
+    let raced = false;
+    // The first page of the new history is being read when the next reset comes.
+    const sub = panel.onDidReceiveMessage((m) => {
+      if (m.type !== 'loadMore' || raced) return;
+      raced = true;
+      void host.refresh();
+    });
+    try {
+      await host.refresh();
+      await waitFor('the newer history', async () => {
+        const p = await panel.probe();
+        return p.generation >= generation + 2 && p.done;
+      });
+      assert.ok(raced);
+      assert.equal((await panel.probe()).alerted, alerted);
+    } finally {
+      sub.dispose();
+    }
+  });
+});

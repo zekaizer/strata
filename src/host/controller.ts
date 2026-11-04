@@ -171,7 +171,11 @@ export class GraphController implements vscode.Disposable, FlowHost {
         case 'loadMore':
           if (m.generation === this.generation && this.reader) {
             const started = performance.now();
-            const page = await this.reader.next(m.count);
+            const page = await this.reader.next(m.count).catch((e: unknown) => {
+              // A reset disposed the reader: that history is gone, and the graph is loading the next one.
+              if (m.generation === this.generation) throw e;
+            });
+            if (!page) break;
             if (this.timedGeneration !== m.generation) {
               this.timedGeneration = m.generation;
               if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph();
