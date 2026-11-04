@@ -6,3 +6,4 @@
 - Relative imports use explicit `.ts` extensions; only erasable TS syntax (no enums, namespaces, parameter properties).
 - Before committing: `npm run check`; for host/webview changes also `npm run test:integration`.
 - Visual changes: verify with `npm run playground:shot` and `npm run shot`, and look at the PNGs.
+- Docs: `README.md` is end-user documentation only (features, usage, requirements); developer material goes in `docs/` (`docs/DEVELOPMENT.md`, ADRs).

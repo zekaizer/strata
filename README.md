@@ -1,76 +1,35 @@
 # Strata
 
-Commit graph for git repositories in VS Code. In-house, clean-room
-implementation. Architecture and toolchain decisions:
-`docs/adr/0001-architecture-and-toolchain.md`.
+A fast commit graph for git repositories in VS Code. It reads history page by
+page, so it opens quickly even on very large repositories.
+
+## Features
+
+- Commit graph of all local branches, remote-tracking branches, tags and HEAD,
+  with branch, remote, tag and stash badges on their commits.
+- Commit details: author, committer, full message, parents and changed files.
+- Click a changed file to open its diff in the VS Code diff editor.
+- Works in local folders, WSL, SSH and other remote workspaces: Strata runs
+  where the repository is.
+- Follows your color theme, including high contrast themes; graph colors adapt
+  to the theme's background so lines stay readable.
+
+## Usage
+
+- Run **Strata: Show Commit Graph** from the Command Palette, or click the
+  commit-graph button in the Source Control view title bar.
+- Scroll to load more history.
+- Select a commit (click, or ↑/↓ with the list focused) to show its details;
+  <kbd>Esc</kbd> closes them.
+- Click a file in the details to open its diff against the parent commit.
+- Use the refresh button after changing the repository outside VS Code.
 
 ## Requirements
 
-- VS Code >= 1.90 (runs in the workspace extension host: local, WSL, SSH)
-- git on the host that has the repository
+- VS Code 1.90 or later.
+- git installed where the repository is (the built-in Git extension must be
+  enabled).
 
-## Development
+## Feedback
 
-Requires Node >= 22.18 (unit tests run `.ts` directly via type stripping).
-
-```bash
-npm ci
-```
-
-| Task                                   | Command                                             |
-| -------------------------------------- | --------------------------------------------------- |
-| Build once / watch                     | `npm run build` / `npm run watch`                   |
-| Typecheck + lint + format + unit tests | `npm run check`                                     |
-| Unit tests only                        | `npm run test:unit`                                 |
-| Integration tests (VS Code stable)     | `npm run test:integration`                          |
-| Integration tests (VS Code 1.90.0)     | `npm run test:integration:min`                      |
-| Everything                             | `npm test`                                          |
-| Screenshot the panel in all themes     | `npm run shot` → `artifacts/shots/*.png`            |
-| Webview playground in a browser        | `npm run playground` → http://localhost:5173/       |
-| Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
-| Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
-| Fixture repos → `out/fixtures/<name>`  | `npm run fixtures [name ...]`                       |
-| Package                                | `npm run package` → `artifacts/strata.vsix`         |
-
-Interactive debugging: F5 ("Run Extension") generates the fixture repositories,
-starts the watch tasks and opens the chosen fixture in an Extension Development
-Host.
-
-### Fixtures
-
-`test/fixtures/` builds repositories with `git fast-import` from fixed dates
-and identities, so object ids are identical on every machine. Scenarios:
-`linear`, `branchy` (criss-cross, unmerged branch), `octopus`, `multi-root`,
-`refs` (annotated/lightweight tags, remotes, ahead/behind), `clock-skew`,
-`large` (5000 seeded random commits).
-
-### Headless environments
-
-Integration tests, screenshots and theme capture start a real VS Code. Without
-a `DISPLAY`, `scripts/xvfb.mjs` wraps them in `xvfb-run`. Screenshots use
-ImageMagick `import`. Test instances use a short `--user-data-dir` under the
-temp dir (override with `STRATA_TEST_TMP`) because VS Code's IPC socket lives
-there and unix socket paths are limited to 108 bytes.
-
-### Iteration loop
-
-- Webview layout/visuals: `npm run playground` (live rebuild, theme via
-  `?theme=dark|light|high-contrast|high-contrast-light`), then
-  `npm run playground:shot` to compare all themes.
-- Host ↔ webview behavior: `npm run test:integration`, then `npm run shot` for
-  the real VS Code rendering.
-
-## Layout
-
-```
-src/extension.ts     activation, command registration
-src/host/            extension-host side (git, panel)
-src/core/            pure logic shared by host and worker (no vscode, no DOM)
-src/shared/          host ↔ webview ↔ worker message types
-src/webview/         webview UI
-src/worker/          layout Web Worker (runs inside the webview)
-test/unit/           node:test, run on .ts sources
-test/integration/    @vscode/test-cli suites (bundled to out/)
-playground/          browser host for the webview + captured theme variables
-scripts/             build, xvfb wrapper, screenshot tooling
-```
+Report problems and requests to the maintainers of this extension.
