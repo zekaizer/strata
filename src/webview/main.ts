@@ -171,6 +171,11 @@ class App {
   private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
   private operation: OperationState | undefined;
   private leftover: Leftover | undefined;
+  /** The Strata operation running, by its progress label. */
+  private busyLabel: string | undefined;
+  /** Selections the user made; an operation's focus is not applied once the user moved during it. */
+  private selections = 0;
+  private selectionsAtBusy: number | undefined;
   /**
    * The row element a context menu is open on, by row index and place among the row's menu
    * targets: rows are re-rendered while the menu is open.
@@ -357,6 +362,14 @@ class App {
         this.setStashes(m.stashes);
         this.relist();
         break;
+      case 'busy':
+        this.busyLabel = m.label;
+        if (m.label !== undefined) this.selectionsAtBusy = this.selections;
+        if (m.label === undefined) this.scroller.removeAttribute('aria-busy');
+        else this.scroller.setAttribute('aria-busy', 'true');
+        // An error shown meanwhile stays until the next action.
+        if (m.label !== undefined || !this.status.classList.contains('error')) this.updateStatus();
+        break;
       case 'repoState':
         this.operation = m.operation;
         this.leftover = m.leftover;
@@ -464,7 +477,9 @@ class App {
         searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
       };
     }
-    if (focus !== undefined) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
+    const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
+    if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
+    if (focus !== undefined) this.selectionsAtBusy = undefined;
     this.generation = generation;
     this.repo = repo;
     this.refs = refs;
@@ -829,6 +844,11 @@ class App {
 
   private updateStatus(): void {
     this.status.classList.remove('error');
+    this.status.classList.toggle('busy', this.busyLabel !== undefined);
+    if (this.busyLabel !== undefined) {
+      this.status.textContent = `${this.busyLabel}…`;
+      return;
+    }
     const n = this.commits.length.toLocaleString();
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
   }
@@ -901,6 +921,7 @@ class App {
    * waiting to be restored after a reload.
    */
   private userSelect(index: number, opts: { expand?: boolean } = {}): void {
+    this.selections++;
     this.clearActionError();
     this.restore = undefined;
     this.select(index, opts);
@@ -1986,6 +2007,8 @@ class App {
       ),
       details: this.probeDetails(),
       announced: this.announced,
+      status: this.status.textContent,
+      listBusy: this.scroller.getAttribute('aria-busy') === 'true',
       authorColumn: (() => {
         const cells = [...this.rowsLayer.querySelectorAll<HTMLElement>('.row .author')].filter(
           (c) => getComputedStyle(c).display !== 'none',

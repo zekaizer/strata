@@ -301,6 +301,30 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-errorForeground);
 }
 
+/* A Strata operation is running: its label, after a spinner (codicon-loading). */
+.toolbar .status.busy {
+  color: var(--vscode-foreground);
+}
+
+.toolbar .status.busy::before {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+  font: normal normal normal 14px/1 codicon;
+  content: '\eb19';
+  animation: codicon-spin 1.5s steps(30) infinite;
+}
+
+body.vscode-reduce-motion .toolbar .status.busy::before {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar .status.busy::before {
+    animation: none;
+  }
+}
+
 .icon-button {
   display: inline-flex;
   align-items: center;

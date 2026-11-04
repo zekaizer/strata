@@ -48,6 +48,8 @@ export type HostToWebview =
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
+  /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
+  | { type: 'busy'; label: string | undefined }
   /**
    * The operation in progress, or else what an earlier one left behind, sent after every reset and
    * when it changes.
@@ -218,6 +220,10 @@ export interface ProbeState {
   selectionOutline: string;
   /** Text last announced to screen readers. */
   announced: string;
+  /** The toolbar's status text. */
+  status: string;
+  /** The list's aria-busy. */
+  listBusy: boolean;
   /** Class name of the focused element. */
   focused: string;
   options: ViewOptions;
