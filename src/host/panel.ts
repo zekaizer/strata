@@ -80,6 +80,11 @@ export class GraphPanel implements vscode.Disposable {
     );
   }
 
+  /** Writes a commit-graph for the shown repository and reloads. */
+  writeCommitGraph(): Promise<void> {
+    return this.controller?.writeCommitGraph() ?? Promise.resolve();
+  }
+
   /** Resolves once the webview has booted. */
   whenReady(): Promise<ReadyInfo> {
     return this.ready;

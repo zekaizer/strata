@@ -40,6 +40,17 @@ page, so it opens quickly even on very large repositories.
   list in wide editors and below it in narrow ones.
 - Use the refresh button after changing the repository outside VS Code.
 
+## Large repositories
+
+Strata asks git for history in topological order, which is fast when the
+repository has a commit-graph file. Without one, git reads the whole history
+before showing the first commit (about 20 seconds on the Linux kernel). When
+that happens Strata offers to write a commit-graph; you can also run
+**Strata: Write Commit-Graph for Faster History** at any time. It runs
+`git commit-graph write --reachable`, the same thing `git maintenance` does,
+and only adds a cache file to the repository. Turn the offer off with the
+`strata.suggestCommitGraph` setting.
+
 ## Requirements
 
 - VS Code 1.90 or later.

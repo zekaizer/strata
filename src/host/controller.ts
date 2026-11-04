@@ -1,6 +1,7 @@
 import { basename, posix } from 'node:path';
 import * as vscode from 'vscode';
 import type { RefSnapshot } from '../core/refs.ts';
+import { hasCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readRefs } from '../git/refs.ts';
@@ -8,6 +9,8 @@ import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHo
 import type { GitApi, GitRepository } from './git-api.ts';
 
 const REFRESH_DEBOUNCE_MS = 400;
+/** A first page slower than this suggests writing a commit-graph (git's topological walk reads all history without one). */
+const SLOW_FIRST_PAGE_MS = 2000;
 
 /**
  * Serves one webview: owns the `git log` reader for the current history
@@ -24,6 +27,10 @@ export class GraphController implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
   private repoSubscription: vscode.Disposable | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Generation whose first page has been served (and timed). */
+  private timedGeneration = -1;
+  /** Repositories already offered a commit-graph in this session. */
+  private readonly suggested = new Set<string>();
 
   constructor(api: GitApi, post: (m: HostToWebview) => void) {
     this.api = api;
@@ -58,7 +65,12 @@ export class GraphController implements vscode.Disposable {
       switch (m.type) {
         case 'loadMore':
           if (m.generation === this.generation && this.reader) {
+            const started = performance.now();
             const page = await this.reader.next(m.count);
+            if (this.timedGeneration !== m.generation) {
+              this.timedGeneration = m.generation;
+              if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph();
+            }
             if (m.generation === this.generation) this.post({ type: 'commits', generation: m.generation, ...page });
           }
           break;
@@ -174,6 +186,40 @@ export class GraphController implements vscode.Disposable {
       `${label} (${short(base)} ↔ ${short(hash)})`,
       options,
     );
+  }
+
+  /** Writes a commit-graph with progress, then reloads the history. */
+  async writeCommitGraph(): Promise<void> {
+    const repo = this.repo;
+    if (!repo) return;
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `Strata: writing commit-graph for ${basename(repo.rootUri.fsPath)}…`,
+      },
+      () => writeCommitGraph(this.api.git.path, repo.rootUri.fsPath),
+    );
+    await this.reset();
+  }
+
+  private async suggestCommitGraph(): Promise<void> {
+    const repo = this.repo;
+    if (!repo || this.suggested.has(repo.rootUri.fsPath)) return;
+    const config = vscode.workspace.getConfiguration('strata');
+    if (!config.get<boolean>('suggestCommitGraph', true)) return;
+    if (await hasCommitGraph(this.api.git.path, repo.rootUri.fsPath)) return;
+    this.suggested.add(repo.rootUri.fsPath);
+    const write = 'Write commit-graph';
+    const never = "Don't ask again";
+    const choice = await vscode.window.showInformationMessage(
+      `History of ${basename(repo.rootUri.fsPath)} loads slowly because the repository has no commit-graph. ` +
+        'Writing one (git commit-graph write --reachable) makes the graph open in a fraction of the time.',
+      write,
+      'Not now',
+      never,
+    );
+    if (choice === write) await this.writeCommitGraph();
+    else if (choice === never) await config.update('suggestCommitGraph', false, vscode.ConfigurationTarget.Global);
   }
 
   dispose(): void {

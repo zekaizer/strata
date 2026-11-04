@@ -13,6 +13,11 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
   const show = () => GraphPanel.show(context.extensionUri);
   context.subscriptions.push(
     vscode.commands.registerCommand('strata.show', show),
+    vscode.commands.registerCommand('strata.writeCommitGraph', async () => {
+      const panel = GraphPanel.current ?? show();
+      await panel.whenReady();
+      await panel.writeCommitGraph();
+    }),
     // Reopens the graph after a restart when it was open; the webview restores its own position via setState.
     vscode.window.registerWebviewPanelSerializer(GraphPanel.viewType, {
       deserializeWebviewPanel: (panel) => {

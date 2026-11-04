@@ -1,7 +1,9 @@
 import * as assert from 'node:assert/strict';
+import { existsSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { git, strata, waitFor } from './helpers.ts';
+import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('graph panel', () => {
   let panel: GraphPanel;
@@ -99,5 +101,20 @@ describe('graph panel', () => {
     await panel.simulate({ kind: 'clickFile', index: 0, altKey: true });
     await waitFor('second editor group', () => vscode.window.tabGroups.all.length === groups + 1);
     await vscode.commands.executeCommand('workbench.action.closeEditorsInGroup');
+  });
+});
+
+describe('commit-graph command', () => {
+  it('writes a commit-graph and reloads the history', async () => {
+    const panel = (await strata()).show();
+    await panel.whenReady();
+    const info = git('rev-parse', '--git-path', 'objects/info');
+    git('commit-graph', 'write', '--reachable'); // make sure the path exists, then remove it
+    rmSync(join(workspaceRoot(), info, 'commit-graph'), { force: true });
+    const before = (await panel.probe()).generation;
+    await vscode.commands.executeCommand('strata.writeCommitGraph');
+    assert.ok(existsSync(join(workspaceRoot(), info, 'commit-graph')));
+    await waitFor('reload', async () => (await panel.probe()).generation > before);
+    panel.dispose();
   });
 });
