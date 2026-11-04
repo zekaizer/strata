@@ -1,3 +1,4 @@
+import { untrackedNotRestored } from '../../core/git-error.ts';
 import {
   dropStashConfirmation,
   IN_THE_WAY_OF,
@@ -6,6 +7,7 @@ import {
   STASH_DONE,
   stashBranchDirty,
   stashBranchInput,
+  stashBranchPartial,
   stashFilesExist,
   stashLabel,
   stashPushInput,
@@ -19,6 +21,7 @@ import {
   readStashFilesUntrackedHere,
   readStashTop,
 } from '../../git/facts.ts';
+import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
@@ -139,16 +142,33 @@ export async function stashBranch(host: FlowHost, hash: string): Promise<void> {
     validate: newName(host, 'branch'),
   });
   if (name === undefined) return;
-  // Resolved again inside: a stash that moves untracked files out of the way shifts the numbers.
-  const ran = await runMovingUntracked(
-    host,
-    STASH_DOING.branching(name),
-    IN_THE_WAY_OF.stashBranch(name),
-    async (exec) => {
-      const now = await current(host, hash);
-      return exec({ kind: 'stashBranch', name, index: now.index });
-    },
-  );
-  if (ran === undefined) return;
-  await finish(host, { message: STASH_DONE.branched(name, s.label), focus: (await readHead(host.git, host.cwd)).hash });
+  // Files that appeared since the check: git makes the branch and applies the rest anyway.
+  let missed: string[] = [];
+  try {
+    // Resolved again inside: a stash that moves untracked files out of the way shifts the numbers.
+    const ran = await runMovingUntracked(
+      host,
+      STASH_DOING.branching(name),
+      IN_THE_WAY_OF.stashBranch(name),
+      async (exec) => {
+        const now = await current(host, hash);
+        return exec({ kind: 'stashBranch', name, index: now.index });
+      },
+    );
+    if (ran === undefined) return;
+  } catch (e) {
+    missed = e instanceof GitOpError ? untrackedNotRestored(e.stderr) : [];
+    if (missed.length === 0) throw e;
+  }
+  const focus = (await readHead(host.git, host.cwd)).hash;
+  if (missed.length === 0) {
+    await finish(host, { message: STASH_DONE.branched(name, s.label), focus });
+    return;
+  }
+  const message = stashBranchPartial(name, s.label, missed);
+  await host.leftovers.keep(hash);
+  await finish(host, { message, focus });
+  notify(host, 'warning', message, ['Show Stash'], () => {
+    host.reveal(hash);
+  });
 }

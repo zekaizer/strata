@@ -52,7 +52,7 @@ export class ScriptedUi implements Ui {
     return new Promise((resolve) => this.held.push(resolve));
   }
 
-  /** Runs `change` when the next modal is answered, as if the repository changed while it was open. */
+  /** Runs `change` when the next modal or input box is answered, as if the repository changed while it was open. */
   meanwhile(change: () => void): this {
     this.pending = change;
     return this;
@@ -96,6 +96,8 @@ export class ScriptedUi implements Ui {
     const text = this.inputs.shift();
     const problem = text === undefined ? undefined : o.validate(text);
     this.asked.push({ kind: 'input', title: o.title, prompt: o.prompt, value: o.value, problem });
+    this.pending?.();
+    this.pending = undefined;
     return Promise.resolve(problem === undefined ? text : undefined);
   }
 

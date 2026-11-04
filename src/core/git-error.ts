@@ -71,6 +71,10 @@ export function untrackedInTheWay(stderr: string): string[] {
   return paths;
 }
 
+/** The untracked files of a stash that git did not restore because they exist ("<path> already exists, no checkout"). */
+export const untrackedNotRestored = (stderr: string): string[] =>
+  stderr.split('\n').flatMap((line) => /^(.+) already exists, no checkout$/.exec(line)?.slice(1) ?? []);
+
 /** The worktree a checkedOutElsewhere error names. */
 export const checkedOutPath = (stderr: string): string | undefined =>
   /(?:checked out|used by worktree) at '([^']+)'/.exec(stderr)?.[1];

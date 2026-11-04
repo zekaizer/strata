@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { untrackedInTheWay } from '../../src/core/git-error.ts';
+import { untrackedInTheWay, untrackedNotRestored } from '../../src/core/git-error.ts';
 import { argv, type Operation } from '../../src/core/operations.ts';
 import { readOperationState } from '../../src/git/state.ts';
 import { GitOpError, runGitOp } from '../../src/git/op.ts';
@@ -393,6 +393,20 @@ describe('operations refused by untracked files in the way', () => {
     await blocks(d, { kind: 'stashBranch', name: 'nb', index: 0 }, both);
     assert.equal(run(d, 'rev-parse', 'refs/stash'), stash, 'the stash stays');
     assert.equal(run(d, 'branch', '--list', 'nb'), '', 'no branch was made');
+  });
+
+  it('names the untracked files of a stash that a branch from it did not restore', async () => {
+    const d = repo();
+    mine(d, ...both);
+    run(d, 'stash', 'push', '--quiet', '--include-untracked');
+    mine(d, ...both);
+    const e = await op(d, { kind: 'stashBranch', name: 'nb', index: 0 }).then(
+      () => assert.fail('stash branch ran'),
+      (e: unknown) => e,
+    );
+    assert.ok(e instanceof GitOpError);
+    assert.deepEqual(untrackedNotRestored(e.stderr), both);
+    assert.equal(run(d, 'branch', '--show-current'), 'nb', 'git made the branch all the same');
   });
 
   it('lists a directory whose untracked files a file would replace', async () => {

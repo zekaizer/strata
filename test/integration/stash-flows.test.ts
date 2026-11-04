@@ -254,6 +254,36 @@ describe('stash operations', () => {
     assert.equal(git('stash', 'list'), '');
   });
 
+  it('says which untracked files did not come back when they appeared while the branch was being named', async () => {
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
+    writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');
+    git('stash', 'push', '--quiet', '--include-untracked', '--message', 'with new');
+    const w = git('rev-parse', 'refs/stash');
+    const base = git('rev-parse', 'HEAD');
+    await reload(panel());
+    const generation = (await panel().probe()).generation;
+    ui.type('strata-from-stash').meanwhile(() => {
+      writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'mine\n');
+    });
+    await run('strata.stash.branch', stashMenu(w));
+    assert.deepEqual(
+      ui.of('notify').map((n) => [n.level, n.message, n.actions]),
+      [
+        [
+          'warning',
+          'Created \'strata-from-stash\' from stash@{0} ("On main: with new"), but strata-new.txt did not come back because it already exists here. The stash is kept.',
+          ['Show Stash'],
+        ],
+      ],
+    );
+    assert.equal(git('branch', '--show-current'), 'strata-from-stash');
+    assert.equal(git('rev-parse', 'HEAD'), base);
+    assert.equal(notes(), 'changed\n');
+    assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'mine\n');
+    assert.equal(git('rev-parse', 'refs/stash'), w);
+    await waitFor('the graph reloaded', async () => (await panel().probe()).generation > generation);
+  });
+
   it('copies the patch of a stash, untracked files included', async () => {
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
     writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');

@@ -700,6 +700,12 @@ export function stashFilesExist(label: string, files: readonly string[], again =
   return `${label} adds ${one ? 'a file that already exists' : 'files that already exist'} here: ${fileList(files)}. Move ${one ? 'it' : 'them'} away and ${again}.`;
 }
 
+/** Branch `name` was created from stash `label` (stashLabel), but git did not restore `files`, which exist here. */
+export function stashBranchPartial(name: string, label: string, files: readonly string[]): string {
+  const one = files.length === 1;
+  return `Created '${name}' from ${label}, but ${fileList(files)} did not come back because ${one ? 'it already exists' : 'they already exist'} here. The stash is kept.`;
+}
+
 export const stashBranchInput = (index: number, message: string, short: string): { title: string; prompt: string } => ({
   title: `Create Branch from ${stashLabel(index, message)}`,
   prompt: `Creates the branch at ${short}, switches to it, restores the stash there and removes it from the stash list.`,
