@@ -231,6 +231,7 @@ class App {
     }).observe(this.viewport);
     this.watchPixelRatio();
     this.trackPointer();
+    this.trackInputModality();
     // VS Code rewrites the theme variables on <html> when the color theme changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
@@ -455,6 +456,28 @@ class App {
     document.addEventListener('pointermove', (e) => {
       if (e.movementX !== 0 || e.movementY !== 0) document.body.classList.remove('hover-off');
     });
+  }
+
+  /**
+   * Marks keyboard use (body.keyboard-nav) until the next pointer press: the list shows where
+   * focus is while it is driven by keys, without a border left behind on a clicked row.
+   */
+  private trackInputModality(): void {
+    const modifiers = new Set(['Shift', 'Control', 'Alt', 'Meta']);
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (!modifiers.has(e.key)) document.body.classList.add('keyboard-nav');
+      },
+      { capture: true },
+    );
+    document.addEventListener(
+      'pointerdown',
+      () => {
+        document.body.classList.remove('keyboard-nav');
+      },
+      { capture: true },
+    );
   }
 
   /** Redraws the canvas at the new resolution when the window moves to a display with another pixel ratio. */
@@ -1405,6 +1428,12 @@ class App {
       ),
       details: this.probeDetails(),
       announced: this.announced,
+      selectionOutline: (() => {
+        const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
+        if (!row) return 'none';
+        const cs = getComputedStyle(row);
+        return cs.outlineColor === 'rgba(0, 0, 0, 0)' ? 'none' : cs.outlineStyle;
+      })(),
       focused: (document.activeElement as HTMLElement | null)?.className ?? '',
       columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
         .filter((e) => !e.classList.contains('refs'))
@@ -1465,6 +1494,12 @@ class App {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${a.index}`);
         if (row) {
           const r = row.getBoundingClientRect();
+          // A real click starts with a pointerdown, which tells keyboard and pointer use apart.
+          row.dispatchEvent(
+            new PointerEvent('pointerdown', { bubbles: true, clientX: r.left + 40, clientY: r.top + 4 }),
+          );
+          // Pressing on the list focuses it (tabIndex 0), as a real mousedown does.
+          this.scroller.focus({ preventScroll: true });
           row.dispatchEvent(
             new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + (a.y ?? r.height / 2) }),
           );

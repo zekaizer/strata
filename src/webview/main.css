@@ -351,7 +351,15 @@ body:not(.hover-off) .row:hover {
 .scroller:focus-within .row.selected {
   background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground, inherit);
-  outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder));
+}
+
+/*
+ * VS Code outlines the focused row whenever its list has focus; here focus stays in the list after
+ * a click (details fold in place), so the outline follows keyboard use only.
+ */
+body.keyboard-nav .scroller:focus .row.selected {
+  outline: 1px solid
+    var(--vscode-list-focusAndSelectionOutline, var(--vscode-list-focusOutline, var(--vscode-focusBorder)));
   outline-offset: -1px;
 }
 

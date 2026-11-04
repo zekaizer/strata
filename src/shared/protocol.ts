@@ -148,6 +148,8 @@ export interface ProbeState {
         listWidth: number;
       }
     | undefined;
+  /** Computed outline style of the selected row ('none' when it has no visible outline). */
+  selectionOutline: string;
   /** Text last announced to screen readers. */
   announced: string;
   /** Class name of the focused element. */

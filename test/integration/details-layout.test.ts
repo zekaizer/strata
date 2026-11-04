@@ -78,6 +78,24 @@ describe('details layout', () => {
     assert.ok(d.actionsRight <= d.cols * d.treeWidth + (d.cols - 1) * 24 + 1, `${d.actionsRight} vs ${d.treeWidth}`);
   });
 
+  it('outlines the selected row only while the list is used with the keyboard', async () => {
+    await panel.simulate({ kind: 'clickRow', index: 3 });
+    const clicked = await waitFor('selected by click', async () => {
+      const p = await panel.probe();
+      return p.selected === order()[3] && p;
+    });
+    assert.equal(clicked.selectionOutline, 'none', 'a click leaves no focus outline behind');
+    await panel.simulate({ kind: 'clickRow', index: 3 });
+    await waitFor('folded', async () => (await panel.probe()).expandedHeight === 0);
+    assert.equal((await panel.probe()).selectionOutline, 'none', 'nor does folding');
+    await panel.simulate({ kind: 'key', key: 'ArrowDown' });
+    const keyed = await waitFor('moved by key', async () => {
+      const p = await panel.probe();
+      return p.selected === order()[4] && p;
+    });
+    assert.equal(keyed.selectionOutline, 'solid', 'keyboard navigation shows where focus is');
+  });
+
   it('copies the full hash when the hash is clicked', async () => {
     await openDetails(2);
     await vscode.env.clipboard.writeText('');
