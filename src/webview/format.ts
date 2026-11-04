@@ -10,7 +10,8 @@ const shortDateFormat = new Intl.DateTimeFormat(undefined, { year: 'numeric', mo
 
 export const formatDate = (unixSeconds: number) => dateFormat.format(new Date(unixSeconds * 1000));
 export const formatShortDate = (unixSeconds: number) => shortDateFormat.format(new Date(unixSeconds * 1000));
-export const shortHash = (hash: string) => hash.slice(0, 8);
+/** Seven characters, like git's default abbreviation. */
+export const shortHash = (hash: string) => hash.slice(0, 7);
 
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,

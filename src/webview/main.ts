@@ -164,6 +164,7 @@ class App {
       this.queueRender();
     }).observe(this.viewport);
     this.watchPixelRatio();
+    this.trackPointer();
     // VS Code rewrites the theme variables on <html> when the color theme changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
@@ -218,6 +219,9 @@ class App {
         this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
+        break;
+      case 'hidden':
+        document.body.classList.add('hover-off');
         break;
       case 'noRepository':
         this.generation = -1;
@@ -335,6 +339,27 @@ class App {
     vscode.setState(state);
   }
 
+  /**
+   * Turns hover highlights off when the pointer may have left without the webview noticing
+   * (focus moves to an editor, the panel is hidden, the pointer leaves the iframe) and back on
+   * at the next pointer movement.
+   */
+  private trackPointer(): void {
+    const off = () => {
+      document.body.classList.add('hover-off');
+    };
+    window.addEventListener('blur', off);
+    document.documentElement.addEventListener('mouseleave', off);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) off();
+    });
+    // Chromium also sends pointermove without movement when content changes under a still
+    // pointer (e.g. when the panel comes back); only a real movement turns hover back on.
+    document.addEventListener('pointermove', (e) => {
+      if (e.movementX !== 0 || e.movementY !== 0) document.body.classList.remove('hover-off');
+    });
+  }
+
   /** Redraws the canvas at the new resolution when the window moves to a display with another pixel ratio. */
   private watchPixelRatio(): void {
     matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
@@ -342,6 +367,7 @@ class App {
       () => {
         this.queueRender();
         this.watchPixelRatio();
+        this.trackPointer();
       },
       { once: true },
     );
@@ -672,8 +698,9 @@ class App {
     if (!d) return;
     const pane = this.expansion;
 
-    // The subject is already on the row above; only the body is shown here.
-    const body = d.message.split('\n').slice(1).join('\n').trim();
+    // The row truncates long subjects, so the details repeat it in full.
+    const [subject = '', ...rest] = d.message.split('\n');
+    const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
     close.addEventListener('click', () => {
@@ -716,7 +743,7 @@ class App {
       'files-summary',
       `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed${d.base ? ` vs ${shortHash(d.base)}` : ''}`,
     );
-    const children: HTMLElement[] = [close, meta, summary, files];
+    const children: HTMLElement[] = [close, el('h2', 'details-subject', subject), meta, summary, files];
     if (body) children.push(el('pre', 'details-message', body));
     pane.style.minHeight = '';
     pane.replaceChildren(...children);
@@ -820,6 +847,11 @@ class App {
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
+      detailsSubject: this.expanded
+        ? (this.expansion.querySelector('.details-subject')?.textContent ?? undefined)
+        : undefined,
+      hoverSuppressed: document.body.classList.contains('hover-off'),
+      listWidth: this.scroller.clientWidth,
       menuContexts: {
         files: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map(
           (li) => JSON.parse(li.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,

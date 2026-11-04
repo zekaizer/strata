@@ -34,6 +34,8 @@ export type HostToWebview =
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
+  /** The panel was hidden behind another editor (VS Code knows; the webview's own events may not tell). */
+  | { type: 'hidden' }
   | { type: 'error'; message: string }
   | { type: 'dumpThemeVars' }
   | { type: 'probe' }
@@ -79,6 +81,12 @@ export interface ProbeState {
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
   columns: string[];
+  /** Full subject shown at the top of the expanded details. */
+  detailsSubject: string | undefined;
+  /** Whether hover highlights are off because the pointer left the webview (or it was hidden). */
+  hoverSuppressed: boolean;
+  /** Width of the commit list in CSS px. */
+  listWidth: number;
   /** Height in px of the details expanded under the selected row; 0 when collapsed. */
   expandedHeight: number;
   /** Top offset in px of each rendered row within the list, by row index. */

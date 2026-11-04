@@ -75,6 +75,9 @@ export class GraphPanel implements vscode.Disposable {
       panel.webview.onDidReceiveMessage((m: WebviewToHost) => {
         this.onMessage(m);
       }),
+      panel.onDidChangeViewState(() => {
+        if (!panel.visible) this.post({ type: 'hidden' });
+      }),
       vscode.window.onDidChangeActiveColorTheme(() => {
         this.post({ type: 'init', theme: themeKind() });
       }),

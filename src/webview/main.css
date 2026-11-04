@@ -63,8 +63,7 @@ body {
   font: inherit;
   cursor: pointer;
 }
-
-.tool-button:hover {
+body:not(.hover-off) .tool-button:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
 }
@@ -136,8 +135,7 @@ body {
   font: inherit;
   cursor: pointer;
 }
-
-.link-button:hover {
+body:not(.hover-off) .link-button:hover {
   text-decoration: underline;
 }
 
@@ -161,8 +159,7 @@ body {
   border-radius: 3px;
   cursor: pointer;
 }
-
-.popover-item:hover {
+body:not(.hover-off) .popover-item:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -212,8 +209,7 @@ body {
   color: var(--vscode-icon-foreground, var(--vscode-foreground));
   cursor: pointer;
 }
-
-.icon-button:hover {
+body:not(.hover-off) .icon-button:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
 }
@@ -264,8 +260,7 @@ canvas.graph {
   cursor: default;
   white-space: nowrap;
 }
-
-.row:hover {
+body:not(.hover-off) .row:hover {
   background: var(--vscode-list-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
@@ -404,7 +399,18 @@ canvas.graph {
   right: 8px;
 }
 
-.expansion .details-meta {
+.expansion .details-subject {
+  margin: 2px 0 2px;
+  /* Room for the fold button. */
+  padding-right: 28px;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.details-meta {
   /* Room for the fold button. */
   padding-right: 28px;
 }
@@ -478,8 +484,7 @@ canvas.graph {
   border-radius: 3px;
   cursor: pointer;
 }
-
-.file:hover {
+body:not(.hover-off) .file:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
@@ -522,8 +527,12 @@ canvas.graph {
   overflow: hidden;
 }
 
-/* Shown where the pointer or keyboard is, and on the file opened last. */
-.file:hover .file-actions,
+/*
+ * Shown where the pointer or keyboard is, and on the file opened last. Hover rules in this
+ * file apply only without .hover-off: when a click opens a diff the pointer can leave the
+ * iframe without a pointerleave, which would leave a highlight stuck (see trackPointer).
+ */
+body:not(.hover-off) .file:hover .file-actions,
 .file:focus-within .file-actions,
 .file.opened .file-actions {
   display: inline-flex;
@@ -551,8 +560,7 @@ canvas.graph {
 .file-action.codicon {
   font-size: 14px;
 }
-
-.file-action:hover {
+body:not(.hover-off) .file-action:hover {
   background: var(--vscode-toolbar-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
   outline-offset: -1px;
@@ -583,9 +591,8 @@ canvas.graph {
 }
 
 .file.opened {
-  background: var(--vscode-list-inactiveSelectionBackground);
-  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
-  outline-offset: -1px;
+  /* An accent bar, not a background: a filled row reads as a stuck hover. */
+  box-shadow: inset 2px 0 0 var(--vscode-focusBorder);
 }
 
 .empty {
@@ -597,11 +604,11 @@ canvas.graph {
  * Narrow editors (e.g. next to a chat or side panel): drop the least useful
  * columns first. Everything hidden here is shown in the details pane.
  */
+/* Narrow editors drop the date first and the author next; the SHA always stays. */
 @container list (max-width: 760px) {
   .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content;
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content max-content;
   }
-  .row .hash,
   .date-full {
     display: none;
   }
@@ -615,7 +622,7 @@ canvas.graph {
 
 @container list (max-width: 600px) {
   .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px);
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px) max-content;
     column-gap: 8px;
   }
   .row .date {
@@ -628,7 +635,7 @@ canvas.graph {
 
 @container list (max-width: 480px) {
   .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr);
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
   }
   .row .author {
     display: none;
