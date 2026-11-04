@@ -106,6 +106,88 @@ describe('history operations', () => {
     await waitFor('rebase gone', async () => (await panel().probe()).operation === undefined);
   });
 
+  it('continues a rebase once its conflict is resolved, not before, and the banner goes', async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    ui.press('Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    await waitFor('rebase banner', async () => (await panel().probe()).banner?.state === 'rebase');
+
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.equal(ui.first('confirm').message, '1 file still has conflicts: main.txt.');
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    await run('strata.operation.continue');
+    assert.equal(git('rev-parse', 'HEAD~1'), git('rev-parse', 'main'));
+    assert.equal(git('show', 'HEAD:main.txt'), 'resolved');
+    assert.equal(api().contextValue('strata.operation'), '');
+    await waitFor('no banner', async () => (await panel().probe()).banner === undefined);
+  });
+
+  it('aborts a rebase that stopped, and git gives back the changes it stashed', async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    const tip = git('rev-parse', 'HEAD');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+    ui.clear();
+    ui.press('Abort Rebase');
+    await run('strata.operation.abort');
+    assert.match(ui.first('confirm').detail, /Your stashed changes are restored\.$/);
+    assert.equal(git('rev-parse', 'HEAD'), tip);
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
+  it('concludes a merge that stopped with Continue, without conflict notes, and git gives the changes back', async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Merge');
+    await run('strata.merge', branchMenu('strata-topic', git('rev-parse', 'strata-topic')));
+    assert.equal(api().contextValue('strata.operation'), 'merge');
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    await run('strata.operation.continue');
+    assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-topic'));
+    assert.equal(git('log', '-1', '--format=%B'), "Merge branch 'strata-topic'");
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(api().contextValue('strata.operation'), '');
+  });
+
+  it('skips a cherry pick that stopped, and gives back the changes stashed for it', async () => {
+    const picked = await conflicting();
+    const before = git('rev-parse', 'HEAD');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(picked));
+    assert.equal(api().contextValue('strata.operation'), 'cherryPick');
+    ui.press('Skip Commit');
+    await run('strata.operation.skip');
+    assert.match(ui.of('confirm').at(-1)?.message ?? '', /^Skip [0-9a-f]+ "main\.txt: picked"\?$/);
+    assert.equal(git('rev-parse', 'HEAD'), before);
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+    assert.equal(api().contextValue('strata.operation'), '');
+  });
+
+  it("pops none of the user's own stashes when the changes to stash were gone by then", async () => {
+    const notes = read('NOTES.md');
+    write('NOTES.md', 'theirs\n');
+    git('stash', 'push', '--quiet', '--message', 'theirs');
+    const theirs = git('rev-parse', 'refs/stash');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Cherry Pick').meanwhile(() => git('checkout', '--', 'NOTES.md'));
+    await run('strata.cherryPick', commitMenu(git('rev-parse', 'wip/experiment')));
+    assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
+    assert.equal(git('rev-parse', 'refs/stash'), theirs);
+    assert.equal(read('NOTES.md'), notes);
+  });
+
   it("says when git's autostash conflicts on restore, and remembers the stash", async () => {
     branchWith('strata-topic', 'main~1', 'topic.txt', 'topic\n');
     write('main.txt', 'dirty\n');
