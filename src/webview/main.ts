@@ -42,14 +42,17 @@ interface SavedState {
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
 
-/** Same icons as VS Code's Source Control for "Open Changes" and "Open File"; history for the earlier version. */
-const FILE_VIEW_ICON: Record<FileView, string> = { before: 'history', diff: 'git-compare', after: 'go-to-file' };
+/**
+ * Left and right arrows around the compare icon (as Source Control's "Open Changes"): the file's
+ * content before the commit on the left side of the change, after it on the right.
+ */
+const FILE_VIEW_ICON: Record<FileView, string> = { before: 'arrow-left', diff: 'git-compare', after: 'arrow-right' };
 /** Buttons follow time: before, the change, after. */
 const FILE_VIEW_ORDER: readonly FileView[] = ['before', 'diff', 'after'];
 const FILE_VIEW_TITLE: Record<FileView, string> = {
   diff: 'Open the changes',
-  before: 'Open the file as it was before this commit',
-  after: 'Open the file as of this commit',
+  before: 'Open the file content before this commit',
+  after: 'Open the file content after this commit',
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'B', after: 'A' };
 

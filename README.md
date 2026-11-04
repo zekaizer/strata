@@ -33,9 +33,9 @@ page, so it opens quickly even on very large repositories.
   <kbd>Esc</kbd>, to fold them. With the list focused, ↑/↓ move the
   selection (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
 - Click a file in the details to open its diff against the parent commit.
-  Hover a file (or focus it) for three buttons: before (clock icon), the
-  change (compare icon) and after (file icon) — the whole file as it was
-  before the commit, the diff, or the whole file as of the commit. Added
+  Hover a file (or focus it) for three buttons: ← opens the file's content
+  before the commit, the compare icon opens the diff, and → opens the
+  content after the commit. Added
   files only have the after button and deleted files only the before
   button.
   <kbd>Alt</kbd> opens to the side. With a file focused, ↑/↓ move between
