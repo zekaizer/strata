@@ -54,11 +54,12 @@ export class RepoBuilder {
     return mark;
   }
 
-  /** Merge commit on `branch` whose first parent is the branch tip. */
+  /** Merge commit on `branch` whose first parent is the branch tip. Changes no files beyond the merge itself. */
   merge(branch: string, others: Mark[], message?: string): Mark {
     const tip = this.tip(branch);
     return this.commit(branch, message ?? `Merge ${others.length} parent(s) into ${branch}`, {
       parents: [tip, ...others],
+      files: {},
     });
   }
 
@@ -89,6 +90,9 @@ export class RepoBuilder {
   stream(): string {
     const out: string[] = [];
     const data = (s: string) => `data ${Buffer.byteLength(s)}\n${s}\n`;
+    // File contents per commit. A merge takes the union of its parents' files
+    // (earlier parents win on conflicting paths), like a conflict-free merge.
+    const trees: Map<string, string>[] = [];
     this.commits.forEach((c, i) => {
       const mark = i + 1;
       const when = `${EPOCH + c.time} +0000`;
@@ -101,7 +105,15 @@ export class RepoBuilder {
       out.push(data(c.message));
       if (first !== undefined) out.push(`from :${first}\n`);
       for (const p of rest) out.push(`merge :${p}\n`);
-      for (const [path, content] of Object.entries(c.files)) out.push(`M 100644 inline ${path}\n${data(content)}`);
+      const base = first === undefined ? new Map<string, string>() : trees[first - 1]!;
+      const tree = new Map(base);
+      for (const p of rest) for (const [path, content] of trees[p - 1]!) if (!tree.has(path)) tree.set(path, content);
+      for (const [path, content] of Object.entries(c.files)) tree.set(path, content);
+      trees.push(tree);
+      // fast-import starts from the first parent's tree; write only what differs from it.
+      for (const [path, content] of tree) {
+        if (base.get(path) !== content) out.push(`M 100644 inline ${path}\n${data(content)}`);
+      }
       out.push('\n');
     });
     for (const [ref, mark] of this.refs) out.push(`reset ${ref}\nfrom :${mark}\n\n`);
