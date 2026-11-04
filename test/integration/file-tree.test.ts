@@ -56,4 +56,14 @@ describe('changed files tree', () => {
     assert.ok(input.uri.path.endsWith('/docs/guide/intro.md'));
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   });
+
+  it('keeps arrow keys inside the file tree instead of moving the commit selection', async () => {
+    const selected = (await panel.probe()).selected;
+    await panel.simulate({ kind: 'focus', selector: '.expansion .folder[data-path="docs"]' });
+    await panel.simulate({ kind: 'key', key: 'ArrowDown', target: 'focused' });
+    await panel.simulate({ kind: 'key', key: 'ArrowDown', target: 'focused' });
+    const s = await panel.probe();
+    assert.equal(s.selected, selected, 'commit selection moved');
+    assert.equal(s.detailsShown, selected, 'details closed or moved');
+  });
 });

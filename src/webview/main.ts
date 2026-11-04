@@ -160,8 +160,10 @@ class App {
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
     });
+    // List keys only when the list itself has focus: keys typed in the details (file tree, links)
+    // bubble up through the scroller and must not move the commit selection.
     this.scroller.addEventListener('keydown', (e) => {
-      this.onKey(e);
+      if (e.target === this.scroller) this.onKey(e);
     });
     new ResizeObserver(() => {
       this.queueRender();
