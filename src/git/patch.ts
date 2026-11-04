@@ -68,3 +68,18 @@ export async function readFilePatch(
     ...paths.map((p) => `:(literal)${p}`),
   ]);
 }
+
+/**
+ * A stash as one plain diff: its tracked changes against the commit it was made on, then its
+ * untracked files (the third parent, a root commit) as added files.
+ */
+export async function readStashPatch(git: string, cwd: string, hash: string): Promise<string> {
+  checkIds(hash);
+  const [base = '', , untracked] = (await runGit(git, cwd, ['rev-parse', `${hash}^@`])).trim().split('\n');
+  const tracked = await runGit(git, cwd, ['diff-tree', '--patch', '-r', ...DIFF_FLAGS, base, hash, '--']);
+  if (untracked === undefined) return tracked;
+  return (
+    tracked +
+    (await runGit(git, cwd, ['diff-tree', '--patch', '-r', '--root', '--no-commit-id', ...DIFF_FLAGS, untracked, '--']))
+  );
+}

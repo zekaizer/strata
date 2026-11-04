@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { classifyGitError, parseProgress, type GitErrorKind } from '../core/git-error.ts';
 import { gitEnv } from './env.ts';
 
@@ -51,6 +51,9 @@ export function runGitOp(
         ...opts.env,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
+      // A new session has no controlling terminal: ssh then fails instead of waiting on /dev/tty for a
+      // passphrase or a host key nobody sees. On Windows `detached` would open a console window.
+      detached: process.platform !== 'win32',
     });
     let stdout = '';
     let stderr = '';
@@ -61,7 +64,7 @@ export function runGitOp(
       if (p) opts.onProgress?.(p);
     });
     const onAbort = () => {
-      proc.kill();
+      killGroup(proc);
       reject(abortError());
     };
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -75,6 +78,19 @@ export function runGitOp(
       else reject(new GitOpError(classify(stdout, stderr), stdout, stderr));
     });
   });
+}
+
+/** Kills git and what it started (ssh, hooks): they share its process group. */
+function killGroup(proc: ChildProcess): void {
+  if (process.platform !== 'win32' && proc.pid !== undefined) {
+    try {
+      process.kill(-proc.pid, 'SIGTERM');
+      return;
+    } catch {
+      // Already gone.
+    }
+  }
+  proc.kill();
 }
 
 /** `merge` and `stash pop` print their conflicts on stdout only. */

@@ -144,7 +144,7 @@ describe('details layout', () => {
     await waitFor('copied', async () => (await vscode.env.clipboard.readText()) === order()[2]);
     const s = await waitFor('announced', async () => {
       const p = await panel.probe();
-      return p.announced === 'Copied full commit hash' && p;
+      return p.announced === `Copied the commit hash of ${git('rev-parse', '--short', order()[2]!)}` && p;
     });
     assert.match(s.details!.byline, /Copied/);
   });

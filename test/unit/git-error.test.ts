@@ -15,6 +15,11 @@ describe('classifyGitError', () => {
     [" ! [rejected]        main -> main (non-fast-forward)\nerror: failed to push some refs to 'origin'", 'rejected'],
     [' ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs', 'rejected'],
     [
+      " ! [remote rejected] main -> main (pre-receive hook declined)\nerror: failed to push some refs to 'origin'",
+      'remoteRejected',
+    ],
+    ['fatal: refusing to merge unrelated histories', 'unrelated'],
+    [
       'CONFLICT (content): Merge conflict in f.txt\nAutomatic merge failed; fix conflicts and then commit the result.',
       'conflict',
     ],

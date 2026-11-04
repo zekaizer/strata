@@ -1,3 +1,5 @@
+import type { Leftover } from './repo-state.ts';
+
 /** Operations that uncommitted changes can get in the way of. */
 export type StashOp =
   'rebase' | 'merge' | 'pullRebase' | 'pullMerge' | 'cherryPick' | 'revert' | 'switch' | 'resetHard' | 'resetKeep';
@@ -48,8 +50,8 @@ export function resolveStashChoices(
   op: StashOp,
   dirty: DirtyFacts,
   setting: AutostashSetting,
-  /** merge.autoStash in git config. */
-  mergeAutoStash: boolean,
+  /** merge.autoStash in git config; undefined when unset. */
+  mergeAutoStash: boolean | undefined,
 ): StashChoices {
   const none: StashChoices = { choices: [], explain: '', mechanism: 'git' };
   if (dirty.files === 0) return none;
@@ -95,12 +97,21 @@ export function resolveStashChoices(
       };
     case 'merge':
     case 'pullMerge': {
+      // Unset, git merges over changes it would only warn about losing: stashing comes first.
       const first =
-        setting === 'gitConfig' ? (mergeAutoStash ? 'stash' : 'keep') : setting === 'always' ? 'stash' : 'keep';
-      const explain =
         setting === 'gitConfig'
-          ? `merge.autoStash is ${mergeAutoStash ? 'on' : 'off'}.`
-          : `strata.autoStash is "${setting}".`;
+          ? mergeAutoStash === false
+            ? 'keep'
+            : 'stash'
+          : setting === 'always'
+            ? 'stash'
+            : 'keep';
+      const explain =
+        setting !== 'gitConfig'
+          ? `strata.autoStash is "${setting}".`
+          : mergeAutoStash === undefined
+            ? 'merge.autoStash is not set.'
+            : `merge.autoStash is ${mergeAutoStash ? 'on' : 'off'}.`;
       return {
         choices: first === 'stash' ? ['stash', 'keep'] : ['keep', 'stash'],
         explain,
@@ -108,4 +119,57 @@ export function resolveStashChoices(
       };
     }
   }
+}
+
+/** Operations Strata stashes around itself (git has no autostash for them). */
+export type ExplicitStashOp = 'switch' | 'cherryPick' | 'revert';
+
+const AUTOSTASH = 'Strata autostash: ';
+const EXPLICIT: Record<ExplicitStashOp, string> = { switch: 'switch', cherryPick: 'cherry pick', revert: 'revert' };
+
+/** The message of a stash Strata pushes before `op` and pops after it; `target` names what it was for. */
+export const autostashMessage = (op: ExplicitStashOp, target: string): string =>
+  `${AUTOSTASH}${EXPLICIT[op]} ${target}`;
+
+/** The operation a stash was Strata's autostash for, from its reflog subject ("On main: Strata autostash: …"). */
+export function strataAutostashOf(reflogSubject: string): ExplicitStashOp | undefined {
+  const message = /^On [^:]+: (.*)$/s.exec(reflogSubject)?.[1];
+  if (!message?.startsWith(AUTOSTASH)) return undefined;
+  const rest = message.slice(AUTOSTASH.length);
+  return (Object.keys(EXPLICIT) as ExplicitStashOp[]).find((op) => rest.startsWith(`${EXPLICIT[op]} `));
+}
+
+/** Unmerged files a leftover lists, at most. */
+const FILES_SHOWN = 50;
+
+/**
+ * What an earlier operation left for the user to settle, in the banner's order: a restore Strata
+ * saw conflict, a Strata stash nobody restored, unmerged files nobody resolves. Nothing while an
+ * operation is in progress (it says where the changes are itself).
+ */
+export function leftoverOf(i: {
+  operation: boolean;
+  /** stash@{0} first; `message` is the reflog subject. */
+  stashes: readonly { hash: string; index: number; message: string }[];
+  unmerged: readonly string[];
+  restoreConflicted: ReadonlySet<string>;
+  kept: ReadonlySet<string>;
+}): Leftover | undefined {
+  if (i.operation) return undefined;
+  const ref = (s: { hash: string; index: number }) => ({ hash: s.hash, index: s.index });
+  const open = i.stashes.filter((s) => !i.kept.has(s.hash));
+  const conflicted = open.find((s) => i.restoreConflicted.has(s.hash));
+  if (conflicted) return { kind: 'restoreConflicted', stash: ref(conflicted), files: i.unmerged.slice(0, FILES_SHOWN) };
+  for (const s of open) {
+    const op = strataAutostashOf(s.message);
+    if (op !== undefined) return { kind: 'pendingStash', stash: ref(s), operation: EXPLICIT[op] };
+  }
+  if (i.unmerged.length === 0) return undefined;
+  const git = i.stashes.find((s) => s.message === 'autostash');
+  return {
+    kind: 'unmerged',
+    files: i.unmerged.slice(0, FILES_SHOWN),
+    count: i.unmerged.length,
+    autostash: git ? ref(git) : undefined,
+  };
 }

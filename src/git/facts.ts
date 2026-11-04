@@ -111,3 +111,142 @@ export async function readCommit(git: string, cwd: string, rev: string): Promise
   const [hash = '', short = '', subject = ''] = out.split('\0');
   return { hash, short, subject };
 }
+
+export const countCommits = count;
+
+/** Whether `a` is an ancestor of (or equal to) `b`. */
+export const isAncestor = (git: string, cwd: string, a: string, b: string): Promise<boolean> =>
+  runGit(git, cwd, ['merge-base', '--is-ancestor', a, b]).then(
+    () => true,
+    // Exit status 1: not an ancestor.
+    () => false,
+  );
+
+/** A boolean git config value as git reads it ("yes", "on", "1"...); undefined when unset. */
+export const readConfigBool = (git: string, cwd: string, key: string): Promise<boolean | undefined> =>
+  optional(runGit(git, cwd, ['config', '--type=bool', '--get', key])).then((v) =>
+    v === undefined ? undefined : v === 'true',
+  );
+
+/** Paths with unresolved conflicts. */
+export const readUnmerged = async (git: string, cwd: string): Promise<string[]> =>
+  (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--'])).split('\0').filter((p) => p !== '');
+
+/** The stash commit `hash` now: n in stash@{n} and its reflog subject; undefined once it is gone. */
+export async function readStash(
+  git: string,
+  cwd: string,
+  hash: string,
+): Promise<{ hash: string; index: number; message: string } | undefined> {
+  const out = await optional(
+    runGit(git, cwd, ['log', '--walk-reflogs', '-z', '--format=%H%x00%gs', 'refs/stash', '--']),
+  );
+  const f = (out ?? '').split('\0');
+  for (let i = 0; i + 1 < f.length; i += 2)
+    if (f[i]!.replace(/^\n/, '') === hash) return { hash, index: i / 2, message: f[i + 1]! };
+  return undefined;
+}
+
+/** The stash commit of stash@{0}. */
+export const readStashTop = (git: string, cwd: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['rev-parse', '--quiet', '--verify', 'refs/stash']));
+
+/** A branch's upstream: "origin/main", its remote and the branch on that remote. */
+export async function readUpstream(
+  git: string,
+  cwd: string,
+  branch: string,
+): Promise<{ name: string; remote: string; remoteBranch: string } | undefined> {
+  const out = await runGit(git, cwd, [
+    'for-each-ref',
+    '--format=%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
+    `refs/heads/${branch}`,
+  ]);
+  const [name = '', remote = '', remoteRef = ''] = out.trim().split('\0');
+  if (name === '' || remote === '' || !remoteRef.startsWith('refs/heads/')) return undefined;
+  return { name, remote, remoteBranch: remoteRef.slice('refs/heads/'.length) };
+}
+
+/** The branch HEAD is on (undefined when detached) and its commit. */
+export async function readHead(git: string, cwd: string): Promise<{ branch: string | undefined; hash: string }> {
+  const [branch, hash] = await Promise.all([
+    optional(runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'])),
+    runGit(git, cwd, ['rev-parse', '--verify', 'HEAD']),
+  ]);
+  return { branch, hash: hash.trim() };
+}
+
+/** The best common ancestor of two commits; undefined for unrelated histories. */
+export const readMergeBase = (git: string, cwd: string, a: string, b: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['merge-base', a, b]));
+
+/** Every `branch.<branch>.*` config entry, in order (multi-valued keys repeat). */
+export async function readBranchConfig(git: string, cwd: string, branch: string): Promise<[string, string][]> {
+  const out = (await optional(runGit(git, cwd, ['config', '-z', '--get-regexp', '^branch\\.']))) ?? '';
+  const prefix = `branch.${branch}.`;
+  return out
+    .split('\0')
+    .map((entry): [string, string] => {
+      const nl = entry.indexOf('\n');
+      return nl < 0 ? [entry, ''] : [entry.slice(0, nl), entry.slice(nl + 1)];
+    })
+    .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('.'));
+}
+
+/**
+ * What a rebase of HEAD onto `onto` replays: git drops merges (replaying the commits they
+ * brought in) and skips patches `onto` already has. `onUpstream`: replayed commits already on
+ * `upstream`, which would need a force push.
+ */
+export async function readRebaseCounts(
+  git: string,
+  cwd: string,
+  onto: string,
+  upstream: string | undefined,
+): Promise<{ replay: number; merges: number; onUpstream: number }> {
+  const replayed = ['--no-merges', '--cherry-pick', '--right-only', `${onto}...HEAD`];
+  const [replay, merges, notOnUpstream] = await Promise.all([
+    count(git, cwd, replayed),
+    count(git, cwd, ['--merges', `${onto}..HEAD`]),
+    upstream === undefined ? Promise.resolve(0) : count(git, cwd, [...replayed, '--not', upstream]),
+  ]);
+  return { replay, merges, onUpstream: upstream === undefined ? 0 : replay - notOnUpstream };
+}
+
+export const isShallow = async (git: string, cwd: string): Promise<boolean> =>
+  (await runGit(git, cwd, ['rev-parse', '--is-shallow-repository'])).trim() === 'true';
+
+/** Untracked (or ignored) files at paths `target` has and HEAD does not: a hard reset overwrites them. */
+export async function readUntrackedAt(git: string, cwd: string, target: string): Promise<string[]> {
+  const added = (
+    await runGit(git, cwd, ['diff', '--name-only', '-z', '--no-renames', '--diff-filter=A', 'HEAD', target, '--'])
+  )
+    .split('\0')
+    .filter((p) => p !== '');
+  const found: string[] = [];
+  for (let i = 0; i < added.length; i += 500) {
+    const chunk = added.slice(i, i + 500).map((p) => `:(literal)${p}`);
+    const out = await runGit(git, cwd, ['ls-files', '--others', '-z', '--', ...chunk]);
+    found.push(...out.split('\0').filter((p) => p !== ''));
+  }
+  return found;
+}
+
+/** A git config value as written; undefined when unset. */
+export const readConfig = (git: string, cwd: string, key: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['config', '--get', key]));
+
+/** Branches checked out in other worktrees of the repository, by full ref, with the worktree's path. */
+export async function readWorktreeBranches(git: string, cwd: string): Promise<Map<string, string>> {
+  const [list, top] = await Promise.all([
+    runGit(git, cwd, ['worktree', 'list', '--porcelain']),
+    runGit(git, cwd, ['rev-parse', '--show-toplevel']).then((s) => s.trim()),
+  ]);
+  const found = new Map<string, string>();
+  for (const block of list.split('\n\n')) {
+    const path = /^worktree (.*)$/m.exec(block)?.[1];
+    const branch = /^branch (.*)$/m.exec(block)?.[1];
+    if (path !== undefined && branch !== undefined && path !== top) found.set(branch, path);
+  }
+  return found;
+}

@@ -87,12 +87,26 @@ describe('operations', () => {
     assert.equal(run(d, 'tag', '--list'), 'v1');
   });
 
-  it('puts a deleted branch back without switching to it', async () => {
+  it('stashes only the paths named, untracked ones included', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'f.txt'), 'dirty\n');
+    writeFileSync(join(d, 'new [1].txt'), 'mine\n');
+    writeFileSync(join(d, 'other.txt'), 'stays\n');
+    await op(d, { kind: 'stashPush', message: 'some', includeUntracked: true, paths: ['f.txt', 'new [1].txt'] });
+    assert.equal(run(d, 'status', '--porcelain'), '?? other.txt');
+    assert.equal(run(d, 'show', '--format=', '--name-only', 'stash@{0}^3'), 'new [1].txt');
+  });
+
+  it('puts a deleted branch back without switching to it, with its configuration', async () => {
     const d = repo();
     const tip = run(d, 'rev-parse', 'topic');
+    run(d, 'config', 'branch.topic.description', 'first');
     run(d, 'branch', '--delete', '--force', '--quiet', 'topic');
+    assert.throws(() => run(d, 'config', 'branch.topic.description'), 'git drops the branch section');
     await op(d, { kind: 'branchAt', name: 'topic', at: tip });
+    await op(d, { kind: 'configAdd', key: 'branch.topic.description', value: 'first' });
     assert.equal(run(d, 'rev-parse', 'topic'), tip);
+    assert.equal(run(d, 'config', 'branch.topic.description'), 'first');
     assert.equal(branch(d), 'main');
   });
 
@@ -104,12 +118,47 @@ describe('operations', () => {
     run(d, 'commit', '--quiet', '-m', 'ahead1');
     run(d, 'checkout', '--quiet', 'main');
     appendFileSync(join(d, 'f.txt'), 'dirty\n');
-    await op(d, { kind: 'merge', ref: 'refs/heads/ahead', mode: 'auto', autostash: true });
+    await op(d, { kind: 'merge', ref: 'refs/heads/ahead', mode: 'ff', autostash: true });
     assert.equal(head(d), run(d, 'rev-parse', 'ahead'), 'fast-forwarded');
     assert.match(run(d, 'diff', '--name-only'), /f\.txt/, 'changes came back');
     run(d, 'reset', '--quiet', '--hard', 'main~1');
     await op(d, { kind: 'merge', ref: 'refs/heads/ahead', mode: 'noFastForward', autostash: false });
     assert.equal(run(d, 'rev-list', '--parents', '-n1', 'HEAD').split(' ').length, 3, 'merge commit');
+  });
+
+  it("merges as the button says, whatever the branch's merge options", async () => {
+    const d = repo();
+    run(d, 'checkout', '--quiet', '-b', 'ahead', 'main');
+    writeFileSync(join(d, 'h.txt'), 'h\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'ahead1');
+    run(d, 'checkout', '--quiet', 'main');
+    run(d, 'config', 'branch.main.mergeoptions', '--squash --no-commit');
+    run(d, 'config', 'merge.ff', 'false');
+    await op(d, { kind: 'merge', ref: 'ahead', mode: 'ff', autostash: false });
+    assert.equal(head(d), run(d, 'rev-parse', 'ahead'), 'fast-forwarded, not squashed or left uncommitted');
+  });
+
+  it('rebases only the current branch, replaying merged commits one by one, whatever the config', async () => {
+    const d = repo();
+    const commitOn = (branch: string, from: string, file: string) => {
+      run(d, 'checkout', '--quiet', '-b', branch, from);
+      writeFileSync(join(d, file), `${file}\n`);
+      run(d, 'add', '.');
+      run(d, 'commit', '--quiet', '-m', file);
+    };
+    commitOn('side', 'main~1', 's.txt');
+    commitOn('onto', 'main~1', 'o.txt');
+    run(d, 'checkout', '--quiet', 'topic');
+    run(d, 'merge', '--quiet', '--no-ff', '--no-edit', 'side');
+    run(d, 'branch', 'stacked', 'topic^1~1');
+    const stacked = run(d, 'rev-parse', 'stacked');
+    run(d, 'config', 'rebase.updateRefs', 'true');
+    run(d, 'config', 'rebase.rebaseMerges', 'true');
+    await op(d, { kind: 'rebase', onto: run(d, 'rev-parse', 'onto'), autostash: false });
+    assert.equal(run(d, 'rev-parse', 'stacked'), stacked, 'no other branch moved');
+    assert.equal(run(d, 'rev-list', '--count', '--merges', 'onto..topic'), '0', 'the merge is dropped');
+    assert.equal(run(d, 'rev-list', '--count', 'onto..topic'), '3', "its side's commit is replayed");
   });
 
   it('stops a rebase at a conflict, then continues after resolving', async () => {
@@ -126,10 +175,22 @@ describe('operations', () => {
     assert.equal(run(d, 'log', '--format=%s', '-3'), 'topic2\ntopic1\nmain1');
   });
 
+  it('concludes a merge after resolving with the message git prepared, without its conflict notes', async () => {
+    const d = repo();
+    await assert.rejects(op(d, { kind: 'merge', ref: 'topic', mode: 'ff', autostash: false }), {
+      kind: 'conflict',
+    });
+    writeFileSync(join(d, 'f.txt'), 'resolved\n');
+    run(d, 'add', 'f.txt');
+    await op(d, { kind: 'continue', operation: 'merge' });
+    assert.equal(await readOperationState('git', d), undefined);
+    assert.equal(run(d, 'log', '-1', '--format=%B'), "Merge branch 'topic'");
+  });
+
   it('aborts and skips', async () => {
     const d = repo();
     const before = head(d);
-    await assert.rejects(op(d, { kind: 'merge', ref: 'refs/heads/topic', mode: 'auto', autostash: false }), {
+    await assert.rejects(op(d, { kind: 'merge', ref: 'refs/heads/topic', mode: 'ff', autostash: false }), {
       kind: 'conflict',
     });
     await op(d, { kind: 'abort', operation: 'merge' });
@@ -177,7 +238,7 @@ describe('operations', () => {
     assert.equal(branch(d), 'from-stash');
   });
 
-  it('fetches, pulls and pushes, setting the upstream and forcing with a lease', async () => {
+  it('fetches, and pushes, setting the upstream and forcing with a lease', async () => {
     const origin = repo();
     const c = join(root, `clone${n++}`);
     run(root, 'clone', '--quiet', origin, c);
@@ -186,23 +247,37 @@ describe('operations', () => {
     run(origin, 'commit', '--quiet', '-m', 'upstream');
     await op(c, { kind: 'fetch', remote: undefined });
     assert.equal(run(c, 'rev-parse', 'origin/main'), head(origin));
-    await op(c, { kind: 'pull', rebase: false, autostash: false });
-    assert.equal(head(c), head(origin));
     run(origin, 'checkout', '--quiet', 'topic');
     run(c, 'checkout', '--quiet', '-b', 'published');
-    await op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: true, forceWithLease: undefined });
+    const publish = { kind: 'push', branch: 'published', remote: 'origin', dest: 'refs/heads/published' } as const;
+    await op(c, { ...publish, setUpstream: true, forceWithLease: undefined });
     assert.equal(run(c, 'rev-parse', '--abbrev-ref', 'published@{upstream}'), 'origin/published');
     const pushed = head(c);
     run(c, 'reset', '--quiet', '--hard', 'HEAD~1');
-    await assert.rejects(
-      op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: false, forceWithLease: undefined }),
-      { kind: 'rejected' },
-    );
-    await assert.rejects(
-      op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: false, forceWithLease: head(c) }),
-      'a stale lease fails',
-    );
-    await op(c, { kind: 'push', branch: 'published', remote: 'origin', setUpstream: false, forceWithLease: pushed });
+    await assert.rejects(op(c, { ...publish, setUpstream: false, forceWithLease: undefined }), { kind: 'rejected' });
+    await assert.rejects(op(c, { ...publish, setUpstream: false, forceWithLease: head(c) }), 'a stale lease fails');
+    await op(c, { ...publish, setUpstream: false, forceWithLease: pushed });
     assert.equal(run(origin, 'rev-parse', 'published'), head(c));
+  });
+
+  it('pushes to an upstream branch of another name', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', origin, c);
+    run(origin, 'checkout', '--quiet', 'topic');
+    run(c, 'checkout', '--quiet', '-b', 'fix', '--track', 'origin/main');
+    writeFileSync(join(c, 'fix.txt'), 'fix\n');
+    run(c, 'add', '.');
+    run(c, 'commit', '--quiet', '-m', 'fix');
+    await op(c, {
+      kind: 'push',
+      branch: 'fix',
+      remote: 'origin',
+      dest: 'refs/heads/main',
+      setUpstream: false,
+      forceWithLease: undefined,
+    });
+    assert.equal(run(origin, 'rev-parse', 'main'), head(c));
+    assert.equal(run(origin, 'branch', '--list', 'fix'), '');
   });
 });

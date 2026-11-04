@@ -24,7 +24,7 @@ const ORPHAN_CHECK_MS = 3000;
 export function activate(context: vscode.ExtensionContext): StrataTestApi {
   GraphPanel.memento = context.workspaceState;
   const runner = new OpRunner();
-  const env: FlowEnv = { runner, ui: vscodeUi };
+  const env: FlowEnv = { runner, ui: vscodeUi, state: context.workspaceState };
   GraphPanel.env = env;
   const show = () => GraphPanel.show(context.extensionUri);
   context.subscriptions.push(

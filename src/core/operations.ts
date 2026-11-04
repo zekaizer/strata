@@ -3,8 +3,8 @@ import type { OperationKind } from './repo-state.ts';
 /** Reset modes, in increasing order of what they throw away. */
 export type ResetMode = 'soft' | 'mixed' | 'keep' | 'hard';
 
-/** How a merge records the result. */
-export type MergeMode = 'auto' | 'noFastForward';
+/** How a merge records the result: fast-forward when it can, or always a merge commit. */
+export type MergeMode = 'ff' | 'noFastForward';
 
 /**
  * Every repository change Strata makes. Ids are validated commit ids, names pass refNameProblem,
@@ -19,21 +19,37 @@ export type Operation =
   | { kind: 'branchAt'; name: string; at: string }
   | { kind: 'createTag'; name: string; at: string; message: string | undefined }
   | { kind: 'renameBranch'; from: string; to: string }
+  /** Adds a config value (Undo of a deletion puts back the branch's configuration). */
+  | { kind: 'configAdd'; key: string; value: string }
   | { kind: 'deleteBranch'; name: string }
   | { kind: 'deleteTag'; name: string }
+  /** `ref` as the merge commit's message should name it: a short ref name or a commit id. */
   | { kind: 'merge'; ref: string; mode: MergeMode; autostash: boolean }
+  /** `onto`: the commit id the confirmation named. */
   | { kind: 'rebase'; onto: string; autostash: boolean }
   | { kind: 'cherryPick'; commit: string }
   | { kind: 'revert'; commit: string }
   | { kind: 'reset'; commit: string; mode: ResetMode }
   | { kind: 'continue' | 'abort' | 'skip'; operation: OperationKind }
-  | { kind: 'stashPush'; message: string | undefined; includeUntracked: boolean }
+  /** `paths`: only these (a safety stash of exactly what an operation would overwrite). */
+  | { kind: 'stashPush'; message: string | undefined; includeUntracked: boolean; paths?: readonly string[] }
   | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
-  | { kind: 'fetch'; remote: string | undefined }
-  | { kind: 'pull'; rebase: boolean; autostash: boolean }
-  | { kind: 'push'; branch: string; remote: string; setUpstream: boolean; forceWithLease: string | undefined };
+  /** `unshallow`: the whole history of a shallow clone; `ref`: only this ref of `remote`. */
+  | { kind: 'fetch'; remote: string | undefined; unshallow?: boolean; ref?: string }
+  /**
+   * Local `branch` to `dest`, a full ref on `remote` (the upstream's branch may have another name).
+   * `forceWithLease`: the commit `dest` must still be at.
+   */
+  | {
+      kind: 'push';
+      branch: string;
+      remote: string;
+      dest: string;
+      setUpstream: boolean;
+      forceWithLease: string | undefined;
+    };
 
 const GIT_COMMAND: Record<OperationKind, string> = {
   rebase: 'rebase',
@@ -65,21 +81,33 @@ export function argv(op: Operation): string[] {
         : ['tag', '--annotate', '--message', op.message, op.name, op.at];
     case 'renameBranch':
       return ['branch', '--move', op.from, op.to];
+    case 'configAdd':
+      return ['config', '--add', op.key, op.value];
     case 'deleteBranch':
       // Strata confirms with the exact commits that become unreachable; -d's merged check is narrower.
       return ['branch', '--delete', '--force', op.name];
     case 'deleteTag':
       return ['tag', '--delete', op.name];
     case 'merge':
+      // Explicit, so merge.ff and branch.<b>.mergeOptions (--squash, --no-commit) never contradict the button.
       return [
         'merge',
         '--no-edit',
-        ...(op.mode === 'noFastForward' ? ['--no-ff'] : []),
+        '--commit',
+        '--no-squash',
+        op.mode === 'noFastForward' ? '--no-ff' : '--ff',
         ...autostash(op.autostash),
         op.ref,
       ];
     case 'rebase':
-      return ['rebase', ...autostash(op.autostash), op.onto];
+      // The confirmation names what a plain rebase does: no other branch moves, merges are dropped
+      // (their commits replayed one by one), and no fixup! commits are reordered. Unknown keys are ignored.
+      return [
+        ...['-c', 'rebase.updateRefs=false', '-c', 'rebase.rebaseMerges=false', '-c', 'rebase.autoSquash=false'],
+        'rebase',
+        ...autostash(op.autostash),
+        op.onto,
+      ];
     case 'cherryPick':
       return ['cherry-pick', op.commit];
     case 'revert':
@@ -87,8 +115,8 @@ export function argv(op: Operation): string[] {
     case 'reset':
       return ['reset', `--${op.mode}`, op.commit];
     case 'continue':
-      // A stopped merge has no --continue before git 2.12's wrapper; committing is the same.
-      return op.operation === 'merge' ? ['commit', '--no-edit'] : [GIT_COMMAND[op.operation], '--continue'];
+      // For a merge, `commit --no-edit` would keep the "# Conflicts:" notes; --continue's editor (none) strips them.
+      return [GIT_COMMAND[op.operation], '--continue'];
     case 'abort':
       return [GIT_COMMAND[op.operation], '--abort'];
     case 'skip':
@@ -100,6 +128,7 @@ export function argv(op: Operation): string[] {
         'push',
         ...(op.includeUntracked ? ['--include-untracked'] : []),
         ...(op.message === undefined ? [] : ['--message', op.message]),
+        ...(op.paths === undefined ? [] : ['--', ...op.paths.map((p) => `:(literal)${p}`)]),
       ];
     case 'stashApply':
       return ['stash', 'apply', stash(op.index)];
@@ -112,17 +141,17 @@ export function argv(op: Operation): string[] {
     case 'stashStore':
       return ['stash', 'store', '--message', op.message, op.commit];
     case 'fetch':
+      if (op.unshallow) return ['fetch', '--progress', '--unshallow', ...(op.remote === undefined ? [] : [op.remote])];
+      if (op.remote !== undefined && op.ref !== undefined) return ['fetch', '--progress', op.remote, op.ref];
       return ['fetch', '--progress', ...(op.remote === undefined ? ['--all'] : [op.remote])];
-    case 'pull':
-      return ['pull', '--progress', op.rebase ? '--rebase' : '--no-rebase', ...autostash(op.autostash)];
     case 'push':
       return [
         'push',
         '--progress',
         ...(op.setUpstream ? ['--set-upstream'] : []),
-        ...(op.forceWithLease === undefined ? [] : [`--force-with-lease=refs/heads/${op.branch}:${op.forceWithLease}`]),
+        ...(op.forceWithLease === undefined ? [] : [`--force-with-lease=${op.dest}:${op.forceWithLease}`]),
         op.remote,
-        `refs/heads/${op.branch}:refs/heads/${op.branch}`,
+        `refs/heads/${op.branch}:${op.dest}`,
       ];
   }
 }

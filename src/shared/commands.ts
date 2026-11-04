@@ -58,11 +58,160 @@ export const COMMANDS = {
   'strata.file.copyOldRelativePath': { title: 'Copy Old Relative Path', menus: [file('2_copy@3', 'strataRenamed')] },
   'strata.file.copyPatch': { title: 'Copy Patch', menus: [file('2_copy@4')] },
 
+  'strata.stash.push': {
+    title: 'Stash Changes...',
+    menus: [commit('1_worktree@1', 'strataIsHead')],
+    palette: true,
+    titleBar: { group: '3_stash@1' },
+    writes: true,
+  },
+  'strata.stash.pushUntracked': {
+    title: 'Stash Changes (Include Untracked)...',
+    menus: [commit('1_worktree@2', 'strataIsHead')],
+    palette: true,
+    titleBar: { group: '3_stash@2' },
+    writes: true,
+  },
+  'strata.checkout': {
+    title: 'Checkout',
+    menus: [
+      { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '1_checkout@1' },
+    ],
+    writes: true,
+  },
+  'strata.checkoutDetached': {
+    title: 'Checkout (Detached)',
+    menus: [commit('2_checkout@1', '!strataIsHead'), { section: 'tag', group: '1_checkout@1' }],
+    writes: true,
+  },
+  'strata.createBranch': {
+    title: 'Create Branch...',
+    menus: [commit('2_checkout@2'), { section: 'head', group: '1_checkout@1' }],
+    writes: true,
+  },
+  'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
+  'strata.cherryPick': {
+    title: 'Cherry Pick',
+    menus: [commit('3_apply@1', '!strataIsHead && !strataMerge')],
+    writes: true,
+  },
+  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2', '!strataMerge')], writes: true },
+  'strata.merge': {
+    title: 'Merge into Current Branch...',
+    menus: [
+      commit('3_apply@3', '!strataIsHead'),
+      { section: 'branch', group: '2_apply@1', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '2_apply@1' },
+    ],
+    writes: true,
+  },
+  'strata.rebase': {
+    title: 'Rebase Current Branch onto This...',
+    menus: [
+      commit('3_apply@4', '!strataIsHead'),
+      { section: 'branch', group: '2_apply@2', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '2_apply@2' },
+    ],
+    writes: true,
+  },
   'strata.commit.copyHash': { title: 'Copy Commit Hash', menus: [commit('5_copy@1')] },
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },
   'strata.commit.copySubject': { title: 'Copy Commit Subject', menus: [commit('5_copy@3')] },
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
+  'strata.refActions': {
+    title: 'Branch and Tag Actions...',
+    menus: [commit('7_refs@1', 'strataHasRefs'), { section: 'refs', group: '1_refs@1' }],
+  },
+  'strata.reset': {
+    title: 'Reset Current Branch to Here...',
+    menus: [commit('6_reset@1', '!strataIsHead')],
+    writes: true,
+  },
 
+  'strata.push': {
+    title: 'Push',
+    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataUpstream' }],
+    palette: true,
+    titleBar: { group: '1_sync@2' },
+    writes: true,
+  },
+  'strata.publish': {
+    title: 'Publish Branch...',
+    menus: [{ section: 'branch', group: '3_remote@1', when: '!strataUpstream' }],
+    writes: true,
+  },
+  'strata.pull': {
+    title: 'Pull',
+    menus: [{ section: 'branch', group: '3_remote@2', when: 'strataIsCurrent && strataUpstream' }],
+    palette: true,
+    titleBar: { group: '1_sync@1' },
+    writes: true,
+  },
+  'strata.fetch': {
+    title: 'Fetch',
+    menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
+    palette: true,
+    titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
+    writes: true,
+  },
+  'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
+  'strata.copyRefName': {
+    title: 'Copy Name',
+    menus: [
+      { section: 'branch', group: '5_copy@1' },
+      { section: 'remoteBranch', group: '5_copy@1' },
+      { section: 'tag', group: '5_copy@1' },
+    ],
+  },
+  'strata.deleteBranch': {
+    title: 'Delete Branch...',
+    menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent' }],
+    writes: true,
+  },
+  'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
+
+  'strata.operation.continue': {
+    title: 'Continue Operation',
+    palette: 'strata.operation',
+    titleBar: { group: 'navigation@1', when: 'strata.operation', icon: '$(check)' },
+    writes: true,
+  },
+  'strata.operation.abort': {
+    title: 'Abort Operation...',
+    palette: 'strata.operation',
+    titleBar: { group: 'navigation@2', when: 'strata.operation', icon: '$(discard)' },
+    writes: true,
+  },
+  'strata.operation.skip': {
+    title: 'Skip Commit...',
+    palette: "strata.operation && strata.operation != 'merge'",
+    titleBar: { group: '2_operation@1', when: "strata.operation && strata.operation != 'merge'" },
+    writes: true,
+  },
+  'strata.stash.apply': {
+    title: 'Apply Stash',
+    menus: [{ section: 'stash', group: '1_apply@1', when: '!strataLeftover' }],
+    writes: true,
+  },
+  'strata.stash.pop': {
+    title: 'Pop Stash',
+    menus: [{ section: 'stash', group: '1_apply@2', when: '!strataLeftover' }],
+    writes: true,
+  },
+  'strata.stash.branch': {
+    title: 'Create Branch from Stash...',
+    menus: [{ section: 'stash', group: '1_apply@3' }],
+    writes: true,
+  },
+  'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
+  'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
+  'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '3_stash@3' } },
+
+  /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
+  'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
+  'strata.showStash': { title: 'Show Stash' },
+  'strata.keepStash': { title: 'Keep Stash' },
   'strata.undo': {
     title: 'Undo Last Operation',
     palette: 'strata.canUndo',
@@ -70,16 +219,6 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.showOutput': { title: 'Show Git Output', palette: true, titleBar: { group: '9_output@1' } },
-
-  // The banner's buttons (src/webview/banner.ts).
-  'strata.operation.continue': { title: 'Continue Operation', writes: true },
-  'strata.operation.abort': { title: 'Abort Operation...', writes: true },
-  'strata.operation.skip': { title: 'Skip Commit...', writes: true },
-  'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
-  'strata.stash.pop': { title: 'Pop Stash', writes: true },
-  'strata.stash.drop': { title: 'Drop Stash...', writes: true },
-  'strata.showStash': { title: 'Show Stash' },
-  'strata.keepStash': { title: 'Keep Stash' },
 } as const satisfies Record<string, CommandSpec>;
 
 export type CommandId = keyof typeof COMMANDS;
@@ -148,4 +287,33 @@ export function manifestMenus(): Record<'webview/context' | 'editor/title' | 'co
     });
   }
   return { 'webview/context': context, 'editor/title': title, commandPalette: palette };
+}
+
+/** Evaluates a menu's extra when-clause (`flag && !flag`, the only form the table uses) against a context's flags. */
+export function whenHolds(when: string | undefined, flags: Readonly<Record<string, unknown>>): boolean {
+  if (when === undefined) return true;
+  return when.split('&&').every((term) => {
+    const t = term.trim();
+    return t.startsWith('!') ? !flags[t.slice(1)] : Boolean(flags[t]);
+  });
+}
+
+/** `group@order` as VS Code sorts menu items. */
+const position = (group: string): [string, number] => {
+  const [name = '', order = '0'] = group.split('@');
+  return [name, Number(order)];
+};
+
+/**
+ * The commands a badge's context menu shows for a ref of `section` with these flags, in menu
+ * order: what Branch and Tag Actions... offers for keyboard users, evaluated from the same table.
+ */
+export function refActions(section: Section, flags: Readonly<Record<string, unknown>>): CommandId[] {
+  const found: { id: CommandId; at: [string, number] }[] = [];
+  for (const id of COMMAND_IDS) {
+    const spec: CommandSpec = COMMANDS[id];
+    const m = spec.menus?.find((p) => p.section === section && whenHolds(p.when, flags));
+    if (m) found.push({ id, at: position(m.group) });
+  }
+  return found.sort((a, b) => a.at[0].localeCompare(b.at[0]) || a.at[1] - b.at[1]).map((f) => f.id);
 }

@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { patchStats } from '../../src/core/patch.ts';
-import { readCommitPatch, readFilePatch } from '../../src/git/patch.ts';
+import { readCommitPatch, readFilePatch, readStashPatch } from '../../src/git/patch.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -159,5 +159,28 @@ describe('patchStats', () => {
 
   it('is zero for an empty patch', () => {
     assert.deepEqual(patchStats(''), { files: 0, insertions: 0, deletions: 0 });
+  });
+});
+
+describe('readStashPatch', () => {
+  const root = tempDir('stash-patch');
+  const dir = join(root, 'repo');
+  before(() => {
+    mkdirSync(dir);
+    run(dir, 'init', '--quiet', '-b', 'main');
+    writeFileSync(join(dir, 'f.txt'), 'one\n');
+    run(dir, 'add', '.');
+    run(dir, 'commit', '--quiet', '-m', 'base');
+    writeFileSync(join(dir, 'f.txt'), 'two\n');
+    writeFileSync(join(dir, 'new.txt'), 'untracked\n');
+    run(dir, 'stash', 'push', '--quiet', '--include-untracked');
+  });
+
+  it('holds the tracked changes against the base, then the untracked files as added', async () => {
+    const patch = await readStashPatch('git', dir, run(dir, 'rev-parse', 'stash@{0}'));
+    assert.match(patch, /^diff --git a\/f\.txt b\/f\.txt\n[\s\S]*-one\n\+two\n/);
+    assert.match(patch, /diff --git a\/new\.txt b\/new\.txt\nnew file mode 100644[\s\S]*\+untracked\n/);
+    assert.deepEqual(patchStats(patch), { files: 2, insertions: 2, deletions: 1 });
+    assert.doesNotMatch(patch, /^[0-9a-f]{40}$/m, 'no commit id lines: git apply reads it as one patch');
   });
 });
