@@ -1,0 +1,13 @@
+{
+  "name": "strata-restart-driver",
+  "publisher": "test",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./driver.cjs",
+  "activationEvents": [
+    "onStartupFinished"
+  ]
+}

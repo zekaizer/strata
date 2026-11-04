@@ -1,0 +1,636 @@
+/* All colors come from VS Code theme variables; graph colors are computed in theme.ts. */
+:root {
+  color-scheme: light dark;
+  --row-height: 24px;
+  --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
+  --badge-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));
+  --badge-tag: var(--vscode-charts-yellow);
+  --badge-stash: var(--vscode-descriptionForeground);
+  --badge-head: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.toolbar {
+  container: toolbar / inline-size;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--vscode-panel-border, transparent);
+  flex: none;
+}
+
+.toolbar {
+  position: relative;
+}
+
+.tool-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  max-width: 200px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tool-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+}
+
+.tool-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.tool-button.active {
+  background: var(--vscode-inputOption-activeBackground);
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
+
+.tool-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover {
+  position: absolute;
+  top: 30px;
+  right: 8px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 16px));
+  max-height: min(420px, 70vh);
+  padding: 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+  border-radius: 6px;
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+
+.popover[hidden] {
+  display: none;
+}
+
+.popover-search {
+  padding: 4px 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+  outline: none;
+}
+
+.popover-search:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.popover-actions {
+  display: flex;
+  gap: 12px;
+  padding: 6px 2px;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.popover-list {
+  overflow: auto;
+}
+
+.popover-group {
+  padding: 6px 4px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--vscode-descriptionForeground);
+}
+
+.popover-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.popover-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.popover-item-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-more {
+  padding: 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* Narrow toolbars keep the icons and drop the labels. */
+@container toolbar (max-width: 420px) {
+  .first-parent-button .tool-label {
+    display: none;
+  }
+  .toolbar .status {
+    display: none;
+  }
+}
+
+.toolbar .repo {
+  font-weight: 600;
+}
+
+.toolbar .status {
+  color: var(--vscode-descriptionForeground);
+}
+
+.toolbar .status.error {
+  color: var(--vscode-errorForeground);
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+}
+
+.icon-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  container: list / inline-size;
+}
+
+.scroller {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  outline: none;
+}
+
+.sizer {
+  position: relative;
+}
+
+canvas.graph {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--row-height);
+  display: grid;
+  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 160px) max-content max-content;
+  grid-template-areas: 'graph subject author date hash';
+  align-items: center;
+  column-gap: 12px;
+  padding-right: 12px;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.row.selected {
+  background: var(--vscode-list-inactiveSelectionBackground);
+  color: var(--vscode-list-inactiveSelectionForeground, inherit);
+  /* High contrast themes have no selection background; they mark selection with a border. */
+  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.scroller:focus-within .row.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+  outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder));
+  outline-offset: -1px;
+}
+
+.row.head .text {
+  font-weight: 600;
+}
+
+.subject {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.subject .text,
+.author {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.author,
+.date {
+  color: var(--vscode-descriptionForeground);
+}
+
+.row.selected .author,
+.row.selected .date,
+.row.selected .hash {
+  color: inherit;
+}
+
+.date {
+  font-variant-numeric: tabular-nums;
+}
+
+.date-short {
+  display: none;
+}
+
+.hash {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.badge {
+  --badge-color: var(--badge-branch);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  max-width: 220px;
+  height: 18px;
+  padding: 0 6px 0 4px;
+  border: 1px solid var(--badge-color);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.badge .codicon {
+  font-size: 12px;
+  color: var(--badge-color);
+}
+
+.badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-remote {
+  --badge-color: var(--badge-remote);
+}
+
+.badge-tag {
+  --badge-color: var(--badge-tag);
+}
+
+.badge-stash {
+  --badge-color: var(--badge-stash);
+}
+
+.badge-more {
+  --badge-color: var(--vscode-descriptionForeground);
+  padding: 0 6px;
+}
+
+.badge-head {
+  --badge-color: var(--badge-head);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--badge-color) 30%, transparent);
+}
+
+/*
+ * Commit details unfold inline under the selected row. The left gutter is the
+ * graph column, where the canvas keeps drawing the lines that run through.
+ */
+.expansion {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 4px 12px 8px calc(var(--graph-width, 40px) + 12px);
+  border-top: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-contrastBorder, transparent));
+  background: color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground, transparent) 45%, transparent);
+  cursor: auto;
+}
+
+.expansion[hidden] {
+  display: none;
+}
+
+.details-fold {
+  position: absolute;
+  top: 2px;
+  right: 8px;
+}
+
+.expansion .details-meta {
+  /* Room for the fold button. */
+  padding-right: 28px;
+}
+
+.expansion-loading {
+  color: var(--vscode-descriptionForeground);
+}
+
+.details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  margin: 0 0 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.details-hash,
+.details-parents a {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+}
+
+.details-hash {
+  user-select: all;
+}
+
+.details-parents {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.details-parents a {
+  color: var(--vscode-textLink-foreground);
+}
+
+.details-message {
+  margin: 12px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-panel-border, transparent);
+  font-family: var(--vscode-font-family);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.files-summary {
+  color: var(--vscode-descriptionForeground);
+  margin: 8px 0 4px;
+}
+
+.files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* Several columns when the editor is wide; one in narrow editors. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  column-gap: 16px;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  /* Tall enough for the Old | diff | New control, so hovering does not shift the rows below. */
+  min-height: 22px;
+  box-sizing: border-box;
+  padding: 1px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.file:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.file:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.file-status {
+  width: 1ch;
+  font-family: var(--vscode-editor-font-family);
+  font-weight: 600;
+}
+
+.status-A .file-status {
+  color: var(--vscode-gitDecoration-addedResourceForeground);
+}
+
+.status-M .file-status,
+.status-T .file-status {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+}
+
+.status-D .file-status {
+  color: var(--vscode-gitDecoration-deletedResourceForeground);
+}
+
+.status-R .file-status,
+.status-C .file-status {
+  color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-modifiedResourceForeground));
+}
+
+.file-actions {
+  display: none;
+  margin-left: auto;
+  flex: none;
+  /* One segmented control: Old | diff | New. */
+  border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, var(--vscode-panel-border)));
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+/* Shown where the pointer or keyboard is, and on the file opened last. */
+.file:hover .file-actions,
+.file:focus-within .file-actions,
+.file.opened .file-actions {
+  display: inline-flex;
+}
+
+.file-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 18px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font: inherit;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+
+.file-action + .file-action {
+  border-left: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, var(--vscode-panel-border)));
+}
+
+.file-action.codicon {
+  font-size: 14px;
+}
+
+.file-action:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.file-old,
+.file-dir {
+  color: var(--vscode-descriptionForeground);
+}
+
+.file-path {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.file-name {
+  flex: none;
+}
+
+.file-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+  font-size: 0.92em;
+}
+
+.file.opened {
+  background: var(--vscode-list-inactiveSelectionBackground);
+  outline: 1px solid var(--vscode-contrastActiveBorder, transparent);
+  outline-offset: -1px;
+}
+
+.empty {
+  padding: 12px 16px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/*
+ * Narrow editors (e.g. next to a chat or side panel): drop the least useful
+ * columns first. Everything hidden here is shown in the details pane.
+ */
+@container list (max-width: 760px) {
+  .row {
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content;
+  }
+  .row .hash,
+  .date-full {
+    display: none;
+  }
+  .date-short {
+    display: inline;
+  }
+  .badge {
+    max-width: 140px;
+  }
+}
+
+@container list (max-width: 600px) {
+  .row {
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px);
+    column-gap: 8px;
+  }
+  .row .date {
+    display: none;
+  }
+  .badge {
+    max-width: 96px;
+  }
+}
+
+@container list (max-width: 480px) {
+  .row {
+    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr);
+  }
+  .row .author {
+    display: none;
+  }
+}

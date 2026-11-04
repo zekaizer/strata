@@ -1,0 +1,8 @@
+**
+!package.json
+!README.md
+!LICENSE
+!dist/extension.cjs
+!dist/webview/*.js
+!dist/webview/*.css
+!dist/webview/codicons/**

@@ -1,0 +1,250 @@
+{
+  "name": "strata",
+  "displayName": "Strata",
+  "description": "Commit graph for git repositories",
+  "version": "0.0.1",
+  "publisher": "zekaizer",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zekaizer/strata.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zekaizer/strata/issues"
+  },
+  "homepage": "https://github.com/zekaizer/strata#readme",
+  "engines": {
+    "vscode": "^1.90.0",
+    "node": ">=22.18"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "SCM Providers"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onWebviewPanel:strata.graph"
+  ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "strata.show",
+        "title": "Show Commit Graph",
+        "category": "Strata",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "strata.writeCommitGraph",
+        "title": "Write Commit-Graph for Faster History",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.openChanges",
+        "title": "Open Changes",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.openOld",
+        "title": "Open Old Version (Before This Commit)",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.openNew",
+        "title": "Open New Version (As of This Commit)",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.openToSide",
+        "title": "Open to the Side",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.copyRelativePath",
+        "title": "Copy Relative Path",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.copyPath",
+        "title": "Copy Path",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.copyOldRelativePath",
+        "title": "Copy Old Relative Path",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.commit.copyHash",
+        "title": "Copy Commit Hash",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.commit.copyShortHash",
+        "title": "Copy Short Commit Hash",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.commit.copySubject",
+        "title": "Copy Commit Subject",
+        "category": "Strata"
+      }
+    ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "strata.show",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "strata.file.openChanges",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataHasDiff",
+          "group": "1_open@1"
+        },
+        {
+          "command": "strata.file.openOld",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataHasOld",
+          "group": "1_open@2"
+        },
+        {
+          "command": "strata.file.openNew",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataHasNew",
+          "group": "1_open@3"
+        },
+        {
+          "command": "strata.file.openToSide",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
+          "group": "1_open@4"
+        },
+        {
+          "command": "strata.file.copyRelativePath",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
+          "group": "2_copy@1"
+        },
+        {
+          "command": "strata.file.copyPath",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
+          "group": "2_copy@2"
+        },
+        {
+          "command": "strata.file.copyOldRelativePath",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataRenamed",
+          "group": "2_copy@3"
+        },
+        {
+          "command": "strata.commit.copyHash",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "strata.commit.copyShortHash",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "1_copy@2"
+        },
+        {
+          "command": "strata.commit.copySubject",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "1_copy@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "strata.file.openChanges",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.openOld",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.openNew",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.openToSide",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.copyRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.copyOldRelativePath",
+          "when": "false"
+        },
+        {
+          "command": "strata.commit.copyHash",
+          "when": "false"
+        },
+        {
+          "command": "strata.commit.copyShortHash",
+          "when": "false"
+        },
+        {
+          "command": "strata.commit.copySubject",
+          "when": "false"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Strata",
+      "properties": {
+        "strata.suggestCommitGraph": {
+          "type": "boolean",
+          "default": true,
+          "description": "Offer to write a commit-graph file when a repository without one takes long to show its first page of history."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "fixtures": "node test/fixtures/cli.ts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json && tsc -p src/worker/tsconfig.json && tsc -p playground/tsconfig.json",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit",
+    "test:unit": "node --test --test-reporter=spec \"test/unit/**/*.test.ts\"",
+    "test:integration": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs -- vscode-test --label stable && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable",
+    "test:integration:min": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs -- vscode-test --label min && node scripts/xvfb.mjs -- node scripts/restart-test.mjs 1.90.0",
+    "test": "npm run check && npm run test:integration",
+    "playground": "node scripts/build.mjs --playground",
+    "shot": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
+    "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies -o artifacts/strata.vsix",
+    "vscode:prepublish": "node scripts/build.mjs --production",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "capture-themes": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_CAPTURE_THEMES=playground/themes -- vscode-test --label stable",
+    "playground:shot": "node scripts/playground-shot.mjs",
+    "perf": "node scripts/perf.ts",
+    "perf:e2e": "npm run build && node scripts/xvfb.mjs -- vscode-test --label perf"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/mocha": "10.0.10",
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.90.0",
+    "@vscode/codicons": "0.0.46-24",
+    "@vscode/test-cli": "0.0.15",
+    "@vscode/test-electron": "3.1.0",
+    "@vscode/vsce": "4.1.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.14.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.1"
+  }
+}
