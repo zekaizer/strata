@@ -45,13 +45,14 @@ export async function waitFor<T>(
   what: string,
   check: () => Promise<T | undefined | false> | T | undefined | false,
   timeoutMs = 15_000,
+  intervalMs = 100,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const v = await check();
     if (v !== undefined && v !== false) return v;
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await delay(100);
+    await delay(intervalMs);
   }
 }
 

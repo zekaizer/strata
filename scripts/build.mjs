@@ -97,7 +97,11 @@ if (playground) {
   if (!production) {
     configs.push({
       ...common,
-      entryPoints: [...(await listTests('test/integration')), 'test/restart/driver.ts'],
+      entryPoints: [
+        ...(await listTests('test/integration')),
+        ...(await listTests('test/perf')),
+        'test/restart/driver.ts',
+      ],
       outdir: 'out/test',
       outbase: 'test',
       outExtension: { '.js': '.cjs' },

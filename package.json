@@ -61,7 +61,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "capture-themes": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_CAPTURE_THEMES=playground/themes -- vscode-test --label stable",
-    "playground:shot": "node scripts/playground-shot.mjs"
+    "playground:shot": "node scripts/playground-shot.mjs",
+    "perf": "node scripts/perf.ts",
+    "perf:e2e": "npm run build && node scripts/xvfb.mjs -- vscode-test --label perf"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

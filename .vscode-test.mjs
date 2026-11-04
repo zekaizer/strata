@@ -32,7 +32,19 @@ const base = {
   mocha: { ui: 'bdd', timeout: 60_000 },
 };
 
+// npm run perf:e2e: the repository comes from STRATA_PERF_REPO.
+const perf = {
+  ...base,
+  label: 'perf',
+  version: 'stable',
+  workspaceFolder: process.env.STRATA_PERF_REPO ?? workspace,
+  files: 'out/test/perf/*.test.cjs',
+  mocha: { ui: 'bdd', timeout: 600_000 },
+  launchArgs: launchArgs('perf'),
+};
+
 export default defineConfig([
   { ...base, label: 'stable', version: 'stable', launchArgs: launchArgs('stable') },
   { ...base, label: 'min', version: '1.90.0', launchArgs: launchArgs('min') },
+  perf,
 ]);
