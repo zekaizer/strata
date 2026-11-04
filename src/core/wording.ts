@@ -610,6 +610,14 @@ export function shallowConfirmation(a: string, b: string): Confirmation<HistoryF
   return { message: `This clone is shallow: ${a} and ${b} have no common commit in it.`, ...FETCH_HISTORY };
 }
 
+/** `short` is a commit a shallow clone has without its parent. */
+export function shallowEdgeConfirmation(short: string): Confirmation<HistoryFetch> {
+  return {
+    message: `${short} is the oldest commit this shallow clone has; its parent is not here, so its changes cannot be told apart from the whole tree.`,
+    ...FETCH_HISTORY,
+  };
+}
+
 /** What a finished history operation did. */
 export const HISTORY_DONE = {
   fastForwarded: (into: string, short: string): string => `Fast-forwarded ${into} to ${short}`,

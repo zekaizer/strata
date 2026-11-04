@@ -1,5 +1,5 @@
-import { lstat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { lstat, readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import type { CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
 import { readStashList } from './stash.ts';
@@ -280,6 +280,13 @@ export async function readStashFilesHere(git: string, cwd: string, hash: string)
     ),
   );
   return files.filter((_, i) => here[i]);
+}
+
+/** Whether commit `hash` (a full id) is one a shallow clone has without its parents. */
+export async function isShallowEdge(git: string, cwd: string, hash: string): Promise<boolean> {
+  const path = resolve(cwd, (await runGit(git, cwd, ['rev-parse', '--git-path', 'shallow'])).trim());
+  const edges = await readFile(path, 'utf8').catch(() => '');
+  return edges.split('\n').includes(hash);
 }
 
 /** A git config value as written; undefined when unset. */

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as vscode from 'vscode';
 import { branchMenu, commitMenu, flowSuite, menu, reload, run, selected } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
@@ -486,6 +487,35 @@ describe('history operations', () => {
       ui.of('notify').filter((n) => n.level !== 'info'),
       [],
     );
+  });
+
+  it("refuses to cherry pick, revert or copy the patch of a shallow clone's oldest commit, and fetches more", async () => {
+    const picked = git('rev-parse', 'wip/experiment');
+    const main = git('rev-parse', 'main');
+    shallow(picked, main);
+    await reload(panel());
+    const refused = (rev: string) => [
+      `${git('rev-parse', '--short', rev)} is the oldest commit this shallow clone has; its parent is not here, so its changes cannot be told apart from the whole tree.`,
+      ['Fetch More History', 'Fetch Full History'],
+    ];
+    await run('strata.cherryPick', commitMenu(picked));
+    await run('strata.revert', commitMenu(main));
+    await vscode.env.clipboard.writeText('untouched');
+    await run('strata.commit.copyPatch', commitMenu(main));
+    assert.deepEqual(
+      ui.of('confirm').map((q) => [q.message, q.buttons]),
+      [refused(picked), refused(main), refused(main)],
+    );
+    assert.equal(git('rev-parse', 'HEAD'), main, 'nothing picked or reverted');
+    assert.equal(await vscode.env.clipboard.readText(), 'untouched');
+
+    ui.clear();
+    ui.press('Fetch More History');
+    await run('strata.cherryPick', commitMenu(picked));
+    assert.equal(git('rev-parse', '--is-shallow-repository'), 'false', 'the fixture is not 100 commits deep');
+    assert.equal(git('rev-parse', 'HEAD'), main, 'the cherry pick waits to be tried again');
+    await run('strata.cherryPick', commitMenu(picked));
+    assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
   });
 
   it('says when a merge finds no common commit, before asking to merge', async () => {

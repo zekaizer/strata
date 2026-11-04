@@ -24,6 +24,7 @@ import {
 import { resolveConflicts } from './flows/changes.ts';
 import {
   abortOperation,
+  atShallowEdge,
   continueOperation,
   merge,
   pick,
@@ -181,7 +182,10 @@ const handlers = (env: FlowEnv): Handlers => ({
     (ctx) => commitArg(ctx).subject,
     async (_, ctx) => DONE.copiedSubject(await shortOf(ctx)),
   ),
-  'strata.commit.copyPatch': (ctx) => panel().copyCommitPatch(commitArg(ctx).hash),
+  'strata.commit.copyPatch': async (ctx) => {
+    const { hash } = commitArg(ctx);
+    if (!(await atShallowEdge(panel().flowHost(), hash))) await panel().copyCommitPatch(hash);
+  },
 
   'strata.checkout': on(['branch', 'remoteBranch'], (host, t) =>
     t.kind === 'branch' ? checkoutBranch(host, t.ref) : checkoutRemote(host, t.ref),

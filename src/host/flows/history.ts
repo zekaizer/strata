@@ -22,6 +22,7 @@ import {
   resetConfirmation,
   resetPick,
   shallowConfirmation,
+  shallowEdgeConfirmation,
   skipConfirmation,
   stashButtons,
   stashLabel,
@@ -33,6 +34,7 @@ import {
   countCommits,
   isAncestor,
   isShallow,
+  isShallowEdge,
   readCommit,
   readConfigBool,
   readHead,
@@ -144,6 +146,18 @@ async function deepEnough(
 async function noCommonCommit(host: FlowHost, names: [string, string], shallow: boolean): Promise<void> {
   if (shallow) await fetchHistory(host, shallowConfirmation(...names));
   else void host.ui.notify('error', UNRELATED);
+}
+
+/**
+ * Refuses commit `hash` when the shallow clone has it without its parent: its changes would read
+ * as the whole tree (cherry pick, revert, Copy Patch). Offers to fetch more history; resolves true
+ * when it refused.
+ */
+export async function atShallowEdge(host: FlowHost, hash: string): Promise<boolean> {
+  if (!(await isShallowEdge(host.git, host.cwd, hash))) return false;
+  const c = await readCommit(host.git, host.cwd, hash);
+  await fetchHistory(host, shallowEdgeConfirmation(c.short));
+  return true;
 }
 
 /** Asks `question` about a shallow clone, then fetches more of its history or all of it, as answered. */
@@ -341,6 +355,7 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
     void host.ui.notify('info', alreadyContains(h.name, c.short));
     return;
   }
+  if (await atShallowEdge(host, c.hash)) return;
   const ch = await changes(host, kind);
   const detached = h.branch === undefined;
   let choice: StashChoice | 'go' | undefined = 'go';

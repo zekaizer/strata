@@ -6,6 +6,7 @@ import { before, describe, it } from 'node:test';
 import {
   countCommits,
   isShallow,
+  isShallowEdge,
   isAncestor,
   readBranchConfig,
   readCommit,
@@ -236,6 +237,24 @@ describe('confirmation facts', () => {
       rmSync(join(dir, 'two.txt'));
       run(dir, 'stash', 'clear');
     }
+  });
+
+  it("tells a shallow clone's oldest commits, whose parents it lacks, from root commits", async () => {
+    const shallow = join(root, 'shallow');
+    run(root, 'clone', '--quiet', '--depth', '1', `file://${origin}`, shallow);
+    const tip = run(shallow, 'rev-parse', 'HEAD');
+    assert.equal(await isShallowEdge('git', shallow, tip), true);
+    const linked = join(root, 'shallow worktree');
+    run(shallow, 'worktree', 'add', '--quiet', '--detach', linked);
+    try {
+      assert.equal(await isShallowEdge('git', linked, tip), true, 'from a linked worktree too');
+    } finally {
+      run(shallow, 'worktree', 'remove', '--force', linked);
+    }
+    assert.equal(await isShallowEdge('git', dir, run(dir, 'rev-parse', 'main')), false, 'a full clone');
+    assert.equal(await isShallowEdge('git', dir, run(dir, 'rev-list', '--max-parents=0', 'main')), false, 'a root');
+    run(shallow, 'fetch', '--quiet', '--unshallow');
+    assert.equal(await isShallowEdge('git', shallow, tip), false, 'its parent is here now');
   });
 
   it('names the other worktrees branches are checked out in', async () => {

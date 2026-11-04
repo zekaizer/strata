@@ -124,7 +124,9 @@ operation is stopped, Continue, Abort and Skip.
 - Merge says so when the two lines have no commit in common. In a **shallow
   clone**, which may only lack that commit, Merge and Rebase offer **Fetch
   More History** (100 commits further back) or **Fetch Full History**
-  instead. Run the operation again once the history is there.
+  instead. Cherry Pick, Revert and Copy Patch offer the same for the clone's
+  oldest commits, whose parents are not there to tell their changes from the
+  whole tree. Run the operation again once the history is there.
 - **Undo Last Operation** puts back what the last operation changed: a reset,
   merge, rebase, cherry pick or revert, a created, renamed or deleted branch
   or tag, or a dropped stash. It only moves the branch the operation moved,
