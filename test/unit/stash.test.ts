@@ -133,6 +133,12 @@ describe('stash rows', () => {
     assert.deepEqual(shape(interleave([commit('A'), commit('old')], 0, anchoredAt([moved]))), ['s0@0', 'A@0', 'old@1']);
   });
 
+  it('keeps the stashes made on a commit right above it when a displaced stash is drawn there too', () => {
+    const stashes = [stash('s0', 0, 'A'), stash('s1', 1, 'old', { kind: 'tip', tip: 'A' }), stash('s2', 2, 'A')];
+    const rows = interleave([commit('A'), commit('old')], 0, anchoredAt(stashes));
+    assert.deepEqual(shape(rows), ['s1@0', 's0@0', 's2@0', 'A@0', 'old@1']);
+  });
+
   it('leaves out stashes whose commit is not in the page', () => {
     assert.deepEqual(shape(interleave([commit('A')], 0, anchoredAt([stash('s0', 0, 'Z')]))), ['A@0']);
   });
