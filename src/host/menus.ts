@@ -169,9 +169,11 @@ const handlers = (env: FlowEnv): Handlers => ({
     if (file.oldPath === undefined) throw new Error('not a rename');
     return file.oldPath;
   }, DONE.copied),
-  'strata.file.copyPatch': (ctx) => {
+  'strata.file.copyPatch': async (ctx) => {
     const { hash, base, file } = fileArg(ctx);
-    return panel().copyFilePatch(hash, base, file);
+    // Against its parent: a shallow clone's oldest commit has none here.
+    if (base === undefined && (await atShallowEdge(panel().flowHost(), hash, file.path))) return;
+    await panel().copyFilePatch(hash, base, file);
   },
   'strata.commit.copyHash': copy(
     (ctx) => commitArg(ctx).hash,

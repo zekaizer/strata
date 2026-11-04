@@ -610,10 +610,11 @@ export function shallowConfirmation(a: string, b: string): Confirmation<HistoryF
   return { message: `This clone is shallow: ${a} and ${b} have no common commit in it.`, ...FETCH_HISTORY };
 }
 
-/** `short` is a commit a shallow clone has without its parent. */
-export function shallowEdgeConfirmation(short: string): Confirmation<HistoryFetch> {
+/** `short` is a commit a shallow clone has without its parent; `path`: the one file of it asked about. */
+export function shallowEdgeConfirmation(short: string, path?: string): Confirmation<HistoryFetch> {
+  const changes = path === undefined ? 'its changes' : `its changes to ${path}`;
   return {
-    message: `${short} is the oldest commit this shallow clone has; its parent is not here, so its changes cannot be told apart from the whole tree.`,
+    message: `${short} is the oldest commit this shallow clone has; its parent is not here, so ${changes} cannot be told apart from the whole ${path === undefined ? 'tree' : 'file'}.`,
     ...FETCH_HISTORY,
   };
 }

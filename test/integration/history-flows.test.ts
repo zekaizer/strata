@@ -518,6 +518,41 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
   });
 
+  it("refuses to copy the patch of a file in a shallow clone's oldest commit, but not against another commit", async () => {
+    const main = git('rev-parse', 'main');
+    const [path] = git('diff-tree', '--no-commit-id', '--name-only', '-r', main).split('\n');
+    assert.ok(path, 'main changes a file');
+    const parent = git('rev-parse', 'main^');
+    shallow(main);
+    await reload(panel());
+    const fileMenu = (base?: string) =>
+      menu({
+        strataHash: main,
+        strataPath: path,
+        strataStatus: 'M',
+        ...(base === undefined ? {} : { strataBase: base }),
+      });
+    await vscode.env.clipboard.writeText('untouched');
+    await run('strata.file.copyPatch', fileMenu());
+    assert.deepEqual(
+      ui.of('confirm').map((q) => [q.message, q.buttons]),
+      [
+        [
+          `${git('rev-parse', '--short', main)} is the oldest commit this shallow clone has; its parent is not here, so its changes to ${path} cannot be told apart from the whole file.`,
+          ['Fetch More History', 'Fetch Full History'],
+        ],
+      ],
+    );
+    assert.equal(await vscode.env.clipboard.readText(), 'untouched');
+
+    ui.clear();
+    await run('strata.file.copyPatch', fileMenu(parent));
+    assert.deepEqual(ui.of('confirm'), []);
+    const patch = await vscode.env.clipboard.readText();
+    assert.match(patch, new RegExp(`^diff --git a/${path} b/${path}$`, 'm'));
+    assert.doesNotMatch(patch, /^new file mode/m, 'against a commit the clone has');
+  });
+
   it('says when a merge finds no common commit, before asking to merge', async () => {
     const orphan = git('commit-tree', 'HEAD^{tree}', '-m', 'Orphan');
     git('branch', 'strata-orphan', orphan);

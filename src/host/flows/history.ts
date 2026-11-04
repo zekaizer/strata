@@ -149,14 +149,14 @@ async function noCommonCommit(host: FlowHost, names: [string, string], shallow: 
 }
 
 /**
- * Refuses commit `hash` when the shallow clone has it without its parent: its changes would read
- * as the whole tree (cherry pick, revert, Copy Patch). Offers to fetch more history; resolves true
- * when it refused.
+ * Refuses commit `hash` (or its file `path`) when the shallow clone has it without its parent: its
+ * changes would read as the whole tree (cherry pick, revert, Copy Patch). Offers to fetch more
+ * history; resolves true when it refused.
  */
-export async function atShallowEdge(host: FlowHost, hash: string): Promise<boolean> {
+export async function atShallowEdge(host: FlowHost, hash: string, path?: string): Promise<boolean> {
   if (!(await isShallowEdge(host.git, host.cwd, hash))) return false;
   const c = await readCommit(host.git, host.cwd, hash);
-  await fetchHistory(host, shallowEdgeConfirmation(c.short));
+  await fetchHistory(host, shallowEdgeConfirmation(c.short, path));
   return true;
 }
 
