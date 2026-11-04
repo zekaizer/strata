@@ -109,3 +109,21 @@ export function resolveStashChoices(
     }
   }
 }
+
+/** Operations Strata stashes around itself (git has no autostash for them). */
+export type ExplicitStashOp = 'switch' | 'cherryPick' | 'revert';
+
+const AUTOSTASH = 'Strata autostash: ';
+const EXPLICIT: Record<ExplicitStashOp, string> = { switch: 'switch', cherryPick: 'cherry pick', revert: 'revert' };
+
+/** The message of a stash Strata pushes before `op` and pops after it; `target` names what it was for. */
+export const autostashMessage = (op: ExplicitStashOp, target: string): string =>
+  `${AUTOSTASH}${EXPLICIT[op]} ${target}`;
+
+/** The operation a stash was Strata's autostash for, from its reflog subject ("On main: Strata autostash: …"). */
+export function strataAutostashOf(reflogSubject: string): ExplicitStashOp | undefined {
+  const message = /^On [^:]+: (.*)$/s.exec(reflogSubject)?.[1];
+  if (!message?.startsWith(AUTOSTASH)) return undefined;
+  const rest = message.slice(AUTOSTASH.length);
+  return (Object.keys(EXPLICIT) as ExplicitStashOp[]).find((op) => rest.startsWith(`${EXPLICIT[op]} `));
+}

@@ -1,4 +1,4 @@
-import type { DirtyFacts, StashChoices } from './autostash.ts';
+import type { DirtyFacts, StashChoice, StashChoices, StashOp } from './autostash.ts';
 import type { ResetMode } from './operations.ts';
 import type { OperationKind } from './repo-state.ts';
 
@@ -200,3 +200,132 @@ export function signInConfirmation(
 
 /** Progress label of Undo Last Operation. */
 export const undoLabel = (label: string): string => `Undoing the ${label}`;
+
+export const quote = (name: string): string => `'${name}'`;
+
+/** A menu opened on a ref that is gone. */
+export const staleTarget = (name: string): string => `'${name}' no longer exists; the graph has been refreshed.`;
+
+const VERB: Record<StashOp, string> = {
+  rebase: 'Rebase',
+  merge: 'Merge',
+  pullRebase: 'Pull',
+  pullMerge: 'Pull',
+  cherryPick: 'Cherry Pick',
+  revert: 'Revert',
+  switch: 'Switch',
+  resetHard: 'Reset',
+  resetKeep: 'Reset',
+};
+
+/** The buttons of a confirmation that asks what to do with uncommitted changes, in the order of `choices`. */
+export function stashButtons<C extends StashChoice>(op: StashOp, choices: readonly C[]): { id: C; label: string }[] {
+  const verb = VERB[op];
+  const reset = op === 'resetHard' || op === 'resetKeep';
+  const label: Record<StashChoice, string> = {
+    stash: reset ? 'Stash Changes & Reset' : `Stash & ${verb}`,
+    keep: `${verb} Keeping Changes`,
+    migrate: 'Migrate Changes',
+    discard: `Discard Changes & ${verb}`,
+  };
+  return choices.map((id) => ({ id, label: label[id] }));
+}
+
+/** `to`: the target as named in a sentence (a quoted branch or a short id); `section`: the dirtySection. */
+export function switchConfirmation<C extends StashChoice>(
+  to: string,
+  overlap: readonly string[],
+  section: string,
+  buttons: { id: C; label: string }[],
+): Confirmation<C> {
+  return {
+    message: `Switching to ${to} would overwrite your changes to ${plural(overlap.length, 'file')}.`,
+    detail: [
+      `${fileList(overlap)}. Stash them and bring them back after switching, or let git merge them into ${to} (conflicts are possible).`,
+      section,
+    ]
+      .filter((s) => s !== '')
+      .join(' '),
+    buttons,
+  };
+}
+
+/** HEAD is detached on `head`, with `count` commits no ref reaches. */
+export function leaveBehindConfirmation(count: number, head: CommitRef): Confirmation<'switch'> {
+  return {
+    message: `Leave ${plural(count, 'commit')} behind?`,
+    detail: `HEAD is detached at ${head.short} with ${plural(count, 'commit')} on no branch (newest "${head.subject}"). After switching they're only reachable through the reflog.`,
+    buttons: [{ id: 'switch', label: 'Switch Anyway' }],
+  };
+}
+
+export const createBranchInput = (at: CommitRef): { title: string; prompt: string } => ({
+  title: `Create Branch at ${at.short} "${at.subject}"`,
+  prompt: 'Creates the branch and switches to it.',
+});
+
+export const createTagInput = (at: CommitRef): { title: string; prompt: string } => ({
+  title: `Create Tag at ${at.short} "${at.subject}"`,
+  prompt: 'Enter the tag name.',
+});
+
+export const tagMessageInput = (tag: string, at: CommitRef): { title: string; prompt: string } => ({
+  title: `Create Tag '${tag}' at ${at.short}`,
+  prompt: 'Message (empty for a lightweight tag)',
+});
+
+export const refExists = (kind: 'branch' | 'tag', name: string, short: string): string =>
+  `A ${kind} named '${name}' already exists (at ${short}).`;
+
+/** A rename to the name it has. */
+export const NEEDS_NEW_NAME = 'Enter a different name.';
+
+/** `remote`: the remote of the branch's upstream, whose branch keeps its name. */
+export const renameInput = (branch: string, remote: string | undefined): { title: string; prompt: string } => ({
+  title: `Rename Branch '${branch}'`,
+  prompt: ['Enter the new name.', ...(remote === undefined ? [] : [`'${branch}' on ${remote} keeps its name.`])].join(
+    ' ',
+  ),
+});
+
+export function deleteTagConfirmation(tag: string, at: CommitRef): Confirmation<'delete'> {
+  return {
+    message: `Delete tag '${tag}'?`,
+    detail: `It points at ${at.short} "${at.subject}". Tags already pushed stay on remotes.`,
+    buttons: [{ id: 'delete', label: 'Delete Tag' }],
+  };
+}
+
+export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
+  `'${branch}' is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
+
+/** `done`: what the operation did; `paths`: the first of `count` conflicted files. */
+export const popConflicted = (done: string, paths: readonly string[], count: number): string =>
+  `${done}, but restoring your stashed changes conflicted in ${plural(count, 'file')} (${fileList(paths)}). Your changes are safe in stash@{0}.`;
+
+export const migrateConflicted = (done: string, count: number): string =>
+  `${done}; your changes conflicted in ${plural(count, 'file')}.`;
+
+/** What a finished operation did, for the status bar and the Undo notification. */
+export const DONE = {
+  switched: (branch: string, behind?: { count: number; upstream: string }): string =>
+    `Switched to '${branch}'${behind ? ` (${behind.count} behind ${behind.upstream})` : ''}`,
+  tracking: (branch: string, upstream: string): string => `Created '${branch}' tracking '${upstream}'`,
+  detached: (short: string): string => `Detached HEAD at ${short}`,
+  branchCreated: (name: string, short: string): string => `Created '${name}' at ${short}`,
+  tagCreated: (tag: string, short: string): string => `Created tag '${tag}' at ${short}`,
+  renamed: (from: string, to: string): string => `Renamed '${from}' to '${to}'`,
+  branchDeleted: (branch: string): string => `Deleted branch '${branch}'`,
+  tagDeleted: (tag: string): string => `Deleted tag '${tag}'`,
+  copied: (name: string): string => `Copied '${name}'`,
+};
+
+/** Progress labels: what is running. `to` is named as in a sentence (a quoted branch or a short id). */
+export const DOING = {
+  switching: (to: string): string => `Switching to ${to}`,
+  creatingBranch: (name: string): string => `Creating branch '${name}'`,
+  creatingTag: (tag: string): string => `Creating tag '${tag}'`,
+  renaming: (branch: string): string => `Renaming '${branch}'`,
+  deletingBranch: (branch: string): string => `Deleting branch '${branch}'`,
+  deletingTag: (tag: string): string => `Deleting tag '${tag}'`,
+};

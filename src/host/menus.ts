@@ -7,7 +7,19 @@ import { runGit } from '../git/run.ts';
 import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
 import { isRepoPath } from './controller.ts';
 import { fail, undoLast, type FlowEnv, type FlowHost } from './flow.ts';
+import {
+  checkoutBranch,
+  checkoutDetached,
+  checkoutRemote,
+  copyRefName,
+  createBranch,
+  createTag,
+  deleteBranch,
+  deleteTag,
+  renameBranch,
+} from './flows/refs.ts';
 import { GraphPanel } from './panel.ts';
+import { parseTarget, StaleTarget, type TargetKind, type TargetOf } from './target.ts';
 
 /** A context menu argument: the clicked element's data-vscode-context (set by the webview) plus the webview id. */
 type MenuArg = Record<string, unknown> | undefined;
@@ -66,16 +78,28 @@ async function gitCanWrite(host: FlowHost): Promise<boolean> {
   return false;
 }
 
-/** A command that changes the repository: failures are shown, not thrown. */
+/**
+ * A command that changes the repository. Failures are shown, not thrown; a menu on a ref that is
+ * gone also refreshes the graph, and rejects like any invalid argument.
+ */
 const write = (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>) => async (ctx: MenuArg) => {
   const host = panel().flowHost();
   if (!(await gitCanWrite(host))) return;
   try {
     await flow(host, ctx);
   } catch (e) {
+    if (e instanceof StaleTarget) {
+      void host.ui.notify('error', e.message);
+      await host.refresh();
+      throw e;
+    }
     await fail(host, e);
   }
 };
+
+/** A write command on a menu target of one of `kinds`. */
+const on = <K extends TargetKind>(kinds: readonly K[], flow: (host: FlowHost, t: TargetOf<K>) => Promise<void>) =>
+  write((host, ctx) => flow(host, parseTarget(ctx, kinds, host.refs)));
 
 type Handlers = Record<CommandId, (ctx: MenuArg) => unknown>;
 
@@ -99,6 +123,22 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.commit.copyShortHash': copy((ctx) => panel().shortHash(commitArg(ctx).hash)),
   'strata.commit.copySubject': copy((ctx) => commitArg(ctx).subject),
   'strata.commit.copyPatch': (ctx) => panel().copyCommitPatch(commitArg(ctx).hash),
+
+  'strata.checkout': on(['branch', 'remoteBranch'], (host, t) =>
+    t.kind === 'branch' ? checkoutBranch(host, t.ref) : checkoutRemote(host, t.ref),
+  ),
+  'strata.checkoutDetached': on(['commit', 'tag'], (host, t) =>
+    checkoutDetached(host, t.kind === 'commit' ? t.hash : t.ref.name),
+  ),
+  'strata.createBranch': on(['commit', 'head'], (host, t) => createBranch(host, t.hash)),
+  'strata.createTag': on(['commit'], (host, t) => createTag(host, t.hash)),
+  'strata.renameBranch': on(['branch'], (host, t) => renameBranch(host, t.ref)),
+  'strata.copyRefName': (ctx) => {
+    const host = panel().flowHost();
+    return copyRefName(host, parseTarget(ctx, ['branch', 'remoteBranch', 'tag'], host.refs).ref);
+  },
+  'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
+  'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),
 
   'strata.undo': write(undoLast),
   'strata.showOutput': () => {

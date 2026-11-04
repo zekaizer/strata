@@ -87,6 +87,30 @@
         "category": "Strata"
       },
       {
+        "command": "strata.checkout",
+        "title": "Checkout",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.checkoutDetached",
+        "title": "Checkout (Detached)",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.createBranch",
+        "title": "Create Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.createTag",
+        "title": "Create Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.commit.copyHash",
         "title": "Copy Commit Hash",
         "category": "Strata"
@@ -105,6 +129,29 @@
         "command": "strata.commit.copyPatch",
         "title": "Copy Patch",
         "category": "Strata"
+      },
+      {
+        "command": "strata.renameBranch",
+        "title": "Rename Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.copyRefName",
+        "title": "Copy Name",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.deleteBranch",
+        "title": "Delete Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.deleteTag",
+        "title": "Delete Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
       },
       {
         "command": "strata.undo",
@@ -168,6 +215,41 @@
           "group": "2_copy@4"
         },
         {
+          "command": "strata.checkout",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.checkout",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.checkoutDetached",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "2_checkout@1"
+        },
+        {
+          "command": "strata.checkoutDetached",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.createBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "2_checkout@2"
+        },
+        {
+          "command": "strata.createBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'head'",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.createTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "2_checkout@3"
+        },
+        {
           "command": "strata.commit.copyHash",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
           "group": "5_copy@1"
@@ -186,6 +268,36 @@
           "command": "strata.commit.copyPatch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
           "group": "5_copy@4"
+        },
+        {
+          "command": "strata.renameBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "group": "4_edit@1"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.deleteBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "strata.deleteTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "9_delete@1"
         }
       ],
       "commandPalette": [
@@ -222,6 +334,22 @@
           "when": "false"
         },
         {
+          "command": "strata.checkout",
+          "when": "false"
+        },
+        {
+          "command": "strata.checkoutDetached",
+          "when": "false"
+        },
+        {
+          "command": "strata.createBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.createTag",
+          "when": "false"
+        },
+        {
           "command": "strata.commit.copyHash",
           "when": "false"
         },
@@ -235,6 +363,22 @@
         },
         {
           "command": "strata.commit.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.renameBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteTag",
           "when": "false"
         },
         {

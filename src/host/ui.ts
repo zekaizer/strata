@@ -19,6 +19,8 @@ export interface Ui {
     title: string;
     prompt: string;
     value?: string;
+    /** false puts the cursor after `value` (a prefix to continue) instead of selecting it. */
+    selectValue?: boolean;
     placeholder?: string;
     validate: (value: string) => string | undefined;
   }): Promise<string | undefined>;
@@ -39,6 +41,9 @@ export const vscodeUi: Ui = {
         title: o.title,
         prompt: o.prompt,
         ...(o.value === undefined ? {} : { value: o.value }),
+        ...(o.value !== undefined && o.selectValue === false
+          ? { valueSelection: [o.value.length, o.value.length] as [number, number] }
+          : {}),
         ...(o.placeholder === undefined ? {} : { placeHolder: o.placeholder }),
         validateInput: o.validate,
         ignoreFocusOut: true,

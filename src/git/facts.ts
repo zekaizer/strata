@@ -111,3 +111,63 @@ export async function readCommit(git: string, cwd: string, rev: string): Promise
   const [hash = '', short = '', subject = ''] = out.split('\0');
   return { hash, short, subject };
 }
+
+export const countCommits = count;
+
+/** Whether `a` is an ancestor of (or equal to) `b`. */
+export const isAncestor = (git: string, cwd: string, a: string, b: string): Promise<boolean> =>
+  runGit(git, cwd, ['merge-base', '--is-ancestor', a, b]).then(
+    () => true,
+    // Exit status 1: not an ancestor.
+    () => false,
+  );
+
+/** A boolean git config value as git reads it ("yes", "on", "1"...); undefined when unset. */
+export const readConfigBool = (git: string, cwd: string, key: string): Promise<boolean | undefined> =>
+  optional(runGit(git, cwd, ['config', '--type=bool', '--get', key])).then((v) =>
+    v === undefined ? undefined : v === 'true',
+  );
+
+/** Paths with unresolved conflicts. */
+export const readUnmerged = async (git: string, cwd: string): Promise<string[]> =>
+  (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--'])).split('\0').filter((p) => p !== '');
+
+/** n in stash@{n} of the stash commit `hash` now; undefined once it is gone. */
+export async function readStashIndex(git: string, cwd: string, hash: string): Promise<number | undefined> {
+  const out = await optional(runGit(git, cwd, ['log', '--walk-reflogs', '--format=%H', 'refs/stash', '--']));
+  const index = (out ?? '').split('\n').indexOf(hash);
+  return index < 0 ? undefined : index;
+}
+
+/** The stash commit of stash@{0}. */
+export const readStashTop = (git: string, cwd: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['rev-parse', '--quiet', '--verify', 'refs/stash']));
+
+/** A branch's upstream: "origin/main", its remote and the branch on that remote. */
+export async function readUpstream(
+  git: string,
+  cwd: string,
+  branch: string,
+): Promise<{ name: string; remote: string; remoteBranch: string } | undefined> {
+  const out = await runGit(git, cwd, [
+    'for-each-ref',
+    '--format=%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
+    `refs/heads/${branch}`,
+  ]);
+  const [name = '', remote = '', remoteRef = ''] = out.trim().split('\0');
+  if (name === '' || remote === '' || !remoteRef.startsWith('refs/heads/')) return undefined;
+  return { name, remote, remoteBranch: remoteRef.slice('refs/heads/'.length) };
+}
+
+/** The branch HEAD is on (undefined when detached) and its commit. */
+export async function readHead(git: string, cwd: string): Promise<{ branch: string | undefined; hash: string }> {
+  const [branch, hash] = await Promise.all([
+    optional(runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD'])),
+    runGit(git, cwd, ['rev-parse', '--verify', 'HEAD']),
+  ]);
+  return { branch, hash: hash.trim() };
+}
+
+/** The best common ancestor of two commits; undefined for unrelated histories. */
+export const readMergeBase = (git: string, cwd: string, a: string, b: string): Promise<string | undefined> =>
+  optional(runGit(git, cwd, ['merge-base', a, b]));

@@ -54,10 +54,45 @@ export const COMMANDS = {
   'strata.file.copyOldRelativePath': { title: 'Copy Old Relative Path', menus: [file('2_copy@3', 'strataRenamed')] },
   'strata.file.copyPatch': { title: 'Copy Patch', menus: [file('2_copy@4')] },
 
+  'strata.checkout': {
+    title: 'Checkout',
+    menus: [
+      { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '1_checkout@1' },
+    ],
+    writes: true,
+  },
+  'strata.checkoutDetached': {
+    title: 'Checkout (Detached)',
+    menus: [commit('2_checkout@1', '!strataIsHead'), { section: 'tag', group: '1_checkout@1' }],
+    writes: true,
+  },
+  'strata.createBranch': {
+    title: 'Create Branch...',
+    menus: [commit('2_checkout@2'), { section: 'head', group: '1_checkout@1' }],
+    writes: true,
+  },
+  'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
   'strata.commit.copyHash': { title: 'Copy Commit Hash', menus: [commit('5_copy@1')] },
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },
   'strata.commit.copySubject': { title: 'Copy Commit Subject', menus: [commit('5_copy@3')] },
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
+
+  'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
+  'strata.copyRefName': {
+    title: 'Copy Name',
+    menus: [
+      { section: 'branch', group: '5_copy@1' },
+      { section: 'remoteBranch', group: '5_copy@1' },
+      { section: 'tag', group: '5_copy@1' },
+    ],
+  },
+  'strata.deleteBranch': {
+    title: 'Delete Branch...',
+    menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent' }],
+    writes: true,
+  },
+  'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
 
   'strata.undo': {
     title: 'Undo Last Operation',

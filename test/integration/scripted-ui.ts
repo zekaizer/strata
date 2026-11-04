@@ -55,6 +55,13 @@ export class ScriptedUi implements Ui {
     return this.asked.filter((q): q is Extract<Question, { kind: K }> => q.kind === kind);
   }
 
+  /** The first question of one kind; throws when none was asked. */
+  first<K extends Question['kind']>(kind: K): Extract<Question, { kind: K }> {
+    const q = this.of(kind)[0];
+    if (!q) throw new Error(`no ${kind} was asked; asked: ${JSON.stringify(this.asked)}`);
+    return q;
+  }
+
   confirm<B extends string>(c: Confirmation<B>): Promise<B | undefined> {
     this.asked.push({ kind: 'confirm', message: c.message, detail: c.detail, buttons: c.buttons.map((b) => b.label) });
     const label = this.confirms.shift();

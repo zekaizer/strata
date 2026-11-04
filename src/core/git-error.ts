@@ -44,3 +44,7 @@ export function parseProgress(chunk: string): { phase: string; percent: number }
     last = { phase: m[1]!, percent: Number(m[2]) };
   return last;
 }
+
+/** The worktree a checkedOutElsewhere error names. */
+export const checkedOutPath = (stderr: string): string | undefined =>
+  /(?:checked out|used by worktree) at '([^']+)'/.exec(stderr)?.[1];
