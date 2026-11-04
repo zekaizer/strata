@@ -33,7 +33,7 @@ const NARROW_GRAPH_SHARE = 0.25;
 /** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
 const MAX_BADGES = 6;
 /** Height of the band above the commit line of rows with refs; matches --ref-band in main.css. */
-const REF_BAND = 16;
+const REF_BAND = 14;
 /** The inline details never take more than this share of the list height. */
 const MAX_EXPANSION_SHARE = 0.45;
 
@@ -1093,20 +1093,23 @@ class App {
       refBands: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
           const band = r.querySelector<HTMLElement>('.refs');
-          const subject = r.querySelector<HTMLElement>('.subject')!.getBoundingClientRect();
+          const text = r.querySelector<HTMLElement>('.subject .text')!;
           const top = r.getBoundingClientRect().top;
-          const badges = [...r.querySelectorAll('.badge-text, .badge-more')].map((b) => b.textContent);
-          if (badges.length === 0) return [];
-          const b = (band ?? r).getBoundingClientRect();
+          const els = [...r.querySelectorAll<HTMLElement>('.badge')];
+          if (els.length === 0) return [];
           return [
             [
               Number(r.dataset['index']),
               {
-                badges,
-                bandBottom: band ? b.bottom - top : -1,
-                subjectTop: subject.top - top,
-                subjectLeft: subject.left,
-                bandLeft: band ? b.left : -1,
+                badges: els.map((b) => b.querySelector('.badge-text')?.textContent ?? b.textContent),
+                head: els.map((b) => b.classList.contains('badge-head')),
+                colors: els.map((b) => getComputedStyle(b).color),
+                subjectColor: getComputedStyle(text).color,
+                authorColor: getComputedStyle(r.querySelector('.author')!).color,
+                badgeBottom: band ? Math.max(...els.map((b) => b.getBoundingClientRect().bottom)) - top : -1,
+                subjectTop: text.getBoundingClientRect().top - top,
+                subjectLeft: text.getBoundingClientRect().left,
+                bandLeft: band ? band.getBoundingClientRect().left : -1,
               },
             ],
           ];
