@@ -1,11 +1,13 @@
 // Developer tools that run inside the integration host, enabled by env vars:
 //   STRATA_CAPTURE_THEMES=<dir>  dump --vscode-* variables per built-in theme
 //   STRATA_SHOT_DIR=<dir>        screenshot the graph panel per built-in theme
+import { writeFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { addBranchyStashes } from '../../fixtures/stashes.ts';
 import { delay, git, screenshot, setTheme, strata, THEMES, waitFor, workspaceRoot, type ThemeId } from '../helpers.ts';
+import { gitRetry, setIdentity, snapshotRepo } from '../repo-snapshot.ts';
 
 const themeIds = Object.keys(THEMES) as ThemeId[];
 const themesDir = process.env['STRATA_CAPTURE_THEMES'];
@@ -76,6 +78,57 @@ after(() => setTheme('dark'));
       await panel.simulate({ kind: 'click', selector: '.stash-button' });
       await delay(800);
       await screenshot(join(shotDir!, `stashes-pick-${id}.png`));
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+      panel.dispose();
+    });
+  }
+});
+
+(shotDir ? describe : describe.skip)('tool: workflow screenshots', () => {
+  let restore: () => Promise<void>;
+  const write = (file: string, content: string) => {
+    writeFileSync(join(workspaceRoot(), file), content);
+  };
+  before(async () => {
+    restore = await snapshotRepo();
+    await setIdentity();
+    await gitRetry('remote', 'add', 'origin', 'https://example.com/origin.git');
+    await gitRetry('update-ref', 'refs/remotes/origin/main', 'main');
+    // A rebase stopped at a conflict, for the banner.
+    await gitRetry('switch', '--quiet', '--create', 'strata-onto', 'main');
+    write('conflict.txt', 'onto\n');
+    await gitRetry('add', 'conflict.txt');
+    await gitRetry('commit', '--quiet', '-m', 'Onto');
+    await gitRetry('switch', '--quiet', '--create', 'strata-topic', 'main');
+    write('conflict.txt', 'topic\n');
+    await gitRetry('add', 'conflict.txt');
+    await gitRetry('commit', '--quiet', '-m', 'Topic one');
+    write('other.txt', 'other\n');
+    await gitRetry('add', 'other.txt');
+    await gitRetry('commit', '--quiet', '-m', 'Topic two');
+    await gitRetry('rebase', 'strata-onto').catch(() => undefined);
+  });
+  after(() => restore());
+
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      await waitFor('banner', async () => (await panel.probe()).banner !== undefined);
+      await mkdir(shotDir!, { recursive: true });
+      // The banner, with an operation running.
+      const host = panel.flowHost();
+      await host.runner.run(host, 'Rebasing strata-topic onto strata-onto', false, async () => {
+        await waitFor('busy', async () => (await panel.probe()).listBusy);
+        await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+        await screenshot(join(shotDir!, `workflow-${id}.png`));
+      });
+      // A right-click on a remote name: its menu, or the nearest that has one, outlined.
+      await panel.simulate({ kind: 'contextMenu', selector: '.badge-remote-name' });
+      await delay(800);
+      await screenshot(join(shotDir!, `workflow-menu-${id}.png`));
+      await vscode.commands.executeCommand('workbench.action.quickOpen');
       await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
       panel.dispose();
     });
