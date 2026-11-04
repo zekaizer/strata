@@ -67,20 +67,17 @@ async function layoutCost(): Promise<Record<string, unknown>> {
   r.dispose();
   let state: LaneState = initialLaneState();
   let maxWidth = 0;
-  let passes = 0;
+  let spans = 0;
   const t = performance.now();
   for (let i = 0; i < commits.length; i += 1000) {
     const page = layoutPage(state, commits.slice(i, i + 1000));
     state = page.state;
-    for (const row of page.rows) {
-      passes += row.passes.length;
-      maxWidth = Math.max(
-        maxWidth,
-        row.lane + 1,
-        ...row.passes.map((p) => p.lane + 1),
-        ...row.outgoing.map((e) => e.lane + 1),
-      );
-    }
+    spans += page.spans.length;
+    maxWidth = Math.max(
+      maxWidth,
+      state.lanes.length,
+      ...page.rows.flatMap((r) => [r.lane + 1, ...r.outgoing.map((e) => e.lane + 1)]),
+    );
   }
   const ms = performance.now() - t;
   const firstPage = await time(() => layoutPage(initialLaneState(), commits.slice(0, FIRST_PAGE)));
@@ -90,7 +87,7 @@ async function layoutCost(): Promise<Record<string, unknown>> {
     usPerCommit: Number(((ms * 1000) / commits.length).toFixed(2)),
     firstPageMs: Number(firstPage.toFixed(2)),
     maxWidth,
-    avgPassesPerRow: Number((passes / commits.length).toFixed(1)),
+    spans,
   };
 }
 

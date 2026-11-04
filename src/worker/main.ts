@@ -23,7 +23,7 @@ addEventListener('message', (e: MessageEvent<ToWorker>) => {
       }
       const page = layoutPage(state, m.commits, { colors: LANE_HUES.length });
       state = page.state;
-      post({ type: 'rows', generation, rows: page.rows });
+      post({ type: 'rows', generation, rows: page.rows, spans: page.spans, state });
       break;
     }
   }

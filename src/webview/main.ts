@@ -1,6 +1,6 @@
 import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange } from '../core/details.ts';
-import type { Row } from '../core/layout.ts';
+import { SpanIndex, type Row } from '../core/layout.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
@@ -60,6 +60,7 @@ class App {
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
   private commits: Commit[] = [];
   private rows: Row[] = [];
+  private readonly spans = new SpanIndex();
   private lanes = 1;
   private done = false;
   private loading = false;
@@ -201,6 +202,7 @@ class App {
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.commits = [];
         this.rows = [];
+        this.spans.clear();
         this.queueRender();
         break;
       case 'error':
@@ -223,7 +225,10 @@ class App {
   private onWorker(m: FromWorker): void {
     if (m.type !== 'rows' || m.generation !== this.generation) return;
     for (const r of m.rows) this.lanes = Math.max(this.lanes, rowWidth(r));
+    this.lanes = Math.max(this.lanes, m.state.lanes.length);
     this.rows.push(...m.rows);
+    this.spans.add(m.spans);
+    this.spans.setOpen(m.state);
     this.queueRender();
   }
 
@@ -242,6 +247,7 @@ class App {
     }
     this.commits = [];
     this.rows = [];
+    this.spans.clear();
     this.lanes = 1;
     this.done = false;
     this.selected = -1;
@@ -426,7 +432,7 @@ class App {
     ctx.beginPath();
     ctx.rect(0, 0, gw, height);
     ctx.clip();
-    drawGraph(ctx, this.rows, first, last, scrollTop, this.theme, (i) => ({
+    drawGraph(ctx, this.rows, this.spans, first, last, scrollTop, this.theme, (i) => ({
       head: this.commits[i]?.hash === this.refs.head,
       merge: (this.commits[i]?.parents.length ?? 0) > 1,
     }));

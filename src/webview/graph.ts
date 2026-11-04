@@ -1,4 +1,4 @@
-import type { Row } from '../core/layout.ts';
+import type { Row, SpanIndex } from '../core/layout.ts';
 import type { GraphTheme } from './theme.ts';
 
 export const ROW_HEIGHT = 24;
@@ -10,10 +10,9 @@ export const laneX = (lane: number) => GRAPH_PADDING + lane * LANE_WIDTH + LANE_
 /** Width in CSS pixels needed to show `lanes` columns. */
 export const graphWidth = (lanes: number) => GRAPH_PADDING * 2 + Math.max(1, lanes) * LANE_WIDTH;
 
-/** Highest column used by a row, plus one. */
+/** Highest column a row's node or its own lines use, plus one. */
 export function rowWidth(row: Row): number {
   let w = row.lane;
-  for (const e of row.passes) w = Math.max(w, e.lane);
   for (const e of row.incoming) w = Math.max(w, e.lane);
   for (const e of row.outgoing) w = Math.max(w, e.lane);
   return w + 1;
@@ -31,6 +30,7 @@ export interface NodeStyle {
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
   rows: readonly Row[],
+  spans: SpanIndex,
   first: number,
   last: number,
   scrollTop: number,
@@ -49,7 +49,7 @@ export function drawGraph(
     const bottom = top + ROW_HEIGHT;
     const x = laneX(row.lane);
 
-    for (const e of row.passes) {
+    for (const e of spans.passesAt(i)) {
       stroke(ctx, color(e.color), (c) => {
         c.moveTo(laneX(e.lane), top);
         c.lineTo(laneX(e.lane), bottom);

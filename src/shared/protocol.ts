@@ -2,7 +2,7 @@
 // Every side imports this file; it must stay free of host- and DOM-only types.
 import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange } from '../core/details.ts';
-import type { LayoutCommit, Row } from '../core/layout.ts';
+import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
@@ -75,4 +75,6 @@ export type SimulatedAction =
 
 export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };
 
-export type FromWorker = { type: 'pong' } | { type: 'rows'; generation: number; rows: Row[] };
+/** `state` describes the lines still open below the last row (see SpanIndex.setOpen). */
+export type FromWorker =
+  { type: 'pong' } | { type: 'rows'; generation: number; rows: Row[]; spans: Span[]; state: LaneState };

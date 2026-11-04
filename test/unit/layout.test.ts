@@ -1,31 +1,52 @@
 import * as assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
-import { initialLaneState, layoutPage, type LaneState, type LayoutCommit, type Row } from '../../src/core/layout.ts';
+import {
+  initialLaneState,
+  layoutPage,
+  SpanIndex,
+  type Edge,
+  type LaneState,
+  type LayoutCommit,
+  type Row,
+  type Span,
+} from '../../src/core/layout.ts';
 import { large, scenarios, type ScenarioName } from '../fixtures/scenarios.ts';
 import { git, tempDir } from './helpers.ts';
 
 const C = (hash: string, ...parents: string[]): LayoutCommit => ({ hash, parents });
 
-function layoutAll(commits: readonly LayoutCommit[], pageSizes?: number[]) {
+/** A row with its pass-through lines, reconstructed from spans the way the renderer does. */
+type FullRow = Row & { passes: Edge[] };
+
+function withPasses(rows: readonly Row[], spans: readonly Span[], state: LaneState): FullRow[] {
+  const index = new SpanIndex();
+  index.add(spans);
+  index.setOpen(state);
+  return rows.map((r, i) => ({ ...r, passes: index.passesAt(i) }));
+}
+
+function layoutAll(commits: readonly LayoutCommit[], pageSizes?: number[], opts?: { colors: number }) {
   let state: LaneState = initialLaneState();
   const rows: Row[] = [];
+  const spans: Span[] = [];
   let i = 0;
   for (const size of pageSizes ?? [commits.length]) {
-    const page = layoutPage(state, commits.slice(i, i + size));
+    const page = layoutPage(state, commits.slice(i, i + size), opts);
     rows.push(...page.rows);
+    spans.push(...page.spans);
     state = page.state;
     i += size;
   }
   assert.equal(i, commits.length);
-  return { rows, state };
+  return { rows: withPasses(rows, spans, state), state };
 }
 
 /**
  * Reconstructs parent edges purely from row geometry: follow each outgoing
  * line down its column through `passes` until a row takes it as `incoming`.
  */
-function traceEdges(commits: readonly LayoutCommit[], rows: Row[]): Set<string> {
+function traceEdges(commits: readonly LayoutCommit[], rows: FullRow[]): Set<string> {
   const edges = new Set<string>();
   rows.forEach((row, i) => {
     for (const out of row.outgoing) {
@@ -55,7 +76,7 @@ function expectedEdges(commits: readonly LayoutCommit[]): Set<string> {
 }
 
 /** Structural invariants of a single row. */
-function checkRow(row: Row, i: number): void {
+function checkRow(row: FullRow, i: number): void {
   const cols = [row.lane, ...row.passes.map((e) => e.lane)];
   assert.equal(new Set(cols).size, cols.length, `row ${i}: node overlaps a pass-through line`);
   const outs = row.outgoing.map((e) => e.lane);
@@ -237,12 +258,14 @@ describe('layoutPage: fixture repositories', () => {
     const commits = histories.get('large')!;
     let state = initialLaneState();
     const rows: Row[] = [];
+    const spans: Span[] = [];
     for (let i = 0; i < commits.length; i += 250) {
-      const page = layoutPage(structuredClone(state), commits.slice(i, i + 250));
+      const page = structuredClone(layoutPage(structuredClone(state), commits.slice(i, i + 250)));
       rows.push(...page.rows);
+      spans.push(...page.spans);
       state = page.state;
     }
-    assert.deepEqual(rows, layoutAll(commits).rows);
+    assert.deepEqual(withPasses(rows, spans, state), layoutAll(commits).rows);
   });
 
   it('large: width stays bounded', () => {
@@ -264,7 +287,7 @@ describe('layoutPage: color fallback', () => {
         const [hash, ...parents] = l.trim().split(' ');
         return { hash: hash!, parents };
       });
-    const { rows } = layoutPage(initialLaneState(), commits, { colors: 3 });
+    const { rows } = layoutAll(commits, undefined, { colors: 3 });
     rows.forEach((row, i) => {
       const bottom = new Map([...row.passes, ...row.outgoing].map((e) => [e.lane, e.color]));
       const opened = row.outgoing.filter((e) => e.lane !== row.lane && !row.passes.some((p) => p.lane === e.lane));
