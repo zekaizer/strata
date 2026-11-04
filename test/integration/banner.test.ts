@@ -1,15 +1,14 @@
 import * as assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import type { WebviewToHost } from '../../src/shared/protocol.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
 import { gitRetry, setIdentity, snapshotRepo } from './repo-snapshot.ts';
 
 describe('operation banner', () => {
   let panel: GraphPanel;
   let restore: () => Promise<void>;
-  const sent: WebviewToHost[] = [];
   const write = (content: string) => {
     writeFileSync(join(workspaceRoot(), 'conflict.txt'), content);
   };
@@ -24,7 +23,6 @@ describe('operation banner', () => {
     await setIdentity();
     panel = (await strata()).show();
     await panel.whenReady();
-    panel.onDidReceiveMessage((m) => sent.push(m));
     await waitFor('history', async () => (await panel.probe()).done);
     // strata-topic's first commit conflicts with strata-onto.
     await gitRetry('switch', '--quiet', '--create', 'strata-onto', 'main');
@@ -65,9 +63,13 @@ describe('operation banner', () => {
 
   it('runs the command of a button, and selects the commit a link names', async () => {
     await panel.simulate({ kind: 'click', selector: '.banner-button.primary' });
-    await waitFor('Resolve... sent', () =>
-      sent.some((m) => m.type === 'menuCommand' && m.command === 'strata.resolveConflicts'),
-    );
+    // Resolve... with one conflicted file opens it.
+    const conflict = vscode.Uri.file(join(workspaceRoot(), 'conflict.txt')).toString();
+    const tab = await waitFor('conflict.txt opened', () => {
+      const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+      return t?.input instanceof vscode.TabInputText && t.input.uri.toString() === conflict && t;
+    });
+    await vscode.window.tabGroups.close(tab);
     await panel.simulate({ kind: 'click', selector: '.banner-link' });
     await waitFor('commit selected', async () => (await panel.probe()).selected === git('rev-parse', 'strata-topic~1'));
   });
