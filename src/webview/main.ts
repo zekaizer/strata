@@ -212,6 +212,18 @@ class App {
       e.preventDefault();
       this.scroller.focus();
     });
+    // A mouse click on a one-shot control hands the keyboard back to the list, so no focus ring
+    // appears on it at the next key and the list keys keep working. Keyboard activation (detail 0)
+    // leaves focus where it is.
+    const giveBack = (e: MouseEvent, controls: string) => {
+      if (e.detail > 0 && (e.target as Element).closest(controls)) this.scroller.focus({ preventScroll: true });
+    };
+    this.expansion.addEventListener('click', (e) => {
+      giveBack(e, '.byline-hash, .byline-toggle, .meta-copy, .details-more');
+    });
+    this.toolbar.addEventListener('click', (e) => {
+      giveBack(e, '.first-parent-button, .codicon-refresh');
+    });
     new ResizeObserver(() => {
       this.onExpansionResize();
       this.updateExpansionOverflow();
