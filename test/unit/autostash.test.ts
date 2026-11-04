@@ -28,7 +28,12 @@ describe('resolveStashChoices', () => {
     const fromGit = resolveStashChoices('merge', dirty, 'gitConfig', on);
     assert.deepEqual(fromGit.choices, ['stash', 'keep']);
     assert.match(fromGit.explain, /merge\.autoStash is on/);
-    assert.deepEqual(resolveStashChoices('merge', dirty, 'gitConfig', off).choices, ['keep', 'stash']);
+    const keep = resolveStashChoices('merge', dirty, 'gitConfig', off);
+    assert.deepEqual(keep.choices, ['keep', 'stash']);
+    assert.match(keep.explain, /merge\.autoStash is off/);
+    const unset = resolveStashChoices('merge', dirty, 'gitConfig', undefined);
+    assert.deepEqual(unset.choices, ['stash', 'keep'], 'git warns about a merge over changes when it is unset');
+    assert.equal(unset.explain, 'merge.autoStash is not set.');
     const never = resolveStashChoices('merge', dirty, 'never', on);
     assert.deepEqual(never.choices, ['keep', 'stash']);
     assert.match(never.explain, /strata\.autoStash is "never"/);

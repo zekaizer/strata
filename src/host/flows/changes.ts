@@ -31,7 +31,7 @@ export async function changes(host: FlowHost, op: StashOp, target?: string): Pro
       ? await readOverlap(host.git, host.cwd, target, worktree.paths)
       : [];
   const dirty = { files: worktree.paths.length, staged: worktree.staged, overlap: overlap.length > 0 };
-  const choices = resolveStashChoices(op, dirty, host.settings().autoStash, mergeAutoStash ?? false);
+  const choices = resolveStashChoices(op, dirty, host.settings().autoStash, mergeAutoStash);
   const section = choices.choices.length > 0 ? dirtySection(dirty, choices, worktree.submodules) : '';
   return { worktree, overlap, dirty, choices, section };
 }

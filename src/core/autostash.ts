@@ -48,8 +48,8 @@ export function resolveStashChoices(
   op: StashOp,
   dirty: DirtyFacts,
   setting: AutostashSetting,
-  /** merge.autoStash in git config. */
-  mergeAutoStash: boolean,
+  /** merge.autoStash in git config; undefined when unset. */
+  mergeAutoStash: boolean | undefined,
 ): StashChoices {
   const none: StashChoices = { choices: [], explain: '', mechanism: 'git' };
   if (dirty.files === 0) return none;
@@ -95,12 +95,21 @@ export function resolveStashChoices(
       };
     case 'merge':
     case 'pullMerge': {
+      // Unset, git merges over changes it would only warn about losing: stashing comes first.
       const first =
-        setting === 'gitConfig' ? (mergeAutoStash ? 'stash' : 'keep') : setting === 'always' ? 'stash' : 'keep';
-      const explain =
         setting === 'gitConfig'
-          ? `merge.autoStash is ${mergeAutoStash ? 'on' : 'off'}.`
-          : `strata.autoStash is "${setting}".`;
+          ? mergeAutoStash === false
+            ? 'keep'
+            : 'stash'
+          : setting === 'always'
+            ? 'stash'
+            : 'keep';
+      const explain =
+        setting !== 'gitConfig'
+          ? `strata.autoStash is "${setting}".`
+          : mergeAutoStash === undefined
+            ? 'merge.autoStash is not set.'
+            : `merge.autoStash is ${mergeAutoStash ? 'on' : 'off'}.`;
       return {
         choices: first === 'stash' ? ['stash', 'keep'] : ['keep', 'stash'],
         explain,
