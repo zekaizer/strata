@@ -32,7 +32,9 @@ export interface Gap {
 /**
  * Draws rows [first, last) into a canvas that covers the visible graph column.
  * `ctx` is already scaled to CSS pixels; `rowTop(i)` is row i's top edge in
- * list coordinates, so row i is drawn at rowTop(i) - scrollTop.
+ * list coordinates, so row i is drawn at rowTop(i) - scrollTop. A row taller
+ * than ROW_HEIGHT has its commit line at the bottom (refs sit above it): its
+ * node and curves are drawn there and incoming lines run straight down to it.
  */
 export function drawGraph(
   ctx: CanvasRenderingContext2D,
@@ -44,6 +46,7 @@ export function drawGraph(
   theme: GraphTheme,
   style: (index: number) => NodeStyle,
   rowTop: (index: number) => number,
+  rowHeight: (index: number) => number,
   gap: Gap | undefined,
 ): void {
   const color = (c: number) => theme.lanes[c % theme.lanes.length]!;
@@ -54,8 +57,9 @@ export function drawGraph(
   for (let i = first; i < end; i++) {
     const row = rows[i]!;
     const top = rowTop(i) - scrollTop;
-    const mid = top + ROW_HEIGHT / 2;
-    const bottom = top + ROW_HEIGHT;
+    const bottom = top + rowHeight(i);
+    const lineTop = bottom - ROW_HEIGHT;
+    const mid = lineTop + ROW_HEIGHT / 2;
     const x = laneX(row.lane);
 
     for (const e of spans.passesAt(i)) {
@@ -68,9 +72,10 @@ export function drawGraph(
       const xe = laneX(e.lane);
       stroke(ctx, color(e.color), (c) => {
         c.moveTo(xe, top);
+        c.lineTo(xe, lineTop);
         // Vertical tangents at both ends give an S-curve between columns.
         if (xe === x) c.lineTo(x, mid);
-        else c.bezierCurveTo(xe, mid, x, top, x, mid);
+        else c.bezierCurveTo(xe, mid, x, lineTop, x, mid);
       });
     }
     for (const e of row.outgoing) {
@@ -85,7 +90,7 @@ export function drawGraph(
 
   // Lines leaving the row above the gap continue straight through it to the row below.
   if (gap && gap.after >= first && gap.after < end) {
-    const top = rowTop(gap.after) + ROW_HEIGHT - scrollTop;
+    const top = rowTop(gap.after) + rowHeight(gap.after) - scrollTop;
     const crossing = [...spans.passesAt(gap.after), ...rows[gap.after]!.outgoing];
     for (const e of crossing) {
       stroke(ctx, color(e.color), (c) => {
@@ -99,7 +104,7 @@ export function drawGraph(
   for (let i = first; i < end; i++) {
     const row = rows[i]!;
     const x = laneX(row.lane);
-    const y = rowTop(i) - scrollTop + ROW_HEIGHT / 2;
+    const y = rowTop(i) + rowHeight(i) - ROW_HEIGHT / 2 - scrollTop;
     const { head, merge } = style(i);
     const r = theme.nodeRadius;
     ctx.beginPath();

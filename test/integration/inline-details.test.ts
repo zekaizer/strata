@@ -3,15 +3,19 @@ import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { git, strata, waitFor } from './helpers.ts';
 
-const ROW_HEIGHT = 24;
 const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
 
 describe('inline details', () => {
   let panel: GraphPanel;
+  /** Row positions with nothing expanded. */
+  let plain: ProbeState;
   before(async () => {
     panel = (await strata()).show();
     await panel.whenReady();
-    await waitFor('history', async () => (await panel.probe()).done);
+    plain = await waitFor('history', async () => {
+      const s = await panel.probe();
+      return s.done && s.expandedHeight === 0 && s.rowTops[3] !== undefined && s;
+    });
   });
   after(() => {
     panel.dispose();
@@ -28,8 +32,8 @@ describe('inline details', () => {
   it('opens the details between the clicked row and the next one', async () => {
     await panel.simulate({ kind: 'clickRow', index: 2 });
     const s = await expandedAt(2);
-    assert.equal(s.rowTops[2], 2 * ROW_HEIGHT, 'rows above stay in place');
-    assert.equal(s.rowTops[3], 3 * ROW_HEIGHT + s.expandedHeight, 'rows below move down by the details height');
+    assert.equal(s.rowTops[2], plain.rowTops[2], 'rows above stay in place');
+    assert.equal(s.rowTops[3], plain.rowTops[3]! + s.expandedHeight, 'rows below move down by the details height');
   });
 
   it('reports rows where they are right after a fold, without waiting for a frame', async () => {
@@ -39,7 +43,7 @@ describe('inline details', () => {
     for (let i = 0; i < 5; i++) {
       await panel.simulate({ kind: 'key', key: 'Escape' });
       const folded = await panel.probe();
-      assert.equal(folded.rowTops[3], 3 * ROW_HEIGHT + folded.expandedHeight, `fold ${i}`);
+      assert.equal(folded.rowTops[3], plain.rowTops[3]! + folded.expandedHeight, `fold ${i}`);
       await panel.simulate({ kind: 'key', key: 'Enter' });
       await expandedAt(2);
     }
@@ -51,7 +55,7 @@ describe('inline details', () => {
       const s = await panel.probe();
       return s.detailsShown === undefined && s.expandedHeight === 0 && s;
     });
-    assert.equal(closed.rowTops[3], 3 * ROW_HEIGHT);
+    assert.equal(closed.rowTops[3], plain.rowTops[3]);
     assert.equal(closed.selected, order()[2], 'the selection stays');
     await panel.simulate({ kind: 'key', key: 'Enter' });
     await expandedAt(2);
@@ -60,7 +64,7 @@ describe('inline details', () => {
   it('moves the expanded details along with the keyboard selection', async () => {
     await panel.simulate({ kind: 'key', key: 'ArrowDown' });
     const s = await expandedAt(3);
-    assert.equal(s.rowTops[3], 3 * ROW_HEIGHT);
+    assert.equal(s.rowTops[3], plain.rowTops[3]);
   });
 
   it('collapses when the expanded row is clicked again', async () => {

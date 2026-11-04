@@ -2,6 +2,8 @@
 :root {
   color-scheme: light dark;
   --row-height: 24px;
+  /* Band above the commit line of rows with refs; REF_BAND in main.ts. */
+  --ref-band: 16px;
   /* Shared by the row grid and the details under a row, so both start at the same column. */
   --col-gap: 12px;
   --separator: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
@@ -305,6 +307,27 @@ canvas.graph {
   cursor: default;
   white-space: nowrap;
 }
+/* Rows with refs: the badges get a line of their own above the subject column. */
+.row.banded {
+  height: calc(var(--ref-band) + var(--row-height));
+  grid-template-rows: var(--ref-band) var(--row-height);
+}
+
+.row.banded > :not(.refs) {
+  grid-row: 2;
+}
+
+.refs {
+  grid-row: 1;
+  grid-column: 2 / -1;
+  align-self: end;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
 body:not(.hover-off) .row:hover {
   background: var(--vscode-list-hoverBackground);
   outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
@@ -335,18 +358,6 @@ body:not(.hover-off) .row:hover {
   align-items: center;
   gap: 4px;
   min-width: 0;
-}
-
-/* Refs follow the subject and give way first: they shrink to their icon before the text does. */
-.subject .text {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-right: 4px;
-}
-
-.subject .badge {
-  flex: 0 1000 auto;
-  min-width: 26px;
 }
 
 .subject .text,
@@ -384,22 +395,24 @@ body:not(.hover-off) .row:hover {
   --badge-color: var(--badge-branch);
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  flex: none;
+  gap: 2px;
+  /* Long names give way before short ones disappear; each keeps at least its icon. */
+  flex: 0 1 auto;
+  min-width: 22px;
   box-sizing: border-box;
-  max-width: 220px;
-  height: 18px;
-  padding: 0 6px 0 4px;
+  max-width: 200px;
+  height: 14px;
+  padding: 0 5px 0 3px;
   border: 1px solid var(--badge-color);
-  border-radius: 9px;
+  border-radius: 7px;
   background: color-mix(in srgb, var(--badge-color) 16%, transparent);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 10px;
+  line-height: 12px;
 }
 
 .badge .codicon {
   flex: none;
-  font-size: 12px;
+  font-size: 10px;
   color: var(--badge-color);
 }
 
@@ -422,7 +435,8 @@ body:not(.hover-off) .row:hover {
 
 .badge-more {
   --badge-color: var(--vscode-descriptionForeground);
-  padding: 0 6px;
+  flex: none;
+  padding: 0 5px;
 }
 
 .badge-head {
@@ -751,9 +765,6 @@ body:not(.hover-off) .file-action:hover {
   .date-short {
     display: inline;
   }
-  .badge {
-    max-width: 140px;
-  }
 }
 
 @container list (max-width: 600px) {
@@ -766,9 +777,6 @@ body:not(.hover-off) .file-action:hover {
   }
   .row .date {
     display: none;
-  }
-  .badge {
-    max-width: 96px;
   }
 }
 

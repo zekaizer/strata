@@ -93,12 +93,23 @@ export interface ProbeState {
   expandedHeight: number;
   /** Top offset in px of each rendered row within the list, by row index. */
   rowTops: Record<number, number>;
+  /** Rendered height in px of each rendered row, by row index. */
+  rowHeights: Record<number, number>;
+  /**
+   * Ref badges of each rendered row that has any, by row index: the badge texts and where the
+   * band holding them ends relative to where the subject starts (both in px from the row top).
+   */
+  refBands: Record<
+    number,
+    { badges: string[]; bandBottom: number; subjectTop: number; subjectLeft: number; bandLeft: number }
+  >;
   options: ViewOptions;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */
 export type SimulatedAction =
-  | { kind: 'clickRow'; index: number }
+  /** `y`: px below the row's top to click at (default: its middle). */
+  | { kind: 'clickRow'; index: number; y?: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
   | {
       kind: 'key';

@@ -16,6 +16,7 @@ import type {
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
 import { RefFilter } from './ref-filter.ts';
+import { RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -29,7 +30,10 @@ const MAX_GRAPH_SHARE = 0.4;
 /** Narrow lists keep most of their width for the text. */
 const NARROW_LIST = 600;
 const NARROW_GRAPH_SHARE = 0.25;
-const MAX_BADGES = 3;
+/** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
+const MAX_BADGES = 6;
+/** Height of the band above the commit line of rows with refs; matches --ref-band in main.css. */
+const REF_BAND = 16;
 /** The inline details never take more than this share of the list height. */
 const MAX_EXPANSION_SHARE = 0.45;
 
@@ -85,6 +89,8 @@ class App {
    * within one history, so the text does not shift back and forth while scrolling.
    */
   private shownLanes = 1;
+  /** Row tops without the inline details; rows with refs are taller. */
+  private readonly geometry = new RowGeometry(ROW_HEIGHT, REF_BAND);
   private noRepository = false;
   private readonly empty = el('div', 'empty');
   private done = false;
@@ -225,6 +231,7 @@ class App {
         this.loading = false;
         this.done = m.done;
         this.commits.push(...m.commits);
+        for (const c of m.commits) this.geometry.push(this.hasBadges(c.hash));
         this.worker?.postMessage({
           type: 'layout',
           generation: m.generation,
@@ -249,6 +256,7 @@ class App {
         this.repoLabel.textContent = 'No git repository';
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.commits = [];
+        this.geometry.clear();
         this.rows = [];
         this.spans.clear();
         this.queueRender();
@@ -302,6 +310,7 @@ class App {
       this.refsByHash.set(r.hash, list);
     }
     this.commits = [];
+    this.geometry.clear();
     this.rows = [];
     this.spans.clear();
     this.shownLanes = 1;
@@ -425,16 +434,16 @@ class App {
 
   /** Top of row `index` in list coordinates: rows below the expanded one move down by the gap. */
   private rowTop(index: number): number {
-    return index * ROW_HEIGHT + (index > this.selected ? this.gapHeight() : 0);
+    return this.geometry.top(index) + (index > this.selected ? this.gapHeight() : 0);
   }
 
-  /** Row at list offset `y`, or -1 inside the expansion. */
+  /** Row at list offset `y` (clamped to [0, count]), or -1 inside the expansion. */
   private rowAt(y: number): number {
     const gap = this.gapHeight();
-    const gapTop = (this.selected + 1) * ROW_HEIGHT;
-    if (gap === 0 || y < gapTop) return Math.floor(y / ROW_HEIGHT);
+    const gapTop = this.geometry.top(this.selected + 1);
+    if (gap === 0 || y < gapTop) return this.geometry.indexAt(y);
     if (y < gapTop + gap) return -1;
-    return Math.floor((y - gap) / ROW_HEIGHT);
+    return this.geometry.indexAt(y - gap);
   }
 
   /** Row at or above offset `y`; the expansion counts as part of its row. */
@@ -521,10 +530,12 @@ class App {
    */
   private placeExpansion(): void {
     const view = this.scroller.clientHeight;
-    const rowsAfter = this.commits.length - this.selected - 1;
-    const unused = view - (rowsAfter + 1) * ROW_HEIGHT;
-    const cap = Math.min(view - 2 * ROW_HEIGHT, Math.max(view * MAX_EXPANSION_SHARE, unused));
-    this.expansion.style.top = `${(this.selected + 1) * ROW_HEIGHT}px`;
+    const unused = view - (this.geometry.total() - this.geometry.top(this.selected));
+    const cap = Math.min(
+      view - this.geometry.height(this.selected) - ROW_HEIGHT,
+      Math.max(view * MAX_EXPANSION_SHARE, unused),
+    );
+    this.expansion.style.top = `${this.geometry.top(this.selected + 1)}px`;
     this.expansion.style.maxHeight = `${Math.max(ROW_HEIGHT, Math.floor(cap))}px`;
   }
 
@@ -548,7 +559,7 @@ class App {
 
   /** The list's height must be right before scrollTop is set, or the browser clamps it. */
   private syncSizer(): void {
-    this.sizer.style.height = `${this.commits.length * ROW_HEIGHT + this.gapHeight()}px`;
+    this.sizer.style.height = `${this.geometry.total() + this.gapHeight()}px`;
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
@@ -567,7 +578,8 @@ class App {
   /** Scrolls row `index` into view; with `withExpansion`, also as much of its details as fits below it. */
   private ensureVisible(index: number, withExpansion = false): void {
     const top = this.rowTop(index);
-    const bottom = top + ROW_HEIGHT + (withExpansion && index === this.selected ? this.gapHeight() : 0);
+    const bottom =
+      top + this.geometry.height(index) + (withExpansion && index === this.selected ? this.gapHeight() : 0);
     const view = this.scroller.clientHeight;
     if (top < this.scroller.scrollTop) this.scroller.scrollTop = top;
     else if (bottom > this.scroller.scrollTop + view) this.scroller.scrollTop = Math.min(top, bottom - view);
@@ -661,6 +673,7 @@ class App {
         merge: (this.commits[i]?.parents.length ?? 0) > 1,
       }),
       (i) => this.rowTop(i),
+      (i) => this.geometry.height(i),
       this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
     );
     ctx.restore();
@@ -700,6 +713,14 @@ class App {
     row.setAttribute('aria-posinset', String(i + 1));
     row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
     row.style.top = `${this.rowTop(i)}px`;
+    const badges = this.badges(c.hash);
+    if (badges.length > 0) {
+      // Refs get a band of their own above the commit line, so the subject keeps its column.
+      row.classList.add('banded');
+      const band = el('span', 'refs');
+      band.append(...badges);
+      row.append(band);
+    }
     if (i === this.selected) {
       row.classList.add('selected');
       row.setAttribute('aria-expanded', String(this.expanded));
@@ -707,8 +728,7 @@ class App {
     if (c.hash === this.refs.head) row.classList.add('head');
 
     const subject = el('span', 'subject');
-    // The subject leads; refs follow it and give way first when the column is narrow.
-    subject.append(el('span', 'text', c.subject), ...this.badges(c.hash));
+    subject.append(el('span', 'text', c.subject));
     row.append(
       el('span', 'graph-spacer'),
       subject,
@@ -727,6 +747,11 @@ class App {
     return cell;
   }
 
+  /** Whether a commit shows ref badges; must agree with badges(). */
+  private hasBadges(hash: string): boolean {
+    return this.refsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
+  }
+
   private badges(hash: string): HTMLElement[] {
     const out: HTMLElement[] = [];
     const refs = this.refsByHash.get(hash) ?? [];
@@ -736,7 +761,7 @@ class App {
       const isHead = r.kind === 'branch' && r.short === this.refs.headBranch;
       out.push(badge(isHead ? 'head' : r.kind, isHead ? 'target' : REF_ICON[r.kind], r.short, r.name));
     }
-    // Current branch first; beyond MAX_BADGES the rest collapse so the subject stays visible.
+    // Current branch first; beyond MAX_BADGES the rest collapse into one badge with a tooltip.
     out.sort((a, b) => Number(b.classList.contains('head')) - Number(a.classList.contains('head')));
     if (out.length <= MAX_BADGES) return out;
     const rest = out.slice(MAX_BADGES - 1);
@@ -1022,7 +1047,36 @@ class App {
           parseFloat(r.style.top),
         ]),
       ),
+      rowHeights: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [
+          Number(r.dataset['index']),
+          r.offsetHeight,
+        ]),
+      ),
+      refBands: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+          const band = r.querySelector<HTMLElement>('.refs');
+          const subject = r.querySelector<HTMLElement>('.subject')!.getBoundingClientRect();
+          const top = r.getBoundingClientRect().top;
+          const badges = [...r.querySelectorAll('.badge-text, .badge-more')].map((b) => b.textContent);
+          if (badges.length === 0) return [];
+          const b = (band ?? r).getBoundingClientRect();
+          return [
+            [
+              Number(r.dataset['index']),
+              {
+                badges,
+                bandBottom: band ? b.bottom - top : -1,
+                subjectTop: subject.top - top,
+                subjectLeft: subject.left,
+                bandLeft: band ? b.left : -1,
+              },
+            ],
+          ];
+        }),
+      ),
       columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
+        .filter((e) => !e.classList.contains('refs'))
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
     };
@@ -1038,7 +1092,7 @@ class App {
         if (row) {
           const r = row.getBoundingClientRect();
           row.dispatchEvent(
-            new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + r.height / 2 }),
+            new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + (a.y ?? r.height / 2) }),
           );
         }
         break;
