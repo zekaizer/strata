@@ -261,10 +261,11 @@ class App {
     this.watchPixelRatio();
     this.trackPointer();
     this.trackInputModality();
-    // VS Code rewrites the theme variables on <html> when the color theme changes.
+    // VS Code rewrites the theme and font variables on <html> when the theme or a font setting changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
       this.queueRender();
+      this.layoutDetails();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
   }
 
