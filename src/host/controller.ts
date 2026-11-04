@@ -1,8 +1,9 @@
-import { basename, posix } from 'node:path';
+import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 import type { OperationState } from '../core/repo-state.ts';
+import type { StashEntry } from '../core/stash.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
@@ -10,6 +11,8 @@ import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readCommitPatch, readFilePatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
+import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
+import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
@@ -42,6 +45,8 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private generation = 0;
   private options: ViewOptions = DEFAULT_OPTIONS;
   private snapshot: RefSnapshot | undefined;
+  private stashes: StashEntry[] = [];
+  private stashCache = stashCache();
   /** The operation in progress the graph was last told about. */
   private operation: OperationState | undefined;
   private undoRecord: Undo | undefined;
@@ -108,11 +113,45 @@ export class GraphController implements vscode.Disposable, FlowHost {
     if (repo !== this.repo) {
       this.repoSubscription?.dispose();
       this.repo = repo;
-      this.repoSubscription = repo?.state.onDidChange(() => {
-        this.scheduleRefresh();
-      });
+      this.stashCache = stashCache();
+      this.repoSubscription =
+        repo &&
+        vscode.Disposable.from(
+          repo.state.onDidChange(() => {
+            this.scheduleRefresh();
+          }),
+          this.watchStashes(repo),
+        );
     }
     await this.reset();
+  }
+
+  /**
+   * vscode.git reports no change for `git stash drop` or `clear`: they touch only refs/stash and its
+   * reflog, which it does not watch.
+   */
+  private watchStashes(repo: GitRepository): vscode.Disposable {
+    let watcher: vscode.FileSystemWatcher | undefined;
+    let disposed = false;
+    const root = repo.rootUri.fsPath;
+    void runGit(this.api.git.path, root, ['rev-parse', '--git-common-dir']).then(
+      (dir) => {
+        if (disposed) return;
+        const logs = vscode.Uri.file(resolve(root, dir.trim(), 'logs', 'refs'));
+        watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(logs, 'stash'));
+        const refresh = () => {
+          this.scheduleRefresh();
+        };
+        watcher.onDidChange(refresh);
+        watcher.onDidCreate(refresh);
+        watcher.onDidDelete(refresh);
+      },
+      () => undefined,
+    );
+    return new vscode.Disposable(() => {
+      disposed = true;
+      watcher?.dispose();
+    });
   }
 
   /** Replies arrive after awaits; once the panel is gone there is nobody to send them to. */
@@ -136,17 +175,28 @@ export class GraphController implements vscode.Disposable, FlowHost {
           break;
         case 'select':
           if (this.repo && m.generation === this.generation) {
-            const details = await readCommitDetails(this.api.git.path, this.repo.rootUri.fsPath, m.hash);
+            const read = this.stashes.some((s) => s.hash === m.hash) ? readStashDetails : readCommitDetails;
+            const details = await read(this.api.git.path, this.repo.rootUri.fsPath, m.hash);
             if (m.generation === this.generation) this.post({ type: 'details', generation: m.generation, details });
           }
           break;
         case 'openFile':
           if (this.repo && m.generation === this.generation) await this.openFile(this.repo, m);
           break;
-        case 'setOptions':
+        case 'setOptions': {
+          // Stash rows are interleaved in the webview: showing or hiding them reloads nothing.
+          const reload =
+            m.options.firstParent !== this.options.firstParent ||
+            JSON.stringify(m.options.refs) !== JSON.stringify(this.options.refs);
           this.options = m.options;
-          await this.reset();
+          if (reload) await this.reset();
           break;
+        }
+        case 'pickStash': {
+          const hash = await pickStash(this.stashes, m.shown, this.snapshot?.headBranch);
+          if (hash) this.post({ type: 'reveal', hash });
+          break;
+        }
         case 'refresh':
           await this.reset();
           break;
@@ -170,9 +220,13 @@ export class GraphController implements vscode.Disposable, FlowHost {
       return;
     }
     const cwd = repo.rootUri.fsPath;
-    const refs = await readRefs(this.api.git.path, cwd);
+    const [refs, stashes] = await Promise.all([
+      readRefs(this.api.git.path, cwd),
+      readStashes(this.api.git.path, cwd, this.stashCache),
+    ]);
     if (generation !== this.generation) return;
     this.snapshot = refs;
+    this.stashes = stashes;
     // Drop filtered refs that no longer exist; with none left, show everything.
     const known = new Set(refs.refs.map((r) => r.name));
     const kept = this.options.refs?.filter((r) => known.has(r)) ?? [];
@@ -189,6 +243,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
       repo: { name: basename(cwd), root: cwd },
       refs,
       options: this.options,
+      stashes,
       ...(focus === undefined ? {} : { focus }),
     });
     this.scheduleGraphUpdate();
@@ -203,7 +258,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     if (repo !== this.repo || this.disposed) return;
     if (!force && JSON.stringify(operation) === JSON.stringify(this.operation)) return;
     this.operation = operation;
-    this.post({ type: 'repoState', operation });
+    this.post({ type: 'repoState', operation, leftover: undefined });
     await setContext('strata.operation', operation?.kind ?? '');
   }
 
@@ -238,21 +293,37 @@ export class GraphController implements vscode.Disposable, FlowHost {
     }
   }
 
-  /** Repository state events fire for index and working tree changes too; only ref changes reset the view. */
+  /**
+   * Repository state events fire for index and working tree changes too: only ref changes reload
+   * the history, and stash changes alone only re-interleave the rows.
+   */
   private scheduleRefresh(): void {
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
-      void this.refreshIfRefsChanged();
+      void this.refreshIfChanged();
     }, REFRESH_DEBOUNCE_MS);
   }
 
-  private async refreshIfRefsChanged(): Promise<void> {
+  private async refreshIfChanged(): Promise<void> {
     // A running flow refreshes when it ends; busy(undefined) checks again for one that failed.
     if (!this.repo || this.running !== undefined) return;
+    const generation = this.generation;
+    const cwd = this.repo.rootUri.fsPath;
     try {
-      const refs = await readRefs(this.api.git.path, this.repo.rootUri.fsPath);
-      if (JSON.stringify(refs) !== JSON.stringify(this.snapshot)) await this.reset();
-      else await this.syncRepoState(false);
+      const [refs, stashes] = await Promise.all([
+        readRefs(this.api.git.path, cwd),
+        readStashes(this.api.git.path, cwd, this.stashCache),
+      ]);
+      if (generation !== this.generation) return;
+      if (JSON.stringify(refs) !== JSON.stringify(this.snapshot)) {
+        await this.reset();
+        return;
+      }
+      if (JSON.stringify(stashes) !== JSON.stringify(this.stashes)) {
+        this.stashes = stashes;
+        this.post({ type: 'stashes', generation, stashes });
+      }
+      await this.syncRepoState(false);
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }

@@ -5,6 +5,16 @@ import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
 import { badgeOrder, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { OperationState } from '../core/repo-state.ts';
+import {
+  anchoredAt,
+  describeStash,
+  interleave,
+  rowHash,
+  stashLabel,
+  type ListRow,
+  type StashEntry,
+  type StashShown,
+} from '../core/stash.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -15,7 +25,8 @@ import type {
   ViewOptions,
 } from '../shared/protocol.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
-import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
+import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
+import { lanesUsed } from './lanes.ts';
 import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
@@ -95,7 +106,7 @@ const FILE_VIEW_TITLE: Record<FileView, string> = {
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
-const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag', stash: 'archive' };
+const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag' };
 
 class App {
   private worker: Worker | undefined;
@@ -107,11 +118,20 @@ class App {
   private refsByHash = new Map<string, Ref[]>();
   // Declared before `options`, which is initialized from it.
   private restore: SavedState | undefined = savedState() as SavedState | undefined;
-  private options: ViewOptions = this.restore?.options ?? DEFAULT_OPTIONS;
+  // States saved before an option existed lack it.
+  private options: ViewOptions = { ...DEFAULT_OPTIONS, ...this.restore?.options };
   private readonly refFilter: RefFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
+  /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
+  private readonly stashButton = el('button', 'tool-button stash-button');
+  /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
   private commits: Commit[] = [];
   private rows: Row[] = [];
+  /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
+  private list: ListRow[] = [];
+  private stashes: StashEntry[] = [];
+  /** Stashes by the commit their rows are drawn above. */
+  private anchors: ReadonlyMap<string, readonly StashEntry[]> = new Map();
   private readonly spans = new SpanIndex();
   /**
    * Columns the graph column is sized for: the widest rows seen on screen so far. It only grows
@@ -180,8 +200,23 @@ class App {
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
-    this.refFilter = new RefFilter(this.toolbar, (refs) => {
-      this.setOptions({ ...this.options, refs });
+    this.refFilter = new RefFilter(
+      this.toolbar,
+      (refs) => {
+        this.setOptions({ ...this.options, refs });
+      },
+      (show) => {
+        this.setShowStashes(show);
+      },
+    );
+    this.stashButton.append(
+      el('span', 'codicon codicon-git-stash'),
+      el('span', 'tool-label stash-count'),
+      el('span', 'stash-count-narrow'),
+    );
+    this.stashButton.hidden = true;
+    this.stashButton.addEventListener('click', () => {
+      vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
     });
     this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
@@ -193,6 +228,7 @@ class App {
       this.repoLabel,
       this.status,
       el('span', 'spacer'),
+      this.stashButton,
       this.refFilter.button,
       this.firstParentButton,
       refresh,
@@ -227,7 +263,7 @@ class App {
       giveBack(e, '.byline-hash, .byline-toggle, .meta-copy, .details-more');
     });
     this.toolbar.addEventListener('click', (e) => {
-      giveBack(e, '.first-parent-button, .codicon-refresh');
+      giveBack(e, '.first-parent-button, .codicon-refresh, .stash-button');
     });
     new ResizeObserver(() => {
       this.onExpansionResize();
@@ -248,7 +284,7 @@ class App {
       if (e.composedPath().includes(this.expansion)) return;
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
-      if (index < 0 || index >= this.commits.length) return;
+      if (index < 0 || index >= this.list.length) return;
       // Clicking the expanded row folds it; any other row opens its details.
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
@@ -299,7 +335,12 @@ class App {
         this.queueRender();
         break;
       case 'reset':
-        this.reset(m.generation, m.repo, m.refs, m.options, m.focus);
+        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.focus);
+        break;
+      case 'stashes':
+        if (m.generation !== this.generation) return;
+        this.setStashes(m.stashes);
+        this.relist();
         break;
       case 'repoState':
         this.operation = m.operation;
@@ -308,15 +349,16 @@ class App {
         if (m.generation !== this.generation) return;
         this.loading = false;
         this.done = m.done;
+        this.appendRows(interleave(m.commits, this.commits.length, this.anchors));
         this.commits.push(...m.commits);
         this.measureTexts(m.commits);
-        for (const c of m.commits) this.geometry.push(this.hasBadges(c.hash));
         this.worker?.postMessage({
           type: 'layout',
           generation: m.generation,
           commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
         });
         this.updateStatus();
+        this.updateStashButton();
         this.applyRestore();
         this.queueRender();
         break;
@@ -325,6 +367,9 @@ class App {
         this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
+        break;
+      case 'reveal':
+        this.reveal(m.hash);
         break;
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
@@ -344,7 +389,9 @@ class App {
         this.refFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refFilter.update(this.refs, null);
+        this.setStashes([]);
         this.commits = [];
+        this.list = [];
         this.geometry.clear();
         this.rows = [];
         this.spans.clear();
@@ -378,13 +425,20 @@ class App {
     this.queueRender();
   }
 
-  private reset(generation: number, repo: RepoInfo, refs: RefSnapshot, options: ViewOptions, focus?: string): void {
+  private reset(
+    generation: number,
+    repo: RepoInfo,
+    refs: RefSnapshot,
+    options: ViewOptions,
+    stashes: StashEntry[],
+    focus?: string,
+  ): void {
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
     // scroll position too when the history itself is the same view.
     if (this.restore === undefined && this.repo?.root === repo.root) {
       const sameView = JSON.stringify(options) === JSON.stringify(this.options);
       this.restore = {
-        selectedHash: this.commits[this.selected]?.hash,
+        selectedHash: this.selectedHash(),
         scrollAnchor: sameView ? this.scrollAnchor() : undefined,
         scrollTop: sameView ? this.scroller.scrollTop : undefined,
         expanded: this.expanded,
@@ -404,7 +458,9 @@ class App {
     // Refs picked in the filter follow the current branch, so they survive the "+N" collapse.
     for (const [hash, list] of this.refsByHash)
       this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
+    this.setStashes(stashes);
     this.commits = [];
+    this.list = [];
     this.geometry.clear();
     this.rows = [];
     this.spans.clear();
@@ -432,7 +488,7 @@ class App {
     const searchable = !this.done && this.commits.length < RESTORE_SEARCH_LIMIT;
     if (r.scrollAnchor !== undefined) {
       const anchor = r.scrollAnchor;
-      const index = this.commits.findIndex((c) => c.hash === anchor.hash);
+      const index = this.indexOf(anchor.hash);
       if (index >= 0) {
         this.syncSizer();
         this.scroller.scrollTop = this.rowTop(index) + anchor.offset;
@@ -453,7 +509,7 @@ class App {
       else this.loadMore(NEXT_PAGE);
     }
     if (r.selectedHash !== undefined) {
-      const index = this.commits.findIndex((c) => c.hash === r.selectedHash);
+      const index = this.indexOf(r.selectedHash);
       if (index >= 0) {
         // Reveal it only when no scroll position is being restored with it. Older saved states have no
         // `expanded`; a selection then meant visible details.
@@ -469,7 +525,8 @@ class App {
         const missing = r.selectedHash;
         r.selectedHash = undefined;
         this.updateStatus();
-        this.announce(`${shortHash(missing)} is not in this view`);
+        const stash = this.stashes.find((s) => s.hash === missing);
+        this.announce(`${stash ? `stash@{${stash.index}}` : shortHash(missing)} is not in this view`);
       }
     }
     if (r.scrollAnchor === undefined && r.scrollTop === undefined && r.selectedHash === undefined)
@@ -479,7 +536,7 @@ class App {
   private saveState(): void {
     // While a restore is pending, keep the saved position rather than the not yet restored one.
     const state: SavedState = {
-      selectedHash: this.restore?.selectedHash ?? this.commits[this.selected]?.hash,
+      selectedHash: this.restore?.selectedHash ?? this.selectedHash(),
       scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
       expanded: this.restore?.expanded ?? this.expanded,
@@ -500,9 +557,103 @@ class App {
   /** The row at the top of the view and the offset into it; undefined with no rows. */
   private scrollAnchor(): SavedState['scrollAnchor'] {
     const top = this.scroller.scrollTop;
-    const index = Math.min(this.rowFloor(top), this.commits.length - 1);
-    const commit = this.commits[index];
-    return commit && { hash: commit.hash, offset: top - this.rowTop(index) };
+    const index = Math.min(this.rowFloor(top), this.list.length - 1);
+    const row = this.list[index];
+    return row && { hash: rowHash(row), offset: top - this.rowTop(index) };
+  }
+
+  private setStashes(stashes: StashEntry[]): void {
+    this.stashes = stashes;
+    this.anchors = this.options.showStashes ? anchoredAt(stashes) : new Map();
+    this.updateStashButton();
+  }
+
+  /** Shows or hides the stash rows: interleaved again here, the history is not reloaded. */
+  private setShowStashes(show: boolean): void {
+    if (show === this.options.showStashes) return;
+    this.setOptions({ ...this.options, showStashes: show });
+    this.setStashes(this.stashes);
+    this.relist();
+  }
+
+  /** Whether each stash's row is in the list, and if not, why. */
+  private stashShown(): Record<string, StashShown> {
+    const shown = (s: StashEntry): StashShown =>
+      !this.options.showStashes
+        ? 'hidden'
+        : this.indexOf(s.hash) >= 0
+          ? 'drawn'
+          : this.done
+            ? 'notInView'
+            : 'notLoaded';
+    return Object.fromEntries(this.stashes.map((s) => [s.hash, shown(s)]));
+  }
+
+  private updateStashButton(): void {
+    const n = this.stashes.length;
+    this.stashButton.hidden = n === 0;
+    this.refFilter.updateStashes(n, this.options.showStashes);
+    if (n === 0) return;
+    const hidden = Object.values(this.stashShown()).filter((v) => v !== 'drawn').length;
+    const label = `${n} ${n === 1 ? 'stash' : 'stashes'}${hidden > 0 ? ` · ${hidden} not shown` : ''}`;
+    this.stashButton.querySelector('.stash-count')!.textContent = label;
+    this.stashButton.querySelector('.stash-count-narrow')!.textContent = `${n}${hidden > 0 ? '•' : ''}`;
+    this.stashButton.title = `${label}. Show Stashes`;
+    this.stashButton.setAttribute('aria-label', this.stashButton.title);
+  }
+
+  /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */
+  private reveal(hash: string): void {
+    if (this.stashes.some((s) => s.hash === hash)) this.setShowStashes(true);
+    this.selectHash(hash, true);
+  }
+
+  /**
+   * Interleaves the loaded commits with the stashes again, without reloading the history. The
+   * selection and the row at the top of the view stay on what they showed; when that was a stash
+   * that is gone, on the row that took its place (the next stash on that commit, else the commit).
+   */
+  private relist(): void {
+    const old = this.list;
+    const top = this.scroller.scrollTop;
+    const anchor = old.length > 0 ? Math.min(this.rowFloor(top), old.length - 1) : -1;
+    const offset = anchor >= 0 ? top - this.rowTop(anchor) : 0;
+    const was = this.selectedHash();
+    this.list = [];
+    this.geometry.clear();
+    this.appendRows(interleave(this.commits, 0, this.anchors));
+    const survivor = (i: number) => {
+      for (let j = i; j < old.length; j++) {
+        const k = this.indexOf(rowHash(old[j]!));
+        if (k >= 0) return k;
+      }
+      return this.list.length - 1;
+    };
+    if (this.selected >= 0) this.selected = survivor(this.selected);
+    this.syncSizer();
+    if (anchor >= 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
+    this.updateStashButton();
+    if (this.selected >= 0 && this.selectedHash() !== was && this.expanded)
+      this.select(this.selected, { reveal: false });
+    // Open stash details name stash@{n}, which may have been renumbered.
+    else if (this.details?.stash) this.renderDetails();
+    this.saveState();
+    this.queueRender();
+  }
+
+  private appendRows(rows: readonly ListRow[]): void {
+    this.list.push(...rows);
+    for (const r of rows) this.geometry.push(r.kind === 'commit' && this.hasBadges(r.commit.hash));
+  }
+
+  /** Row index of a commit or stash; -1 when it is not in the list. */
+  private indexOf(hash: string): number {
+    return this.list.findIndex((r) => rowHash(r) === hash);
+  }
+
+  private selectedHash(): string | undefined {
+    const row = this.list[this.selected];
+    return row && rowHash(row);
   }
 
   /**
@@ -630,8 +781,9 @@ class App {
    * row keeps its place on screen when the expansion moves.
    */
   private select(index: number, opts: { reveal?: boolean; expand?: boolean } = {}): void {
-    const commit = this.commits[index];
-    if (!commit) return;
+    const row = this.list[index];
+    if (!row) return;
+    const hash = rowHash(row);
     const screenTop = this.rowTop(index) - this.scroller.scrollTop;
     this.selected = index;
     this.expanded = opts.expand ?? this.expanded;
@@ -642,9 +794,9 @@ class App {
     clearTimeout(this.copiedTimer);
     this.pendingDetails = undefined;
     if (this.expanded) {
-      this.pendingDetails = commit.hash;
+      this.pendingDetails = hash;
       this.showLoading();
-      vscode.postMessage({ type: 'select', generation: this.generation, hash: commit.hash });
+      vscode.postMessage({ type: 'select', generation: this.generation, hash });
     }
     this.syncSizer();
     this.scroller.scrollTop = this.rowTop(index) - screenTop;
@@ -764,14 +916,14 @@ class App {
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
-  private selectHash(hash: string): void {
+  private selectHash(hash: string, expand?: boolean): void {
     this.scroller.focus();
-    const index = this.commits.findIndex((c) => c.hash === hash);
+    const index = this.indexOf(hash);
     if (index >= 0) {
-      this.select(index);
+      this.select(index, expand === undefined ? {} : { expand });
       return;
     }
-    this.restore = { selectedHash: hash };
+    this.restore = { selectedHash: hash, ...(expand === undefined ? {} : { expanded: expand }) };
     this.status.textContent = `Looking for ${shortHash(hash)}…`;
     this.applyRestore();
   }
@@ -795,9 +947,9 @@ class App {
     const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
     if (delta !== undefined) {
       e.preventDefault();
-      const next = Math.min(this.commits.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
+      const next = Math.min(this.list.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
       this.userSelect(next);
-    } else if (page !== 0 && this.commits.length > 0) {
+    } else if (page !== 0 && this.list.length > 0) {
       e.preventDefault();
       // Rows differ in height (refs), so a page is measured in pixels, not rows.
       const from = Math.max(0, this.selected);
@@ -834,11 +986,8 @@ class App {
     const width = this.scroller.clientWidth;
     const scrollTop = this.scroller.scrollTop;
     const first = Math.max(0, this.rowFloor(scrollTop) - OVERSCAN);
-    const last = Math.min(this.commits.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
-    for (let i = first; i < Math.min(last, this.rows.length); i++) {
-      this.shownLanes = Math.max(this.shownLanes, rowWidth(this.rows[i]!));
-      for (const e of this.spans.passesAt(i)) this.shownLanes = Math.max(this.shownLanes, e.lane + 1);
-    }
+    const last = Math.min(this.list.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
+    this.shownLanes = Math.max(this.shownLanes, lanesUsed(this.list, this.rows, this.spans, first, last));
     const share = width <= NARROW_LIST ? NARROW_GRAPH_SHARE : MAX_GRAPH_SHARE;
     const gw = Math.min(graphWidth(this.shownLanes), Math.max(graphWidth(1), Math.floor(width * share)));
 
@@ -878,16 +1027,14 @@ class App {
     ctx.clip();
     drawGraph(
       ctx,
+      this.list,
       this.rows,
       this.spans,
       first,
       last,
       scrollTop,
       this.theme,
-      (i) => ({
-        head: this.commits[i]?.hash === this.refs.head,
-        merge: (this.commits[i]?.parents.length ?? 0) > 1,
-      }),
+      (c) => ({ head: c.hash === this.refs.head, merge: c.parents.length > 1 }),
       (i) => this.rowTop(i),
       (i) => this.geometry.height(i),
       this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
@@ -896,7 +1043,7 @@ class App {
     if (graphWidth(this.shownLanes) > gw) fadeRightEdge(ctx, gw, height);
     this.renderEmpty();
 
-    if (!this.done && !this.loading && last + LOAD_AHEAD > this.commits.length) this.loadMore(NEXT_PAGE);
+    if (!this.done && !this.loading && last + LOAD_AHEAD > this.list.length) this.loadMore(NEXT_PAGE);
   }
 
   /** A message in place of the list when there is nothing to show. */
@@ -911,11 +1058,22 @@ class App {
   }
 
   private renderRow(i: number): HTMLElement {
-    const c = this.commits[i]!;
+    const r = this.list[i]!;
     const row = el('div', 'row');
     row.id = `row-${i}`;
     row.dataset['index'] = String(i);
     row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(i === this.selected));
+    row.setAttribute('aria-posinset', String(i + 1));
+    row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
+    row.style.top = `${this.rowTop(i)}px`;
+    if (i === this.selected) {
+      // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
+      row.classList.add(this.expanded ? 'selected' : 'cursor');
+      row.setAttribute('aria-expanded', String(this.expanded));
+    }
+    if (r.kind === 'stash') return this.fillStashRow(row, r.stash);
+    const c = r.commit;
     row.setAttribute(
       'data-vscode-context',
       JSON.stringify({
@@ -925,10 +1083,6 @@ class App {
         strataSubject: c.subject,
       }),
     );
-    row.setAttribute('aria-selected', String(i === this.selected));
-    row.setAttribute('aria-posinset', String(i + 1));
-    row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
-    row.style.top = `${this.rowTop(i)}px`;
     const badges = this.badges(c.hash);
     if (badges.length > 0) {
       // Refs get a band of their own above the commit line, so the subject keeps its column.
@@ -936,11 +1090,6 @@ class App {
       const band = el('span', 'refs');
       band.append(...badges);
       row.append(band);
-    }
-    if (i === this.selected) {
-      // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
-      row.classList.add(this.expanded ? 'selected' : 'cursor');
-      row.setAttribute('aria-expanded', String(this.expanded));
     }
     if (c.hash === this.refs.head) row.classList.add('head');
 
@@ -954,6 +1103,55 @@ class App {
       el('span', 'hash', shortHash(c.hash)),
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    return row;
+  }
+
+  /**
+   * A stash row: always one line, the stash@{n} badge inline before the message, which keeps git's
+   * "On <branch>:" prefix. No author or hash; the date is when it was stashed.
+   */
+  private fillStashRow(row: HTMLElement, s: StashEntry): HTMLElement {
+    row.classList.add('stash');
+    if (s.autostash) row.classList.add('autostash');
+    row.setAttribute(
+      'data-vscode-context',
+      JSON.stringify({
+        webviewSection: 'stash',
+        preventDefaultContextMenuItems: true,
+        strataHash: s.hash,
+        strataSubject: s.message,
+      }),
+    );
+    const subject = el('span', 'subject');
+    const name = badge('stash', 'git-stash', `stash@{${s.index}}`, `stash@{${s.index}}`);
+    if (s.autostash) {
+      name.classList.add('autostash');
+      name.append(el('span', 'badge-autostash', 'autostash'));
+    }
+    subject.append(name);
+    const { prefix, text } = stashLabel(s);
+    // git's own autostash message is the word the badge already shows.
+    const shown = s.autostash && text === 'autostash' ? '' : text;
+    if (prefix !== undefined || shown) {
+      const message = el('span', 'text');
+      if (prefix !== undefined) message.append(el('span', 'stash-prefix', prefix), ' ');
+      message.append(el('span', 'stash-message', shown));
+      subject.append(message);
+    }
+    if (s.anchor.kind === 'tip')
+      subject.append(el('span', 'stash-note', `based on ${shortHash(s.base)}, no longer on '${s.branch ?? ''}'`));
+    // The hash is hidden; it keeps the column as wide as in commit rows, so the dates line up.
+    row.append(
+      el('span', 'graph-spacer'),
+      subject,
+      el('span', 'author'),
+      this.dateCell(s.time),
+      el('span', 'hash', shortHash(s.hash)),
+    );
+    const base = this.commits.find((c) => c.hash === s.base);
+    const label = describeStash(s, { short: shortHash(s.base), subject: base?.subject }, formatDate(s.time));
+    row.title = label;
+    row.setAttribute('aria-label', label);
     return row;
   }
 
@@ -983,7 +1181,7 @@ class App {
     const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX)) + 1;
     const dateFull = Math.ceil(this.textWidths.dateFull) + 1;
     const dateShort = Math.ceil(this.textWidths.dateShort) + 1;
-    const hash = this.rowsLayer.querySelector<HTMLElement>('.row .hash')?.offsetWidth ?? 60;
+    const hash = this.rowsLayer.querySelector<HTMLElement>('.row:not(.stash) .hash')?.offsetWidth ?? 60;
     const choice = chooseColumns(
       { list: width, graph, author, dateFull, dateShort, hash, gap, padding: 12 },
       SUBJECT_MIN,
@@ -1050,8 +1248,10 @@ class App {
     clearTimeout(this.copiedTimer);
     clearTimeout(this.metaCopiedTimer);
 
+    const stash = d.stash && this.stashes.find((s) => s.hash === d.hash);
     // The row truncates long subjects, so the details repeat it in full.
-    const [subject = '', ...rest] = d.message.split('\n');
+    const [first = '', ...rest] = d.message.split('\n');
+    const subject = stash ? stashLabel(stash).text : first;
     const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
@@ -1065,7 +1265,12 @@ class App {
     const main = el('div', 'details-main');
     // Carries the body font, whose 80 columns size the message column (layoutDetails).
     const ruler = el('span', 'column-ruler');
-    main.append(ruler, this.byline(d), this.metaTable(d), el('h2', 'details-subject', subject));
+    main.append(
+      ruler,
+      stash ? this.stashByline(d, stash) : this.byline(d),
+      stash ? this.stashMeta(d, stash) : this.metaTable(d),
+      el('h2', 'details-subject', subject),
+    );
     if (body) {
       const pre = el('pre', 'details-message', reflowBody(body));
       pre.id = 'details-body';
@@ -1079,7 +1284,20 @@ class App {
       main.append(pre, more);
     }
     const files = el('div', 'details-files');
-    files.append(this.filesSummaryLine(d), this.fileTree(d));
+    const changes = { hash: d.hash, base: d.base };
+    if (stash && d.stash) {
+      const summary = el('div', 'files-summary', `Changes (${d.files.length})`);
+      if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
+      files.append(summary, this.fileTree(changes, d.files, 'Changes', new Set(d.stash.staged)));
+      const untracked = d.stash.untracked;
+      if (untracked)
+        files.append(
+          el('div', 'files-summary', `Untracked (${untracked.files.length})`),
+          this.fileTree({ hash: untracked.hash, base: undefined }, untracked.files, 'Untracked files'),
+        );
+    } else {
+      files.append(this.filesSummaryLine(d), this.fileTree(changes, d.files, 'Changed files'));
+    }
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
@@ -1096,15 +1314,20 @@ class App {
 
   /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
   private byline(d: CommitDetails): HTMLElement {
-    const line = el('div', 'byline');
     const author = el('span', 'byline-author', d.author);
     author.title = `${d.author} <${d.authorEmail}>`;
-    const date = el('span', 'byline-date');
-    date.append(
-      el('span', 'details-date-full', formatDate(d.authorTime)),
-      el('span', 'details-date-short', formatShortDate(d.authorTime)),
-    );
-    date.title = formatDate(d.authorTime);
+    return this.bylineOf(d, 'Show commit, author, committer and parents', author, byDate('', d.authorTime));
+  }
+
+  /** "stash@{n} · stashed <date> · on <branch>", then the stash commit's short hash and the meta toggle. */
+  private stashByline(d: CommitDetails, s: StashEntry): HTMLElement {
+    const parts: Node[] = [el('span', 'byline-stash', `stash@{${s.index}}`), byDate('stashed ', s.time)];
+    if (s.branch !== undefined) parts.push(el('span', 'byline-branch', `on ${s.branch}`));
+    return this.bylineOf(d, 'Show the stash commit, its base and what was staged', ...parts);
+  }
+
+  private bylineOf(d: CommitDetails, toggleTitle: string, ...parts: Node[]): HTMLElement {
+    const line = el('div', 'byline');
     const hash = el('button', 'byline-hash');
     const icon = el('span', 'codicon codicon-copy hash-icon');
     icon.setAttribute('aria-hidden', 'true');
@@ -1115,7 +1338,7 @@ class App {
       this.copyHash(d.hash, hash);
     });
     const toggle = el('button', 'byline-toggle codicon');
-    toggle.title = 'Show commit, author, committer and parents';
+    toggle.title = toggleTitle;
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-controls', 'details-meta');
     toggle.addEventListener('click', () => {
@@ -1125,7 +1348,7 @@ class App {
       this.layoutDetails();
     });
     const sep = () => el('span', 'byline-sep', '·');
-    line.append(author, sep(), date, sep(), hash, toggle);
+    line.append(...[...parts, hash].flatMap((p, i) => (i > 0 ? [sep(), p] : [p])), toggle);
     return line;
   }
 
@@ -1173,11 +1396,59 @@ class App {
 
   /** Commit, author and committer (both always, in full) and parents with their subjects. */
   private metaTable(d: CommitDetails): HTMLElement {
+    return this.metaWrap('Commit metadata', (row) => {
+      row('Commit', el('code', undefined, d.hash), this.metaCopy(d.hash));
+      // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
+      row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
+      row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
+      d.parents.forEach((p, i) => {
+        const subject = d.parentSubjects[i] ?? '';
+        const link = el('button', 'link-button meta-parent');
+        link.append(el('code', undefined, shortHash(p)), ` ${subject}`);
+        link.title = p;
+        link.setAttribute('aria-label', `Select parent ${shortHash(p)}: ${subject}`);
+        link.addEventListener('click', () => {
+          this.selectHash(p);
+        });
+        row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
+      });
+    });
+  }
+
+  /**
+   * The stash commit, its base (a link while the base is in the graph) and how many of its files
+   * were staged.
+   */
+  private stashMeta(d: CommitDetails, s: StashEntry): HTMLElement {
+    return this.metaWrap('Stash metadata', (row) => {
+      row('Stash', el('code', undefined, d.hash), this.metaCopy(d.hash));
+      const subject = d.parentSubjects[0] ?? '';
+      const moved = s.anchor.kind === 'tip' ? `. No longer on '${s.branch ?? ''}'` : '';
+      const base = el(this.indexOf(s.base) >= 0 ? 'button' : 'span', 'meta-parent');
+      base.append(el('code', undefined, shortHash(s.base)), ` ${subject}${moved}`);
+      base.title = s.base;
+      if (base instanceof HTMLButtonElement) {
+        base.classList.add('link-button');
+        base.setAttribute('aria-label', `Select base ${shortHash(s.base)}: ${subject}${moved}`);
+        base.addEventListener('click', () => {
+          this.selectHash(s.base);
+        });
+      }
+      row('Base', base);
+      const staged = d.stash?.staged.length ?? 0;
+      row('Staged', staged === 0 ? 'nothing' : `${staged} file${staged === 1 ? '' : 's'}`);
+    });
+  }
+
+  private metaWrap(
+    label: string,
+    build: (row: (label: string, ...cells: (string | Node)[]) => void) => void,
+  ): HTMLElement {
     const table = el('table', 'meta-table');
     table.id = 'details-meta';
     // Laid out as a grid (main.css), which drops the implicit table roles: state them.
     table.setAttribute('role', 'table');
-    table.setAttribute('aria-label', 'Commit metadata');
+    table.setAttribute('aria-label', label);
     const row = (label: string, ...cells: (string | Node)[]) => {
       const th = el('th', undefined, label);
       th.scope = 'row';
@@ -1190,11 +1461,20 @@ class App {
       tr.append(th, td);
       table.append(tr);
     };
+    build(row);
+    const clip = el('div', 'meta-clip');
+    clip.append(table);
+    const wrap = el('div', 'meta-wrap');
+    wrap.append(clip);
+    return wrap;
+  }
+
+  private metaCopy(hash: string): HTMLElement {
     const copy = el('button', 'icon-button codicon codicon-copy meta-copy');
     copy.title = 'Copy full commit hash';
     copy.setAttribute('aria-label', copy.title);
     copy.addEventListener('click', () => {
-      this.copyHash(d.hash);
+      this.copyHash(hash);
       copy.classList.replace('codicon-copy', 'codicon-check');
       copy.classList.add('copied');
       clearTimeout(this.metaCopiedTimer);
@@ -1203,26 +1483,7 @@ class App {
         copy.classList.remove('copied');
       }, 1500);
     });
-    row('Commit', el('code', undefined, d.hash), copy);
-    // Both always, in full: who wrote it and who committed it (rebases, cherry-picks, patches).
-    row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
-    row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
-    d.parents.forEach((p, i) => {
-      const subject = d.parentSubjects[i] ?? '';
-      const link = el('button', 'link-button meta-parent');
-      link.append(el('code', undefined, shortHash(p)), ` ${subject}`);
-      link.title = p;
-      link.setAttribute('aria-label', `Select parent ${shortHash(p)}: ${subject}`);
-      link.addEventListener('click', () => {
-        this.selectHash(p);
-      });
-      row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
-    });
-    const clip = el('div', 'meta-clip');
-    clip.append(table);
-    const wrap = el('div', 'meta-wrap');
-    wrap.append(clip);
-    return wrap;
+    return copy;
   }
 
   /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
@@ -1230,18 +1491,19 @@ class App {
     const s = filesSummary(d);
     const line = el('div', 'files-summary', s.text);
     if (s.root) line.append(' · root commit');
-    if (s.base !== undefined) {
-      const target = s.base;
-      line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`);
-      const base = el('button', 'link-button files-base', shortHash(target));
-      base.title = target;
-      base.setAttribute('aria-label', `Select base commit ${shortHash(target)}`);
-      base.addEventListener('click', () => {
-        this.selectHash(target);
-      });
-      line.append(base);
-    }
+    if (s.base !== undefined) line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, this.baseLink(s.base));
     return line;
+  }
+
+  /** The commit changed files are compared with; selects it. */
+  private baseLink(target: string): HTMLElement {
+    const base = el('button', 'link-button files-base', shortHash(target));
+    base.title = target;
+    base.setAttribute('aria-label', `Select base commit ${shortHash(target)}`);
+    base.addEventListener('click', () => {
+      this.selectHash(target);
+    });
+    return base;
   }
 
   /**
@@ -1301,8 +1563,7 @@ class App {
       more.setAttribute('aria-expanded', String(!clamped));
     }
 
-    const tree = files.querySelector<HTMLElement>('.files');
-    if (tree) {
+    for (const tree of files.querySelectorAll<HTMLElement>('.files')) {
       const rows = tree.querySelectorAll('li:not([hidden])').length;
       const rowHeight = tree.querySelector<HTMLElement>('li:not([hidden])')?.offsetHeight || 22;
       const area = files.clientWidth - parseFloat(getComputedStyle(files).paddingLeft);
@@ -1331,31 +1592,36 @@ class App {
     this.updateExpansionOverflow();
   }
 
-  /** Measures the tree's widest row once per commit; folding and resizing do not change it. */
+  /** Measures the trees' widest row once per commit; folding and resizing do not change it. */
   private measureTree(): void {
-    const tree = this.expansion.querySelector<HTMLElement>('.files');
-    if (!tree) {
-      this.treeNatural = 0;
-      return;
+    this.treeNatural = 0;
+    for (const tree of this.expansion.querySelectorAll<HTMLElement>('.files')) {
+      tree.classList.add('measuring');
+      // Rounded up: offsetWidth rounds down, which would cut the widest name by a fraction of a pixel.
+      this.treeNatural = Math.max(this.treeNatural, Math.ceil(tree.getBoundingClientRect().width));
+      tree.classList.remove('measuring');
     }
-    tree.classList.add('measuring');
-    // Rounded up: offsetWidth rounds down, which would cut the widest name by a fraction of a pixel.
-    this.treeNatural = Math.ceil(tree.getBoundingClientRect().width);
-    tree.classList.remove('measuring');
   }
 
   /**
    * The changed files as a tree (role=tree): folders fold with a click, Left/Right or Enter;
    * Up/Down move between visible entries. Folded folders are remembered per commit.
    */
-  private fileTree(d: CommitDetails): HTMLElement {
+  private fileTree(
+    source: FileSource,
+    files: readonly FileChange[],
+    label: string,
+    staged: ReadonlySet<string> = new Set(),
+  ): HTMLElement {
     const list = el('ul', 'files');
     list.setAttribute('role', 'tree');
-    list.setAttribute('aria-label', 'Changed files');
+    list.setAttribute('aria-label', label);
+    // Folds are remembered per tree: a stash's changes and its untracked files can share folders.
+    list.dataset['folds'] = `${label}:`;
     const add = (nodes: FileTreeNode[], depth: number) => {
       for (const n of nodes) {
         if (n.kind === 'file') {
-          list.append(this.fileItem(d, n.change, n.name, depth));
+          list.append(this.fileItem(source, n.change, n.name, depth, staged.has(n.change.path)));
           continue;
         }
         const li = el('li', depth > 0 ? 'folder nested' : 'folder');
@@ -1373,7 +1639,7 @@ class App {
         add(n.children, depth + 1);
       }
     };
-    add(buildFileTree(d.files), 0);
+    add(buildFileTree([...files]), 0);
     list.addEventListener('keydown', (e) => {
       this.onTreeKey(list, e);
     });
@@ -1381,22 +1647,28 @@ class App {
     return list;
   }
 
+  private isFolded(list: HTMLElement, path: string): boolean {
+    return this.foldedFolders.has(`${list.dataset['folds'] ?? ''}${path}`);
+  }
+
   private toggleFolder(list: HTMLElement, path: string, fold?: boolean): void {
-    const folded = fold ?? !this.foldedFolders.has(path);
-    if (folded) this.foldedFolders.add(path);
-    else this.foldedFolders.delete(path);
+    const key = `${list.dataset['folds'] ?? ''}${path}`;
+    const folded = fold ?? !this.foldedFolders.has(key);
+    if (folded) this.foldedFolders.add(key);
+    else this.foldedFolders.delete(key);
     this.applyFolds(list);
     this.layoutDetails();
   }
 
   /** Hides entries under folded folders and updates the chevrons. */
   private applyFolds(list: HTMLElement): void {
-    const folded = [...this.foldedFolders];
+    const prefix = list.dataset['folds'] ?? '';
+    const folded = [...this.foldedFolders].filter((f) => f.startsWith(prefix)).map((f) => f.slice(prefix.length));
     for (const item of list.querySelectorAll<HTMLElement>('li')) {
       const path = item.dataset['path'] ?? '';
       item.hidden = folded.some((f) => path.startsWith(`${f}/`));
       if (item.classList.contains('folder')) {
-        const open = !this.foldedFolders.has(path);
+        const open = !this.isFolded(list, path);
         item.setAttribute('aria-expanded', String(open));
         item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-right', !open);
         item.querySelector('.folder-chevron')?.classList.toggle('codicon-chevron-down', open);
@@ -1420,10 +1692,10 @@ class App {
     if (e.key === 'ArrowDown') next = visible[at + 1];
     else if (e.key === 'ArrowUp') next = visible[at - 1];
     else if (e.key === 'ArrowLeft') {
-      if (isFolder && !this.foldedFolders.has(path)) this.toggleFolder(list, path, true);
+      if (isFolder && !this.isFolded(list, path)) this.toggleFolder(list, path, true);
       else next = parent();
     } else if (e.key === 'ArrowRight' && isFolder) {
-      if (this.foldedFolders.has(path)) this.toggleFolder(list, path, false);
+      if (this.isFolded(list, path)) this.toggleFolder(list, path, false);
       else next = visible[at + 1];
     } else if (isFolder && (e.key === 'Enter' || e.key === ' ')) {
       this.toggleFolder(list, path);
@@ -1432,8 +1704,8 @@ class App {
     next?.focus();
   }
 
-  private fileItem(d: CommitDetails, f: FileChange, name: string, depth: number): HTMLElement {
-    const views = fileViews(f, d.base);
+  private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
+    const views = fileViews(f, source.base);
     const li = el('li', `file status-${f.status}${depth > 0 ? ' nested' : ''}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'treeitem');
@@ -1441,7 +1713,7 @@ class App {
     li.style.setProperty('--depth', String(depth));
     li.dataset['path'] = f.path;
     li.dataset['views'] = views.join(' ');
-    const menu = fileMenuContext(d, f, views);
+    const menu = fileMenuContext(source, f, views);
     li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
     li.append(el('span', 'file-status', f.status));
@@ -1450,14 +1722,19 @@ class App {
     label.append(el('span', 'file-name', name));
     if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
     li.append(label);
+    if (staged) {
+      const tag = el('span', 'file-staged', 'staged');
+      tag.title = 'Staged when it was stashed';
+      li.append(tag);
+    }
 
     const open = (view: FileView, beside: boolean) => {
       vscode.postMessage({
         type: 'openFile',
         view,
         generation: this.generation,
-        hash: d.hash,
-        base: d.base,
+        hash: source.hash,
+        base: source.base,
         file: f,
         beside,
       });
@@ -1515,9 +1792,27 @@ class App {
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,
-      selected: this.commits[this.selected]?.hash,
+      selected: this.selectedHash(),
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
+      rowHashes: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
+          const i = Number(r.dataset['index']);
+          return [i, this.list[i] ? rowHash(this.list[i]) : ''];
+        }),
+      ),
+      stashRows: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.stash')].map((r) => [
+          Number(r.dataset['index']),
+          {
+            badge: r.querySelector('.badge-text')?.textContent ?? '',
+            text: r.querySelector('.subject')?.textContent ?? '',
+            label: r.getAttribute('aria-label') ?? '',
+            autostash: !!r.querySelector('.badge-stash.autostash'),
+            context: JSON.parse(r.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,
+          },
+        ]),
+      ),
       openedFile: this.openedFile,
       fileTree: [...this.expansion.querySelectorAll<HTMLElement>('.files li')]
         .filter((li) => !li.hidden)
@@ -1564,7 +1859,7 @@ class App {
         ]),
       ),
       refBands: Object.fromEntries(
-        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row:not(.stash)')].flatMap((r) => {
           const band = r.querySelector<HTMLElement>('.refs');
           const text = r.querySelector<HTMLElement>('.subject .text')!;
           const top = r.getBoundingClientRect().top;
@@ -1607,6 +1902,7 @@ class App {
         };
       })(),
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
+      stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
           !f.matches(':hover') &&
@@ -1766,16 +2062,33 @@ class App {
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
+/** The commit changed files belong to and the commit they are compared with (none: all added). */
+interface FileSource {
+  hash: string;
+  base: string | undefined;
+}
+
+/** A details date: full and short forms, CSS shows the one that fits. */
+function byDate(prefix: string, time: number): HTMLElement {
+  const date = el('span', 'byline-date');
+  date.append(
+    el('span', 'details-date-full', `${prefix}${formatDate(time)}`),
+    el('span', 'details-date-short', `${prefix}${formatShortDate(time)}`),
+  );
+  date.title = formatDate(time);
+  return date;
+}
+
 /**
  * data-vscode-context of a changed file: VS Code merges it into the arguments of the
  * webview/context menu commands and evaluates the menu's `when` clauses against it.
  */
-function fileMenuContext(d: CommitDetails, f: FileChange, views: FileView[]): Record<string, unknown> {
+function fileMenuContext(source: FileSource, f: FileChange, views: FileView[]): Record<string, unknown> {
   return {
     webviewSection: 'file',
     preventDefaultContextMenuItems: true,
-    strataHash: d.hash,
-    ...(d.base === undefined ? {} : { strataBase: d.base }),
+    strataHash: source.hash,
+    ...(source.base === undefined ? {} : { strataBase: source.base }),
     strataPath: f.path,
     ...(f.oldPath === undefined ? {} : { strataOldPath: f.oldPath }),
     strataStatus: f.status,

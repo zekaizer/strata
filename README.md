@@ -6,9 +6,14 @@ page, so it opens quickly even on very large repositories.
 ## Features
 
 - Commit graph of all local branches, remote-tracking branches, tags and HEAD,
-  with branch, remote, tag and stash badges above their commits. A branch and
+  with branch, remote and tag badges above their commits. A branch and
   its same-named remote-tracking branches on the same commit share one badge
   (`main │ origin`); when they differ, both show, so unpushed work stands out.
+- Stashes are rows of their own, directly above the commit each was made on,
+  newest on top, with a square node beside that commit's line. A stash whose
+  commit is no longer on its branch (after a rebase or amend) sits above the
+  branch's tip and says so; an autostash git left behind shows in the warning
+  color. Stashing or dropping updates the rows without reloading the history.
 - Commit details: author, committer, full message, parents and changed files.
 - Click a changed file to open its diff in the VS Code diff editor; browse
   file after file without losing your place in the graph.
@@ -62,6 +67,13 @@ page, so it opens quickly even on very large repositories.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
+- With stashes in the repository, the toolbar counts them and how many are not
+  in the graph (their commit is not loaded yet, filtered out, or on no branch).
+  Click it for **Show Stashes**: pick one to select it and open its details,
+  loading more history if needed. Click a stash row to see its message, the
+  commit it was made on, how many files were staged, its changes (click a file
+  for its diff) and its untracked files. **Show stash rows** in the branch
+  button's menu hides or shows the rows.
 - Use the refresh button after changing the repository outside VS Code.
 
 ## Large repositories

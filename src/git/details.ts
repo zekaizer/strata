@@ -44,18 +44,9 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
   const parentList = parents ? parents.split(' ') : [];
   const from = base ?? parentList[0];
   // Independent of each other: run the parents' subjects and the file list together.
-  const [subjects, diff] = await Promise.all([
+  const [subjects, files] = await Promise.all([
     parentSubjects(git, cwd, parentList),
-    runGit(git, cwd, [
-      'diff-tree',
-      '-z',
-      '-r',
-      '-M',
-      '--no-commit-id',
-      '--name-status',
-      ...(from === undefined ? ['--root', hash] : [from, hash]),
-      '--',
-    ]),
+    readChangedFiles(git, cwd, hash, from),
   ]);
   return {
     hash: h,
@@ -69,8 +60,28 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
     message: message.replace(/\n+$/, ''),
     parentSubjects: parentList.map((p) => subjects.get(p) ?? ''),
     base: from,
-    files: parseNameStatus(diff),
+    files,
   };
+}
+
+/** Files changed in `hash` against `base`, or added in it with no base; renames detected. */
+export async function readChangedFiles(
+  git: string,
+  cwd: string,
+  hash: string,
+  base: string | undefined,
+): Promise<FileChange[]> {
+  const out = await runGit(git, cwd, [
+    'diff-tree',
+    '-z',
+    '-r',
+    '-M',
+    '--no-commit-id',
+    '--name-status',
+    ...(base === undefined ? ['--root', hash] : [base, hash]),
+    '--',
+  ]);
+  return parseNameStatus(out);
 }
 
 /** Subjects of `parents` by hash. --no-walk=unsorted reads exactly these commits, in this order. */

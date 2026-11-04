@@ -50,3 +50,21 @@ export function parseStatus(out: string): Worktree {
   }
   return w;
 }
+
+/** A stash by its commit (stable) and its current stash@{n} number. */
+export interface StashRef {
+  hash: string;
+  index: number;
+}
+
+/**
+ * Something left in the worktree with no operation in progress, shown in the graph's banner until
+ * the user settles it.
+ */
+export type Leftover =
+  /** Strata saw restoring a stash conflict; git kept the stash. `files` empty: the conflicts are resolved. */
+  | { kind: 'restoreConflicted'; stash: StashRef; files: string[] }
+  /** Strata stashed changes before an operation that finished or stopped elsewhere, and has not restored them. */
+  | { kind: 'pendingStash'; stash: StashRef; operation: string }
+  /** Unmerged files nobody is resolving (e.g. a `stash pop` in a terminal); `autostash`: an entry git kept. */
+  | { kind: 'unmerged'; files: string[]; count: number; autostash: StashRef | undefined };

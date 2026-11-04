@@ -6,7 +6,8 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { OperationState } from '../core/repo-state.ts';
+import type { Leftover, OperationState } from '../core/repo-state.ts';
+import type { StashEntry, StashShown } from '../core/stash.ts';
 import type { CommandId } from './commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
@@ -15,9 +16,11 @@ export interface ViewOptions {
   firstParent: boolean;
   /** Full ref names whose history is shown; null shows all branches, remote-tracking branches and HEAD. */
   refs: string[] | null;
+  /** Whether stashes are drawn as rows; changing it does not reload the history. */
+  showStashes: boolean;
 }
 
-export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null };
+export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null, showStashes: true };
 
 export interface RepoInfo {
   /** Folder name shown in the toolbar. */
@@ -31,10 +34,25 @@ export interface RepoInfo {
  */
 export type HostToWebview =
   | { type: 'init'; theme: ThemeKind }
-  /** `focus`: a commit to select and reveal once loaded, instead of the kept selection (the result of an operation). */
-  | { type: 'reset'; generation: number; repo: RepoInfo; refs: RefSnapshot; options: ViewOptions; focus?: string }
-  /** The operation in progress in the repository, sent after every reset and when it changes. */
-  | { type: 'repoState'; operation: OperationState | undefined }
+  /** `focus`: a commit or stash to select and reveal once loaded, instead of the kept selection (the result of an operation). */
+  | {
+      type: 'reset';
+      generation: number;
+      repo: RepoInfo;
+      refs: RefSnapshot;
+      options: ViewOptions;
+      stashes: StashEntry[];
+      focus?: string;
+    }
+  /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
+  | { type: 'stashes'; generation: number; stashes: StashEntry[] }
+  /** Select and open a stash (or commit), loading further history to find it if needed. */
+  | { type: 'reveal'; hash: string }
+  /**
+   * The operation in progress, or else what an earlier one left behind, sent after every reset and
+   * when it changes.
+   */
+  | { type: 'repoState'; operation: OperationState | undefined; leftover: Leftover | undefined }
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
@@ -64,6 +82,8 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
+  /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
+  | { type: 'pickStash'; shown: Record<string, StashShown> }
   /** Runs a command of the table from a keyboard shortcut or a button, with the element's menu context. */
   | { type: 'menuCommand'; command: CommandId; context: Record<string, unknown> }
   | { type: 'refresh' }
@@ -83,6 +103,15 @@ export interface ProbeState {
   detailsShown: string | undefined;
   /** Subjects of the rendered (visible) rows, top to bottom. */
   visibleSubjects: string[];
+  /** The commit or stash commit of each rendered row, by row index. */
+  rowHashes: Record<number, string>;
+  /** Label of the toolbar's stash count button; empty while it is hidden. */
+  stashButton: string;
+  /** Rendered stash rows by row index: badge, subject cell and aria-label text, and menu context. */
+  stashRows: Record<
+    number,
+    { badge: string; text: string; label: string; autostash: boolean; context: Record<string, unknown> }
+  >;
   /** Path of the file whose diff was opened last in the details pane. */
   openedFile: string | undefined;
   /** `data-vscode-context` of the changed files and of the selected row (context menu arguments). */

@@ -20,11 +20,15 @@ export class RefFilter {
   private readonly search = el('input', 'popover-search');
   private readonly list = el('div', 'popover-list');
   private readonly currentButton = el('button', 'link-button popover-current', 'Current branch');
+  /** Shown when there are stashes: whether they are drawn as rows. */
+  private readonly stashes = el('div', 'popover-stashes');
+  private readonly stashBox = el('input');
+  private readonly stashLabel = el('span', 'popover-item-text');
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private selected: Set<string> | null = null;
   private readonly onChange: (refs: string[] | null) => void;
 
-  constructor(host: HTMLElement, onChange: (refs: string[] | null) => void) {
+  constructor(host: HTMLElement, onChange: (refs: string[] | null) => void, onShowStashes: (show: boolean) => void) {
     this.onChange = onChange;
     this.button.append(
       el('span', 'codicon codicon-git-branch'),
@@ -57,7 +61,16 @@ export class RefFilter {
     this.popover.hidden = true;
     this.popover.setAttribute('role', 'dialog');
     this.popover.setAttribute('aria-label', 'Filter refs');
-    this.popover.append(this.search, actions, this.list);
+    this.stashBox.type = 'checkbox';
+    this.stashBox.dataset['option'] = 'stashes';
+    this.stashBox.addEventListener('change', () => {
+      onShowStashes(this.stashBox.checked);
+    });
+    const stashItem = el('label', 'popover-item');
+    stashItem.append(this.stashBox, el('span', 'codicon codicon-git-stash'), this.stashLabel);
+    this.stashes.append(el('div', 'popover-group', 'Stashes'), stashItem);
+    this.stashes.hidden = true;
+    this.popover.append(this.search, actions, this.list, this.stashes);
     host.append(this.popover);
     // Leaving the webview (focus to an editor) closes it, like a click outside.
     window.addEventListener('blur', () => {
@@ -95,6 +108,13 @@ export class RefFilter {
       for (const box of this.list.querySelectorAll<HTMLInputElement>('input[data-ref]')) {
         box.checked = this.selected?.has(box.dataset['ref'] ?? '') ?? false;
       }
+  }
+
+  /** `count` stashes, drawn as rows when `shown`. */
+  updateStashes(count: number, shown: boolean): void {
+    this.stashes.hidden = count === 0;
+    this.stashBox.checked = shown;
+    this.stashLabel.textContent = `Show stash rows (${count})`;
   }
 
   private toggle(): void {
