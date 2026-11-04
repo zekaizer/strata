@@ -258,7 +258,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     if (repo !== this.repo || this.disposed) return;
     if (!force && JSON.stringify(operation) === JSON.stringify(this.operation)) return;
     this.operation = operation;
-    this.post({ type: 'repoState', operation });
+    this.post({ type: 'repoState', operation, leftover: undefined });
     await setContext('strata.operation', operation?.kind ?? '');
   }
 

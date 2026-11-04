@@ -6,7 +6,7 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { OperationState } from '../core/repo-state.ts';
+import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry, StashShown } from '../core/stash.ts';
 import type { CommandId } from './commands.ts';
 
@@ -48,8 +48,11 @@ export type HostToWebview =
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
-  /** The operation in progress in the repository, sent after every reset and when it changes. */
-  | { type: 'repoState'; operation: OperationState | undefined }
+  /**
+   * The operation in progress, or else what an earlier one left behind, sent after every reset and
+   * when it changes.
+   */
+  | { type: 'repoState'; operation: OperationState | undefined; leftover: Leftover | undefined }
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
