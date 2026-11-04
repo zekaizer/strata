@@ -17,6 +17,7 @@ export class ScriptedUi implements Ui {
   private inputs: (string | undefined)[] = [];
   private picks: (string | undefined)[] = [];
   private clicks: (string | undefined)[] = [];
+  private pending: (() => void) | undefined;
 
   /** Labels of the buttons to press in the next modals. */
   press(...labels: (string | undefined)[]): this {
@@ -42,7 +43,14 @@ export class ScriptedUi implements Ui {
     return this;
   }
 
+  /** Runs `change` when the next modal is answered, as if the repository changed while it was open. */
+  meanwhile(change: () => void): this {
+    this.pending = change;
+    return this;
+  }
+
   clear(): void {
+    this.pending = undefined;
     this.asked.length = 0;
     this.confirms = [];
     this.inputs = [];
@@ -65,6 +73,8 @@ export class ScriptedUi implements Ui {
   confirm<B extends string>(c: Confirmation<B>): Promise<B | undefined> {
     this.asked.push({ kind: 'confirm', message: c.message, detail: c.detail, buttons: c.buttons.map((b) => b.label) });
     const label = this.confirms.shift();
+    this.pending?.();
+    this.pending = undefined;
     if (label === undefined) return Promise.resolve(undefined);
     const button = c.buttons.find((b) => b.label === label);
     if (!button)

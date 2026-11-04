@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
 import { canWrite, parseGitVersion, type GitVersion } from '../core/git-version.ts';
-import { gitTooOld } from '../core/wording.ts';
+import { DONE, gitTooOld } from '../core/wording.ts';
 import { isCommitId } from '../git/details.ts';
 import { runGit } from '../git/run.ts';
 import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
@@ -19,7 +19,7 @@ import {
   renameBranch,
 } from './flows/refs.ts';
 import { GraphPanel } from './panel.ts';
-import { parseTarget, StaleTarget, type TargetKind, type TargetOf } from './target.ts';
+import { parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
 /** A context menu argument: the clicked element's data-vscode-context (set by the webview) plus the webview id. */
 type MenuArg = Record<string, unknown> | undefined;
@@ -58,9 +58,18 @@ const open = (view: FileView | 'primary', beside: boolean) => (ctx: MenuArg) => 
   return panel().openFile(hash, base, file, view, beside);
 };
 
-const copy = (text: (ctx: MenuArg) => string | Promise<string>) => async (ctx: MenuArg) => {
-  await vscode.env.clipboard.writeText(await text(ctx));
-};
+/** Copies `text` and then, once the clipboard has it, says what was copied. */
+const copy =
+  (text: (ctx: MenuArg) => string | Promise<string>, said: (text: string, ctx: MenuArg) => string | Promise<string>) =>
+  async (ctx: MenuArg) => {
+    const t = await text(ctx);
+    await vscode.env.clipboard.writeText(t);
+    panel()
+      .flowHost()
+      .done(await said(t, ctx));
+  };
+
+const shortOf = (ctx: MenuArg) => panel().shortHash(commitArg(ctx).hash);
 
 let gitVersion: Promise<GitVersion | undefined> | undefined;
 let toldGitTooOld = false;
@@ -78,21 +87,13 @@ async function gitCanWrite(host: FlowHost): Promise<boolean> {
   return false;
 }
 
-/**
- * A command that changes the repository. Failures are shown, not thrown; a menu on a ref that is
- * gone also refreshes the graph, and rejects like any invalid argument.
- */
+/** A command that changes the repository; failures are shown by the graph, which refreshes when it was outdated. */
 const write = (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>) => async (ctx: MenuArg) => {
   const host = panel().flowHost();
   if (!(await gitCanWrite(host))) return;
   try {
     await flow(host, ctx);
   } catch (e) {
-    if (e instanceof StaleTarget) {
-      void host.ui.notify('error', e.message);
-      await host.refresh();
-      throw e;
-    }
     await fail(host, e);
   }
 };
@@ -108,20 +109,26 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.file.openOld': open('before', false),
   'strata.file.openNew': open('after', false),
   'strata.file.openToSide': open('primary', true),
-  'strata.file.copyRelativePath': copy((ctx) => fileArg(ctx).file.path),
-  'strata.file.copyPath': copy((ctx) => panel().absolutePath(fileArg(ctx).file.path)),
+  'strata.file.copyRelativePath': copy((ctx) => fileArg(ctx).file.path, DONE.copied),
+  'strata.file.copyPath': copy((ctx) => panel().absolutePath(fileArg(ctx).file.path), DONE.copied),
   'strata.file.copyOldRelativePath': copy((ctx) => {
     const { file } = fileArg(ctx);
     if (file.oldPath === undefined) throw new Error('not a rename');
     return file.oldPath;
-  }),
+  }, DONE.copied),
   'strata.file.copyPatch': (ctx) => {
     const { hash, base, file } = fileArg(ctx);
     return panel().copyFilePatch(hash, base, file);
   },
-  'strata.commit.copyHash': copy((ctx) => commitArg(ctx).hash),
-  'strata.commit.copyShortHash': copy((ctx) => panel().shortHash(commitArg(ctx).hash)),
-  'strata.commit.copySubject': copy((ctx) => commitArg(ctx).subject),
+  'strata.commit.copyHash': copy(
+    (ctx) => commitArg(ctx).hash,
+    async (_, ctx) => DONE.copiedHash(await shortOf(ctx)),
+  ),
+  'strata.commit.copyShortHash': copy(shortOf, DONE.copiedShortHash),
+  'strata.commit.copySubject': copy(
+    (ctx) => commitArg(ctx).subject,
+    async (_, ctx) => DONE.copiedSubject(await shortOf(ctx)),
+  ),
   'strata.commit.copyPatch': (ctx) => panel().copyCommitPatch(commitArg(ctx).hash),
 
   'strata.checkout': on(['branch', 'remoteBranch'], (host, t) =>
@@ -146,7 +153,16 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
 });
 
+/** VS Code 1.90 shows the error of a handler that throws as it is; every failure goes through `fail` instead. */
+const guarded = (env: FlowEnv, handler: (ctx: MenuArg) => unknown) => async (ctx: MenuArg) => {
+  try {
+    await handler(ctx);
+  } catch (e) {
+    await fail(env, e);
+  }
+};
+
 export function registerCommands(env: FlowEnv): vscode.Disposable[] {
   const all = handlers(env);
-  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, all[id]));
+  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, guarded(env, all[id])));
 }

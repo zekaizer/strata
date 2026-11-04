@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RefSnapshot } from '../../src/core/refs.ts';
-import { parseTarget, StaleTarget } from '../../src/host/target.ts';
+import { Outdated, parseTarget } from '../../src/host/target.ts';
 
 const hash = 'a'.repeat(40);
 const refs: RefSnapshot = {
@@ -45,8 +45,7 @@ describe('menu targets', () => {
   it('says a ref the graph no longer has is gone', () => {
     assert.throws(
       () => parseTarget(menu({ webviewSection: 'branch', strataRef: 'refs/heads/gone' }), ['branch'], refs),
-      (e: unknown) =>
-        e instanceof StaleTarget && e.message === "'gone' no longer exists; the graph has been refreshed.",
+      (e: unknown) => e instanceof Outdated && e.message === "'gone' no longer exists; the graph has been refreshed.",
     );
   });
 });

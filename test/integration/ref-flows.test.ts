@@ -60,13 +60,30 @@ describe('ref operations', () => {
     await selected(panel(), tip);
   });
 
-  it('rejects a menu on a branch that is gone, and refreshes the graph', async () => {
-    await assert.rejects(run('strata.deleteBranch', branchMenu('strata-gone')));
+  it('refuses a menu on a branch that is gone, says so and refreshes the graph', async () => {
+    const before = (await panel().probe()).generation;
+    await run('strata.deleteBranch', branchMenu('strata-gone'));
     assert.deepEqual(ui.asked, [
       {
         kind: 'notify',
         level: 'error',
         message: "'strata-gone' no longer exists; the graph has been refreshed.",
+        actions: [],
+      },
+    ]);
+    assert.ok((await panel().probe()).generation > before);
+  });
+
+  it('does nothing when the branch moved while the confirmation was open', async () => {
+    const tip = git('rev-parse', 'wip/experiment');
+    ui.press('Delete Branch and Commits').meanwhile(() => git('update-ref', 'refs/heads/wip/experiment', 'main'));
+    await run('strata.deleteBranch', branchMenu('wip/experiment', tip));
+    assert.equal(git('rev-parse', 'wip/experiment'), git('rev-parse', 'main'));
+    assert.deepEqual(ui.of('notify'), [
+      {
+        kind: 'notify',
+        level: 'error',
+        message: "'wip/experiment' changed while you were deciding; nothing was done.",
         actions: [],
       },
     ]);

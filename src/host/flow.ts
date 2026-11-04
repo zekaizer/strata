@@ -2,11 +2,19 @@ import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
 import type { Operation } from '../core/operations.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import { gitFailure, signInConfirmation, undoLabel, undoMovedConfirmation, undone } from '../core/wording.ts';
+import {
+  changedMeanwhile,
+  gitFailure,
+  signInConfirmation,
+  undoLabel,
+  undoMovedConfirmation,
+  undone,
+} from '../core/wording.ts';
 import { readCommit } from '../git/facts.ts';
 import { GitOpError } from '../git/op.ts';
 import { runGit } from '../git/run.ts';
 import { commandLine, type Exec, type OpRunner, type RunnerHost } from './runner.ts';
+import { Outdated } from './target.ts';
 import type { Ui } from './ui.ts';
 
 /** VS Code settings flows follow, read fresh each time. */
@@ -51,9 +59,34 @@ export interface FlowHost extends RunnerHost {
   setUndo(undo: Undo | undefined): void;
 }
 
-/** Runs `steps` as one operation; resolves undefined when it did not run (busy, or cancelled). */
-export function run<T>(host: FlowHost, label: string, steps: (exec: Exec) => Promise<T>, remote = false) {
-  return host.runner.run(host, label, remote, (exec) => {
+/** What a confirmation described: `rev` still points at `hash` when the operation starts. */
+export interface Expect {
+  rev: string;
+  hash: string;
+  /** As sentences name it: a quoted branch, or HEAD. */
+  name: string;
+}
+
+const resolve = (host: FlowHost, rev: string) =>
+  runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', rev]).then(
+    (s) => s.trim(),
+    () => undefined,
+  );
+
+/**
+ * Runs `steps` as one operation (`remote`: cancellable, with network progress). Throws Outdated,
+ * having run nothing, when an `expect` no longer holds. Resolves undefined when it did not run
+ * (busy, or cancelled).
+ */
+export function run<T>(
+  host: FlowHost,
+  label: string,
+  steps: (exec: Exec) => Promise<T>,
+  opts: { remote?: boolean; expect?: readonly Expect[] } = {},
+) {
+  return host.runner.run(host, label, opts.remote ?? false, async (exec) => {
+    for (const e of opts.expect ?? [])
+      if ((await resolve(host, e.rev)) !== e.hash) throw new Outdated(changedMeanwhile(e.name));
     host.setUndo(undefined);
     return steps(exec);
   });
@@ -72,9 +105,12 @@ export async function finish(host: FlowHost, r: { message: string; focus?: strin
     });
 }
 
-/** A non-modal message; `then` runs when its first action is clicked, `others` for the rest. */
+/** Where failures are shown: a graph (which refresh when what it showed is outdated), or just the Ui. */
+type Presenter = Pick<FlowHost, 'ui' | 'runner'> & { refresh?: () => Promise<void> };
+
+/** A non-modal message; `then` runs with the action clicked, if any. */
 export function notify(
-  host: FlowHost,
+  host: Presenter,
   level: 'info' | 'warning' | 'error',
   message: string,
   actions: string[],
@@ -93,11 +129,20 @@ export function notify(
 }
 
 /** Shows why an operation failed. `remote` names the remote operation, for a failed sign-in. */
-export async function fail(host: FlowHost, e: unknown, remote?: { name: string | undefined; op: Operation }) {
+export async function fail(
+  host: Presenter,
+  e: unknown,
+  remote?: { name: string | undefined; op: Operation; cwd: string },
+): Promise<void> {
+  if (e instanceof Outdated) {
+    void host.ui.notify('error', e.message);
+    await host.refresh?.();
+    return;
+  }
   if (e instanceof GitOpError && remote && (e.kind === 'auth' || e.kind === 'hostKey')) {
     const choice = await host.ui.confirm(signInConfirmation(remote.name, e.kind));
     if (choice === 'terminal') {
-      const terminal = vscode.window.createTerminal({ name: 'Strata git', cwd: host.cwd });
+      const terminal = vscode.window.createTerminal({ name: 'Strata git', cwd: remote.cwd });
       terminal.show();
       terminal.sendText(commandLine(remote.op));
     } else if (choice === 'output') host.runner.showOutput();

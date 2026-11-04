@@ -19,8 +19,8 @@ export type Target =
 export type TargetKind = Target['kind'];
 export type TargetOf<K extends TargetKind> = Extract<Target, { kind: K }>;
 
-/** A menu opened on a ref that no longer exists: the graph was older than the repository. */
-export class StaleTarget extends Error {}
+/** What the graph or a confirmation showed has changed since; the message says what. */
+export class Outdated extends Error {}
 
 const REFS: Record<'branch' | 'remoteBranch' | 'tag', { kind: RefKind; prefix: string }> = {
   branch: { kind: 'branch', prefix: 'refs/heads/' },
@@ -32,7 +32,7 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 
 /**
  * Parses a menu context (`data-vscode-context` plus the webview id) into a target of one of
- * `kinds`. Throws on a malformed context, and StaleTarget for a ref missing from `refs`.
+ * `kinds`. Throws on a malformed context, and Outdated for a ref missing from `refs`.
  */
 export function parseTarget<K extends TargetKind>(ctx: unknown, kinds: readonly K[], refs: RefSnapshot): TargetOf<K> {
   const c = (typeof ctx === 'object' && ctx !== null ? ctx : {}) as Record<string, unknown>;
@@ -48,6 +48,6 @@ export function parseTarget<K extends TargetKind>(ctx: unknown, kinds: readonly 
   const expected = REFS[kind];
   if (!name?.startsWith(expected.prefix)) throw new Error(`invalid ${kind} ref: ${String(name)}`);
   const ref = refs.refs.find((r) => r.name === name && r.kind === expected.kind);
-  if (!ref) throw new StaleTarget(staleTarget(name.slice(expected.prefix.length)));
+  if (!ref) throw new Outdated(staleTarget(name.slice(expected.prefix.length)));
   return { kind, ref } as TargetOf<K>;
 }

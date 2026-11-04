@@ -1366,8 +1366,8 @@ class App {
 
   /** Copies through the host: the clipboard API is not reliably available in webviews. */
   private copyHash(full: string, button?: HTMLElement): void {
+    // The host announces the copy once the clipboard has it.
     vscode.postMessage({ type: 'menuCommand', command: 'strata.commit.copyHash', context: { strataHash: full } });
-    this.announce('Copied full commit hash');
     const text = button?.querySelector<HTMLElement>('.hash-text');
     const icon = button?.querySelector<HTMLElement>('.hash-icon');
     if (!button || !text || !icon) return;

@@ -203,6 +203,9 @@ export const undoLabel = (label: string): string => `Undoing the ${label}`;
 
 export const quote = (name: string): string => `'${name}'`;
 
+/** `name`, as sentences name it, moved between the confirmation and the operation. */
+export const changedMeanwhile = (name: string): string => `${name} changed while you were deciding; nothing was done.`;
+
 /** A menu opened on a ref that is gone. */
 export const staleTarget = (name: string): string => `'${name}' no longer exists; the graph has been refreshed.`;
 
@@ -318,6 +321,9 @@ export const DONE = {
   branchDeleted: (branch: string): string => `Deleted branch '${branch}'`,
   tagDeleted: (tag: string): string => `Deleted tag '${tag}'`,
   copied: (name: string): string => `Copied '${name}'`,
+  copiedHash: (short: string): string => `Copied the commit hash of ${short}`,
+  copiedShortHash: (short: string): string => `Copied ${short}`,
+  copiedSubject: (short: string): string => `Copied the subject of ${short}`,
 };
 
 /** Progress labels: what is running. `to` is named as in a sentence (a quoted branch or a short id). */

@@ -34,7 +34,7 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { finish, notify, run, type FlowHost, type Undo } from '../flow.ts';
+import { finish, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import { changes, resolveConflicts, stashAround, warnRestoreConflict } from './changes.ts';
 
 /** A move of HEAD: checkout of a branch or commit, or creating a branch and switching to it. */
@@ -45,6 +45,8 @@ interface SwitchTo {
   branch?: string;
   /** The commit HEAD ends on. */
   commit: string;
+  /** The ref named as the target, which must not move before the switch. */
+  ref?: Expect;
   op: (migrate: boolean) => Operation;
   done: string;
   undo?: Undo;
@@ -52,7 +54,14 @@ interface SwitchTo {
 
 /** Moves HEAD, minding commits only HEAD reaches and uncommitted changes the target touches. */
 async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
-  const left = await countCommits(host.git, host.cwd, ['HEAD', '--not', s.commit, '--branches', '--remotes', '--tags']);
+  const [head, left] = await Promise.all([
+    readHead(host.git, host.cwd),
+    countCommits(host.git, host.cwd, ['HEAD', '--not', s.commit, '--branches', '--remotes', '--tags']),
+  ]);
+  const expect: Expect[] = [
+    { rev: 'HEAD', hash: head.hash, name: head.branch === undefined ? 'HEAD' : quote(head.branch) },
+    ...(s.ref ? [s.ref] : []),
+  ];
   if (left > 0) {
     const head = await readCommit(host.git, host.cwd, 'HEAD');
     if (!(await host.ui.confirm(leaveBehindConfirmation(left, head)))) return;
@@ -67,10 +76,14 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   }
   let restored: 'restored' | 'conflicted' | undefined;
   try {
-    restored = await run(host, DOING.switching(s.to), (exec) =>
-      choice === 'stash'
-        ? stashAround(host, exec, autostashMessage('switch', `to ${s.to}`), () => exec(s.op(false)))
-        : exec(s.op(choice === 'migrate')).then(() => 'restored' as const),
+    restored = await run(
+      host,
+      DOING.switching(s.to),
+      (exec) =>
+        choice === 'stash'
+          ? stashAround(host, exec, autostashMessage('switch', `to ${s.to}`), () => exec(s.op(false)))
+          : exec(s.op(choice === 'migrate')).then(() => 'restored' as const),
+      { expect },
     );
   } catch (e) {
     if (e instanceof GitOpError && e.kind === 'checkedOutElsewhere' && s.branch !== undefined) {
@@ -98,6 +111,7 @@ export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
     to: quote(ref.short),
     branch: ref.short,
     commit: tip.hash,
+    ref: { rev: ref.name, hash: tip.hash, name: quote(ref.short) },
     op: (migrate) => ({ kind: 'switch', branch: ref.short, migrate }),
     done: DONE.switched(ref.short),
   });
@@ -113,6 +127,7 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
     await switchTo(host, {
       to: quote(rb.branch),
       commit: tip.hash,
+      ref: { rev: ref.name, hash: tip.hash, name: quote(ref.short) },
       op: (migrate) => ({ kind: 'trackRemote', name: rb.branch, remoteRef: ref.name, migrate }),
       done: DONE.tracking(rb.branch, ref.short),
     });
@@ -126,6 +141,7 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
     to: quote(rb.branch),
     branch: rb.branch,
     commit: tip.hash,
+    ref: { rev: local.name, hash: tip.hash, name: quote(rb.branch) },
     op: (migrate) => ({ kind: 'switch', branch: rb.branch, migrate }),
     done: DONE.switched(rb.branch, behind > 0 ? { count: behind, upstream: ref.short } : undefined),
   });
@@ -208,7 +224,14 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
     validate: (name) => (name === ref.short ? NEEDS_NEW_NAME : valid(name)),
   });
   if (to === undefined) return;
-  const ran = await run(host, DOING.renaming(ref.short), (exec) => exec({ kind: 'renameBranch', from: ref.short, to }));
+  const ran = await run(
+    host,
+    DOING.renaming(ref.short),
+    (exec) => exec({ kind: 'renameBranch', from: ref.short, to }),
+    {
+      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+    },
+  );
   if (ran === undefined) return;
   await finish(host, {
     message: DONE.renamed(ref.short, to),
@@ -228,7 +251,9 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
   const forkPoint = await readMergeBase(host.git, host.cwd, 'HEAD', tip.hash);
   let ran: string | undefined;
   try {
-    ran = await run(host, DOING.deletingBranch(ref.short), (exec) => exec({ kind: 'deleteBranch', name: ref.short }));
+    ran = await run(host, DOING.deletingBranch(ref.short), (exec) => exec({ kind: 'deleteBranch', name: ref.short }), {
+      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+    });
   } catch (e) {
     if (e instanceof GitOpError && e.kind === 'checkedOutElsewhere') {
       notify(host, 'error', checkedOutElsewhere(ref.short, checkedOutPath(e.stderr)), [], () => undefined);
@@ -251,7 +276,9 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
     readCommit(host.git, host.cwd, ref.name),
   ]);
   if (!(await host.ui.confirm(deleteTagConfirmation(ref.short, at)))) return;
-  const ran = await run(host, DOING.deletingTag(ref.short), (exec) => exec({ kind: 'deleteTag', name: ref.short }));
+  const ran = await run(host, DOING.deletingTag(ref.short), (exec) => exec({ kind: 'deleteTag', name: ref.short }), {
+    expect: [{ rev: ref.name, hash: object, name: quote(ref.short) }],
+  });
   if (ran === undefined) return;
   await finish(host, {
     message: DONE.tagDeleted(ref.short),

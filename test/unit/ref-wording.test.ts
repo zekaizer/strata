@@ -4,6 +4,7 @@ import { autostashMessage, strataAutostashOf } from '../../src/core/autostash.ts
 import { checkedOutPath } from '../../src/core/git-error.ts';
 import { remoteBranch } from '../../src/core/remote-branch.ts';
 import {
+  changedMeanwhile,
   checkedOutElsewhere,
   createBranchInput,
   createTagInput,
@@ -102,6 +103,7 @@ describe('wording of ref operations', () => {
 
   it('reports what went wrong around a switch', () => {
     assert.equal(staleTarget('gone'), "'gone' no longer exists; the graph has been refreshed.");
+    assert.equal(changedMeanwhile("'topic'"), "'topic' changed while you were deciding; nothing was done.");
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
     assert.equal(
@@ -165,6 +167,9 @@ describe('results and progress of ref operations', () => {
       [DONE.branchDeleted('x'), "Deleted branch 'x'"],
       [DONE.tagDeleted('v1'), "Deleted tag 'v1'"],
       [DONE.copied('origin/x'), "Copied 'origin/x'"],
+      [DONE.copiedHash('abc1234'), 'Copied the commit hash of abc1234'],
+      [DONE.copiedShortHash('abc1234'), 'Copied abc1234'],
+      [DONE.copiedSubject('abc1234'), 'Copied the subject of abc1234'],
     ];
     for (const [actual, expected] of cases) assert.equal(actual, expected);
   });
