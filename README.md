@@ -107,8 +107,11 @@ operation is stopped, Continue, Abort and Skip.
 - **Uncommitted changes** are named in the confirmation, with the choice to
   stash them around the operation (and bring them back after it) or keep them
   in place. `strata.autoStash` decides which comes first: `gitConfig` (the
-  default) follows `merge.autoStash`, `always` and `never` override it. A hard
-  reset keeps your changes in a stash it never pops, unless you discard them.
+  default) follows `merge.autoStash` for merge and pull with merge (stashing
+  first while it is not set) and keeps changes in place first for cherry pick
+  and revert; `always` puts stashing first, `never` keeping them in place. A
+  rebase always needs the stash. A hard reset keeps your changes in a stash it
+  never pops, unless you discard them.
 - **Undo Last Operation** puts back what the last operation changed: a reset,
   merge, rebase, cherry pick or revert, a created, renamed or deleted branch
   or tag, or a dropped stash. It only moves the branch the operation moved,
