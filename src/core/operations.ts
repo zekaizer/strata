@@ -23,7 +23,7 @@ export type Operation =
   | { kind: 'configAdd'; key: string; value: string }
   | { kind: 'deleteBranch'; name: string }
   | { kind: 'deleteTag'; name: string }
-  /** `ref` as the merge commit's message should name it: a short ref name or a commit id. */
+  /** `ref`: a commit id, or a ref name that git reads as the ref meant (the merge message names it). */
   | { kind: 'merge'; ref: string; mode: MergeMode; autostash: boolean }
   /** `onto`: the commit id the confirmation named. */
   | { kind: 'rebase'; onto: string; autostash: boolean }

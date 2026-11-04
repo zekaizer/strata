@@ -42,6 +42,7 @@ import {
   type CommitInfo,
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
+import { runGit } from '../../git/run.ts';
 import { readOperationState } from '../../git/state.ts';
 import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
@@ -60,7 +61,7 @@ import {
 export interface Source {
   /** For rev-parse: a full ref name or a commit id. */
   rev: string;
-  /** As git's merge message should name it: a short ref name or a commit id. */
+  /** As `git merge` is given it: a commit id, or a ref name git reads as that ref (see refSource). */
   arg: string;
   /** As sentences name it: a quoted short name or a short id. */
   name: string;
@@ -74,7 +75,19 @@ export async function sourceOf(host: FlowHost, t: TargetOf<'commit' | 'branch' |
     const c = await readCommit(host.git, host.cwd, t.hash);
     return { rev: c.hash, arg: c.hash, name: c.short };
   }
-  return { rev: t.ref.name, arg: t.ref.short, name: quote(t.ref.short), ref: t.ref.name };
+  return refSource(host, t.ref);
+}
+
+/**
+ * The ref `name` (full) as a merge source. git is given its short name, which the merge message
+ * then names, unless git reads that name as another ref (a tag or a branch of the same name).
+ */
+export async function refSource(host: FlowHost, ref: { name: string; short: string }): Promise<Source> {
+  const reads = await runGit(host.git, host.cwd, ['rev-parse', '--symbolic-full-name', ref.short, '--']).then(
+    (out) => out.split('\n')[0],
+    () => undefined,
+  );
+  return { rev: ref.name, arg: reads === ref.name ? ref.short : ref.name, name: quote(ref.short), ref: ref.name };
 }
 
 /** The branch HEAD is on (or HEAD itself), as Undo guards and sentences name it. */

@@ -17,7 +17,7 @@ import { countCommits, readCommit, readConfig, readHead, readUpstream } from '..
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { fail, finish, notify, run, type FlowHost } from '../flow.ts';
-import { merge, rebase, type Source } from './history.ts';
+import { merge, rebase, refSource } from './history.ts';
 
 /** Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it ran. */
 async function remoteRun(host: FlowHost, label: string, remote: string | undefined, op: Operation): Promise<boolean> {
@@ -81,7 +81,7 @@ export async function pull(host: FlowHost): Promise<void> {
     host.done(REMOTE_DONE.upToDate);
     return;
   }
-  const src: Source = { rev: tracking, arg: upstream.name, name: quote(upstream.name), ref: tracking };
+  const src = await refSource(host, { name: tracking, short: upstream.name });
   if (ahead === 0) return merge(host, src, 'whenDirty');
   const [rebaseCfg, ff] = await Promise.all([
     readConfig(host.git, host.cwd, `branch.${branch}.rebase`).then(

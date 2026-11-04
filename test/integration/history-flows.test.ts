@@ -61,6 +61,21 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-ahead'");
   });
 
+  it('merges the clicked branch when a tag has the same name', async () => {
+    branchWith('strata-rel', 'main', 'tagged.txt', 'tagged\n');
+    git('tag', 'strata-rel');
+    write('branch.txt', 'branch\n');
+    git('add', 'branch.txt');
+    git('commit', '--quiet', '-m', 'Branch tip');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    const tip = git('rev-parse', 'refs/heads/strata-rel');
+    ui.press('Create Merge Commit');
+    await run('strata.merge', branchMenu('strata-rel', tip));
+    assert.equal(git('rev-parse', 'HEAD^2'), tip);
+    assert.match(git('log', '-1', '--format=%s'), /^Merge branch /);
+  });
+
   it('stops a rebase at a conflict, reports it, holds other writes, and aborts back', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
