@@ -51,6 +51,32 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'main'), before);
   });
 
+  it('asks before an Undo that would drop commits made since, and drops them only when told to', async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    const before = git('rev-parse', 'main');
+    ui.press('Fast-Forward');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    write('later.txt', 'later\n');
+    git('add', 'later.txt');
+    git('commit', '--quiet', '-m', 'Later');
+    const later = git('rev-parse', 'main');
+
+    ui.clear();
+    await run('strata.undo');
+    assert.equal(
+      ui.first('confirm').message,
+      `'main' has moved since the merge (now at ${git('rev-parse', '--short', later)}).`,
+    );
+    assert.equal(git('rev-parse', 'main'), later);
+
+    ui.clear();
+    ui.press('Undo Anyway');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'main'), before);
+  });
+
   it('records a merge commit when asked to', async () => {
     branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
     git('switch', '--quiet', 'main');
