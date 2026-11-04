@@ -11,7 +11,9 @@ page, so it opens quickly even on very large repositories.
 - Click a changed file to open its diff in the VS Code diff editor; browse
   file after file without losing your place in the graph.
 - Filter the graph to selected branches, remotes or tags, and switch to
-  first-parent history.
+  first-parent history. By default the graph shows all local and
+  remote-tracking branches; tags label their commits, and a tag that is on no
+  branch shows when you select it in the filter.
 - The graph comes back after restarting VS Code, pinned if you pinned it, at
   the commit you had selected and with the same filters.
 - Works in narrow editors: columns collapse as space shrinks and the details

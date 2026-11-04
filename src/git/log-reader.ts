@@ -12,7 +12,7 @@ export interface LogOptions {
   cwd: string;
   /** Follow first parents only; commits then report at most one parent. */
   firstParent?: boolean;
-  /** Full ref names (refs/...) to show history of; default: all branches, remotes, tags and HEAD. */
+  /** Full ref names (refs/...) to show history of; default: all branches, remote-tracking branches and HEAD. */
   refs?: string[] | undefined;
 }
 
@@ -92,12 +92,15 @@ export class LogReader {
       'log',
       // Output is decoded as UTF-8 whatever i18n.logOutputEncoding is configured to.
       '--encoding=UTF-8',
-      '--date-order',
+      // Topological order keeps each branch's commits together, which keeps the graph narrow.
+      '--topo-order',
       '-z',
       `--format=${LOG_FORMAT}`,
       '--no-color',
       ...(firstParent ? ['--first-parent'] : []),
-      ...(refs ?? ['--branches', '--remotes', '--tags', ...head]),
+      // Tags are not start points: hundreds of old release tags make git's topological walk cover nearly
+      // all history before the first commit is printed. Tags still label commits reachable from branches.
+      ...(refs ?? ['--branches', '--remotes', ...head]),
       '--',
     ];
     const proc = spawn(git, args, {

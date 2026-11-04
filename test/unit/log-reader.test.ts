@@ -4,10 +4,12 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { LogReader, type LogOptions } from '../../src/git/log-reader.ts';
+import { RepoBuilder } from '../fixtures/builder.ts';
 import { scenarios } from '../fixtures/scenarios.ts';
 import { git, tempDir } from './helpers.ts';
 
-const REV_ARGS = ['--date-order', '--branches', '--remotes', '--tags', 'HEAD'];
+// Tags are not start points by default (see ADR 0001); their commits show when reachable from a branch.
+const REV_ARGS = ['--topo-order', '--branches', '--remotes', 'HEAD'];
 
 async function readAll(opts: LogOptions, pageSize: number): Promise<string[]> {
   const r = new LogReader(opts);
@@ -64,8 +66,27 @@ describe('LogReader', () => {
   it('limits history to the given refs', async () => {
     const dir = join(root, 'branchy');
     const refs = ['refs/heads/wip/experiment', 'refs/heads/feature/login'];
-    const expected = git(dir, 'rev-list', '--date-order', ...refs).split('\n');
+    const expected = git(dir, 'rev-list', '--topo-order', ...refs).split('\n');
     assert.deepEqual(await readAll({ git: 'git', cwd: dir, refs }, 7), expected);
+  });
+
+  it('leaves out commits reachable only from tags unless a tag is selected', async () => {
+    const dir = join(root, 'tag-only');
+    const b = new RepoBuilder();
+    const base = b.commit('main', 'base');
+    b.commit('main', 'main tip');
+    const hotfix = b.commit('refs/strata-fixture/tmp', 'released from a deleted branch', { parents: [base] });
+    b.tag('v1-hotfix', hotfix, 'hotfix release');
+    b.write(dir);
+    git(dir, 'update-ref', '-d', 'refs/strata-fixture/tmp');
+    const subjects = async (refs?: string[]) => {
+      const r = new LogReader({ git: 'git', cwd: dir, refs });
+      const { commits } = await r.next(100);
+      r.dispose();
+      return commits.map((c) => c.subject);
+    };
+    assert.deepEqual(await subjects(), ['main tip', 'base']);
+    assert.deepEqual(await subjects(['refs/tags/v1-hotfix']), ['released from a deleted branch', 'base']);
   });
 
   it('rejects ref names that are not full refs/ names', async () => {

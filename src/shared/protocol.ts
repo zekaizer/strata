@@ -9,7 +9,7 @@ export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-ligh
 
 export interface ViewOptions {
   firstParent: boolean;
-  /** Full ref names whose history is shown; null shows all branches, remotes, tags and HEAD. */
+  /** Full ref names whose history is shown; null shows all branches, remote-tracking branches and HEAD. */
   refs: string[] | null;
 }
 

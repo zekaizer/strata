@@ -39,7 +39,7 @@ async function before(): Promise<Record<string, unknown>> {
   await panel.whenReady();
   await waitFor('history', async () => (await panel.probe()).done);
   const hash = target();
-  const order = git('rev-list', '--date-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
+  const order = git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
   await panel.simulate({ kind: 'clickRow', index: order.indexOf(hash) });
   await waitFor('details', async () => (await panel.probe()).detailsShown === hash);
   await vscode.commands.executeCommand('workbench.action.pinEditor');

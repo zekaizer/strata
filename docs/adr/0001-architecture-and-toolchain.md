@@ -25,6 +25,13 @@ supported VS Code is 1.90.
   discovery, repository state change events and the configured git binary path.
 - History is always read page by page. Loading the full history is not
   supported. `--first-parent` is a user toggle.
+- History is read in `--topo-order`, starting from local branches,
+  remote-tracking branches and HEAD. Tags are not start points: on the Linux
+  kernel (952 tags) they made git walk nearly all history before printing the
+  first commit (4.8 s with a commit-graph, 0.1 s without tags). Tags still
+  label commits; a commit reachable only from a tag shows when that tag is
+  selected in the ref filter. Topological order also keeps the first page of
+  the kernel graph 14 lanes wide instead of 58 with `--date-order`.
 
 ### Graph layout
 

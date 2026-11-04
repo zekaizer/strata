@@ -15,7 +15,7 @@ describe('graph panel', () => {
   });
 
   it('loads and lays out the whole fixture history', async () => {
-    const total = Number(git('rev-list', '--count', '--branches', '--remotes', '--tags', 'HEAD'));
+    const total = Number(git('rev-list', '--count', '--branches', '--remotes', 'HEAD'));
     const state = await waitFor('history', async () => {
       const s = await panel.probe();
       return s.done && s.laidOut === s.commits && s.commits === total && s;
@@ -25,7 +25,7 @@ describe('graph panel', () => {
 
   it('shows details for a clicked row', async () => {
     await panel.simulate({ kind: 'clickRow', index: 1 });
-    const hash = git('rev-list', '--date-order', '--skip=1', '-n1', '--branches', '--remotes', '--tags', 'HEAD');
+    const hash = git('rev-list', '--topo-order', '--skip=1', '-n1', '--branches', '--remotes', 'HEAD');
     const state = await waitFor('details', async () => {
       const s = await panel.probe();
       return s.detailsShown === hash && s;
@@ -35,11 +35,11 @@ describe('graph panel', () => {
 
   it('moves the selection with the keyboard', async () => {
     await panel.simulate({ kind: 'key', key: 'ArrowDown' });
-    const hash = git('rev-list', '--date-order', '--skip=2', '-n1', '--branches', '--remotes', '--tags', 'HEAD');
+    const hash = git('rev-list', '--topo-order', '--skip=2', '-n1', '--branches', '--remotes', 'HEAD');
     await waitFor('keyboard selection', async () => (await panel.probe()).detailsShown === hash);
   });
 
-  const order = () => git('rev-list', '--date-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
+  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
 
   async function selectCommit(subject: string): Promise<string> {
     const hash = git('log', '--all', '--format=%H', '--fixed-strings', `--grep=${subject}`, '-n1');
