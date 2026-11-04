@@ -51,8 +51,20 @@ interface SavedState {
   keepScroll?: boolean | undefined;
   /** Whether the selected commit's details were expanded. */
   expanded?: boolean | undefined;
+  /** Whether the meta table under the byline is unfolded: a view preference, not tied to a commit. */
+  metaOpen?: boolean | undefined;
   options?: ViewOptions | undefined;
 }
+
+/** Lists at least this wide show the message and the files side by side; matches main.css. */
+const WIDE_DETAILS = 1200;
+/** A long body shows this many lines until "Show more" (more when there is room beside the files). */
+const BODY_LINES = 6;
+/** Trees flow into columns only between these row counts: a few rows read better in one column, and many need a full layout to measure. */
+const MULTICOL_MIN_ROWS = 8;
+/** Gap between tree columns; matches main.css. */
+const MULTICOL_GAP = 24;
+const MULTICOL_MAX_ROWS = 300;
 
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
@@ -107,6 +119,16 @@ class App {
   private openedFile: string | undefined;
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
+  /** Read directly: `restore` is cleared once applied, but this preference outlives it. */
+  private metaOpen = (vscode.getState() as SavedState | undefined)?.metaOpen ?? false;
+  /** Whether the selected commit's body is shown in full. */
+  private bodyExpanded = false;
+  private copiedTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Announces results of actions (a copy) to screen readers. */
+  private readonly announcer = el('div', 'sr-only');
+  private announced = '';
+  /** Graph and list widths the details were last laid out for. */
+  private laidOutWidths = '';
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -163,7 +185,15 @@ class App {
     this.sizer.append(this.rowsLayer, this.expansion, this.empty);
     this.scroller.append(this.sizer);
     this.viewport.append(this.scroller, this.canvas);
-    root.replaceChildren(this.toolbar, this.viewport);
+    this.announcer.setAttribute('role', 'status');
+    this.announcer.setAttribute('aria-live', 'polite');
+    root.replaceChildren(this.toolbar, this.viewport, this.announcer);
+    // Escape from anywhere in the details goes back to the list; the selection stays.
+    this.expansion.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      this.scroller.focus();
+    });
     new ResizeObserver(() => {
       this.onExpansionResize();
       this.updateExpansionOverflow();
@@ -193,6 +223,7 @@ class App {
     });
     new ResizeObserver(() => {
       this.queueRender();
+      this.layoutDetails();
     }).observe(this.viewport);
     this.watchPixelRatio();
     this.trackPointer();
@@ -387,6 +418,7 @@ class App {
       scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
       scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
       expanded: this.restore?.expanded ?? this.expanded,
+      metaOpen: this.metaOpen,
       options: this.options,
     };
     vscode.setState(state);
@@ -498,6 +530,8 @@ class App {
     this.details = undefined;
     this.openedFile = undefined;
     this.foldedFolders = new Set();
+    this.bodyExpanded = false;
+    clearTimeout(this.copiedTimer);
     this.pendingDetails = undefined;
     if (this.expanded) {
       this.pendingDetails = commit.hash;
@@ -540,8 +574,10 @@ class App {
     this.details = undefined;
     this.pendingDetails = undefined;
     this.gap = 0;
-    this.expansion.hidden = true;
-    this.expansion.replaceChildren();
+    this.keepFocusInList(() => {
+      this.expansion.hidden = true;
+      this.expansion.replaceChildren();
+    });
     this.expansion.style.minHeight = '';
     this.syncSizer();
     this.saveState();
@@ -552,8 +588,19 @@ class App {
   private showLoading(): void {
     this.expansion.style.minHeight = this.gap > 0 ? `${this.gap}px` : '';
     this.expansion.hidden = false;
-    this.expansion.replaceChildren(el('div', 'expansion-loading', 'Loading…'));
+    this.keepFocusInList(() => {
+      this.expansion.replaceChildren(el('div', 'expansion-loading', 'Loading…'));
+    });
     this.placeExpansion();
+    // Same height as before, so the resize observer does not run: clear the previous commit's marker.
+    this.updateExpansionOverflow();
+  }
+
+  /** Runs `change` to the details; focus inside them would fall to <body>, so it goes to the list. */
+  private keepFocusInList(change: () => void): void {
+    const hadFocus = this.expansion.contains(document.activeElement);
+    change();
+    if (hadFocus) this.scroller.focus({ preventScroll: true });
   }
 
   /**
@@ -674,6 +721,12 @@ class App {
     if (this.expanded) this.placeExpansion();
     // Not on <html>: VS Code owns its style attribute, which is observed for theme changes.
     this.root.style.setProperty('--graph-width', `${gw}px`);
+    // The details' width follows the graph column and the scrollbar, not only the viewport.
+    const widths = `${gw}:${width}`;
+    if (widths !== this.laidOutWidths) {
+      this.laidOutWidths = widths;
+      this.layoutDetails();
+    }
 
     const rows: HTMLElement[] = [];
     for (let i = first; i < last; i++) rows.push(this.renderRow(i));
@@ -810,6 +863,7 @@ class App {
     const d = this.details;
     if (!d) return;
     const pane = this.expansion;
+    clearTimeout(this.copiedTimer);
 
     // The row truncates long subjects, so the details repeat it in full.
     const [subject = '', ...rest] = d.message.split('\n');
@@ -821,53 +875,220 @@ class App {
       this.scroller.focus();
     });
 
-    // One compact line: files are what people come here for, so they come right after it.
-    const meta = el('div', 'details-meta');
-    const hash = el('span', 'details-hash', shortHash(d.hash));
-    hash.title = d.hash;
-    const date = el('span', 'details-date');
+    // The commit's text in one column, the change in the other (side by side on wide lists).
+    const main = el('div', 'details-main');
+    main.append(this.byline(d), el('h2', 'details-subject', subject), this.metaTable(d));
+    if (body) {
+      const pre = el('pre', 'details-message', reflowBody(body));
+      pre.id = 'details-body';
+      const more = el('button', 'link-button details-more');
+      more.hidden = true;
+      more.setAttribute('aria-controls', pre.id);
+      more.addEventListener('click', () => {
+        this.bodyExpanded = !this.bodyExpanded;
+        this.layoutDetails();
+      });
+      main.append(pre, more);
+    }
+    const files = el('div', 'details-files');
+    files.append(this.filesSummaryLine(d), this.fileTree(d));
+    const layout = el('div', 'details-layout');
+    layout.append(main, files);
+    pane.style.minHeight = '';
+    pane.replaceChildren(close, layout);
+    this.applyMetaOpen();
+    pane.scrollTop = 0;
+    this.placeExpansion();
+    this.layoutDetails();
+    this.queueRender();
+  }
+
+  /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
+  private byline(d: CommitDetails): HTMLElement {
+    const line = el('div', 'byline');
+    const author = el('span', 'byline-author', d.author);
+    author.title = `${d.author} <${d.authorEmail}>`;
+    const date = el('span', 'byline-date');
     date.append(
       el('span', 'details-date-full', formatDate(d.authorTime)),
       el('span', 'details-date-short', formatShortDate(d.authorTime)),
     );
-    meta.append(hash, el('span', 'details-author', d.author), date);
-    meta.title =
-      `Author: ${d.author} <${d.authorEmail}>, ${formatDate(d.authorTime)}` +
-      (d.committer !== d.author || d.commitTime !== d.authorTime
-        ? `\nCommitter: ${d.committer} <${d.committerEmail}>, ${formatDate(d.commitTime)}`
-        : '');
-    if (d.parents.length > 0) {
-      const parents = el('span', 'details-parents');
-      parents.append(el('span', 'codicon codicon-git-commit'));
-      for (const p of d.parents) {
-        const link = el('a', 'parent', shortHash(p));
-        link.href = '#';
-        link.title = `Select parent ${p}`;
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.selectHash(p);
-        });
-        parents.append(link);
-      }
-      meta.append(parents);
-    }
+    date.title = formatDate(d.authorTime);
+    const hash = el('button', 'byline-hash');
+    const icon = el('span', 'codicon codicon-copy hash-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    hash.append(el('span', 'hash-text', shortHash(d.hash)), icon);
+    hash.title = `${d.hash}\nClick to copy`;
+    hash.setAttribute('aria-label', `Copy full commit hash ${shortHash(d.hash)}`);
+    hash.addEventListener('click', () => {
+      this.copyHash(d.hash, hash);
+    });
+    const toggle = el('button', 'byline-toggle codicon');
+    toggle.title = 'Show commit, author, committer and parents';
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.setAttribute('aria-controls', 'details-meta');
+    toggle.addEventListener('click', () => {
+      this.metaOpen = !this.metaOpen;
+      this.applyMetaOpen();
+      this.saveState();
+      this.layoutDetails();
+    });
+    const sep = () => el('span', 'byline-sep', '·');
+    line.append(author, sep(), date, sep(), hash, toggle);
+    return line;
+  }
 
-    const files = this.fileTree(d);
-    const s = filesSummary(d);
-    const summary = el('div', 'files-summary', s.text);
-    if (s.root) summary.append(' · root commit');
-    if (s.base !== undefined) {
-      const base = el('span', 'files-base', shortHash(s.base));
-      base.title = s.base;
-      summary.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, base);
+  private applyMetaOpen(): void {
+    const table = this.expansion.querySelector<HTMLElement>('.meta-table');
+    const toggle = this.expansion.querySelector<HTMLElement>('.byline-toggle');
+    if (table) table.hidden = !this.metaOpen;
+    toggle?.setAttribute('aria-expanded', String(this.metaOpen));
+    toggle?.classList.toggle('codicon-chevron-down', this.metaOpen);
+    toggle?.classList.toggle('codicon-chevron-right', !this.metaOpen);
+  }
+
+  /** Copies through the host: the clipboard API is not reliably available in webviews. */
+  private copyHash(full: string, button?: HTMLElement): void {
+    vscode.postMessage({ type: 'menuCommand', command: 'strata.commit.copyHash', context: { strataHash: full } });
+    this.announce('Copied full commit hash');
+    const text = button?.querySelector<HTMLElement>('.hash-text');
+    const icon = button?.querySelector<HTMLElement>('.hash-icon');
+    if (!button || !text || !icon) return;
+    // Keep the width, so the toggle after the hash does not move.
+    text.style.minWidth = `${text.offsetWidth}px`;
+    text.textContent = 'Copied';
+    icon.classList.replace('codicon-copy', 'codicon-check');
+    button.classList.add('copied');
+    clearTimeout(this.copiedTimer);
+    this.copiedTimer = setTimeout(() => {
+      text.textContent = shortHash(full);
+      text.style.minWidth = '';
+      icon.classList.replace('codicon-check', 'codicon-copy');
+      button.classList.remove('copied');
+    }, 1500);
+  }
+
+  private announce(message: string): void {
+    this.announced = message;
+    // Cleared first so the same message is announced again.
+    this.announcer.textContent = '';
+    requestAnimationFrame(() => {
+      this.announcer.textContent = message;
+    });
+  }
+
+  /** Commit, author, committer (when it differs) and parents with their subjects. */
+  private metaTable(d: CommitDetails): HTMLElement {
+    const table = el('table', 'meta-table');
+    table.id = 'details-meta';
+    const row = (label: string, ...cells: (string | Node)[]) => {
+      const th = el('th', undefined, label);
+      th.scope = 'row';
+      const td = el('td');
+      td.append(...cells);
+      const tr = el('tr');
+      tr.append(th, td);
+      table.append(tr);
+    };
+    const copy = el('button', 'icon-button codicon codicon-copy meta-copy');
+    copy.title = 'Copy full commit hash';
+    copy.setAttribute('aria-label', copy.title);
+    copy.addEventListener('click', () => {
+      this.copyHash(d.hash);
+    });
+    row('Commit', el('code', undefined, d.hash), copy);
+    row('Author', `${d.author} <${d.authorEmail}> · ${formatDate(d.authorTime)}`);
+    if (d.committer !== d.author || d.committerEmail !== d.authorEmail) {
+      row('Committer', `${d.committer} <${d.committerEmail}> · ${formatDate(d.commitTime)}`);
+    } else if (d.commitTime !== d.authorTime) {
+      row('Committer', `same · ${formatDate(d.commitTime)}`);
     }
-    const children: HTMLElement[] = [close, el('h2', 'details-subject', subject), meta, summary, files];
-    if (body) children.push(el('pre', 'details-message', reflowBody(body)));
-    pane.style.minHeight = '';
-    pane.replaceChildren(...children);
-    pane.scrollTop = 0;
-    this.placeExpansion();
-    this.queueRender();
+    d.parents.forEach((p, i) => {
+      const subject = d.parentSubjects[i] ?? '';
+      const link = el('button', 'link-button meta-parent');
+      link.append(el('code', undefined, shortHash(p)), ` ${subject}`);
+      link.title = p;
+      link.setAttribute('aria-label', `Select parent ${shortHash(p)}: ${subject}`);
+      link.addEventListener('click', () => {
+        this.selectHash(p);
+      });
+      row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
+    });
+    table.hidden = !this.metaOpen;
+    return table;
+  }
+
+  /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
+  private filesSummaryLine(d: CommitDetails): HTMLElement {
+    const s = filesSummary(d);
+    const line = el('div', 'files-summary', s.text);
+    if (s.root) line.append(' · root commit');
+    if (s.base !== undefined) {
+      const target = s.base;
+      line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`);
+      const base = el('button', 'link-button files-base', shortHash(target));
+      base.title = target;
+      base.setAttribute('aria-label', `Select base commit ${shortHash(target)}`);
+      base.addEventListener('click', () => {
+        this.selectHash(target);
+      });
+      line.append(base);
+    }
+    return line;
+  }
+
+  /**
+   * Layout CSS cannot do alone: the body clamp (whole lines, with the count of hidden lines) and
+   * whether the file tree fits into columns. Runs after the details render and when the list or
+   * the details change size.
+   */
+  private layoutDetails(): void {
+    if (!this.details || !this.expanded || this.expansion.hidden) return;
+    const wide = this.viewport.clientWidth >= WIDE_DETAILS;
+    const cap = expansionCap(this.geometry, this.selected, this.scroller.clientHeight, MAX_EXPANSION_SHARE);
+    const box = getComputedStyle(this.expansion);
+    // Below the content: padding and borders, which offsetTop (inside the top border) leaves out.
+    const below = parseFloat(box.paddingBottom) + parseFloat(box.borderTopWidth) + parseFloat(box.borderBottomWidth);
+    const pre = this.expansion.querySelector<HTMLElement>('.details-message');
+    const more = this.expansion.querySelector<HTMLElement>('.details-more');
+    if (pre && more) {
+      pre.classList.remove('clamped');
+      pre.style.maxHeight = '';
+      // Laid out with its longest label, so its height can be measured.
+      more.hidden = false;
+      more.textContent = 'Show more · 999 more lines';
+      const line = parseFloat(getComputedStyle(pre).lineHeight) || 18;
+      const total = Math.round(pre.scrollHeight / line);
+      const tail = more.offsetTop + more.offsetHeight - (pre.offsetTop + pre.offsetHeight) + below;
+      // Beside the files, the body may use the height the files take anyway.
+      const lines = wide ? Math.max(BODY_LINES, Math.floor((cap - pre.offsetTop - tail) / line)) : BODY_LINES;
+      // Hiding a line or two behind a link saves nothing.
+      const clampable = total >= lines + 2;
+      const clamped = clampable && !this.bodyExpanded;
+      pre.classList.toggle('clamped', clamped);
+      if (clamped) pre.style.maxHeight = `${lines * line}px`;
+      pre.dataset['hiddenLines'] = String(clamped ? total - lines : 0);
+      // A focused "Show less" that disappears would drop focus to <body>.
+      if (!clampable && document.activeElement === more) this.scroller.focus({ preventScroll: true });
+      more.hidden = !clampable;
+      more.textContent = clamped ? `Show more · ${total - lines} more lines` : 'Show less';
+      more.setAttribute('aria-expanded', String(!clamped));
+    }
+    const tree = this.expansion.querySelector<HTMLElement>('.files');
+    if (tree) {
+      tree.classList.remove('files-multicol');
+      const rows = tree.querySelectorAll('li:not([hidden])').length;
+      // CSS multicol: floor((width + gap) / (column-width + gap)) columns; values as in main.css.
+      const columns = Math.floor((tree.clientWidth + MULTICOL_GAP) / ((wide ? 260 : 300) + MULTICOL_GAP));
+      if (columns >= 2 && rows >= MULTICOL_MIN_ROWS && rows <= MULTICOL_MAX_ROWS) {
+        // Columns only when the whole tree then fits: a column cut off at the bottom would hide the
+        // rest of its folder while the next column goes on elsewhere. Measured, since rows that
+        // must stay together make columns uneven.
+        tree.classList.add('files-multicol');
+        if (tree.offsetTop + tree.offsetHeight + below > cap) tree.classList.remove('files-multicol');
+      }
+    }
+    this.updateExpansionOverflow();
   }
 
   /**
@@ -884,7 +1105,7 @@ class App {
           list.append(this.fileItem(d, n.change, n.name, depth));
           continue;
         }
-        const li = el('li', 'folder');
+        const li = el('li', depth > 0 ? 'folder nested' : 'folder');
         li.tabIndex = 0;
         li.dataset['path'] = n.path;
         li.setAttribute('role', 'treeitem');
@@ -912,6 +1133,7 @@ class App {
     if (folded) this.foldedFolders.add(path);
     else this.foldedFolders.delete(path);
     this.applyFolds(list);
+    this.layoutDetails();
   }
 
   /** Hides entries under folded folders and updates the chevrons. */
@@ -959,7 +1181,7 @@ class App {
 
   private fileItem(d: CommitDetails, f: FileChange, name: string, depth: number): HTMLElement {
     const views = fileViews(f, d.base);
-    const li = el('li', `file status-${f.status}`);
+    const li = el('li', `file status-${f.status}${depth > 0 ? ' nested' : ''}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'treeitem');
     li.setAttribute('aria-level', String(depth + 1));
@@ -1022,8 +1244,6 @@ class App {
       } else if (keyed && e.key.length === 1) {
         e.preventDefault();
         open(keyed, e.altKey);
-      } else if (e.key === 'Escape') {
-        this.scroller.focus();
       } else if (e.code === 'KeyC' || e.key.toUpperCase() === 'C') {
         // Explorer's "Copy Relative Path" chord: Shift+Alt+C (⌥⇧⌘C on macOS).
         if (e.shiftKey && e.altKey && (e.metaKey || !isMac)) {
@@ -1116,10 +1336,39 @@ class App {
           ];
         }),
       ),
+      details: this.probeDetails(),
+      announced: this.announced,
+      focused: (document.activeElement as HTMLElement | null)?.className ?? '',
       columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
         .filter((e) => !e.classList.contains('refs'))
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
+    };
+  }
+
+  private probeDetails(): ProbeState['details'] {
+    const e = this.expansion;
+    if (!this.expanded || !this.details || e.hidden) return undefined;
+    const main = e.querySelector<HTMLElement>('.details-main');
+    const files = e.querySelector<HTMLElement>('.details-files');
+    const table = e.querySelector<HTMLElement>('.meta-table');
+    const pre = e.querySelector<HTMLElement>('.details-message');
+    return {
+      blocks: [...e.querySelectorAll<HTMLElement>('.details-main > *, .details-files > *')]
+        .filter((b) => !b.hidden)
+        .map((b) => b.className),
+      sideBySide: !!main && !!files && Math.abs(main.offsetTop - files.offsetTop) < 2,
+      byline: e.querySelector('.byline')?.textContent ?? '',
+      metaOpen: !!table && !table.hidden,
+      metaRows: table && !table.hidden ? [...table.querySelectorAll('th')].map((th) => th.textContent) : [],
+      filesSummary: e.querySelector('.files-summary')?.textContent ?? '',
+      bodyClamp: {
+        clamped: pre?.classList.contains('clamped') ?? false,
+        hiddenLines: Number(pre?.dataset['hiddenLines'] ?? 0),
+      },
+      moreBelow: e.classList.contains('more-below'),
+      overflowing: e.scrollTop + e.clientHeight < e.scrollHeight - 1,
+      filesMulticol: e.querySelector('.files')?.classList.contains('files-multicol') ?? false,
     };
   }
 
@@ -1233,6 +1482,9 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.fillRect(width - fade, 0, fade, height);
   ctx.restore();
 }
+
+const ordinal = (n: number) =>
+  `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
 
 function badge(kind: string, icon: string, text: string, title: string): HTMLElement {
   const b = el('span', `badge badge-${kind}`);
