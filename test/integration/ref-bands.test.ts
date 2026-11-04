@@ -123,7 +123,8 @@ describe('ref badges', () => {
       assert.ok(s.refBands[2] !== undefined || s.rowTops[2] === undefined, 'row 2 got a band');
       assert.equal(s.rowTops[8], s.scrollTop, 'row 8 is still the first row in view');
     } finally {
-      git('tag', '-d', tag);
+      // Only if it was made: a failure before that must not be hidden by the cleanup.
+      if (git('tag', '--list', tag)) git('tag', '-d', tag);
       await refresh();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       await vscode.commands.executeCommand('workbench.action.editorLayoutSingle');
