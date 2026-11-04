@@ -6,7 +6,7 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { StashEntry } from '../core/stash.ts';
+import type { StashEntry, StashShown } from '../core/stash.ts';
 import type { MenuCommand } from './menu-commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
@@ -15,9 +15,11 @@ export interface ViewOptions {
   firstParent: boolean;
   /** Full ref names whose history is shown; null shows all branches, remote-tracking branches and HEAD. */
   refs: string[] | null;
+  /** Whether stashes are drawn as rows; changing it does not reload the history. */
+  showStashes: boolean;
 }
 
-export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null };
+export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null, showStashes: true };
 
 export interface RepoInfo {
   /** Folder name shown in the toolbar. */
@@ -41,6 +43,8 @@ export type HostToWebview =
     }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
+  /** Select and open a stash (or commit), loading further history to find it if needed. */
+  | { type: 'reveal'; hash: string }
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
@@ -70,6 +74,8 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
+  /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
+  | { type: 'pickStash'; shown: Record<string, StashShown> }
   /** Runs a context menu command from a keyboard shortcut, with the element's menu context. */
   | { type: 'menuCommand'; command: MenuCommand; context: Record<string, unknown> }
   | { type: 'refresh' }
@@ -91,6 +97,8 @@ export interface ProbeState {
   visibleSubjects: string[];
   /** The commit or stash commit of each rendered row, by row index. */
   rowHashes: Record<number, string>;
+  /** Label of the toolbar's stash count button; empty while it is hidden. */
+  stashButton: string;
   /** Rendered stash rows by row index: badge, subject cell and aria-label text, and menu context. */
   stashRows: Record<
     number,

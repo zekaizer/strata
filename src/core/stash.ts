@@ -126,3 +126,63 @@ export function describeStash(
       : ` ${s.files.changed} file${plural(s.files.changed)} changed${s.files.untracked ? `, ${s.files.untracked} untracked` : ''}.`;
   return `Stash stash@{${s.index}}: ${s.message}. Based on ${base.short}${subject}${moved}.${files} Stashed ${stashed}.`;
 }
+
+/** Whether a stash's row is in the graph, as only the webview knows. */
+export type StashShown = 'drawn' | 'notLoaded' | 'notInView' | 'hidden';
+
+export type StashPickItem =
+  | { kind: 'separator'; label: string }
+  | { kind: 'stash'; hash: string; label: string; description: string; detail: string };
+
+/**
+ * Items of the Show Stashes quick pick: stashes made on the current branch first, then the rest,
+ * each saying where its row is or why it is not in the graph. `now` is in seconds.
+ */
+export function stashPickItems(
+  stashes: readonly StashEntry[],
+  shown: Readonly<Record<string, StashShown>>,
+  headBranch: string | undefined,
+  now: number,
+): StashPickItem[] {
+  const item = (s: StashEntry): StashPickItem => ({
+    kind: 'stash',
+    hash: s.hash,
+    label: `stash@{${s.index}}  ${s.message}`,
+    description: timeAgo(s.time, now),
+    detail: PICK_DETAIL[shown[s.hash] ?? 'notInView'](s),
+  });
+  const sorted = [...stashes].sort((a, b) => a.index - b.index);
+  const current = sorted.filter((s) => headBranch !== undefined && s.branch === headBranch);
+  const elsewhere = sorted.filter((s) => !current.includes(s));
+  if (current.length === 0 || elsewhere.length === 0) return sorted.map(item);
+  return [
+    { kind: 'separator', label: `On ${headBranch} (current)` },
+    ...current.map(item),
+    { kind: 'separator', label: 'Elsewhere' },
+    ...elsewhere.map(item),
+  ];
+}
+
+const PICK_DETAIL: Record<StashShown, (s: StashEntry) => string> = {
+  drawn: (s) => `In the graph above ${anchorOf(s).slice(0, 7)}`,
+  notLoaded: () => 'Not loaded yet: Enter searches further down the history',
+  notInView: () => 'Not in this view (filter, first parent, or its branch was deleted)',
+  hidden: () => 'Stash rows are hidden: Enter shows them',
+};
+
+const AGO: [Intl.RelativeTimeFormatUnit, number][] = [
+  ['year', 365 * 86_400],
+  ['month', 30 * 86_400],
+  ['week', 7 * 86_400],
+  ['day', 86_400],
+  ['hour', 3600],
+  ['minute', 60],
+];
+const relative = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+
+/** "3 weeks ago", "yesterday", "just now". Both times in seconds. */
+export function timeAgo(time: number, now: number): string {
+  const ago = now - time;
+  for (const [unit, seconds] of AGO) if (ago >= seconds) return relative.format(-Math.floor(ago / seconds), unit);
+  return 'just now';
+}

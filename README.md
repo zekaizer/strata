@@ -67,6 +67,13 @@ page, so it opens quickly even on very large repositories.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
+- With stashes in the repository, the toolbar counts them and how many are not
+  in the graph (their commit is not loaded yet, filtered out, or on no branch).
+  Click it for **Show Stashes**: pick one to select it and open its details,
+  loading more history if needed. Click a stash row to see its message, the
+  commit it was made on, how many files were staged, its changes (click a file
+  for its diff) and its untracked files. **Show stash rows** in the branch
+  button's menu hides or shows the rows.
 - Use the refresh button after changing the repository outside VS Code.
 
 ## Large repositories

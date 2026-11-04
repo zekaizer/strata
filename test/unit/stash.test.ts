@@ -11,6 +11,8 @@ import {
   parseStashList,
   rowHash,
   stashLabel,
+  stashPickItems,
+  timeAgo,
   type ListRow,
   type StashEntry,
 } from '../../src/core/stash.ts';
@@ -195,6 +197,86 @@ describe('stash labels', () => {
       describeStash(moved, { short: '776d4b4', subject: undefined }, '13:40'),
       "Stash stash@{0}: autostash. Based on 776d4b4, no longer on 'feature'. 3 files changed, 1 untracked. Stashed 13:40.",
     );
+  });
+});
+
+describe('Show Stashes items', () => {
+  const now = 1_700_000_000;
+  const entry = (index: number, branch: string, anchor: StashEntry['anchor'] = { kind: 'base' }): StashEntry => ({
+    hash: `w${index}`.padEnd(40, '0'),
+    index,
+    base: `b${index}`.padEnd(40, '0'),
+    untracked: undefined,
+    message: `On ${branch}: work ${index}`,
+    branch,
+    time: now - index * 86_400,
+    autostash: false,
+    anchor,
+    files: undefined,
+  });
+  const stashes = [
+    entry(0, 'feature', { kind: 'tip', tip: 't'.repeat(40) }),
+    entry(1, 'main'),
+    entry(2, 'feature'),
+    entry(3, 'main'),
+  ];
+  const shown = {
+    [stashes[0]!.hash]: 'drawn',
+    [stashes[1]!.hash]: 'notLoaded',
+    [stashes[2]!.hash]: 'notInView',
+    [stashes[3]!.hash]: 'hidden',
+  } as const;
+
+  it('lists the stashes made on the current branch first, each saying where its row is', () => {
+    assert.deepEqual(stashPickItems(stashes, shown, 'feature', now), [
+      { kind: 'separator', label: 'On feature (current)' },
+      {
+        kind: 'stash',
+        hash: stashes[0]!.hash,
+        label: 'stash@{0}  On feature: work 0',
+        description: 'just now',
+        detail: 'In the graph above ttttttt',
+      },
+      {
+        kind: 'stash',
+        hash: stashes[2]!.hash,
+        label: 'stash@{2}  On feature: work 2',
+        description: '2 days ago',
+        detail: 'Not in this view (filter, first parent, or its branch was deleted)',
+      },
+      { kind: 'separator', label: 'Elsewhere' },
+      {
+        kind: 'stash',
+        hash: stashes[1]!.hash,
+        label: 'stash@{1}  On main: work 1',
+        description: 'yesterday',
+        detail: 'Not loaded yet: Enter searches further down the history',
+      },
+      {
+        kind: 'stash',
+        hash: stashes[3]!.hash,
+        label: 'stash@{3}  On main: work 3',
+        description: '3 days ago',
+        detail: 'Stash rows are hidden: Enter shows them',
+      },
+    ]);
+  });
+
+  it('has no separators when every stash is in one group', () => {
+    assert.deepEqual(
+      stashPickItems(stashes, shown, 'other', now).map((i) => i.kind),
+      ['stash', 'stash', 'stash', 'stash'],
+    );
+    assert.ok(stashPickItems(stashes, shown, undefined, now).every((i) => i.kind === 'stash'));
+  });
+
+  it('says how long ago something happened in the largest whole unit', () => {
+    assert.equal(timeAgo(now - 30, now), 'just now');
+    assert.equal(timeAgo(now - 5 * 60, now), '5 minutes ago');
+    assert.equal(timeAgo(now - 3 * 3600, now), '3 hours ago');
+    assert.equal(timeAgo(now - 86_400, now), 'yesterday');
+    assert.equal(timeAgo(now - 21 * 86_400, now), '3 weeks ago');
+    assert.equal(timeAgo(now - 400 * 86_400, now), 'last year');
   });
 });
 

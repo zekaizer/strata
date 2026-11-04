@@ -73,6 +73,10 @@ after(() => setTheme('dark'));
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `stashes-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.stash-button' });
+      await delay(800);
+      await screenshot(join(shotDir!, `stashes-pick-${id}.png`));
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
       panel.dispose();
     });
   }

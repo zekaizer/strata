@@ -10,6 +10,7 @@ import { LogReader } from '../git/log-reader.ts';
 import { readCommitPatch, readFilePatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
+import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
@@ -168,10 +169,20 @@ export class GraphController implements vscode.Disposable {
         case 'openFile':
           if (this.repo && m.generation === this.generation) await this.openFile(this.repo, m);
           break;
-        case 'setOptions':
+        case 'setOptions': {
+          // Stash rows are interleaved in the webview: showing or hiding them reloads nothing.
+          const reload =
+            m.options.firstParent !== this.options.firstParent ||
+            JSON.stringify(m.options.refs) !== JSON.stringify(this.options.refs);
           this.options = m.options;
-          await this.reset();
+          if (reload) await this.reset();
           break;
+        }
+        case 'pickStash': {
+          const hash = await pickStash(this.stashes, m.shown, this.refs?.headBranch);
+          if (hash) this.post({ type: 'reveal', hash });
+          break;
+        }
         case 'refresh':
           await this.reset();
           break;

@@ -255,10 +255,34 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-descriptionForeground);
 }
 
+.stash-button[hidden] {
+  display: none;
+}
+
+.stash-count-narrow {
+  display: none;
+}
+
+/* Below the refs, which scroll: the stash option stays in view. */
+.popover-stashes {
+  flex: none;
+  margin-top: 4px;
+  padding-top: 2px;
+  border-top: 1px solid var(--separator);
+}
+
+.popover-stashes[hidden] {
+  display: none;
+}
+
 /* Narrow toolbars keep the icons and drop the labels. */
 @container toolbar (max-width: 420px) {
-  .first-parent-button .tool-label {
+  .first-parent-button .tool-label,
+  .stash-button .tool-label {
     display: none;
+  }
+  .stash-count-narrow {
+    display: inline;
   }
   .toolbar .status {
     display: none;

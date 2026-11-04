@@ -12,6 +12,7 @@ import {
   stashLabel,
   type ListRow,
   type StashEntry,
+  type StashShown,
 } from '../core/stash.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
@@ -114,9 +115,12 @@ class App {
   private refsByHash = new Map<string, Ref[]>();
   // Declared before `options`, which is initialized from it.
   private restore: SavedState | undefined = savedState() as SavedState | undefined;
-  private options: ViewOptions = this.restore?.options ?? DEFAULT_OPTIONS;
+  // States saved before an option existed lack it.
+  private options: ViewOptions = { ...DEFAULT_OPTIONS, ...this.restore?.options };
   private readonly refFilter: RefFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
+  /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
+  private readonly stashButton = el('button', 'tool-button stash-button');
   /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
   private commits: Commit[] = [];
   private rows: Row[] = [];
@@ -192,8 +196,23 @@ class App {
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
-    this.refFilter = new RefFilter(this.toolbar, (refs) => {
-      this.setOptions({ ...this.options, refs });
+    this.refFilter = new RefFilter(
+      this.toolbar,
+      (refs) => {
+        this.setOptions({ ...this.options, refs });
+      },
+      (show) => {
+        this.setShowStashes(show);
+      },
+    );
+    this.stashButton.append(
+      el('span', 'codicon codicon-git-stash'),
+      el('span', 'tool-label stash-count'),
+      el('span', 'stash-count-narrow'),
+    );
+    this.stashButton.hidden = true;
+    this.stashButton.addEventListener('click', () => {
+      vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
     });
     this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
@@ -205,6 +224,7 @@ class App {
       this.repoLabel,
       this.status,
       el('span', 'spacer'),
+      this.stashButton,
       this.refFilter.button,
       this.firstParentButton,
       refresh,
@@ -239,7 +259,7 @@ class App {
       giveBack(e, '.byline-hash, .byline-toggle, .meta-copy, .details-more');
     });
     this.toolbar.addEventListener('click', (e) => {
-      giveBack(e, '.first-parent-button, .codicon-refresh');
+      giveBack(e, '.first-parent-button, .codicon-refresh, .stash-button');
     });
     new ResizeObserver(() => {
       this.onExpansionResize();
@@ -331,6 +351,7 @@ class App {
           commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
         });
         this.updateStatus();
+        this.updateStashButton();
         this.applyRestore();
         this.queueRender();
         break;
@@ -339,6 +360,9 @@ class App {
         this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
+        break;
+      case 'reveal':
+        this.reveal(m.hash);
         break;
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
@@ -358,6 +382,7 @@ class App {
         this.refFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refFilter.update(this.refs, null);
+        this.setStashes([]);
         this.commits = [];
         this.list = [];
         this.geometry.clear();
@@ -488,7 +513,8 @@ class App {
         const missing = r.selectedHash;
         r.selectedHash = undefined;
         this.updateStatus();
-        this.announce(`${shortHash(missing)} is not in this view`);
+        const stash = this.stashes.find((s) => s.hash === missing);
+        this.announce(`${stash ? `stash@{${stash.index}}` : shortHash(missing)} is not in this view`);
       }
     }
     if (r.scrollAnchor === undefined && r.scrollTop === undefined && r.selectedHash === undefined)
@@ -526,7 +552,48 @@ class App {
 
   private setStashes(stashes: StashEntry[]): void {
     this.stashes = stashes;
-    this.anchors = anchoredAt(stashes);
+    this.anchors = this.options.showStashes ? anchoredAt(stashes) : new Map();
+    this.updateStashButton();
+  }
+
+  /** Shows or hides the stash rows: interleaved again here, the history is not reloaded. */
+  private setShowStashes(show: boolean): void {
+    if (show === this.options.showStashes) return;
+    this.setOptions({ ...this.options, showStashes: show });
+    this.setStashes(this.stashes);
+    this.relist();
+  }
+
+  /** Whether each stash's row is in the list, and if not, why. */
+  private stashShown(): Record<string, StashShown> {
+    const shown = (s: StashEntry): StashShown =>
+      !this.options.showStashes
+        ? 'hidden'
+        : this.indexOf(s.hash) >= 0
+          ? 'drawn'
+          : this.done
+            ? 'notInView'
+            : 'notLoaded';
+    return Object.fromEntries(this.stashes.map((s) => [s.hash, shown(s)]));
+  }
+
+  private updateStashButton(): void {
+    const n = this.stashes.length;
+    this.stashButton.hidden = n === 0;
+    this.refFilter.updateStashes(n, this.options.showStashes);
+    if (n === 0) return;
+    const hidden = Object.values(this.stashShown()).filter((v) => v !== 'drawn').length;
+    const label = `${n} ${n === 1 ? 'stash' : 'stashes'}${hidden > 0 ? ` · ${hidden} not shown` : ''}`;
+    this.stashButton.querySelector('.stash-count')!.textContent = label;
+    this.stashButton.querySelector('.stash-count-narrow')!.textContent = `${n}${hidden > 0 ? '•' : ''}`;
+    this.stashButton.title = `${label}. Show Stashes`;
+    this.stashButton.setAttribute('aria-label', this.stashButton.title);
+  }
+
+  /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */
+  private reveal(hash: string): void {
+    if (this.stashes.some((s) => s.hash === hash)) this.setShowStashes(true);
+    this.selectHash(hash, true);
   }
 
   /**
@@ -553,6 +620,7 @@ class App {
     if (this.selected >= 0) this.selected = survivor(this.selected);
     this.syncSizer();
     if (anchor >= 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
+    this.updateStashButton();
     if (this.selected >= 0 && this.selectedHash() !== was && this.expanded)
       this.select(this.selected, { reveal: false });
     // Open stash details name stash@{n}, which may have been renumbered.
@@ -836,14 +904,14 @@ class App {
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
-  private selectHash(hash: string): void {
+  private selectHash(hash: string, expand?: boolean): void {
     this.scroller.focus();
     const index = this.indexOf(hash);
     if (index >= 0) {
-      this.select(index);
+      this.select(index, expand === undefined ? {} : { expand });
       return;
     }
-    this.restore = { selectedHash: hash };
+    this.restore = { selectedHash: hash, ...(expand === undefined ? {} : { expanded: expand }) };
     this.status.textContent = `Looking for ${shortHash(hash)}…`;
     this.applyRestore();
   }
@@ -1821,6 +1889,7 @@ class App {
         };
       })(),
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
+      stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
           !f.matches(':hover') &&

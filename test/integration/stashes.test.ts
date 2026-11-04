@@ -1,9 +1,10 @@
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { addBranchyStashes, storeStash } from '../fixtures/stashes.ts';
-import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('stash rows', () => {
   let panel: GraphPanel;
@@ -162,5 +163,113 @@ describe('stash rows', () => {
     });
     assert.equal(dropped.generation, before.generation);
     assert.equal(dropped.stashRows[rowOf(dropped, stash[2]!)]!.badge, 'stash@{2}');
+  });
+
+  it('counts the stashes in the toolbar, and those not in the graph', async () => {
+    assert.equal((await probeAll()).stashButton, '5 stashes · 1 not shown');
+  });
+
+  /** Waits for a fresh history and opens the details of `rev`'s row; returns the graph column's width. */
+  async function reloadedGraphWidth(rev: string): Promise<number> {
+    const gen = (await panel.probe()).generation;
+    await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
+    const p = await waitFor('reloaded', async () => {
+      const s = await probeAll();
+      return s.generation > gen && s.laidOut === s.commits && s;
+    });
+    const hash = git('rev-parse', rev);
+    await panel.simulate({ kind: 'clickRow', index: rowOf(p, hash) });
+    const d = await waitFor('details', async () => {
+      const s = await panel.probe();
+      return s.detailsShown === hash && s.details;
+    });
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+    return d.graphWidth;
+  }
+
+  async function toggleStashRows(): Promise<void> {
+    await panel.simulate({ kind: 'click', selector: '.ref-filter-button' });
+    await panel.simulate({ kind: 'click', selector: 'input[data-option="stashes"]' });
+    await panel.simulate({ kind: 'click', selector: '.ref-filter-button' });
+  }
+
+  it('hides stash rows from the ref filter without reloading, and the graph is as wide either way', async () => {
+    const before = await probeAll();
+    await toggleStashRows();
+    const hidden = await waitFor('stash rows hidden', async () => {
+      const p = await probeAll();
+      return Object.keys(p.stashRows).length === 0 && p;
+    });
+    assert.equal(hidden.generation, before.generation, 'the history was not reloaded');
+    assert.equal(hidden.options.showStashes, false);
+    assert.equal(hidden.stashButton, '5 stashes · 5 not shown');
+    const without = await reloadedGraphWidth('feature/search');
+
+    await toggleStashRows();
+    await waitFor('stash rows back', async () => Object.keys((await probeAll()).stashRows).length === 4);
+    assert.equal(await reloadedGraphWidth('feature/search'), without);
+  });
+
+  /** Opens Show Stashes from the toolbar and accepts the item `next` places below the first. */
+  async function pick(next: number): Promise<void> {
+    await panel.simulate({ kind: 'click', selector: '.stash-button' });
+    await delay(800);
+    for (let i = 0; i < next; i++) await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
+    await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
+  }
+
+  // Show Stashes lists stash@{1} (on main, the current branch), then stash@{0}, {2}, {3} and {4}.
+  it('opens a stash picked in Show Stashes, showing hidden stash rows again', async () => {
+    await toggleStashRows();
+    await waitFor('stash rows hidden', async () => !(await panel.probe()).options.showStashes);
+    await pick(2);
+    const p = await waitFor('picked stash open', async () => {
+      const s = await panel.probe();
+      return s.detailsShown === stash[2] && s;
+    });
+    assert.equal(p.selected, stash[2]);
+    assert.equal(p.options.showStashes, true);
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+  });
+
+  it('says so when the picked stash is not in this view', async () => {
+    await pick(4);
+    await waitFor('announcement', async () => (await panel.probe()).announced === 'stash@{4} is not in this view');
+  });
+
+  it('loads further history to open a picked stash that is not loaded yet', async () => {
+    // 400 newer commits on top of main push every stash's base beyond the first page.
+    const main = git('rev-parse', 'main');
+    const stream = Array.from({ length: 400 }, (_, i) => {
+      const message = `Deep ${i}`;
+      const from = i === 0 ? `from ${main}\n` : '';
+      const when = `${1_700_010_000 + i * 60} +0000`;
+      return `commit refs/heads/strata-deep-test\ncommitter Ada Lovelace <ada@example.com> ${when}\ndata ${message.length}\n${message}\n${from}\n`;
+    }).join('');
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
+    try {
+      // A new panel: a reload would restore the selected stash, searching the whole history for it.
+      panel.dispose();
+      panel = (await strata()).show();
+      await panel.whenReady();
+      await waitFor('first page', async () => {
+        const s = await panel.probe();
+        return s.commits > 0 && s.stashButton === '5 stashes · 5 not shown';
+      });
+      await pick(2);
+      const p = await waitFor(
+        'picked stash open',
+        async () => {
+          const s = await panel.probe();
+          return s.detailsShown === stash[2] && s;
+        },
+        30_000,
+      );
+      assert.ok(p.commits > 300, `${p.commits} commits loaded`);
+      assert.equal(p.selected, stash[2]);
+    } finally {
+      git('update-ref', '-d', 'refs/heads/strata-deep-test');
+      await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
+    }
   });
 });
