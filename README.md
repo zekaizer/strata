@@ -46,8 +46,10 @@ page, so it opens quickly even on very large repositories.
   **Copy Old Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd>
   (<kbd>⌥⇧⌘C</kbd> on macOS) copies the relative path of the focused file.
   Right-click a commit to copy its hash, short hash or subject.
-- The details show the commit message body (and trailers such as
-  `Signed-off-by`) below the files; the subject is the row itself.
+- The details start with the full subject and show the message body (and
+  trailers such as `Signed-off-by`) below the files, in the editor font.
+  Wrapped paragraphs flow to the width of the view; code, lists and trailers
+  keep their lines.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
