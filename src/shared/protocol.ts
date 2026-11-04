@@ -148,6 +148,8 @@ export interface ProbeState {
         listWidth: number;
       }
     | undefined;
+  /** Width of the author column and of the widest author name rendered in it, in px. */
+  authorColumn: { column: number; widestName: number };
   /** Computed outline style of the selected row ('none' when it has no visible outline). */
   selectionOutline: string;
   /** Text last announced to screen readers. */

@@ -329,7 +329,9 @@ canvas.graph {
   right: 0;
   height: var(--row-height);
   display: grid;
-  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 160px) max-content max-content;
+  grid-template-columns:
+    var(--graph-width, 40px) minmax(0, 1fr) var(--author-w, minmax(0, 160px)) var(--date-w, max-content)
+    max-content;
   grid-template-areas: 'graph subject author date hash';
   align-items: center;
   column-gap: var(--col-gap);
@@ -1136,41 +1138,35 @@ body:not(.hover-off) .file:hover .file-actions,
 }
 
 /*
- * Narrow editors (e.g. next to a chat or side panel) drop the date first and the
- * author next; the SHA always stays. The details show everything hidden here.
+ * Author and date are as wide as their widest text and give way, date first, when the subject
+ * would get less than its minimum (main.ts, chooseRowColumns). The SHA always stays; the
+ * details show everything hidden here.
  */
-@container list (max-width: 760px) {
-  .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content max-content;
-  }
-  .date-full {
-    display: none;
-  }
-  .date-short {
-    display: inline;
-  }
+#app.short-date .date-full {
+  display: none;
 }
 
-@container list (max-width: 600px) {
-  .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px) max-content;
-  }
-  .row,
-  .expansion {
-    --col-gap: 8px;
-  }
-  .row .date {
-    display: none;
-  }
+#app.short-date .date-short {
+  display: inline;
+}
+
+#app.no-date .row {
+  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) var(--author-w, minmax(0, 160px)) max-content;
+}
+
+#app.no-date .row .date {
+  display: none;
+}
+
+#app.no-author.no-date .row {
+  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
+}
+
+#app.no-author .row .author {
+  display: none;
 }
 
 @container list (max-width: 480px) {
-  .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
-  }
-  .row .author {
-    display: none;
-  }
   .details-date-full {
     display: none;
   }

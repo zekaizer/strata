@@ -16,6 +16,7 @@ import type {
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
 import { RefFilter } from './ref-filter.ts';
+import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { vscode } from './vscode.ts';
@@ -64,6 +65,11 @@ const TREE_MAX = 480;
 /** Gap between tree columns; matches main.css. */
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
+/** The subject keeps at least this much room; author and date give way first. */
+const SUBJECT_MIN = 300;
+/** Longer author names are cut with an ellipsis. */
+const AUTHOR_MAX = 180;
+
 /** Trees flow into columns only between these row counts: a few rows read better in one column. */
 const MULTICOL_MIN_ROWS = 8;
 const MULTICOL_MAX_ROWS = 300;
@@ -129,6 +135,10 @@ class App {
   /** Announces results of actions (a copy) to screen readers. */
   private readonly announcer = el('div', 'sr-only');
   private announced = '';
+  /** Widest author name and dates of the loaded commits, in px (the row's own font). */
+  private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
+  private measureContext: CanvasRenderingContext2D | null | undefined;
+  private columns: ColumnChoice | undefined;
   /** Natural width of the expanded commit's file tree (widest row, Old | diff | New included). */
   private treeNatural = 0;
   /** Graph and list widths the details were last laid out for. */
@@ -274,6 +284,7 @@ class App {
         this.loading = false;
         this.done = m.done;
         this.commits.push(...m.commits);
+        this.measureTexts(m.commits);
         for (const c of m.commits) this.geometry.push(this.hasBadges(c.hash));
         this.worker?.postMessage({
           type: 'layout',
@@ -359,6 +370,7 @@ class App {
     this.rows = [];
     this.spans.clear();
     this.shownLanes = 1;
+    this.textWidths = { author: 0, dateFull: 0, dateShort: 0 };
     this.noRepository = false;
     this.done = false;
     this.selected = -1;
@@ -750,6 +762,7 @@ class App {
     if (this.expanded) this.placeExpansion();
     // Not on <html>: VS Code owns its style attribute, which is observed for theme changes.
     this.root.style.setProperty('--graph-width', `${gw}px`);
+    this.chooseRowColumns(width, gw);
     // The details' width follows the graph column and the scrollbar, not only the viewport.
     const widths = `${gw}:${width}`;
     if (widths !== this.laidOutWidths) {
@@ -857,6 +870,48 @@ class App {
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
     return row;
+  }
+
+  /** Widens the measured author and date widths to cover `commits`. */
+  private measureTexts(commits: readonly Commit[]): void {
+    this.measureContext ??= el('canvas').getContext('2d');
+    const ctx = this.measureContext;
+    if (!ctx) return;
+    // The rows' font: they inherit it from the list.
+    ctx.font = getComputedStyle(this.scroller).font;
+    const w = this.textWidths;
+    for (const c of commits) {
+      w.author = Math.max(w.author, ctx.measureText(c.author).width);
+      // Dates use tabular figures (main.css); every digit is then as wide as a 0.
+      const tabular = (t: string) => ctx.measureText(t.replace(/\d/g, '0')).width;
+      w.dateFull = Math.max(w.dateFull, tabular(formatDate(c.authorTime)));
+      w.dateShort = Math.max(w.dateShort, tabular(formatShortDate(c.authorTime)));
+    }
+  }
+
+  /**
+   * Author and date columns as wide as their widest text, shown while the subject keeps
+   * SUBJECT_MIN: the full date gives way to the short one, then the date goes, then the author.
+   */
+  private chooseRowColumns(width: number, graph: number): void {
+    const gap = width <= 600 ? 8 : 12;
+    const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX)) + 1;
+    const dateFull = Math.ceil(this.textWidths.dateFull) + 1;
+    const dateShort = Math.ceil(this.textWidths.dateShort) + 1;
+    const hash = this.rowsLayer.querySelector<HTMLElement>('.row .hash')?.offsetWidth ?? 60;
+    const choice = chooseColumns(
+      { list: width, graph, author, dateFull, dateShort, hash, gap, padding: 12 },
+      SUBJECT_MIN,
+    );
+    const style = this.root.style;
+    style.setProperty('--col-gap', `${gap}px`);
+    style.setProperty('--author-w', `${author}px`);
+    style.setProperty('--date-w', `${choice.date === 'short' ? dateShort : dateFull}px`);
+    if (choice.author === this.columns?.author && choice.date === this.columns.date) return;
+    this.columns = choice;
+    this.root.classList.toggle('no-author', !choice.author);
+    this.root.classList.toggle('no-date', choice.date === 'none');
+    this.root.classList.toggle('short-date', choice.date === 'short');
   }
 
   /** Full and short forms; CSS shows the one that fits the current width. */
@@ -1438,6 +1493,21 @@ class App {
       ),
       details: this.probeDetails(),
       announced: this.announced,
+      authorColumn: (() => {
+        const cells = [...this.rowsLayer.querySelectorAll<HTMLElement>('.row .author')].filter(
+          (c) => getComputedStyle(c).display !== 'none',
+        );
+        // The cell is the grid column; a range around its text gives the name's own width.
+        const textWidth = (c: HTMLElement) => {
+          const r = document.createRange();
+          r.selectNodeContents(c);
+          return r.getBoundingClientRect().width;
+        };
+        return {
+          column: cells[0]?.getBoundingClientRect().width ?? 0,
+          widestName: Math.max(0, ...cells.map(textWidth)),
+        };
+      })(),
       selectionOutline: (() => {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
         if (!row) return 'none';
