@@ -1191,12 +1191,18 @@ class App {
     e.preventDefault();
     e.stopPropagation();
     if (!e.shiftKey) this.copyHash(rowHash(row));
-    // A stash's patch is not a commit's (its untracked files); there is no command for it yet.
     else if (row.kind === 'commit')
       vscode.postMessage({
         type: 'menuCommand',
         command: 'strata.commit.copyPatch',
         context: { strataHash: row.commit.hash },
+      });
+    // A stash's patch is not a commit's: it has the untracked files too.
+    else
+      vscode.postMessage({
+        type: 'menuCommand',
+        command: 'strata.stash.copyPatch',
+        context: { webviewSection: 'stash', strataHash: row.stash.hash },
       });
     return true;
   }

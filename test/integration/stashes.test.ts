@@ -127,6 +127,22 @@ describe('stash rows', () => {
     await panel.simulate({ kind: 'key', key: 'Escape' });
   });
 
+  it("copies the selected stash's patch, untracked files included, with Ctrl+Shift+C", async () => {
+    const p = await probeAll();
+    await panel.simulate({ kind: 'clickRow', index: rowOf(p, stash[2]!) });
+    await waitFor('stash selected', async () => (await panel.probe()).selected === stash[2]);
+    await vscode.env.clipboard.writeText('');
+    const mod = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+    await panel.simulate({ kind: 'key', key: 'C', shiftKey: true, ...mod });
+    const patch = await waitFor(
+      'a patch on the clipboard',
+      async () => (await vscode.env.clipboard.readText()) || false,
+    );
+    assert.match(patch, /^diff --git a\/src\/ranking\.ts b\/src\/ranking\.ts$/m);
+    assert.match(patch, /^diff --git a\/notes\/ranking-ideas\.md b\/notes\/ranking-ideas\.md$/m);
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+  });
+
   it('keeps a selected stash selected across a reload', async () => {
     const p = await probeAll();
     await panel.simulate({ kind: 'clickRow', index: rowOf(p, stash[3]!) });

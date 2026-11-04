@@ -55,10 +55,11 @@ page, so it opens quickly even on very large repositories.
   (<kbd>⌥⇧⌘C</kbd> on macOS) copies the relative path of the focused file.
   Right-click a commit to copy its hash, short hash, subject or patch.
 - With the list focused, <kbd>Shift</kbd>+<kbd>F10</kbd> or the Menu key opens
-  the selected commit's menu, <kbd>Ctrl</kbd>+<kbd>C</kbd> copies its full
-  hash and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> its patch
-  (<kbd>Cmd</kbd> on macOS). With text selected in the details,
-  <kbd>Ctrl</kbd>+<kbd>C</kbd> copies that text.
+  the selected commit's or stash's menu, <kbd>Ctrl</kbd>+<kbd>C</kbd> copies
+  its full hash and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> its patch
+  (<kbd>Cmd</kbd> on macOS); a stash's patch includes its untracked files.
+  With text selected in the details, <kbd>Ctrl</kbd>+<kbd>C</kbd> copies that
+  text.
 - The details start with who and when: author, date and the short hash. Click
   the hash to copy the full hash; the arrow after it shows the full hash,
   author, committer and parents (with their subjects) and stays open for other
