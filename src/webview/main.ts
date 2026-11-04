@@ -16,9 +16,10 @@ import type {
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
 import { RefFilter } from './ref-filter.ts';
+import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
-import { vscode } from './vscode.ts';
+import { savedState, vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
 
 const FIRST_PAGE = 300;
@@ -56,14 +57,20 @@ interface SavedState {
   options?: ViewOptions | undefined;
 }
 
-/** A long body shows this many lines until "Show more" when the files are below it. */
+/** Details that take longer than this are reported as not coming (the extension host went away). */
+const DETAILS_TIMEOUT_MS = 15_000;
+/** Above the files, a long body shows this many lines until "Show more"; beside them it is never folded. */
 const BODY_LINES = 6;
-/** Width of a tree column: the tree's widest row, within these limits (and half the details). */
+/** A tree column is as wide as the tree's widest row, but at least this (and at most the files' room). */
 const TREE_MIN = 200;
-const TREE_MAX = 480;
 /** Gap between tree columns; matches main.css. */
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
+/** The subject keeps at least this much room; author and date give way first. */
+const SUBJECT_MIN = 300;
+/** Longer author names are cut with an ellipsis. */
+const AUTHOR_MAX = 180;
+
 /** Trees flow into columns only between these row counts: a few rows read better in one column. */
 const MULTICOL_MIN_ROWS = 8;
 const MULTICOL_MAX_ROWS = 300;
@@ -96,7 +103,7 @@ class App {
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private refsByHash = new Map<string, Ref[]>();
   // Declared before `options`, which is initialized from it.
-  private restore: SavedState | undefined = vscode.getState() as SavedState | undefined;
+  private restore: SavedState | undefined = savedState() as SavedState | undefined;
   private options: ViewOptions = this.restore?.options ?? DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
@@ -122,17 +129,25 @@ class App {
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
   /** Read directly: `restore` is cleared once applied, but this preference outlives it. */
-  private metaOpen = (vscode.getState() as SavedState | undefined)?.metaOpen ?? false;
+  private metaOpen = (savedState() as SavedState | undefined)?.metaOpen ?? false;
   /** Whether the selected commit's body is shown in full. */
   private bodyExpanded = false;
   private copiedTimer: ReturnType<typeof setTimeout> | undefined;
   /** Announces results of actions (a copy) to screen readers. */
   private readonly announcer = el('div', 'sr-only');
   private announced = '';
+  /** Widest author name and dates of the loaded commits, in px (the row's own font). */
+  private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
+  private measureContext: CanvasRenderingContext2D | null | undefined;
+  private columns: ColumnChoice | undefined;
   /** Natural width of the expanded commit's file tree (widest row, Old | diff | New included). */
   private treeNatural = 0;
   /** Graph and list widths the details were last laid out for. */
   private laidOutWidths = '';
+  private mirrorTimer: ReturnType<typeof setTimeout> | undefined;
+  private metaCopiedTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Shows a message when requested details never arrive (the host went away). */
+  private loadingTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -197,6 +212,18 @@ class App {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       this.scroller.focus();
+    });
+    // A mouse click on a one-shot control hands the keyboard back to the list, so no focus ring
+    // appears on it at the next key and the list keys keep working. Keyboard activation (detail 0)
+    // leaves focus where it is.
+    const giveBack = (e: MouseEvent, controls: string) => {
+      if (e.detail > 0 && (e.target as Element).closest(controls)) this.scroller.focus({ preventScroll: true });
+    };
+    this.expansion.addEventListener('click', (e) => {
+      giveBack(e, '.byline-hash, .byline-toggle, .meta-copy, .details-more');
+    });
+    this.toolbar.addEventListener('click', (e) => {
+      giveBack(e, '.first-parent-button, .codicon-refresh');
     });
     new ResizeObserver(() => {
       this.onExpansionResize();
@@ -274,6 +301,7 @@ class App {
         this.loading = false;
         this.done = m.done;
         this.commits.push(...m.commits);
+        this.measureTexts(m.commits);
         for (const c of m.commits) this.geometry.push(this.hasBadges(c.hash));
         this.worker?.postMessage({
           type: 'layout',
@@ -290,14 +318,24 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'activeFile':
+        // The host says which file's tab is on screen; the marker follows it and goes when it closes.
+        this.markOpenedFile(m.path);
+        break;
       case 'hidden':
         document.body.classList.add('hover-off');
+        this.refFilter.close();
         break;
       case 'noRepository':
         this.generation = -1;
         this.noRepository = true;
         this.repoLabel.textContent = 'No git repository';
+        this.repoLabel.title = '';
+        this.status.classList.remove('error');
         this.status.textContent = 'Open a folder that contains a git repository.';
+        this.refFilter.close();
+        this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+        this.refFilter.update(this.refs, null);
         this.commits = [];
         this.geometry.clear();
         this.rows = [];
@@ -359,6 +397,7 @@ class App {
     this.rows = [];
     this.spans.clear();
     this.shownLanes = 1;
+    this.textWidths = { author: 0, dateFull: 0, dateShort: 0 };
     this.noRepository = false;
     this.done = false;
     this.selected = -1;
@@ -411,7 +450,11 @@ class App {
       } else if (searchable) {
         this.loadMore(NEXT_PAGE);
       } else {
+        // Not in this view (filters, first parent): say so instead of leaving "Looking for…".
+        const missing = r.selectedHash;
         r.selectedHash = undefined;
+        this.updateStatus();
+        this.announce(`${shortHash(missing)} is not in this view`);
       }
     }
     if (r.scrollAnchor === undefined && r.scrollTop === undefined && r.selectedHash === undefined)
@@ -429,6 +472,14 @@ class App {
       options: this.options,
     };
     vscode.setState(state);
+    // Mirrored to the host (at most every half second): an extension host restart leaves this
+    // webview behind, and the host then re-creates the panel from it.
+    if (this.mirrorTimer === undefined) {
+      this.mirrorTimer = setTimeout(() => {
+        this.mirrorTimer = undefined;
+        vscode.postMessage({ type: 'state', state: vscode.getState() });
+      }, 500);
+    }
   }
 
   /** The row at the top of the view and the offset into it; undefined with no rows. */
@@ -469,10 +520,16 @@ class App {
     document.addEventListener(
       'keydown',
       (e) => {
-        if (!modifiers.has(e.key)) document.body.classList.add('keyboard-nav');
+        // Shortcuts (copy and the like) are not navigation.
+        if (modifiers.has(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
+        document.body.classList.add('keyboard-nav');
       },
       { capture: true },
     );
+    // Back from another editor, the pointer is the likelier next input.
+    window.addEventListener('blur', () => {
+      document.body.classList.remove('keyboard-nav');
+    });
     document.addEventListener(
       'pointerdown',
       () => {
@@ -496,6 +553,7 @@ class App {
   }
 
   private setOptions(options: ViewOptions): void {
+    this.clearActionError();
     this.options = options;
     this.updateOptionControls();
     this.saveState();
@@ -515,7 +573,13 @@ class App {
     this.updateStatus();
   }
 
+  /** An error from an action (opening a file, a menu command) lasts until the next action. */
+  private clearActionError(): void {
+    if (this.status.classList.contains('error') && this.generation >= 0) this.updateStatus();
+  }
+
   private updateStatus(): void {
+    this.status.classList.remove('error');
     const n = this.commits.length.toLocaleString();
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
   }
@@ -587,12 +651,14 @@ class App {
    * waiting to be restored after a reload.
    */
   private userSelect(index: number, opts: { expand?: boolean } = {}): void {
+    this.clearActionError();
     this.restore = undefined;
     this.select(index, opts);
   }
 
   /** A fold the user asks for also stops a pending restore from unfolding again. */
   private userCollapse(): void {
+    this.clearActionError();
     if (this.restore) this.restore.expanded = false;
     this.collapse();
   }
@@ -600,6 +666,7 @@ class App {
   /** Folds the details away; the selection stays. */
   private collapse(): void {
     this.expanded = false;
+    this.revealExpansion = false;
     this.details = undefined;
     this.pendingDetails = undefined;
     this.gap = 0;
@@ -620,6 +687,13 @@ class App {
     this.keepFocusInList(() => {
       this.expansion.replaceChildren(el('div', 'expansion-loading', 'Loading…'));
     });
+    clearTimeout(this.loadingTimer);
+    this.loadingTimer = setTimeout(() => {
+      const loading = this.expansion.querySelector('.expansion-loading');
+      if (loading && this.pendingDetails !== undefined)
+        loading.textContent =
+          'No answer from Strata. If it was just updated or restarted, reopen the graph (Strata: Show Commit Graph).';
+    }, DETAILS_TIMEOUT_MS);
     this.placeExpansion();
     // Same height as before, so the resize observer does not run: clear the previous commit's marker.
     this.updateExpansionOverflow();
@@ -650,19 +724,23 @@ class App {
 
   private onExpansionResize(): void {
     const h = this.expansion.hidden ? 0 : this.expansion.offsetHeight;
-    if (h === this.gap) return;
-    // Details opening or growing above the view (e.g. restored under a row scrolled past) would
-    // push the rows in view down; keep them where they are.
-    const above = this.selected >= 0 && this.geometry.top(this.selected + 1) < this.scroller.scrollTop;
-    const delta = h - this.gap;
-    this.gap = h;
-    this.syncSizer();
-    if (above) this.scroller.scrollTop += delta;
+    if (h !== this.gap) {
+      // Details opening or growing above the view (e.g. restored under a row scrolled past) would
+      // push the rows in view down; keep them where they are.
+      const above = this.selected >= 0 && this.geometry.top(this.selected + 1) < this.scroller.scrollTop;
+      const delta = h - this.gap;
+      this.gap = h;
+      this.syncSizer();
+      if (above) this.scroller.scrollTop += delta;
+      this.queueRender();
+    }
+    // Also when the new details are as tall as the previous ones (no resize): reveal them once,
+    // now, rather than at some later unrelated resize.
     if (this.revealExpansion && this.details) {
       this.revealExpansion = false;
       this.ensureVisible(this.selected, true);
+      this.queueRender();
     }
-    this.queueRender();
   }
 
   /** The list's height must be right before scrollTop is set, or the browser clamps it. */
@@ -694,6 +772,9 @@ class App {
   }
 
   private onKey(e: KeyboardEvent): void {
+    // Rows move under a still pointer; a hover there would follow the keys around.
+    if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'Enter', 'Escape'].includes(e.key))
+      document.body.classList.add('hover-off');
     const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
     const delta = moves[e.key];
     const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
@@ -750,6 +831,7 @@ class App {
     if (this.expanded) this.placeExpansion();
     // Not on <html>: VS Code owns its style attribute, which is observed for theme changes.
     this.root.style.setProperty('--graph-width', `${gw}px`);
+    this.chooseRowColumns(width, gw);
     // The details' width follows the graph column and the scrollbar, not only the viewport.
     const widths = `${gw}:${width}`;
     if (widths !== this.laidOutWidths) {
@@ -841,7 +923,8 @@ class App {
       row.append(band);
     }
     if (i === this.selected) {
-      row.classList.add('selected');
+      // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
+      row.classList.add(this.expanded ? 'selected' : 'cursor');
       row.setAttribute('aria-expanded', String(this.expanded));
     }
     if (c.hash === this.refs.head) row.classList.add('head');
@@ -859,11 +942,60 @@ class App {
     return row;
   }
 
+  /** Widens the measured author and date widths to cover `commits`. */
+  private measureTexts(commits: readonly Commit[]): void {
+    this.measureContext ??= el('canvas').getContext('2d');
+    const ctx = this.measureContext;
+    if (!ctx) return;
+    // The rows' font: they inherit it from the list.
+    ctx.font = getComputedStyle(this.scroller).font;
+    const w = this.textWidths;
+    for (const c of commits) {
+      w.author = Math.max(w.author, ctx.measureText(c.author).width);
+      // Dates use tabular figures (main.css); every digit is then as wide as a 0.
+      const tabular = (t: string) => ctx.measureText(t.replace(/\d/g, '0')).width;
+      w.dateFull = Math.max(w.dateFull, tabular(formatDate(c.authorTime)));
+      w.dateShort = Math.max(w.dateShort, tabular(formatShortDate(c.authorTime)));
+    }
+  }
+
+  /**
+   * Author and date columns as wide as their widest text, shown while the subject keeps
+   * SUBJECT_MIN: the full date gives way to the short one, then the date goes, then the author.
+   */
+  private chooseRowColumns(width: number, graph: number): void {
+    const gap = width <= 600 ? 8 : 12;
+    const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX)) + 1;
+    const dateFull = Math.ceil(this.textWidths.dateFull) + 1;
+    const dateShort = Math.ceil(this.textWidths.dateShort) + 1;
+    const hash = this.rowsLayer.querySelector<HTMLElement>('.row .hash')?.offsetWidth ?? 60;
+    const choice = chooseColumns(
+      { list: width, graph, author, dateFull, dateShort, hash, gap, padding: 12 },
+      SUBJECT_MIN,
+    );
+    const style = this.root.style;
+    style.setProperty('--col-gap', `${gap}px`);
+    style.setProperty('--author-w', `${author}px`);
+    style.setProperty('--date-w', `${choice.date === 'short' ? dateShort : dateFull}px`);
+    if (choice.author === this.columns?.author && choice.date === this.columns.date) return;
+    this.columns = choice;
+    this.root.classList.toggle('no-author', !choice.author);
+    this.root.classList.toggle('no-date', choice.date === 'none');
+    this.root.classList.toggle('short-date', choice.date === 'short');
+  }
+
   /** Full and short forms; CSS shows the one that fits the current width. */
   private dateCell(time: number): HTMLElement {
     const cell = el('span', 'date');
     cell.append(el('span', 'date-full', formatDate(time)), el('span', 'date-short', formatShortDate(time)));
     return cell;
+  }
+
+  private markOpenedFile(path: string | undefined): void {
+    this.openedFile = path;
+    for (const e of this.expansion.querySelectorAll<HTMLElement>('.file')) {
+      e.classList.toggle('opened', path !== undefined && e.dataset['path'] === path);
+    }
   }
 
   /** Whether a commit shows ref badges; must agree with badges(). */
@@ -901,6 +1033,7 @@ class App {
     if (!d) return;
     const pane = this.expansion;
     clearTimeout(this.copiedTimer);
+    clearTimeout(this.metaCopiedTimer);
 
     // The row truncates long subjects, so the details repeat it in full.
     const [subject = '', ...rest] = d.message.split('\n');
@@ -940,6 +1073,7 @@ class App {
     pane.scrollTop = 0;
     this.placeExpansion();
     this.layoutDetails();
+    this.onExpansionResize();
     this.queueRender();
   }
 
@@ -1024,12 +1158,18 @@ class App {
   private metaTable(d: CommitDetails): HTMLElement {
     const table = el('table', 'meta-table');
     table.id = 'details-meta';
+    // Laid out as a grid (main.css), which drops the implicit table roles: state them.
+    table.setAttribute('role', 'table');
+    table.setAttribute('aria-label', 'Commit metadata');
     const row = (label: string, ...cells: (string | Node)[]) => {
       const th = el('th', undefined, label);
       th.scope = 'row';
+      th.setAttribute('role', 'rowheader');
       const td = el('td');
+      td.setAttribute('role', 'cell');
       td.append(...cells);
       const tr = el('tr');
+      tr.setAttribute('role', 'row');
       tr.append(th, td);
       table.append(tr);
     };
@@ -1040,7 +1180,8 @@ class App {
       this.copyHash(d.hash);
       copy.classList.replace('codicon-copy', 'codicon-check');
       copy.classList.add('copied');
-      setTimeout(() => {
+      clearTimeout(this.metaCopiedTimer);
+      this.metaCopiedTimer = setTimeout(() => {
         copy.classList.replace('codicon-check', 'codicon-copy');
         copy.classList.remove('copied');
       }, 1500);
@@ -1106,13 +1247,7 @@ class App {
     // Measured unstuck: a stuck message reports its scrolled position.
     main.classList.remove('stick');
 
-    // Side by side when the message and one tree column fit on a line: CSS wraps the files below
-    // the message otherwise (flex-wrap), so the decision and the layout are one computation.
-    const width = layout.clientWidth;
-    const treeWidth = Math.ceil(
-      Math.min(Math.max(this.treeNatural, TREE_MIN), TREE_MAX, Math.max(TREE_MIN, width / 2)),
-    );
-    layout.style.setProperty('--tree-w', `${treeWidth}px`);
+    // Side by side or stacked is decided by CSS from the list width alone (flex-wrap); read back.
     const stacked = files.offsetTop > main.offsetTop + 1;
     layout.classList.toggle('stacked', stacked);
     /** Top of `e` from the expansion's border edge, the edge `cap` is measured from. */
@@ -1129,12 +1264,10 @@ class App {
       more.textContent = 'Show more · 999 more lines';
       const line = parseFloat(getComputedStyle(pre).lineHeight) || 18;
       const total = Math.round(pre.scrollHeight / line);
-      const tail = more.getBoundingClientRect().bottom - pre.getBoundingClientRect().bottom + below;
-      // Beside the files, the body may use the height the files take anyway.
-      const room = Math.floor((cap - top(pre) - tail) / line);
-      const lines = stacked ? BODY_LINES : Math.max(BODY_LINES, room);
-      // Hiding a line or two behind a link saves nothing.
-      const clampable = total >= lines + 2;
+      const lines = BODY_LINES;
+      // Only above the files, to keep them close; beside them the details just scroll. Hiding a
+      // line or two behind a link saves nothing.
+      const clampable = stacked && total >= lines + 2;
       const clamped = clampable && !this.bodyExpanded;
       pre.classList.toggle('clamped', clamped);
       if (clamped) pre.style.maxHeight = `${lines * line}px`;
@@ -1151,9 +1284,8 @@ class App {
       const rows = tree.querySelectorAll('li:not([hidden])').length;
       const rowHeight = tree.querySelector<HTMLElement>('li:not([hidden])')?.offsetHeight || 22;
       const area = files.clientWidth - parseFloat(getComputedStyle(files).paddingLeft);
-      // Below the message the tree has the whole width, so its columns take the widest row as it
-      // is; the limits above only keep one long name from pushing the files below the message.
-      const columnWidth = stacked ? Math.min(Math.max(this.treeNatural, TREE_MIN), Math.floor(area)) : treeWidth;
+      // A column is as wide as the widest row, within the files' room.
+      const columnWidth = Math.min(Math.max(this.treeNatural, TREE_MIN), Math.floor(area));
       layout.style.setProperty('--tree-col-w', `${columnWidth}px`);
       const byWidth = Math.min(
         TREE_MAX_COLS,
@@ -1298,8 +1430,6 @@ class App {
     li.append(label);
 
     const open = (view: FileView, beside: boolean) => {
-      this.openedFile = f.path;
-      for (const e of li.parentElement?.children ?? []) e.classList.toggle('opened', e === li);
       vscode.postMessage({
         type: 'openFile',
         view,
@@ -1438,6 +1568,28 @@ class App {
       ),
       details: this.probeDetails(),
       announced: this.announced,
+      authorColumn: (() => {
+        const cells = [...this.rowsLayer.querySelectorAll<HTMLElement>('.row .author')].filter(
+          (c) => getComputedStyle(c).display !== 'none',
+        );
+        // The cell is the grid column; a range around its text gives the name's own width.
+        const textWidth = (c: HTMLElement) => {
+          const r = document.createRange();
+          r.selectNodeContents(c);
+          return r.getBoundingClientRect().width;
+        };
+        return {
+          column: cells[0]?.getBoundingClientRect().width ?? 0,
+          widestName: Math.max(0, ...cells.map(textWidth)),
+        };
+      })(),
+      selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
+      idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
+        (f) =>
+          !f.matches(':hover') &&
+          !f.matches(':has(:focus-visible), :focus-visible') &&
+          getComputedStyle(f.querySelector('.file-actions')!).visibility === 'visible',
+      ),
       selectionOutline: (() => {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
         if (!row) return 'none';
@@ -1491,6 +1643,8 @@ class App {
         ),
       ),
       listWidth: this.scroller.clientWidth,
+      filesLeft: files && main ? files.getBoundingClientRect().left - main.getBoundingClientRect().left : 0,
+      graphWidth: parseFloat(this.root.style.getPropertyValue('--graph-width')) || 0,
     };
   }
 

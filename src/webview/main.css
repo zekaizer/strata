@@ -308,6 +308,8 @@ body:not(.hover-off) .popover-item:hover {
   position: absolute;
   inset: 0;
   overflow-y: auto;
+  /* The scrollbar coming and going (details make the list taller) must not change its width. */
+  scrollbar-gutter: stable;
   overflow-x: hidden;
   outline: none;
 }
@@ -329,7 +331,9 @@ canvas.graph {
   right: 0;
   height: var(--row-height);
   display: grid;
-  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 160px) max-content max-content;
+  grid-template-columns:
+    var(--graph-width, 40px) minmax(0, 1fr) var(--author-w, minmax(0, 160px)) var(--date-w, max-content)
+    max-content;
   grid-template-areas: 'graph subject author date hash';
   align-items: center;
   column-gap: var(--col-gap);
@@ -389,7 +393,8 @@ body:not(.hover-off) .row:hover {
  * VS Code outlines the focused row whenever its list has focus; here focus stays in the list after
  * a click (details fold in place), so the outline follows keyboard use only.
  */
-body.keyboard-nav .scroller:focus .row.selected {
+body.keyboard-nav .scroller:focus .row.selected,
+body.keyboard-nav .scroller:focus .row.cursor {
   outline: 1px solid
     var(--vscode-list-focusAndSelectionOutline, var(--vscode-list-focusOutline, var(--vscode-focusBorder)));
   outline-offset: -1px;
@@ -613,10 +618,10 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 /*
- * The message and the files side by side when both fit on a line, the files below otherwise:
- * the message asks for its natural width (up to 72ch), the files for one tree column (--tree-w,
- * measured in main.ts). Nothing here may depend on .stacked in a way that changes those sizes,
- * or the layout could flip back and forth.
+ * The message and the files side by side when both get their room, the files below otherwise.
+ * The split depends on the list width only, never on the commit, so it stays put while moving
+ * through commits: the message takes 45% (360px to 72ch), the files the rest (at least 300px).
+ * Nothing here may depend on .stacked in a way that changes those sizes.
  */
 .details-layout {
   display: flex;
@@ -626,8 +631,9 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 .details-main {
-  flex: 1 1 max-content;
-  min-width: min(100%, 32ch);
+  flex: 1 0 clamp(min(100%, 360px), 45%, 72ch);
+  /* Never wider than its share because of what is in it (flex items default to their content's minimum). */
+  min-width: 0;
   max-width: 72ch;
 }
 
@@ -638,8 +644,8 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 .details-files {
-  flex: 100 1 calc(var(--tree-w, 300px) + 17px);
-  min-width: 0;
+  flex: 100 1 0;
+  min-width: min(100%, 300px);
   box-sizing: border-box;
   padding-left: 16px;
   border-left: 1px solid var(--separator);
@@ -791,14 +797,24 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   overflow: hidden;
 }
 
+/*
+ * A grid rather than table layout: values may shrink (long parent subjects end in an ellipsis)
+ * instead of widening the message column. Rows keep their table roles (main.ts).
+ */
 .meta-table {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 12px;
   margin: 2px 0 6px;
-  border-collapse: collapse;
   font-size: 0.92em;
 }
 
+.meta-table tr {
+  display: contents;
+}
+
 .meta-table th {
-  padding: 1px 12px 1px 0;
+  padding: 1px 0;
   font-weight: normal;
   text-align: left;
   vertical-align: top;
@@ -807,6 +823,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .meta-table td {
+  min-width: 0;
   padding: 1px 0;
   overflow-wrap: anywhere;
 }
@@ -824,7 +841,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .meta-parent {
-  max-width: 48ch;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1038,13 +1055,14 @@ body:not(.hover-off) .file:hover {
 }
 
 /*
- * Shown where the pointer or keyboard is, and on the file opened last. Hover rules in this
+ * Shown only where the pointer or keyboard focus is (a click focuses the row too, but not
+ * visibly, so nothing stays behind after it). Hover rules in this
  * file apply only without .hover-off: when a click opens a diff the pointer can leave the
  * iframe without a pointerleave, which would leave a highlight stuck (see trackPointer).
  */
 body:not(.hover-off) .file:hover .file-actions,
-.file:focus-within .file-actions,
-.file.opened .file-actions {
+.file:focus-visible .file-actions,
+.file:has(:focus-visible) .file-actions {
   visibility: visible;
 }
 
@@ -1136,41 +1154,35 @@ body:not(.hover-off) .file:hover .file-actions,
 }
 
 /*
- * Narrow editors (e.g. next to a chat or side panel) drop the date first and the
- * author next; the SHA always stays. The details show everything hidden here.
+ * Author and date are as wide as their widest text and give way, date first, when the subject
+ * would get less than its minimum (main.ts, chooseRowColumns). The SHA always stays; the
+ * details show everything hidden here.
  */
-@container list (max-width: 760px) {
-  .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 120px) max-content max-content;
-  }
-  .date-full {
-    display: none;
-  }
-  .date-short {
-    display: inline;
-  }
+#app.short-date .date-full {
+  display: none;
 }
 
-@container list (max-width: 600px) {
-  .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) minmax(0, 96px) max-content;
-  }
-  .row,
-  .expansion {
-    --col-gap: 8px;
-  }
-  .row .date {
-    display: none;
-  }
+#app.short-date .date-short {
+  display: inline;
+}
+
+#app.no-date .row {
+  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) var(--author-w, minmax(0, 160px)) max-content;
+}
+
+#app.no-date .row .date {
+  display: none;
+}
+
+#app.no-author.no-date .row {
+  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
+}
+
+#app.no-author .row .author {
+  display: none;
 }
 
 @container list (max-width: 480px) {
-  .row {
-    grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
-  }
-  .row .author {
-    display: none;
-  }
   .details-date-full {
     display: none;
   }

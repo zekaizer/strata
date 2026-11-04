@@ -8,6 +8,7 @@ interface MenuItem {
   when?: string;
 }
 const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
+  activationEvents: string[];
   contributes: { commands: { command: string }[]; menus: Record<string, MenuItem[]> };
 };
 
@@ -27,5 +28,13 @@ describe('package.json context menus', () => {
       (pkg.contributes.menus['commandPalette'] ?? []).filter((m) => m.when === 'false').map((m) => m.command),
     );
     for (const id of MENU_COMMANDS) assert.ok(hidden.has(id), `${id} shows in the command palette`);
+  });
+});
+
+describe('package.json activation', () => {
+  it('activates after startup too, to replace a graph an extension host restart left behind', () => {
+    // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.
+    assert.ok(pkg.activationEvents.includes('onStartupFinished'));
+    assert.ok(pkg.activationEvents.includes('onWebviewPanel:strata.graph'));
   });
 });

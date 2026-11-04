@@ -55,10 +55,9 @@ describe('details layout', () => {
     assert.ok(at('byline') < at('meta-wrap') && at('meta-wrap') < at('details-subject'), d.blocks.join(', '));
   });
 
-  it('decides side by side from the content, not from a fixed width', async () => {
-    // "Add docs and sources": no body and a small tree, narrow enough to sit beside each other.
+  it('puts the message and the files side by side when the list has room', async () => {
     const d = await openDetails(1);
-    assert.ok(d.treeWidth >= 150 && d.treeWidth <= 480, `tree width ${d.treeWidth}`);
+    assert.ok(d.treeWidth >= 150, `tree width ${d.treeWidth}`);
     assert.equal(d.stacked, !d.sideBySide);
     if (d.listWidth >= 900) assert.equal(d.sideBySide, true, `list ${d.listWidth}px, tree ${d.treeWidth}px`);
     // Opening the meta table changes the height only, never the arrangement.
@@ -70,6 +69,17 @@ describe('details layout', () => {
     assert.equal(open.sideBySide, d.sideBySide);
     await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
     await waitFor('meta closed', async () => (await panel.probe()).details?.metaOpen === false);
+  });
+
+  it('puts the files at the same place for every commit', async () => {
+    // Commits 1 and 2 differ in subject, body and tree; the split may only follow the list width.
+    // The graph column only grows as lanes come into view, so look once both rows have been shown.
+    await openDetails(2);
+    const a = await openDetails(1);
+    const b = await openDetails(2);
+    assert.equal(a.graphWidth, b.graphWidth, 'same list geometry');
+    assert.equal(a.sideBySide, b.sideBySide);
+    assert.ok(Math.abs(a.filesLeft - b.filesLeft) <= 1, `files at ${a.filesLeft}px and ${b.filesLeft}px`);
   });
 
   it('keeps Old | diff | New next to the file names', async () => {
@@ -87,13 +97,33 @@ describe('details layout', () => {
     assert.equal(clicked.selectionOutline, 'none', 'a click leaves no focus outline behind');
     await panel.simulate({ kind: 'clickRow', index: 3 });
     await waitFor('folded', async () => (await panel.probe()).expandedHeight === 0);
-    assert.equal((await panel.probe()).selectionOutline, 'none', 'nor does folding');
+    const folded = await panel.probe();
+    assert.equal(folded.selectionOutline, 'none', 'nor does folding');
+    assert.equal(folded.selectionShown, false, 'a closed commit is not drawn as selected');
+    assert.equal(folded.selected, order()[3], 'but stays where the keys continue from');
     await panel.simulate({ kind: 'key', key: 'ArrowDown' });
     const keyed = await waitFor('moved by key', async () => {
       const p = await panel.probe();
       return p.selected === order()[4] && p;
     });
     assert.equal(keyed.selectionOutline, 'solid', 'keyboard navigation shows where focus is');
+  });
+
+  it('shows Old | diff | New only where the pointer or keyboard focus is', async () => {
+    await openDetails(1);
+    const active = () => vscode.window.tabGroups.activeTabGroup.activeTab;
+    const graphLabel = active()?.label;
+    await panel.simulate({ kind: 'clickFile', index: 0 });
+    // Close the file's tab, not the graph: wait until it is the active one (tabs compare by label;
+    // VS Code may hand out new Tab objects).
+    const fileTab = await waitFor('file tab', () => active()?.label !== graphLabel && active()?.label);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    await waitFor('file tab closed', () =>
+      vscode.window.tabGroups.all.every((g) => g.tabs.every((t) => t.label !== fileTab)),
+    );
+    await panel.simulate({ kind: 'focus', selector: '.scroller' });
+    const s = await panel.probe();
+    assert.equal(s.idleFileActions, false, 'a clicked file keeps no buttons');
   });
 
   it('folds with the fold button without touching the row under the pointer', async () => {
@@ -143,16 +173,28 @@ describe('details layout', () => {
     assert.match(merge.filesSummary, / · vs first parent [0-9a-f]{7}$/);
   });
 
-  it('clamps a long body with a line count and expands it in place', async () => {
+  it('shows a long body in full beside the files, and folds it to a few lines above them', async () => {
     const body = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long explanation.`).join('\n');
     const tip = git(...IDENTITY, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', `Long body\n\n${body}`);
     git('update-ref', `refs/heads/${longBranch}`, tip);
     try {
       await reload();
       const index = order().indexOf(tip);
-      const d = await openDetails(index);
-      assert.equal(d.bodyClamp.clamped, true);
-      assert.ok(d.bodyClamp.hiddenLines >= 2, String(d.bodyClamp.hiddenLines));
+      // Beside the files the body needs no folding: the details scroll.
+      const first = await openDetails(index);
+      // Folded exactly when the files are below the message (the window may be narrow already).
+      assert.equal(first.bodyClamp.clamped, first.stacked, `list ${first.listWidth}px, stacked ${first.stacked}`);
+      if (!first.stacked)
+        assert.ok(!first.blocks.includes('link-button details-more'), 'no Show more beside the files');
+      // Narrow (an editor beside the graph): the files are below, so the body folds to keep them close.
+      const doc = await vscode.workspace.openTextDocument({ content: 'beside' });
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+      await vscode.commands.executeCommand('workbench.action.evenEditorWidths');
+      const narrow = await waitFor('stacked', async () => {
+        const p = await panel.probe();
+        return p.details?.stacked && p.details.bodyClamp.clamped && p.details;
+      });
+      assert.ok(narrow.bodyClamp.hiddenLines >= 2, String(narrow.bodyClamp.hiddenLines));
       await panel.simulate({ kind: 'click', selector: '.details-more' });
       const open = await waitFor('expanded', async () => {
         const p = await panel.probe();
@@ -160,6 +202,9 @@ describe('details layout', () => {
       });
       assert.equal(open.moreBelow, open.overflowing, 'more-below follows the expanded body');
     } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      panel = (await strata()).show();
+      await panel.whenReady();
       git('update-ref', '-d', `refs/heads/${longBranch}`);
       await reload();
     }

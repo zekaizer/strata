@@ -10,7 +10,11 @@ export interface StrataTestApi {
   current(): GraphPanel | undefined;
 }
 
+/** Time for VS Code to revive the graph through the serializer before a tab without it counts as orphaned. */
+const ORPHAN_CHECK_MS = 3000;
+
 export function activate(context: vscode.ExtensionContext): StrataTestApi {
+  GraphPanel.memento = context.workspaceState;
   const show = () => GraphPanel.show(context.extensionUri);
   context.subscriptions.push(
     vscode.commands.registerCommand('strata.show', show),
@@ -28,6 +32,14 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
       },
     }),
   );
+  const orphanCheck = setTimeout(() => {
+    void GraphPanel.replaceOrphan(context.extensionUri);
+  }, ORPHAN_CHECK_MS);
+  context.subscriptions.push({
+    dispose: () => {
+      clearTimeout(orphanCheck);
+    },
+  });
   return { show, current: () => GraphPanel.current };
 }
 

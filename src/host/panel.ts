@@ -26,7 +26,11 @@ export class GraphPanel implements vscode.Disposable {
   private readonly ready: Promise<ReadyInfo>;
   private controller: GraphController | undefined;
 
-  static show(extensionUri: vscode.Uri): GraphPanel {
+  /** Where the webview's state is mirrored (workspace storage); set on activation. */
+  static memento: vscode.Memento | undefined;
+  private static readonly stateKey = 'strata.graphState';
+
+  static show(extensionUri: vscode.Uri, at: { column?: vscode.ViewColumn; initialState?: unknown } = {}): GraphPanel {
     if (GraphPanel.current) {
       GraphPanel.current.panel.reveal();
       return GraphPanel.current;
@@ -34,11 +38,34 @@ export class GraphPanel implements vscode.Disposable {
     const panel = vscode.window.createWebviewPanel(
       GraphPanel.viewType,
       'Commit Graph',
-      vscode.ViewColumn.Active,
+      at.column ?? vscode.ViewColumn.Active,
       GraphPanel.webviewOptions(extensionUri),
     );
-    GraphPanel.current = new GraphPanel(panel, extensionUri);
+    GraphPanel.current = new GraphPanel(panel, extensionUri, at.initialState);
     return GraphPanel.current;
+  }
+
+  /**
+   * An extension host restart leaves the graph's webview open but cut off: VS Code neither
+   * revives it nor hands it to the new host, so nothing answers it ("Loading…" forever). Such a
+   * tab is replaced by a new panel in its place, with the state the old one mirrored here.
+   * Runs after activation has had time to revive panels the normal way (window reloads).
+   */
+  static async replaceOrphan(extensionUri: vscode.Uri): Promise<void> {
+    if (GraphPanel.current) return;
+    const tab = vscode.window.tabGroups.all
+      .flatMap((g) => g.tabs)
+      .find((t) => t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith(GraphPanel.viewType));
+    if (!tab) return;
+    const { group, isPinned, isActive } = tab;
+    await vscode.window.tabGroups.close(tab, true);
+    const initialState = GraphPanel.memento?.get(GraphPanel.stateKey);
+    const panel = GraphPanel.show(extensionUri, { column: group.viewColumn, initialState });
+    if (isPinned) {
+      panel.panel.reveal(group.viewColumn, false);
+      await vscode.commands.executeCommand('workbench.action.pinEditor');
+    }
+    if (!isActive && !isPinned) panel.panel.reveal(group.viewColumn, true);
   }
 
   /** Adopts a panel VS Code restored from the previous session. */
@@ -58,7 +85,7 @@ export class GraphPanel implements vscode.Disposable {
     };
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, initialState?: unknown) {
     this.panel = panel;
     this.ready = new Promise((resolve) => {
       const sub = this.onDidReceiveMessage((m) => {
@@ -67,7 +94,7 @@ export class GraphPanel implements vscode.Disposable {
         resolve(m);
       });
     });
-    panel.webview.html = renderHtml(panel.webview, vscode.Uri.joinPath(extensionUri, 'dist', 'webview'));
+    panel.webview.html = renderHtml(panel.webview, vscode.Uri.joinPath(extensionUri, 'dist', 'webview'), initialState);
     this.disposables.push(
       panel.onDidDispose(() => {
         this.dispose();
@@ -164,6 +191,9 @@ export class GraphPanel implements vscode.Disposable {
       case 'error':
         void vscode.window.showErrorMessage(`Strata: ${m.message}`);
         break;
+      case 'state':
+        void GraphPanel.memento?.update(GraphPanel.stateKey, m.state);
+        break;
       case 'themeVars':
       case 'probe':
         break;
@@ -230,7 +260,10 @@ function themeKind(): ThemeKind {
   }
 }
 
-function renderHtml(webview: vscode.Webview, root: vscode.Uri): string {
+/** Escapes text for a double-quoted HTML attribute. */
+const attribute = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+
+function renderHtml(webview: vscode.Webview, root: vscode.Uri, initialState?: unknown): string {
   const nonce = crypto.randomUUID().replaceAll('-', '');
   const uri = (p: string) => webview.asWebviewUri(vscode.Uri.joinPath(root, p)).toString();
   const csp = [
@@ -252,7 +285,9 @@ function renderHtml(webview: vscode.Webview, root: vscode.Uri): string {
 <link rel="stylesheet" href="${uri('codicons/codicon.css')}">
 <link rel="stylesheet" href="${uri('style.css')}">
 </head>
-<body data-worker-src="${uri('worker.js')}">
+<body data-worker-src="${uri('worker.js')}"${
+    initialState === undefined ? '' : ` data-initial-state="${attribute(JSON.stringify(initialState))}"`
+  }>
 <div id="app"></div>
 <script nonce="${nonce}" src="${uri('main.js')}"></script>
 </body>

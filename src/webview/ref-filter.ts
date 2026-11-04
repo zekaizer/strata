@@ -59,6 +59,10 @@ export class RefFilter {
     this.popover.setAttribute('aria-label', 'Filter refs');
     this.popover.append(this.search, actions, this.list);
     host.append(this.popover);
+    // Leaving the webview (focus to an editor) closes it, like a click outside.
+    window.addEventListener('blur', () => {
+      if (!this.popover.hidden) this.close();
+    });
     // Tabbing out of the popover closes it, like a click outside.
     this.popover.addEventListener('focusout', (e) => {
       const next = e.relatedTarget as Node | null;
@@ -104,9 +108,11 @@ export class RefFilter {
     }
   }
 
-  private close(): void {
+  /** Closes the popover; a later open starts from an empty search, as after Escape. */
+  close(): void {
     this.popover.hidden = true;
     this.button.setAttribute('aria-expanded', 'false');
+    this.search.value = '';
   }
 
   private commit(selected: Set<string> | null): void {

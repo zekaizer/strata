@@ -36,6 +36,8 @@ export type HostToWebview =
   | { type: 'noRepository' }
   /** The panel was hidden behind another editor (VS Code knows; the webview's own events may not tell). */
   | { type: 'hidden' }
+  /** Path of the commit's file whose tab (opened from the graph) is on screen, if any. */
+  | { type: 'activeFile'; path: string | undefined }
   | { type: 'error'; message: string }
   | { type: 'dumpThemeVars' }
   | { type: 'probe' }
@@ -59,6 +61,8 @@ export type WebviewToHost =
   /** Runs a context menu command from a keyboard shortcut, with the element's menu context. */
   | { type: 'menuCommand'; command: MenuCommand; context: Record<string, unknown> }
   | { type: 'refresh' }
+  /** The view state the webview also keeps with setState, mirrored for re-creating the panel. */
+  | { type: 'state'; state: unknown }
   | { type: 'themeVars'; vars: Record<string, string> }
   | { type: 'probe'; state: ProbeState }
   | { type: 'error'; message: string };
@@ -146,8 +150,18 @@ export interface ProbeState {
         /** Rightmost edge of any file's Old | diff | New control, from the tree's left edge. */
         actionsRight: number;
         listWidth: number;
+        /** Left edge of the files column, in px from the message column's left edge. */
+        filesLeft: number;
+        /** The graph column's width when this was probed (the details start after it). */
+        graphWidth: number;
       }
     | undefined;
+  /** Width of the author column and of the widest author name rendered in it, in px. */
+  authorColumn: { column: number; widestName: number };
+  /** Whether the selected row is drawn as selected (only while its details are open). */
+  selectionShown: boolean;
+  /** Whether any file row shows Old | diff | New with neither the pointer nor keyboard focus on it. */
+  idleFileActions: boolean;
   /** Computed outline style of the selected row ('none' when it has no visible outline). */
   selectionOutline: string;
   /** Text last announced to screen readers. */

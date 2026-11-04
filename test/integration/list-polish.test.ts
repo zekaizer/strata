@@ -31,6 +31,15 @@ describe('commit list polish', () => {
     return width;
   }
 
+  it('sizes the author column to the names, not to a fixed width', async () => {
+    const s = await panel.probe();
+    assert.ok(s.authorColumn.widestName > 0, 'names rendered');
+    assert.ok(
+      s.authorColumn.column - s.authorColumn.widestName <= 2,
+      `column ${s.authorColumn.column}px for names up to ${s.authorColumn.widestName}px`,
+    );
+  });
+
   it('keeps the commit SHA visible when the editor is narrow', async () => {
     const wide = await panel.probe();
     assert.ok(wide.columns.includes('hash'), `wide: ${wide.columns.join(' ')}`);
