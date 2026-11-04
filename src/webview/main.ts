@@ -57,6 +57,8 @@ interface SavedState {
   options?: ViewOptions | undefined;
 }
 
+/** Details that take longer than this are reported as not coming (the extension host went away). */
+const DETAILS_TIMEOUT_MS = 15_000;
 /** A long body shows this many lines until "Show more" when the files are below it. */
 const BODY_LINES = 6;
 /** Width of a tree column: the tree's widest row, within these limits (and half the details). */
@@ -144,6 +146,8 @@ class App {
   /** Graph and list widths the details were last laid out for. */
   private laidOutWidths = '';
   private mirrorTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Shows a message when requested details never arrive (the host went away). */
+  private loadingTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -641,6 +645,13 @@ class App {
     this.keepFocusInList(() => {
       this.expansion.replaceChildren(el('div', 'expansion-loading', 'Loading…'));
     });
+    clearTimeout(this.loadingTimer);
+    this.loadingTimer = setTimeout(() => {
+      const loading = this.expansion.querySelector('.expansion-loading');
+      if (loading && this.pendingDetails !== undefined)
+        loading.textContent =
+          'No answer from Strata. If it was just updated or restarted, reopen the graph (Strata: Show Commit Graph).';
+    }, DETAILS_TIMEOUT_MS);
     this.placeExpansion();
     // Same height as before, so the resize observer does not run: clear the previous commit's marker.
     this.updateExpansionOverflow();
