@@ -2,10 +2,11 @@ import { basename, posix } from 'node:path';
 import * as vscode from 'vscode';
 import type { RefSnapshot } from '../core/refs.ts';
 import { hasCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
-import { fileViews } from '../core/details.ts';
+import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
 import { readRefs } from '../git/refs.ts';
+import { runGit } from '../git/run.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
 
@@ -201,6 +202,39 @@ export class GraphController implements vscode.Disposable {
     }
   }
 
+  /** Opens a changed file from a context menu; `primary` is what clicking the file opens. */
+  async openFileFromMenu(
+    hash: string,
+    base: string | undefined,
+    file: FileChange,
+    view: FileView | 'primary',
+    beside: boolean,
+  ): Promise<void> {
+    if (!this.repo) throw new Error('no repository');
+    const resolved = view === 'primary' ? fileViews(file, base)[0]! : view;
+    await this.openFile(this.repo, {
+      type: 'openFile',
+      generation: this.generation,
+      hash,
+      base,
+      file,
+      view: resolved,
+      beside,
+    });
+  }
+
+  /** Absolute file system path of a repository-relative path. */
+  absolutePath(path: string): string {
+    if (!this.repo) throw new Error('no repository');
+    return vscode.Uri.joinPath(this.repo.rootUri, ...path.split('/')).fsPath;
+  }
+
+  /** Shortest unambiguous abbreviation of a commit id, as git prints it. */
+  async shortHash(hash: string): Promise<string> {
+    if (!this.repo) throw new Error('no repository');
+    return (await runGit(this.api.git.path, this.repo.rootUri.fsPath, ['rev-parse', '--short', hash])).trim();
+  }
+
   /** Writes a commit-graph with progress, then reloads the history. */
   async writeCommitGraph(): Promise<void> {
     const repo = this.repo;
@@ -245,7 +279,7 @@ export class GraphController implements vscode.Disposable {
 }
 
 /** A repository-relative path as git prints it: '/'-separated, no empty, '.' or '..' segments. */
-function isRepoPath(p: string): boolean {
+export function isRepoPath(p: string): boolean {
   return (
     p.length > 0 &&
     !p.includes('\0') &&

@@ -7,7 +7,9 @@ import type {
   ViewOptions,
   WebviewToHost,
 } from '../shared/protocol.ts';
+import type { FileChange, FileView } from '../core/details.ts';
 import { GraphController } from './controller.ts';
+import { isMenuCommand } from '../shared/menu-commands.ts';
 import { getGitApi } from './git-api.ts';
 
 export type ReadyInfo = Extract<WebviewToHost, { type: 'ready' }>;
@@ -80,6 +82,29 @@ export class GraphPanel implements vscode.Disposable {
     );
   }
 
+  openFile(
+    hash: string,
+    base: string | undefined,
+    file: FileChange,
+    view: FileView | 'primary',
+    beside: boolean,
+  ): Promise<void> {
+    return this.requireController().openFileFromMenu(hash, base, file, view, beside);
+  }
+
+  absolutePath(path: string): string {
+    return this.requireController().absolutePath(path);
+  }
+
+  shortHash(hash: string): Promise<string> {
+    return this.requireController().shortHash(hash);
+  }
+
+  private requireController(): GraphController {
+    if (!this.controller) throw new Error('the commit graph has not loaded a repository');
+    return this.controller;
+  }
+
   /** Writes a commit-graph for the shown repository and reloads. */
   writeCommitGraph(): Promise<void> {
     return this.controller?.writeCommitGraph() ?? Promise.resolve();
@@ -138,6 +163,16 @@ export class GraphPanel implements vscode.Disposable {
         break;
       case 'themeVars':
       case 'probe':
+        break;
+      case 'menuCommand':
+        // Only the graph's own menu commands, with the same validation as a menu click.
+        if (isMenuCommand(m.command)) {
+          void Promise.resolve(
+            vscode.commands.executeCommand(m.command, { webview: GraphPanel.viewType, ...m.context }),
+          ).then(undefined, (e: unknown) => {
+            this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+          });
+        }
         break;
       case 'refresh':
         // Also retries when the git API was not available at startup.

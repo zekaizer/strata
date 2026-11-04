@@ -2,6 +2,7 @@
 //   STRATA_CAPTURE_THEMES=<dir>  dump --vscode-* variables per built-in theme
 //   STRATA_SHOT_DIR=<dir>        screenshot the graph panel per built-in theme
 import { mkdir, writeFile } from 'node:fs/promises';
+import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { delay, screenshot, setTheme, strata, THEMES, waitFor, type ThemeId } from '../helpers.ts';
 
@@ -44,4 +45,27 @@ after(() => setTheme('dark'));
       panel.dispose();
     });
   }
+});
+
+// STRATA_MENU_SHOT_DIR=<dir>: screenshot the file and commit context menus.
+const menuDir = process.env['STRATA_MENU_SHOT_DIR'];
+(menuDir ? describe : describe.skip)('tool: context menu screenshots', () => {
+  it('file and commit menus', async () => {
+    await setTheme('dark');
+    const panel = (await strata()).show();
+    await panel.whenReady();
+    await waitFor('history', async () => (await panel.probe()).done);
+    await panel.simulate({ kind: 'clickRow', index: 8 });
+    await waitFor('details', async () => (await panel.probe()).detailsShown !== undefined);
+    await mkdir(menuDir!, { recursive: true });
+    await panel.simulate({ kind: 'contextMenu', selector: '.expansion .file' });
+    await delay(800);
+    await screenshot(join(menuDir!, 'file-menu.png'));
+    await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+    await delay(300);
+    await panel.simulate({ kind: 'contextMenu', selector: '.row.selected' });
+    await delay(800);
+    await screenshot(join(menuDir!, 'commit-menu.png'));
+    panel.dispose();
+  });
 });

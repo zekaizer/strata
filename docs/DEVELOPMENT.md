@@ -19,6 +19,7 @@ npm ci
 | Integration tests (VS Code stable)     | `npm run test:integration`                          |
 | Integration tests (VS Code 1.90.0)     | `npm run test:integration:min`                      |
 | Everything                             | `npm test`                                          |
+| Screenshot the context menus           | `STRATA_MENU_SHOT_DIR=<dir>` with `npm run shot`    |
 | Screenshot the panel in all themes     | `npm run shot` → `artifacts/shots/*.png`            |
 | Webview playground in a browser        | `npm run playground` → http://localhost:5173/       |
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |

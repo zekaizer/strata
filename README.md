@@ -39,6 +39,11 @@ page, so it opens quickly even on very large repositories.
   <kbd>Alt</kbd> opens to the side. With a file focused, ↑/↓ move between
   files, <kbd>Enter</kbd> opens it, and <kbd>O</kbd>, <kbd>D</kbd>,
   <kbd>N</kbd> open the old version, the diff and the new version.
+- Right-click a file for open and copy actions: **Copy Relative Path**
+  (relative to the repository root), **Copy Path**, and for renamed files
+  **Copy Old Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd>
+  (<kbd>⌥⇧⌘C</kbd> on macOS) copies the relative path of the focused file.
+  Right-click a commit to copy its hash, short hash or subject.
 - The details show the commit message body (and trailers such as
   `Signed-off-by`) below the files; the subject is the row itself.
 - Use the branch button in the toolbar to show only some refs (type to search,

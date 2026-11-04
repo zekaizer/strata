@@ -603,6 +603,15 @@ class App {
     row.id = `row-${i}`;
     row.dataset['index'] = String(i);
     row.setAttribute('role', 'option');
+    row.setAttribute(
+      'data-vscode-context',
+      JSON.stringify({
+        webviewSection: 'commit',
+        preventDefaultContextMenuItems: true,
+        strataHash: c.hash,
+        strataSubject: c.subject,
+      }),
+    );
     row.setAttribute('aria-selected', String(i === this.selected));
     row.setAttribute('aria-posinset', String(i + 1));
     row.setAttribute('aria-setsize', this.done ? String(this.commits.length) : '-1');
@@ -716,6 +725,8 @@ class App {
     li.tabIndex = 0;
     li.setAttribute('role', 'option');
     li.dataset['views'] = views.join(' ');
+    const menu = fileMenuContext(d, f, views);
+    li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
     li.append(el('span', 'file-status', f.status));
     const name = el('span', 'file-path');
@@ -779,6 +790,12 @@ class App {
         open(keyed, e.altKey);
       } else if (e.key === 'Escape') {
         this.scroller.focus();
+      } else if (e.code === 'KeyC' || e.key.toUpperCase() === 'C') {
+        // Explorer's "Copy Relative Path" chord: Shift+Alt+C (⌥⇧⌘C on macOS).
+        if (e.shiftKey && e.altKey && (e.metaKey || !isMac)) {
+          e.preventDefault();
+          vscode.postMessage({ type: 'menuCommand', command: 'strata.file.copyRelativePath', context: menu });
+        }
       }
     });
     return li;
@@ -794,6 +811,16 @@ class App {
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       openedFile: this.openedFile,
+      menuContexts: {
+        files: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map(
+          (li) => JSON.parse(li.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,
+        ),
+        selectedRow: (() => {
+          const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
+          const ctx = row?.getAttribute('data-vscode-context');
+          return ctx ? (JSON.parse(ctx) as Record<string, unknown>) : undefined;
+        })(),
+      },
       fileViews: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map((li) => ({
         path: li.querySelector('.file-name')?.textContent ?? '',
         views: (li.dataset['views'] ?? '').split(' ').filter(Boolean) as FileView[],
@@ -836,6 +863,16 @@ class App {
       case 'click':
         document.querySelector<HTMLElement>(a.selector)?.click();
         break;
+      case 'contextMenu': {
+        const target = document.querySelector<HTMLElement>(a.selector);
+        const r = target?.getBoundingClientRect();
+        if (target && r) {
+          target.dispatchEvent(
+            new MouseEvent('contextmenu', { bubbles: true, clientX: r.left + 60, clientY: r.top + r.height / 2 }),
+          );
+        }
+        break;
+      }
       case 'type': {
         const input = document.querySelector<HTMLInputElement>(a.selector);
         if (input) {
@@ -850,11 +887,41 @@ class App {
             ? (document.activeElement?.closest('.file') ?? this.expansion.querySelector<HTMLElement>('.file'))
             : this.scroller;
         if (target instanceof HTMLElement) target.focus();
-        target?.dispatchEvent(new KeyboardEvent('keydown', { key: a.key, bubbles: true }));
+        target?.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: a.key,
+            bubbles: true,
+            shiftKey: a.shiftKey ?? false,
+            altKey: a.altKey ?? false,
+            metaKey: a.metaKey ?? false,
+          }),
+        );
         break;
       }
     }
   }
+}
+
+const isMac = navigator.platform.toUpperCase().includes('MAC');
+
+/**
+ * data-vscode-context of a changed file: VS Code merges it into the arguments of the
+ * webview/context menu commands and evaluates the menu's `when` clauses against it.
+ */
+function fileMenuContext(d: CommitDetails, f: FileChange, views: FileView[]): Record<string, unknown> {
+  return {
+    webviewSection: 'file',
+    preventDefaultContextMenuItems: true,
+    strataHash: d.hash,
+    ...(d.base === undefined ? {} : { strataBase: d.base }),
+    strataPath: f.path,
+    ...(f.oldPath === undefined ? {} : { strataOldPath: f.oldPath }),
+    strataStatus: f.status,
+    strataHasDiff: views.includes('diff'),
+    strataHasOld: views.includes('before'),
+    strataHasNew: views.includes('after'),
+    strataRenamed: f.oldPath !== undefined,
+  };
 }
 
 /** Fades the graph out at the right edge when lanes beyond the column are cut off. */

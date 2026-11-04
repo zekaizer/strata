@@ -6,6 +6,7 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import type { MenuCommand } from './menu-commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
 
@@ -53,6 +54,8 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
+  /** Runs a context menu command from a keyboard shortcut, with the element's menu context. */
+  | { type: 'menuCommand'; command: MenuCommand; context: Record<string, unknown> }
   | { type: 'refresh' }
   | { type: 'themeVars'; vars: Record<string, string> }
   | { type: 'probe'; state: ProbeState }
@@ -70,6 +73,8 @@ export interface ProbeState {
   visibleSubjects: string[];
   /** Path of the file whose diff was opened last in the details pane. */
   openedFile: string | undefined;
+  /** `data-vscode-context` of the changed files and of the selected row (context menu arguments). */
+  menuContexts: { files: Record<string, unknown>[]; selectedRow: Record<string, unknown> | undefined };
   /** Per changed file in the details, which views can be opened. */
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
@@ -85,8 +90,9 @@ export interface ProbeState {
 export type SimulatedAction =
   | { kind: 'clickRow'; index: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
-  | { kind: 'key'; key: string; target?: 'list' | 'files' }
+  | { kind: 'key'; key: string; target?: 'list' | 'files'; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean }
   | { kind: 'click'; selector: string }
+  | { kind: 'contextMenu'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 
 export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };
