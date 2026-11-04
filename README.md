@@ -69,6 +69,12 @@ that happens Strata offers to write a commit-graph; you can also run
 and only adds a cache file to the repository. Turn the offer off with the
 `strata.suggestCommitGraph` setting.
 
+New commits (your own, fetched or rebased) are not in the commit-graph until
+it is written again. With `strata.keepCommitGraphUpdated` turned on (or
+**Write and keep updated** in the offer), Strata adds them in the background a
+few seconds after the history changes, which takes milliseconds even on the
+Linux kernel. It only updates repositories that already have a commit-graph.
+
 ## Requirements
 
 - VS Code 1.90 or later.

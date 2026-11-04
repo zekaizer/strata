@@ -60,6 +60,22 @@ not to print it), which made opening a merge — usually the first commits on
 screen — feel slow. With `log`: 8-16 ms per merge commit; click to details
 in VS Code 37-56 ms (`test/perf/details-latency.test.ts`).
 
+## Keeping the commit-graph current
+
+`strata.keepCommitGraphUpdated` runs `git commit-graph write --reachable --split`
+3 s after each history reload, never two at once, and only where a commit-graph
+already exists. Measured on the Linux kernel clone (1.5M commits, git 2.43):
+
+| Case                                                              | Wall time                         |
+| ----------------------------------------------------------------- | --------------------------------- |
+| First run over a single-file graph (converts it to a split chain) | 3.4 s (0.04 s CPU, the rest disk) |
+| 5 new commits                                                     | 0.05 s                            |
+| Nothing new                                                       | 0.03 s                            |
+
+Chosen over setting `fetch.writeCommitGraph` in the repository's git config:
+that changes the user's config and covers fetches only, not local commits,
+rebases or branch moves.
+
 ## Layout
 
 100,000 kernel commits in topological order, laid out in pages of 1,000:
