@@ -71,12 +71,18 @@ async function phase(n) {
 
 const first = await phase(1);
 const second = await phase(2);
+rmSync(`${result}.restarting`, { force: true });
+const third = await phase(3);
 const failures = [];
 if (second.restoredSelection !== first.selected) failures.push('selection not restored');
 if (!second.pinned) failures.push('pin not restored');
 if (!second.firstParent) failures.push('view options not restored');
+if (!third.reloaded) failures.push(`graph did not load after an extension host restart (${third.reason ?? 'stuck'})`);
+else if (!third.selection) failures.push('selection lost after an extension host restart');
 if (failures.length) {
   console.error(`restart test (${version}) FAILED: ${failures.join(', ')}`);
   process.exit(1);
 }
-console.log(`restart test (${version}) passed: panel, selection, pin and view options restored`);
+console.log(
+  `restart test (${version}) passed: panel, selection, pin and view options restored; graph reloads after an extension host restart`,
+);

@@ -59,6 +59,8 @@ export type WebviewToHost =
   /** Runs a context menu command from a keyboard shortcut, with the element's menu context. */
   | { type: 'menuCommand'; command: MenuCommand; context: Record<string, unknown> }
   | { type: 'refresh' }
+  /** The view state the webview also keeps with setState, mirrored for re-creating the panel. */
+  | { type: 'state'; state: unknown }
   | { type: 'themeVars'; vars: Record<string, string> }
   | { type: 'probe'; state: ProbeState }
   | { type: 'error'; message: string };

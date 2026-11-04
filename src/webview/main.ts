@@ -19,7 +19,7 @@ import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
-import { vscode } from './vscode.ts';
+import { savedState, vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
 
 const FIRST_PAGE = 300;
@@ -102,7 +102,7 @@ class App {
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private refsByHash = new Map<string, Ref[]>();
   // Declared before `options`, which is initialized from it.
-  private restore: SavedState | undefined = vscode.getState() as SavedState | undefined;
+  private restore: SavedState | undefined = savedState() as SavedState | undefined;
   private options: ViewOptions = this.restore?.options ?? DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
@@ -128,7 +128,7 @@ class App {
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
   /** Read directly: `restore` is cleared once applied, but this preference outlives it. */
-  private metaOpen = (vscode.getState() as SavedState | undefined)?.metaOpen ?? false;
+  private metaOpen = (savedState() as SavedState | undefined)?.metaOpen ?? false;
   /** Whether the selected commit's body is shown in full. */
   private bodyExpanded = false;
   private copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -143,6 +143,7 @@ class App {
   private treeNatural = 0;
   /** Graph and list widths the details were last laid out for. */
   private laidOutWidths = '';
+  private mirrorTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly repoLabel = el('span', 'repo');
@@ -441,6 +442,14 @@ class App {
       options: this.options,
     };
     vscode.setState(state);
+    // Mirrored to the host (at most every half second): an extension host restart leaves this
+    // webview behind, and the host then re-creates the panel from it.
+    if (this.mirrorTimer === undefined) {
+      this.mirrorTimer = setTimeout(() => {
+        this.mirrorTimer = undefined;
+        vscode.postMessage({ type: 'state', state: vscode.getState() });
+      }, 500);
+    }
   }
 
   /** The row at the top of the view and the offset into it; undefined with no rows. */

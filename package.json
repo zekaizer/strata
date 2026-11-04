@@ -27,7 +27,8 @@
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onWebviewPanel:strata.graph"
+    "onWebviewPanel:strata.graph",
+    "onStartupFinished"
   ],
   "extensionDependencies": [
     "vscode.git"
