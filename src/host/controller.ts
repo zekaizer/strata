@@ -1,6 +1,8 @@
 import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
+import type { AutostashSetting } from '../core/autostash.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import type { OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
@@ -12,7 +14,10 @@ import { readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
+import { readOperationState } from '../git/state.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
+import { setContext } from './context.ts';
+import type { FlowEnv, FlowHost, FlowSettings, Undo } from './flow.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
 
 const REFRESH_DEBOUNCE_MS = 400;
@@ -23,21 +28,29 @@ const GRAPH_UPDATE_DELAY_MS = 3000;
 /** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
 const LARGE_PATCH_BYTES = 4 << 20;
 
+const AUTOSTASH: readonly string[] = ['gitConfig', 'always', 'never'] satisfies AutostashSetting[];
+
 /**
  * Serves one webview: owns the `git log` reader for the current history
- * ("generation") and answers page, details and diff requests.
+ * ("generation") and answers page, details and diff requests. Flows change the
+ * repository through it.
  */
-export class GraphController implements vscode.Disposable {
+export class GraphController implements vscode.Disposable, FlowHost {
   private readonly api: GitApi;
   private readonly send: (m: HostToWebview) => void;
+  private readonly env: FlowEnv;
   private disposed = false;
   private repo: GitRepository | undefined;
   private reader: LogReader | undefined;
   private generation = 0;
   private options: ViewOptions = DEFAULT_OPTIONS;
-  private refs: RefSnapshot | undefined;
+  private snapshot: RefSnapshot | undefined;
   private stashes: StashEntry[] = [];
   private stashCache = stashCache();
+  /** The operation in progress the graph was last told about. */
+  private operation: OperationState | undefined;
+  private undoRecord: Undo | undefined;
+  private running: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private repoSubscription: vscode.Disposable | undefined;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -53,9 +66,10 @@ export class GraphController implements vscode.Disposable {
   private graphUpdating = false;
   private graphAgain = false;
 
-  constructor(api: GitApi, post: (m: HostToWebview) => void) {
+  constructor(api: GitApi, post: (m: HostToWebview) => void, env: FlowEnv) {
     this.api = api;
     this.send = post;
+    this.env = env;
     this.disposables.push(
       vscode.window.tabGroups.onDidChangeTabs(() => {
         this.syncShownFile();
@@ -179,7 +193,7 @@ export class GraphController implements vscode.Disposable {
           break;
         }
         case 'pickStash': {
-          const hash = await pickStash(this.stashes, m.shown, this.refs?.headBranch);
+          const hash = await pickStash(this.stashes, m.shown, this.snapshot?.headBranch);
           if (hash) this.post({ type: 'reveal', hash });
           break;
         }
@@ -194,13 +208,15 @@ export class GraphController implements vscode.Disposable {
     }
   }
 
-  private async reset(): Promise<void> {
+  private async reset(focus?: string): Promise<void> {
     this.reader?.dispose();
     this.reader = undefined;
     const generation = ++this.generation;
     const repo = this.repo;
     if (!repo) {
       this.post({ type: 'noRepository' });
+      this.operation = undefined;
+      await setContext('strata.operation', '');
       return;
     }
     const cwd = repo.rootUri.fsPath;
@@ -209,7 +225,7 @@ export class GraphController implements vscode.Disposable {
       readStashes(this.api.git.path, cwd, this.stashCache),
     ]);
     if (generation !== this.generation) return;
-    this.refs = refs;
+    this.snapshot = refs;
     this.stashes = stashes;
     // Drop filtered refs that no longer exist; with none left, show everything.
     const known = new Set(refs.refs.map((r) => r.name));
@@ -228,8 +244,22 @@ export class GraphController implements vscode.Disposable {
       refs,
       options: this.options,
       stashes,
+      ...(focus === undefined ? {} : { focus }),
     });
     this.scheduleGraphUpdate();
+    await this.syncRepoState(true);
+  }
+
+  /** Tells the graph and the `strata.operation` context key which operation is in progress; `force` even if unchanged. */
+  private async syncRepoState(force: boolean): Promise<void> {
+    const repo = this.repo;
+    if (!repo) return;
+    const operation = await readOperationState(this.api.git.path, repo.rootUri.fsPath).catch(() => undefined);
+    if (repo !== this.repo || this.disposed) return;
+    if (!force && JSON.stringify(operation) === JSON.stringify(this.operation)) return;
+    this.operation = operation;
+    this.post({ type: 'repoState', operation });
+    await setContext('strata.operation', operation?.kind ?? '');
   }
 
   /** With strata.keepCommitGraphUpdated, adds new commits to the repository's commit-graph after a change. */
@@ -275,7 +305,8 @@ export class GraphController implements vscode.Disposable {
   }
 
   private async refreshIfChanged(): Promise<void> {
-    if (!this.repo) return;
+    // A running flow refreshes when it ends; busy(undefined) checks again for one that failed.
+    if (!this.repo || this.running !== undefined) return;
     const generation = this.generation;
     const cwd = this.repo.rootUri.fsPath;
     try {
@@ -284,11 +315,15 @@ export class GraphController implements vscode.Disposable {
         readStashes(this.api.git.path, cwd, this.stashCache),
       ]);
       if (generation !== this.generation) return;
-      if (JSON.stringify(refs) !== JSON.stringify(this.refs)) await this.reset();
-      else if (JSON.stringify(stashes) !== JSON.stringify(this.stashes)) {
+      if (JSON.stringify(refs) !== JSON.stringify(this.snapshot)) {
+        await this.reset();
+        return;
+      }
+      if (JSON.stringify(stashes) !== JSON.stringify(this.stashes)) {
         this.stashes = stashes;
         this.post({ type: 'stashes', generation, stashes });
       }
+      await this.syncRepoState(false);
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }
@@ -448,6 +483,61 @@ export class GraphController implements vscode.Disposable {
   private requireRepo(): GitRepository {
     if (!this.repo) throw new Error('no repository');
     return this.repo;
+  }
+
+  get git(): string {
+    return this.api.git.path;
+  }
+
+  get cwd(): string {
+    return this.requireRepo().rootUri.fsPath;
+  }
+
+  get ui() {
+    return this.env.ui;
+  }
+
+  get runner() {
+    return this.env.runner;
+  }
+
+  get refs(): RefSnapshot {
+    if (!this.snapshot) throw new Error('the commit graph has not loaded a repository');
+    return this.snapshot;
+  }
+
+  get lastUndo(): Undo | undefined {
+    return this.undoRecord;
+  }
+
+  settings(): FlowSettings {
+    const strata = vscode.workspace.getConfiguration('strata');
+    const git = vscode.workspace.getConfiguration('git');
+    const autoStash = strata.get<string>('autoStash', 'gitConfig');
+    return {
+      autoStash: AUTOSTASH.includes(autoStash) ? (autoStash as AutostashSetting) : 'gitConfig',
+      branchPrefix: git.get<string>('branchPrefix', ''),
+      allowForcePush: git.get<boolean>('allowForcePush', false),
+      mergeEditor: git.get<boolean>('mergeEditor', false),
+    };
+  }
+
+  refresh(focus?: string): Promise<void> {
+    return this.reset(focus);
+  }
+
+  done(message: string): void {
+    this.notify(message);
+  }
+
+  setUndo(undo: Undo | undefined): void {
+    this.undoRecord = undo;
+    void setContext('strata.canUndo', undo !== undefined);
+  }
+
+  busy(label: string | undefined): void {
+    this.running = label;
+    if (label === undefined) this.scheduleRefresh();
   }
 
   /** Writes a commit-graph with progress, then reloads the history. */
