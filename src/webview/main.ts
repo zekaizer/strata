@@ -85,6 +85,8 @@ class App {
    * within one history, so the text does not shift back and forth while scrolling.
    */
   private shownLanes = 1;
+  private noRepository = false;
+  private readonly empty = el('div', 'empty');
   private done = false;
   private loading = false;
   private selected = -1;
@@ -146,7 +148,8 @@ class App {
     this.expansion.hidden = true;
     this.expansion.setAttribute('role', 'region');
     this.expansion.setAttribute('aria-label', 'Commit details');
-    this.sizer.append(this.rowsLayer, this.expansion);
+    this.empty.hidden = true;
+    this.sizer.append(this.rowsLayer, this.expansion, this.empty);
     this.scroller.append(this.sizer);
     this.viewport.append(this.scroller, this.canvas);
     root.replaceChildren(this.toolbar, this.viewport);
@@ -242,6 +245,7 @@ class App {
         break;
       case 'noRepository':
         this.generation = -1;
+        this.noRepository = true;
         this.repoLabel.textContent = 'No git repository';
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.commits = [];
@@ -301,6 +305,7 @@ class App {
     this.rows = [];
     this.spans.clear();
     this.shownLanes = 1;
+    this.noRepository = false;
     this.done = false;
     this.selected = -1;
     this.updateOptionControls();
@@ -660,8 +665,20 @@ class App {
     );
     ctx.restore();
     if (graphWidth(this.shownLanes) > gw) fadeRightEdge(ctx, gw, height);
+    this.renderEmpty();
 
     if (!this.done && !this.loading && last + LOAD_AHEAD > this.commits.length) this.loadMore(NEXT_PAGE);
+  }
+
+  /** A message in place of the list when there is nothing to show. */
+  private renderEmpty(): void {
+    let text: string | undefined;
+    if (this.commits.length === 0) {
+      if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
+      else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
+    }
+    this.empty.hidden = text === undefined;
+    this.empty.textContent = text ?? '';
   }
 
   private renderRow(i: number): HTMLElement {
