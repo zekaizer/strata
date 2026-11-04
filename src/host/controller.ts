@@ -1,7 +1,7 @@
 import { basename, posix } from 'node:path';
 import * as vscode from 'vscode';
 import type { RefSnapshot } from '../core/refs.ts';
-import { hasCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
+import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
@@ -13,6 +13,8 @@ import type { GitApi, GitRepository } from './git-api.ts';
 const REFRESH_DEBOUNCE_MS = 400;
 /** A first page slower than this suggests writing a commit-graph (git's topological walk reads all history without one). */
 const SLOW_FIRST_PAGE_MS = 2000;
+/** The commit-graph is updated this long after the history changed, so it does not compete with the first page. */
+const GRAPH_UPDATE_DELAY_MS = 3000;
 
 /**
  * Serves one webview: owns the `git log` reader for the current history
@@ -34,6 +36,10 @@ export class GraphController implements vscode.Disposable {
   private timedGeneration = -1;
   /** Repositories already offered a commit-graph in this session. */
   private readonly suggested = new Set<string>();
+  private graphTimer: ReturnType<typeof setTimeout> | undefined;
+  /** An update is running; `graphAgain` asks for another one when it ends. */
+  private graphUpdating = false;
+  private graphAgain = false;
 
   constructor(api: GitApi, post: (m: HostToWebview) => void) {
     this.api = api;
@@ -130,6 +136,38 @@ export class GraphController implements vscode.Disposable {
       refs: this.options.refs ?? undefined,
     });
     this.post({ type: 'reset', generation, repo: { name: basename(cwd), root: cwd }, refs, options: this.options });
+    this.scheduleGraphUpdate();
+  }
+
+  /** With strata.keepCommitGraphUpdated, adds new commits to the repository's commit-graph after a change. */
+  private scheduleGraphUpdate(): void {
+    if (!vscode.workspace.getConfiguration('strata').get<boolean>('keepCommitGraphUpdated', false)) return;
+    clearTimeout(this.graphTimer);
+    this.graphTimer = setTimeout(() => {
+      void this.updateGraph();
+    }, GRAPH_UPDATE_DELAY_MS);
+  }
+
+  private async updateGraph(): Promise<void> {
+    const repo = this.repo;
+    if (!repo || this.disposed) return;
+    if (this.graphUpdating) {
+      this.graphAgain = true;
+      return;
+    }
+    this.graphUpdating = true;
+    try {
+      await updateCommitGraph(this.api.git.path, repo.rootUri.fsPath);
+    } catch {
+      // Another git process holds the commit-graph lock, or git cannot write one here (e.g. a
+      // shallow clone). Nothing is lost: the next change tries again.
+    } finally {
+      this.graphUpdating = false;
+      if (this.graphAgain) {
+        this.graphAgain = false;
+        this.scheduleGraphUpdate();
+      }
+    }
   }
 
   /** Repository state events fire for index and working tree changes too; only ref changes reset the view. */
@@ -256,22 +294,27 @@ export class GraphController implements vscode.Disposable {
     if (!config.get<boolean>('suggestCommitGraph', true)) return;
     if (await hasCommitGraph(this.api.git.path, repo.rootUri.fsPath)) return;
     this.suggested.add(repo.rootUri.fsPath);
-    const write = 'Write commit-graph';
+    const keep = 'Write and keep updated';
+    const write = 'Write once';
     const never = "Don't ask again";
     const choice = await vscode.window.showInformationMessage(
       `History of ${basename(repo.rootUri.fsPath)} loads slowly because the repository has no commit-graph. ` +
-        'Writing one (git commit-graph write --reachable) makes the graph open in a fraction of the time.',
+        'Writing one (git commit-graph write --reachable) makes the graph open in a fraction of the time. ' +
+        'Kept updated, it also covers new commits as they come in.',
+      keep,
       write,
       'Not now',
       never,
     );
-    if (choice === write) await this.writeCommitGraph();
+    if (choice === keep) await config.update('keepCommitGraphUpdated', true, vscode.ConfigurationTarget.Global);
+    if (choice === keep || choice === write) await this.writeCommitGraph();
     else if (choice === never) await config.update('suggestCommitGraph', false, vscode.ConfigurationTarget.Global);
   }
 
   dispose(): void {
     this.disposed = true;
     clearTimeout(this.refreshTimer);
+    clearTimeout(this.graphTimer);
     this.reader?.dispose();
     this.repoSubscription?.dispose();
     for (const d of this.disposables.splice(0)) d.dispose();

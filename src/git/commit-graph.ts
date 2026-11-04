@@ -31,3 +31,16 @@ export async function hasCommitGraph(git: string, cwd: string): Promise<boolean>
 export async function writeCommitGraph(git: string, cwd: string): Promise<void> {
   await runGit(git, cwd, ['commit-graph', 'write', '--reachable']);
 }
+
+/**
+ * Adds commits that are not in the repository's commit-graph yet as a new layer of a split graph.
+ * Does nothing (and returns false) when the repository has no commit-graph: creating one is the
+ * user's call (see writeCommitGraph).
+ */
+export async function updateCommitGraph(git: string, cwd: string): Promise<boolean> {
+  if (!(await hasCommitGraph(git, cwd))) return false;
+  // --split writes only the missing commits (milliseconds on 1.5M-commit histories) and merges
+  // small layers as git's own `fetch.writeCommitGraph` would.
+  await runGit(git, cwd, ['commit-graph', 'write', '--reachable', '--split', '--no-progress']);
+  return true;
+}
