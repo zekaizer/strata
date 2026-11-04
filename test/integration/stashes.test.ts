@@ -1,12 +1,16 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import * as vscode from 'vscode';
+import type { StrataTestApi } from '../../src/extension.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { addBranchyStashes, storeStash } from '../fixtures/stashes.ts';
-import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { ScriptedUi } from './scripted-ui.ts';
 
 describe('stash rows', () => {
+  const ui = new ScriptedUi();
+  let api: StrataTestApi;
   let panel: GraphPanel;
   /** Stash commits, stash@{0} first. */
   let stash: string[];
@@ -23,7 +27,9 @@ describe('stash rows', () => {
   }
 
   before(async () => {
-    panel = (await strata()).show();
+    api = await strata();
+    api.setUi(ui);
+    panel = api.show();
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
     stash = addBranchyStashes(workspaceRoot()).reverse();
@@ -31,6 +37,7 @@ describe('stash rows', () => {
     await waitFor('stash rows', async () => Object.keys((await panel.probe()).stashRows).length === 4);
   });
   after(() => {
+    api.setUi(undefined);
     git('stash', 'clear');
     panel.dispose();
   });
@@ -211,19 +218,23 @@ describe('stash rows', () => {
     assert.equal(await reloadedGraphWidth('feature/search'), without);
   });
 
-  /** Opens Show Stashes from the toolbar and accepts the item `next` places below the first. */
-  async function pick(next: number): Promise<void> {
+  /** Opens Show Stashes from the toolbar and picks stash@{index}. */
+  async function pick(index: number): Promise<void> {
+    ui.clear();
+    ui.choose(new RegExp(`^\\$\\(git-stash\\) stash@\\{${index}\\} `));
     await panel.simulate({ kind: 'click', selector: '.stash-button' });
-    await delay(800);
-    for (let i = 0; i < next; i++) await vscode.commands.executeCommand('workbench.action.quickOpenSelectNext');
-    await vscode.commands.executeCommand('workbench.action.acceptSelectedQuickOpenItem');
   }
 
-  // Show Stashes lists stash@{1} (on main, the current branch), then stash@{0}, {2}, {3} and {4}.
   it('opens a stash picked in Show Stashes, showing hidden stash rows again', async () => {
     await toggleStashRows();
     await waitFor('stash rows hidden', async () => !(await panel.probe()).options.showStashes);
     await pick(2);
+    const listed = (await waitFor('Show Stashes', () => ui.of('pick')[0])).items;
+    assert.deepEqual(
+      listed.map((l) => /stash@\{(\d)\}/.exec(l)?.[1]),
+      ['1', '0', '2', '3', '4'],
+      "the current branch's stash first, then the others",
+    );
     const p = await waitFor('picked stash open', async () => {
       const s = await panel.probe();
       return s.detailsShown === stash[2] && s;

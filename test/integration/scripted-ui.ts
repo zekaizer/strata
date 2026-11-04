@@ -1,5 +1,5 @@
 import type { Confirmation } from '../../src/core/wording.ts';
-import type { PickItem, Ui } from '../../src/host/ui.ts';
+import type { PickItem, PickSeparator, Ui } from '../../src/host/ui.ts';
 
 export type Question =
   | { kind: 'confirm'; message: string; detail: string; buttons: string[] }
@@ -15,7 +15,7 @@ export class ScriptedUi implements Ui {
   readonly asked: Question[] = [];
   private confirms: (string | undefined)[] = [];
   private inputs: (string | undefined)[] = [];
-  private picks: (string | undefined)[] = [];
+  private picks: (string | RegExp | undefined)[] = [];
   private clicks: (string | undefined)[] = [];
   private pending: (() => void) | undefined;
   private held: ((click: (action: string | undefined) => Promise<void>) => void)[] = [];
@@ -32,8 +32,8 @@ export class ScriptedUi implements Ui {
     return this;
   }
 
-  /** Labels of the items to pick in the next quick picks. */
-  choose(...labels: (string | undefined)[]): this {
+  /** Labels (or patterns of labels) of the items to pick in the next quick picks. */
+  choose(...labels: (string | RegExp | undefined)[]): this {
     this.picks.push(...labels);
     return this;
   }
@@ -99,12 +99,14 @@ export class ScriptedUi implements Ui {
     return Promise.resolve(problem === undefined ? text : undefined);
   }
 
-  pick<T>(o: { title: string; placeholder?: string; items: PickItem<T>[] }): Promise<T | undefined> {
-    this.asked.push({ kind: 'pick', title: o.title, items: o.items.map((i) => i.label) });
+  /** Records the labels of the items, not of the separators between them. */
+  pick<T>(o: { title: string; placeholder?: string; items: (PickItem<T> | PickSeparator)[] }): Promise<T | undefined> {
+    const items = o.items.filter((i): i is PickItem<T> => !('separator' in i));
+    this.asked.push({ kind: 'pick', title: o.title, items: items.map((i) => i.label) });
     const label = this.picks.shift();
     if (label === undefined) return Promise.resolve(undefined);
-    const item = o.items.find((i) => i.label === label);
-    if (!item) throw new Error(`no item "${label}" in "${o.title}"`);
+    const item = items.find((i) => (typeof label === 'string' ? i.label === label : label.test(i.label)));
+    if (!item) throw new Error(`no item "${String(label)}" in "${o.title}"`);
     return Promise.resolve(item.value);
   }
 

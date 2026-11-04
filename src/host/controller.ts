@@ -203,7 +203,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
           break;
         }
         case 'pickStash': {
-          const hash = await pickStash(this.stashes, m.shown, this.snapshot?.headBranch);
+          const hash = await pickStash(this.ui, this.stashes, m.shown, this.snapshot?.headBranch);
           if (hash) this.post({ type: 'reveal', hash });
           break;
         }
@@ -519,7 +519,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
 
   /** The Show Stashes pick from the palette or title bar, where the graph's own row states are not at hand. */
   async showStashes(): Promise<void> {
-    const hash = await pickStash(this.stashes, {}, this.snapshot?.headBranch);
+    const hash = await pickStash(this.ui, this.stashes, {}, this.snapshot?.headBranch);
     if (hash) this.reveal(hash);
   }
 

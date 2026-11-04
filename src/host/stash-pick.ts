@@ -1,10 +1,11 @@
-import * as vscode from 'vscode';
 import { stashPickItems, type StashEntry, type StashShown } from '../core/stash.ts';
+import type { Ui } from './ui.ts';
 
 const STATES: readonly StashShown[] = ['drawn', 'notLoaded', 'notInView', 'hidden'];
 
 /** The Show Stashes quick pick; resolves to the chosen stash commit. */
-export async function pickStash(
+export function pickStash(
+  ui: Ui,
   stashes: readonly StashEntry[],
   shown: Readonly<Record<string, unknown>>,
   headBranch: string | undefined,
@@ -13,16 +14,13 @@ export async function pickStash(
   const checked = Object.fromEntries(
     stashes.map((s) => [s.hash, STATES.find((state) => state === shown[s.hash]) ?? 'notInView']),
   );
-  const items = stashPickItems(stashes, checked, headBranch, Date.now() / 1000).map(
-    (i): vscode.QuickPickItem & { hash?: string } =>
-      i.kind === 'separator'
-        ? { label: i.label, kind: vscode.QuickPickItemKind.Separator }
-        : { label: `$(git-stash) ${i.label}`, description: i.description, detail: i.detail, hash: i.hash },
-  );
-  const picked = await vscode.window.showQuickPick(items, {
+  return ui.pick({
     title: 'Show Stashes',
-    placeHolder: 'Pick a stash to show it in the graph',
-    matchOnDescription: true,
+    placeholder: 'Pick a stash to show it in the graph',
+    items: stashPickItems(stashes, checked, headBranch, Date.now() / 1000).map((i) =>
+      i.kind === 'separator'
+        ? { separator: i.label }
+        : { label: `$(git-stash) ${i.label}`, description: i.description, detail: i.detail, value: i.hash },
+    ),
   });
-  return picked?.hash;
 }

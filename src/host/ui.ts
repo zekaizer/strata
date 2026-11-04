@@ -8,6 +8,11 @@ export interface PickItem<T> {
   value: T;
 }
 
+/** A heading between groups of pick items. */
+export interface PickSeparator {
+  separator: string;
+}
+
 /**
  * The questions flows ask. VS Code's modals cannot be answered from integration tests, so tests
  * replace this with scripted answers (StrataTestApi.setUi).
@@ -24,7 +29,7 @@ export interface Ui {
     placeholder?: string;
     validate: (value: string) => string | undefined;
   }): Promise<string | undefined>;
-  pick<T>(o: { title: string; placeholder?: string; items: PickItem<T>[] }): Promise<T | undefined>;
+  pick<T>(o: { title: string; placeholder?: string; items: (PickItem<T> | PickSeparator)[] }): Promise<T | undefined>;
   /** A non-modal message with optional action buttons; resolves with the clicked one. */
   notify(level: 'info' | 'warning' | 'error', message: string, ...actions: string[]): Promise<string | undefined>;
 }
@@ -51,12 +56,15 @@ export const vscodeUi: Ui = {
     );
   },
   async pick(o) {
-    const choice = await vscode.window.showQuickPick(o.items, {
+    const items = o.items.map((i) =>
+      'separator' in i ? { label: i.separator, kind: vscode.QuickPickItemKind.Separator } : i,
+    );
+    const choice = await vscode.window.showQuickPick(items, {
       title: o.title,
       ...(o.placeholder === undefined ? {} : { placeHolder: o.placeholder }),
       matchOnDescription: true,
     });
-    return choice?.value;
+    return choice && 'value' in choice ? choice.value : undefined;
   },
   notify(level, message, ...actions) {
     const show =
