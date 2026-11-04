@@ -20,6 +20,18 @@ describe('package.json commands', () => {
     assert.equal(text, syncManifest(text));
   });
 
+  it('drops the contributions of a command the table no longer has', () => {
+    const stale = JSON.parse(text) as typeof pkg;
+    stale.contributes.commands.push({ command: 'strata.stash.clear' });
+    stale.contributes.menus['webview/context']!.push({
+      command: 'strata.stash.clear',
+      when: "webviewSection == 'stash'",
+    });
+    stale.contributes.menus['commandPalette']!.push({ command: 'strata.stash.clear' });
+    stale.contributes.menus['scm/title']!.push({ command: 'strata.stash.clear' });
+    assert.equal(syncManifest(`${JSON.stringify(stale, null, 2)}\n`), text);
+  });
+
   /** Evaluates the `key == 'value' && flag && !flag` clauses the graph's menus use against a menu context. */
   const shows = (when: string, ctx: Record<string, unknown>): boolean =>
     when.split('&&').every((term) => {
