@@ -152,7 +152,11 @@ class App {
     root.replaceChildren(this.toolbar, this.viewport);
     new ResizeObserver(() => {
       this.onExpansionResize();
+      this.updateExpansionOverflow();
     }).observe(this.expansion);
+    this.expansion.addEventListener('scroll', () => {
+      this.updateExpansionOverflow();
+    });
 
     this.scroller.addEventListener('scroll', () => {
       this.queueRender();
@@ -506,9 +510,23 @@ class App {
     this.placeExpansion();
   }
 
+  /**
+   * The details take at most MAX_EXPANSION_SHARE of the list, but may fill the room the rows below
+   * leave empty at the end of a short history; the selected row and one more always stay in view.
+   */
   private placeExpansion(): void {
+    const view = this.scroller.clientHeight;
+    const rowsAfter = this.commits.length - this.selected - 1;
+    const unused = view - (rowsAfter + 1) * ROW_HEIGHT;
+    const cap = Math.min(view - 2 * ROW_HEIGHT, Math.max(view * MAX_EXPANSION_SHARE, unused));
     this.expansion.style.top = `${(this.selected + 1) * ROW_HEIGHT}px`;
-    this.expansion.style.maxHeight = `${Math.floor(this.scroller.clientHeight * MAX_EXPANSION_SHARE)}px`;
+    this.expansion.style.maxHeight = `${Math.max(ROW_HEIGHT, Math.floor(cap))}px`;
+  }
+
+  /** Marks details that continue below their visible part, which then fade out at the bottom. */
+  private updateExpansionOverflow(): void {
+    const e = this.expansion;
+    e.classList.toggle('more-below', e.scrollTop + e.clientHeight < e.scrollHeight - 1);
   }
 
   private onExpansionResize(): void {

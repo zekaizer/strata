@@ -407,6 +407,11 @@ body:not(.hover-off) .row:hover {
   display: none;
 }
 
+/* More details below the visible part: fade the last lines out instead of cutting them. */
+.expansion.more-below {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
 .details-fold {
   position: absolute;
   top: 2px;
