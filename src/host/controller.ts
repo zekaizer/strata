@@ -3,8 +3,10 @@ import * as vscode from 'vscode';
 import type { RefSnapshot } from '../core/refs.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
+import { patchStats } from '../core/patch.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader } from '../git/log-reader.ts';
+import { readCommitPatch, readFilePatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
 import { runGit } from '../git/run.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
@@ -15,6 +17,8 @@ const REFRESH_DEBOUNCE_MS = 400;
 const SLOW_FIRST_PAGE_MS = 2000;
 /** The commit-graph is updated this long after the history changed, so it does not compete with the first page. */
 const GRAPH_UPDATE_DELAY_MS = 3000;
+/** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
+const LARGE_PATCH_BYTES = 4 << 20;
 
 /**
  * Serves one webview: owns the `git log` reader for the current history
@@ -305,6 +309,73 @@ export class GraphController implements vscode.Disposable {
     return (await runGit(this.api.git.path, this.repo.rootUri.fsPath, ['rev-parse', '--short', hash])).trim();
   }
 
+  /** Copies the commit as an email patch (a merge against its first parent). */
+  async copyCommitPatch(hash: string): Promise<void> {
+    const repo = this.requireRepo();
+    const cwd = repo.rootUri.fsPath;
+    const [patch, short, merge] = await Promise.all([
+      readPatch(readCommitPatch(this.api.git.path, cwd, hash)),
+      this.shortHash(hash),
+      runGit(this.api.git.path, cwd, ['rev-parse', '--verify', '--quiet', `${hash}^2`]).then(
+        () => true,
+        () => false,
+      ),
+    ]);
+    await this.copyPatch(patch, merge ? `merge ${short} (against its first parent)` : short, `${short}.patch`);
+  }
+
+  /** Copies the change to one file of a commit as a plain diff. */
+  async copyFilePatch(hash: string, base: string | undefined, file: FileChange): Promise<void> {
+    const repo = this.requireRepo();
+    const [patch, short] = await Promise.all([
+      readPatch(readFilePatch(this.api.git.path, repo.rootUri.fsPath, hash, base, file)),
+      this.shortHash(hash),
+    ]);
+    const name = posix.basename(file.path);
+    await this.copyPatch(patch, `${file.path} in ${short}`, `${short}-${name}.patch`);
+  }
+
+  private async copyPatch(patch: string, label: string, fileName: string): Promise<void> {
+    const size = Buffer.byteLength(patch);
+    if (size > LARGE_PATCH_BYTES) {
+      const copy = 'Copy Anyway';
+      const save = 'Save to File…';
+      const choice = await vscode.window.showWarningMessage(
+        `The patch of ${label} is ${(size / (1 << 20)).toFixed(1)} MB.`,
+        { modal: true, detail: 'Pasting a patch this large can make an editor or chat unresponsive.' },
+        copy,
+        save,
+      );
+      if (choice === save) {
+        const target = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.joinPath(this.requireRepo().rootUri, fileName),
+          filters: { Patch: ['patch', 'diff'] },
+        });
+        if (!target) return;
+        await vscode.workspace.fs.writeFile(target, Buffer.from(patch));
+        this.notify(`Saved patch of ${label} to ${target.fsPath}`);
+        return;
+      }
+      if (choice !== copy) return;
+    }
+    await vscode.env.clipboard.writeText(patch);
+    const s = patchStats(patch);
+    this.notify(
+      `Copied patch of ${label}: ${s.files} ${s.files === 1 ? 'file' : 'files'}, +${s.insertions} −${s.deletions}`,
+    );
+  }
+
+  /** Reports the result of an action in the status bar and to screen readers in the graph. */
+  private notify(message: string): void {
+    vscode.window.setStatusBarMessage(`$(check) ${message}`, 5000);
+    this.post({ type: 'notice', message });
+  }
+
+  private requireRepo(): GitRepository {
+    if (!this.repo) throw new Error('no repository');
+    return this.repo;
+  }
+
   /** Writes a commit-graph with progress, then reloads the history. */
   async writeCommitGraph(): Promise<void> {
     const repo = this.repo;
@@ -361,4 +432,13 @@ export function isRepoPath(p: string): boolean {
     !p.includes('\\') &&
     p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
   );
+}
+
+/** runGit's output cap is the patch size limit; its error does not say so. */
+function readPatch(read: Promise<string>): Promise<string> {
+  return read.catch((e: unknown) => {
+    if (e instanceof Error && /maxBuffer/i.test(e.message))
+      throw new Error('The patch is larger than 64 MB and cannot be copied.');
+    throw e;
+  });
 }

@@ -58,9 +58,14 @@ const HANDLERS: Record<MenuCommand, (ctx: MenuArg) => unknown> = {
     if (file.oldPath === undefined) throw new Error('not a rename');
     return file.oldPath;
   }),
+  'strata.file.copyPatch': (ctx) => {
+    const { hash, base, file } = fileArg(ctx);
+    return panel().copyFilePatch(hash, base, file);
+  },
   'strata.commit.copyHash': copy((ctx) => commitArg(ctx).hash),
   'strata.commit.copyShortHash': copy((ctx) => panel().shortHash(commitArg(ctx).hash)),
   'strata.commit.copySubject': copy((ctx) => commitArg(ctx).subject),
+  'strata.commit.copyPatch': (ctx) => panel().copyCommitPatch(commitArg(ctx).hash),
 };
 
 export function registerMenuCommands(): vscode.Disposable[] {

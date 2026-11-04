@@ -82,6 +82,21 @@ describe('context menus', () => {
     assert.equal(await vscode.env.clipboard.readText(), 'Search ranking');
   });
 
+  it('copies the patch of a commit row and of one of its files, and announces it', async () => {
+    const row = (await panel.probe()).menuContexts.selectedRow;
+    assert.ok(row);
+    await vscode.commands.executeCommand('strata.commit.copyPatch', menuArg(row));
+    const patch = await vscode.env.clipboard.readText();
+    assert.match(patch, new RegExp(`^From ${hash} `));
+    assert.match(patch, /^Subject: \[PATCH\] Search ranking$/m);
+    await waitFor('announcement', async () => (await panel.probe()).announced.startsWith('Copied patch of '));
+
+    await vscode.commands.executeCommand('strata.file.copyPatch', menuArg(await fileContext()));
+    const filePatch = await vscode.env.clipboard.readText();
+    assert.match(filePatch, new RegExp(`^diff --git a/${file} b/${file}$`, 'm'));
+    assert.doesNotMatch(filePatch, /^From /m);
+  });
+
   it('copies the relative path with Shift+Alt+C on a focused file', async () => {
     await vscode.env.clipboard.writeText('');
     await panel.simulate({ kind: 'key', key: 'C', target: 'files', shiftKey: true, altKey: true });

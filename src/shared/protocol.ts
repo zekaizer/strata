@@ -39,6 +39,8 @@ export type HostToWebview =
   /** Path of the commit's file whose tab (opened from the graph) is on screen, if any. */
   | { type: 'activeFile'; path: string | undefined }
   | { type: 'error'; message: string }
+  /** The result of an action, for screen readers (the host also shows it in the status bar). */
+  | { type: 'notice'; message: string }
   | { type: 'dumpThemeVars' }
   | { type: 'probe' }
   | { type: 'simulate'; action: SimulatedAction };

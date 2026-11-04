@@ -130,6 +130,14 @@ export class GraphPanel implements vscode.Disposable {
     return this.requireController().shortHash(hash);
   }
 
+  copyCommitPatch(hash: string): Promise<void> {
+    return this.requireController().copyCommitPatch(hash);
+  }
+
+  copyFilePatch(hash: string, base: string | undefined, file: FileChange): Promise<void> {
+    return this.requireController().copyFilePatch(hash, base, file);
+  }
+
   private requireController(): GraphController {
     if (!this.controller) throw new Error('the commit graph has not loaded a repository');
     return this.controller;

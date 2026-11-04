@@ -7,9 +7,11 @@ export const MENU_COMMANDS = [
   'strata.file.copyRelativePath',
   'strata.file.copyPath',
   'strata.file.copyOldRelativePath',
+  'strata.file.copyPatch',
   'strata.commit.copyHash',
   'strata.commit.copyShortHash',
   'strata.commit.copySubject',
+  'strata.commit.copyPatch',
 ] as const;
 
 export type MenuCommand = (typeof MENU_COMMANDS)[number];

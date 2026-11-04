@@ -348,6 +348,9 @@ class App {
         this.status.textContent = m.message;
         this.status.classList.add('error');
         break;
+      case 'notice':
+        this.announce(m.message);
+        break;
       case 'dumpThemeVars':
         vscode.postMessage({ type: 'themeVars', vars: readThemeVars() });
         break;
