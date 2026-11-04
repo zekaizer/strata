@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { argv, type Operation } from '../core/operations.ts';
+import { shellCommand } from '../core/shell.ts';
 import { GitOpError, runGitOp } from '../git/op.ts';
 import { setContext } from './context.ts';
 
@@ -110,7 +111,5 @@ export class OpRunner implements vscode.Disposable {
   }
 }
 
-const quote = (a: string) => (/^[\w./@:=+-]+$/.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`);
-
-/** The operation as a shell command line. */
-export const commandLine = (op: Operation): string => ['git', ...argv(op)].map(quote).join(' ');
+/** The operation as a POSIX shell command line. */
+export const commandLine = (op: Operation): string => shellCommand(['git', ...argv(op)], 'posix');

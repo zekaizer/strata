@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { resolveStashChoices } from '../../src/core/autostash.ts';
 import {
   abortConfirmation,
-  commandCopied,
+  commandUnquotable,
   deleteBranchConfirmation,
   dirtySection,
   fileList,
@@ -157,10 +157,10 @@ describe('wording of undo and failures', () => {
     );
   });
 
-  it('says why a command was copied instead of typed into the terminal', () => {
+  it('says why a command was not typed into the terminal', () => {
     assert.equal(
-      commandCopied("git push origin 'a&b'"),
-      "Strata can't quote this command safely for your terminal's shell, so it copied it instead: git push origin 'a&b'",
+      commandUnquotable("git push origin 'a&b'"),
+      "Strata can't quote this command safely for your terminal's shell. Run it there yourself, quoted for that shell: git push origin 'a&b'",
     );
   });
 

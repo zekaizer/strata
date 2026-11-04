@@ -18,6 +18,8 @@ const PLAIN = /^[\w./@:=+,-]+$/;
  * `args` as one command line for `shell`; undefined when an argument cannot be quoted safely for
  * it (cmd.exe has no quoting that stops `&`, and an unknown shell may read anything).
  */
+export function shellCommand(args: readonly string[], shell: 'posix' | 'powershell'): string;
+export function shellCommand(args: readonly string[], shell: ShellKind): string | undefined;
 export function shellCommand(args: readonly string[], shell: ShellKind): string | undefined {
   const quoteArg = (a: string): string | undefined => {
     if (PLAIN.test(a)) return a;

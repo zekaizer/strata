@@ -6,7 +6,7 @@ import type { OperationState } from '../core/repo-state.ts';
 import { shellCommand, shellKind } from '../core/shell.ts';
 import {
   changedMeanwhile,
-  commandCopied,
+  commandUnquotable,
   gitFailure,
   quote,
   signInConfirmation,
@@ -175,9 +175,9 @@ export async function fail(
     const choice = await host.ui.confirm(signInConfirmation(remote.name, e.kind));
     if (choice === 'terminal') {
       const line = shellCommand(['git', ...argv(remote.op)], shellKind(vscode.env.shell));
+      // Typed or pasted, a line the shell splits differently would run other commands.
       if (line === undefined) {
-        await vscode.env.clipboard.writeText(commandLine(remote.op));
-        void host.ui.notify('info', commandCopied(commandLine(remote.op)));
+        void host.ui.notify('info', commandUnquotable(commandLine(remote.op)));
         return;
       }
       const terminal = vscode.window.createTerminal({ name: 'Strata git', cwd: remote.cwd });

@@ -364,9 +364,9 @@ export const DOING = {
   deletingTag: (tag: string): string => `Deleting tag '${tag}'`,
 };
 
-/** Run in Terminal could not quote the command for the terminal's shell. */
-export const commandCopied = (line: string): string =>
-  `Strata can't quote this command safely for your terminal's shell, so it copied it instead: ${line}`;
+/** Run in Terminal could not quote the command for the terminal's shell; `line` is quoted for a POSIX shell. */
+export const commandUnquotable = (line: string): string =>
+  `Strata can't quote this command safely for your terminal's shell. Run it there yourself, quoted for that shell: ${line}`;
 
 const OP_SENTENCE: Record<OperationKind, string> = {
   rebase: 'Rebase',

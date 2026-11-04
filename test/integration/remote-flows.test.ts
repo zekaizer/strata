@@ -1,11 +1,11 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { branchMenu, flowSuite, reload, run } from './flow-helpers.ts';
-import { git, workspaceRoot } from './helpers.ts';
+import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 const IDENTITY = ['-c', 'user.name=Other Person', '-c', 'user.email=other@example.com'];
 
@@ -142,6 +142,38 @@ describe('remote operations', () => {
     assert.equal(api().contextValue('strata.operation'), '');
     assert.equal(git('log', '--format=%s', '-2', 'strata-pub'), 'Mine\nUpstream one, amended');
     assert.equal(readFileSync(join(workspaceRoot(), 'mine.txt'), 'utf8'), 'mine, uncommitted\n');
+  });
+
+  it("neither types nor copies a sign-in command it can't quote for the terminal's shell", async () => {
+    // A terminal running cmd.exe, which no quoting stops from splitting at '&'.
+    const shell = join(root, 'bin', 'cmd');
+    mkdirSync(join(root, 'bin'));
+    writeFileSync(shell, '#!/bin/sh\nexec /bin/sh "$@"\n', { mode: 0o755 });
+    const terminal = vscode.workspace.getConfiguration('terminal.integrated');
+    await terminal.update('profiles.linux', { 'strata-cmd': { path: shell } }, vscode.ConfigurationTarget.Global);
+    await terminal.update('defaultProfile.linux', 'strata-cmd', vscode.ConfigurationTarget.Global);
+    const hook = join(workspaceRoot(), '.git', 'hooks', 'pre-push');
+    writeFileSync(hook, "#!/bin/sh\necho 'Permission denied (publickey).' >&2\nexit 1\n", { mode: 0o755 });
+    try {
+      await waitFor('the cmd terminal profile', () => vscode.env.shell === shell);
+      git('branch', 'strata-fix&docs', 'main');
+      await reload(panel());
+      await vscode.env.clipboard.writeText('untouched');
+      const terminals = vscode.window.terminals.length;
+      ui.press('Run in Terminal');
+      await run('strata.publish', branchMenu('strata-fix&docs'));
+      assert.equal(ui.first('confirm').message, "Strata couldn't sign in to 'origin'.");
+      assert.equal(await vscode.env.clipboard.readText(), 'untouched');
+      assert.equal(vscode.window.terminals.length, terminals);
+      assert.match(
+        ui.of('notify').at(-1)?.message ?? '',
+        /^Strata can't quote this command safely for your terminal's shell\. Run it there yourself, quoted for that shell: git push --progress --set-upstream origin 'refs\/heads\/strata-fix&docs:refs\/heads\/strata-fix&docs'$/,
+      );
+    } finally {
+      rmSync(hook, { force: true });
+      await terminal.update('defaultProfile.linux', undefined, vscode.ConfigurationTarget.Global);
+      await terminal.update('profiles.linux', undefined, vscode.ConfigurationTarget.Global);
+    }
   });
 
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {
