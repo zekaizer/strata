@@ -57,6 +57,44 @@ describe('stash operations', () => {
     );
   });
 
+  it('applies the stash of its row and keeps it, leaving the other stash alone', async () => {
+    const main = readFileSync(join(workspaceRoot(), 'main.txt'), 'utf8');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'older\n');
+    git('stash', 'push', '--quiet', '--message', 'older');
+    const older = git('rev-parse', 'refs/stash');
+    writeFileSync(join(workspaceRoot(), 'main.txt'), 'newer\n');
+    git('stash', 'push', '--quiet', '--message', 'newer');
+    const newer = git('rev-parse', 'refs/stash');
+    await run('strata.stash.apply', stashMenu(older));
+    assert.equal(notes(), 'older\n');
+    assert.equal(readFileSync(join(workspaceRoot(), 'main.txt'), 'utf8'), main);
+    assert.deepEqual(git('stash', 'list', '--format=%H').split('\n'), [newer, older]);
+  });
+
+  it('creates a branch from a stash at the commit it was made on, with its changes', async () => {
+    const base = git('rev-parse', 'HEAD');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'stashed\n');
+    git('stash', 'push', '--quiet');
+    const w = git('rev-parse', 'refs/stash');
+    git('commit', '--quiet', '--allow-empty', '-m', 'Later');
+    ui.type('strata-from-stash');
+    await run('strata.stash.branch', stashMenu(w));
+    assert.equal(git('branch', '--show-current'), 'strata-from-stash');
+    assert.equal(git('rev-parse', 'HEAD'), base);
+    assert.equal(notes(), 'stashed\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
+  it('stashes untracked files too when asked to', async () => {
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
+    writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');
+    ui.type('with new');
+    await run('strata.stash.pushUntracked');
+    assert.equal(git('stash', 'list', '--format=%gs'), 'On main: with new');
+    assert.equal(git('show', 'stash@{0}^3:strata-new.txt'), 'new');
+    assert.equal(git('status', '--porcelain'), '');
+  });
+
   it('copies the patch of a stash, untracked files included', async () => {
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'changed\n');
     writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'new\n');

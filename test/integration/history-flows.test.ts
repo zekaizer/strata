@@ -342,6 +342,16 @@ describe('history operations', () => {
     assert.equal(git('stash', 'list'), '');
   });
 
+  it('reverts a commit, and undoes that', async () => {
+    const before = git('rev-parse', 'main');
+    const subject = git('log', '-1', '--format=%s', 'main');
+    await run('strata.revert', commitMenu(before));
+    assert.equal(git('log', '-1', '--format=%s'), `Revert "${subject}"`);
+    assert.equal(git('rev-parse', 'HEAD^{tree}'), git('rev-parse', 'HEAD~2^{tree}'));
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'main'), before);
+  });
+
   it('keeps uncommitted changes of a hard reset in a stash it never pops, and undoes the reset', async () => {
     const before = git('rev-parse', 'main');
     const target = git('rev-parse', 'main~2');
