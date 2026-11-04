@@ -538,6 +538,74 @@ body.vscode-high-contrast .badge-remotes {
   --badge-color: var(--badge-stash);
 }
 
+/* An autostash left behind needs the user: its badge keeps the warning tone, like the current branch's. */
+.badge-stash.autostash {
+  --badge-color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash {
+  border-color: var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+  color: var(--badge-color);
+}
+
+body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codicon {
+  color: var(--badge-color);
+}
+
+.badge-autostash {
+  font-weight: 600;
+}
+
+/*
+ * Stash rows: always one line, the badge inline before the message rather than in a band, so they
+ * never read as commits with refs. The message is git's reflog subject, muted; what was typed
+ * after "On <branch>:" is slanted.
+ */
+.row.stash .badge {
+  flex: none;
+  height: 16px;
+  max-width: none;
+  gap: 3px;
+  padding: 0 5px 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.row.stash .badge .codicon {
+  font-size: 11px;
+}
+
+.row.stash .subject {
+  gap: 6px;
+}
+
+.row.stash .hash {
+  visibility: hidden;
+}
+
+.row.stash .text,
+.stash-note {
+  color: var(--vscode-descriptionForeground);
+}
+
+.stash-message {
+  font-style: italic;
+}
+
+.stash-note {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.stash.selected .text,
+.row.stash.selected .stash-note {
+  color: inherit;
+}
+
 .badge-more {
   --badge-color: var(--vscode-descriptionForeground);
   flex: none;

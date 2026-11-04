@@ -4,7 +4,15 @@ import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
 import { badgeOrder, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
-import { interleave, rowHash, type ListRow, type StashEntry } from '../core/stash.ts';
+import {
+  anchoredAt,
+  describeStash,
+  interleave,
+  rowHash,
+  stashLabel,
+  type ListRow,
+  type StashEntry,
+} from '../core/stash.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -15,7 +23,8 @@ import type {
   ViewOptions,
 } from '../shared/protocol.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
-import { drawGraph, graphWidth, ROW_HEIGHT, rowWidth } from './graph.ts';
+import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
+import { lanesUsed } from './lanes.ts';
 import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
@@ -93,7 +102,7 @@ const FILE_VIEW_TITLE: Record<FileView, string> = {
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
-const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag', stash: 'archive' };
+const REF_ICON: Record<Ref['kind'], string> = { branch: 'git-branch', remote: 'cloud', tag: 'tag' };
 
 class App {
   private worker: Worker | undefined;
@@ -113,6 +122,7 @@ class App {
   private rows: Row[] = [];
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
+  private stashes: StashEntry[] = [];
   /** Stashes by the commit their rows are drawn above. */
   private anchors: ReadonlyMap<string, readonly StashEntry[]> = new Map();
   private readonly spans = new SpanIndex();
@@ -301,7 +311,12 @@ class App {
         this.queueRender();
         break;
       case 'reset':
-        this.reset(m.generation, m.repo, m.refs, m.options);
+        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes);
+        break;
+      case 'stashes':
+        if (m.generation !== this.generation) return;
+        this.setStashes(m.stashes);
+        this.relist();
         break;
       case 'commits':
         if (m.generation !== this.generation) return;
@@ -378,7 +393,13 @@ class App {
     this.queueRender();
   }
 
-  private reset(generation: number, repo: RepoInfo, refs: RefSnapshot, options: ViewOptions): void {
+  private reset(
+    generation: number,
+    repo: RepoInfo,
+    refs: RefSnapshot,
+    options: ViewOptions,
+    stashes: StashEntry[],
+  ): void {
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
     // scroll position too when the history itself is the same view.
     if (this.restore === undefined && this.repo?.root === repo.root) {
@@ -403,6 +424,7 @@ class App {
     // Refs picked in the filter follow the current branch, so they survive the "+N" collapse.
     for (const [hash, list] of this.refsByHash)
       this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
+    this.setStashes(stashes);
     this.commits = [];
     this.list = [];
     this.geometry.clear();
@@ -500,6 +522,41 @@ class App {
     const index = Math.min(this.rowFloor(top), this.list.length - 1);
     const row = this.list[index];
     return row && { hash: rowHash(row), offset: top - this.rowTop(index) };
+  }
+
+  private setStashes(stashes: StashEntry[]): void {
+    this.stashes = stashes;
+    this.anchors = anchoredAt(stashes);
+  }
+
+  /**
+   * Interleaves the loaded commits with the stashes again, without reloading the history. The
+   * selection and the row at the top of the view stay on what they showed; when that was a stash
+   * that is gone, on the row that took its place (the next stash on that commit, else the commit).
+   */
+  private relist(): void {
+    const old = this.list;
+    const top = this.scroller.scrollTop;
+    const anchor = old.length > 0 ? Math.min(this.rowFloor(top), old.length - 1) : -1;
+    const offset = anchor >= 0 ? top - this.rowTop(anchor) : 0;
+    const was = this.selectedHash();
+    this.list = [];
+    this.geometry.clear();
+    this.appendRows(interleave(this.commits, 0, this.anchors));
+    const survivor = (i: number) => {
+      for (let j = i; j < old.length; j++) {
+        const k = this.indexOf(rowHash(old[j]!));
+        if (k >= 0) return k;
+      }
+      return this.list.length - 1;
+    };
+    if (this.selected >= 0) this.selected = survivor(this.selected);
+    this.syncSizer();
+    if (anchor >= 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
+    if (this.selected >= 0 && this.selectedHash() !== was && this.expanded)
+      this.select(this.selected, { reveal: false });
+    this.saveState();
+    this.queueRender();
   }
 
   private appendRows(rows: readonly ListRow[]): void {
@@ -848,13 +905,7 @@ class App {
     const scrollTop = this.scroller.scrollTop;
     const first = Math.max(0, this.rowFloor(scrollTop) - OVERSCAN);
     const last = Math.min(this.list.length, this.rowFloor(scrollTop + height) + 1 + OVERSCAN);
-    for (let i = first; i < last; i++) {
-      const at = this.list[i]!.row;
-      const row = this.rows[at];
-      if (!row) continue;
-      this.shownLanes = Math.max(this.shownLanes, rowWidth(row));
-      for (const e of this.spans.passesAt(at)) this.shownLanes = Math.max(this.shownLanes, e.lane + 1);
-    }
+    this.shownLanes = Math.max(this.shownLanes, lanesUsed(this.list, this.rows, this.spans, first, last));
     const share = width <= NARROW_LIST ? NARROW_GRAPH_SHARE : MAX_GRAPH_SHARE;
     const gw = Math.min(graphWidth(this.shownLanes), Math.max(graphWidth(1), Math.floor(width * share)));
 
@@ -926,12 +977,21 @@ class App {
 
   private renderRow(i: number): HTMLElement {
     const r = this.list[i]!;
-    if (r.kind !== 'commit') return el('div', 'row');
-    const c = r.commit;
     const row = el('div', 'row');
     row.id = `row-${i}`;
     row.dataset['index'] = String(i);
     row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(i === this.selected));
+    row.setAttribute('aria-posinset', String(i + 1));
+    row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
+    row.style.top = `${this.rowTop(i)}px`;
+    if (i === this.selected) {
+      // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
+      row.classList.add(this.expanded ? 'selected' : 'cursor');
+      row.setAttribute('aria-expanded', String(this.expanded));
+    }
+    if (r.kind === 'stash') return this.fillStashRow(row, r.stash);
+    const c = r.commit;
     row.setAttribute(
       'data-vscode-context',
       JSON.stringify({
@@ -941,10 +1001,6 @@ class App {
         strataSubject: c.subject,
       }),
     );
-    row.setAttribute('aria-selected', String(i === this.selected));
-    row.setAttribute('aria-posinset', String(i + 1));
-    row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
-    row.style.top = `${this.rowTop(i)}px`;
     const badges = this.badges(c.hash);
     if (badges.length > 0) {
       // Refs get a band of their own above the commit line, so the subject keeps its column.
@@ -952,11 +1008,6 @@ class App {
       const band = el('span', 'refs');
       band.append(...badges);
       row.append(band);
-    }
-    if (i === this.selected) {
-      // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
-      row.classList.add(this.expanded ? 'selected' : 'cursor');
-      row.setAttribute('aria-expanded', String(this.expanded));
     }
     if (c.hash === this.refs.head) row.classList.add('head');
 
@@ -970,6 +1021,55 @@ class App {
       el('span', 'hash', shortHash(c.hash)),
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    return row;
+  }
+
+  /**
+   * A stash row: always one line, the stash@{n} badge inline before the message, which keeps git's
+   * "On <branch>:" prefix. No author or hash; the date is when it was stashed.
+   */
+  private fillStashRow(row: HTMLElement, s: StashEntry): HTMLElement {
+    row.classList.add('stash');
+    if (s.autostash) row.classList.add('autostash');
+    row.setAttribute(
+      'data-vscode-context',
+      JSON.stringify({
+        webviewSection: 'stash',
+        preventDefaultContextMenuItems: true,
+        strataHash: s.hash,
+        strataSubject: s.message,
+      }),
+    );
+    const subject = el('span', 'subject');
+    const name = badge('stash', 'git-stash', `stash@{${s.index}}`, `stash@{${s.index}}`);
+    if (s.autostash) {
+      name.classList.add('autostash');
+      name.append(el('span', 'badge-autostash', 'autostash'));
+    }
+    subject.append(name);
+    const { prefix, text } = stashLabel(s);
+    // git's own autostash message is the word the badge already shows.
+    const shown = s.autostash && text === 'autostash' ? '' : text;
+    if (prefix !== undefined || shown) {
+      const message = el('span', 'text');
+      if (prefix !== undefined) message.append(el('span', 'stash-prefix', prefix), ' ');
+      message.append(el('span', 'stash-message', shown));
+      subject.append(message);
+    }
+    if (s.anchor.kind === 'tip')
+      subject.append(el('span', 'stash-note', `based on ${shortHash(s.base)}, no longer on '${s.branch ?? ''}'`));
+    // The hash is hidden; it keeps the column as wide as in commit rows, so the dates line up.
+    row.append(
+      el('span', 'graph-spacer'),
+      subject,
+      el('span', 'author'),
+      this.dateCell(s.time),
+      el('span', 'hash', shortHash(s.hash)),
+    );
+    const base = this.commits.find((c) => c.hash === s.base);
+    const label = describeStash(s, { short: shortHash(s.base), subject: base?.subject }, formatDate(s.time));
+    row.title = label;
+    row.setAttribute('aria-label', label);
     return row;
   }
 
@@ -999,7 +1099,7 @@ class App {
     const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX)) + 1;
     const dateFull = Math.ceil(this.textWidths.dateFull) + 1;
     const dateShort = Math.ceil(this.textWidths.dateShort) + 1;
-    const hash = this.rowsLayer.querySelector<HTMLElement>('.row .hash')?.offsetWidth ?? 60;
+    const hash = this.rowsLayer.querySelector<HTMLElement>('.row:not(.stash) .hash')?.offsetWidth ?? 60;
     const choice = chooseColumns(
       { list: width, graph, author, dateFull, dateShort, hash, gap, padding: 12 },
       SUBJECT_MIN,
@@ -1534,6 +1634,24 @@ class App {
       selected: this.selectedHash(),
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
+      rowHashes: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
+          const i = Number(r.dataset['index']);
+          return [i, this.list[i] ? rowHash(this.list[i]) : ''];
+        }),
+      ),
+      stashRows: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.stash')].map((r) => [
+          Number(r.dataset['index']),
+          {
+            badge: r.querySelector('.badge-text')?.textContent ?? '',
+            text: r.querySelector('.subject')?.textContent ?? '',
+            label: r.getAttribute('aria-label') ?? '',
+            autostash: !!r.querySelector('.badge-stash.autostash'),
+            context: JSON.parse(r.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,
+          },
+        ]),
+      ),
       openedFile: this.openedFile,
       fileTree: [...this.expansion.querySelectorAll<HTMLElement>('.files li')]
         .filter((li) => !li.hidden)
@@ -1579,7 +1697,7 @@ class App {
         ]),
       ),
       refBands: Object.fromEntries(
-        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row:not(.stash)')].flatMap((r) => {
           const band = r.querySelector<HTMLElement>('.refs');
           const text = r.querySelector<HTMLElement>('.subject .text')!;
           const top = r.getBoundingClientRect().top;

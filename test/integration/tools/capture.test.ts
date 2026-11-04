@@ -4,7 +4,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
-import { delay, screenshot, setTheme, strata, THEMES, waitFor, type ThemeId } from '../helpers.ts';
+import { addBranchyStashes } from '../../fixtures/stashes.ts';
+import { delay, git, screenshot, setTheme, strata, THEMES, waitFor, workspaceRoot, type ThemeId } from '../helpers.ts';
 
 const themeIds = Object.keys(THEMES) as ThemeId[];
 const themesDir = process.env['STRATA_CAPTURE_THEMES'];
@@ -42,6 +43,36 @@ after(() => setTheme('dark'));
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `${id}.png`));
+      panel.dispose();
+    });
+  }
+});
+
+(shotDir ? describe : describe.skip)('tool: stash screenshots', () => {
+  let stashes: string[] = [];
+  before(() => {
+    stashes = addBranchyStashes(workspaceRoot()).reverse();
+  });
+  after(() => {
+    git('stash', 'clear');
+  });
+
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      // Two stashes on one base, with the upper one's details open; the autostash shows below.
+      const p = await waitFor('stash rows', async () => {
+        const s = await panel.probe();
+        return s.done && Object.keys(s.stashRows).length === 4 && s;
+      });
+      const index = Number(Object.entries(p.rowHashes).find(([, h]) => h === stashes[2])?.[0]);
+      await panel.simulate({ kind: 'clickRow', index });
+      await waitFor('details', async () => (await panel.probe()).detailsShown === stashes[2]);
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await mkdir(shotDir!, { recursive: true });
+      await screenshot(join(shotDir!, `stashes-${id}.png`));
       panel.dispose();
     });
   }

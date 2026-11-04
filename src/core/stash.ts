@@ -101,3 +101,28 @@ export function interleave(
   });
   return rows;
 }
+
+/** "On main:" and "half-done lexer" of "On main: half-done lexer"; git's autostash has no prefix. */
+export function stashLabel(s: StashEntry): { prefix: string | undefined; text: string } {
+  const m = /^((?:WIP on|On) [^:]+:) (.*)$/s.exec(s.message);
+  return m ? { prefix: m[1], text: m[2]! } : { prefix: undefined, text: s.message };
+}
+
+/**
+ * What a stash row says to a tooltip and a screen reader, kind first. `base` is its base's short
+ * hash and, when known, subject; `stashed` is the formatted stash time.
+ */
+export function describeStash(
+  s: StashEntry,
+  base: { short: string; subject: string | undefined },
+  stashed: string,
+): string {
+  const subject = base.subject === undefined ? '' : ` "${base.subject}"`;
+  const moved = s.anchor.kind === 'tip' ? `, no longer on '${s.branch ?? ''}'` : '';
+  const plural = (n: number) => (n === 1 ? '' : 's');
+  const files =
+    s.files === undefined
+      ? ''
+      : ` ${s.files.changed} file${plural(s.files.changed)} changed${s.files.untracked ? `, ${s.files.untracked} untracked` : ''}.`;
+  return `Stash stash@{${s.index}}: ${s.message}. Based on ${base.short}${subject}${moved}.${files} Stashed ${stashed}.`;
+}

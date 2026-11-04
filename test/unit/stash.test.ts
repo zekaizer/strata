@@ -6,9 +6,11 @@ import { before, describe, it } from 'node:test';
 import type { Commit } from '../../src/core/commit.ts';
 import {
   anchoredAt,
+  describeStash,
   interleave,
   parseStashList,
   rowHash,
+  stashLabel,
   type ListRow,
   type StashEntry,
 } from '../../src/core/stash.ts';
@@ -141,6 +143,57 @@ describe('stash rows', () => {
       const split = [...interleave(commits.slice(0, i), 0, anchors), ...interleave(commits.slice(i), i, anchors)];
       assert.deepEqual(split, whole, `split at ${i}`);
     }
+  });
+});
+
+describe('stash labels', () => {
+  const s = (over: Partial<StashEntry>): StashEntry => ({
+    hash: 'w'.repeat(40),
+    index: 1,
+    base: 'b'.repeat(40),
+    untracked: undefined,
+    message: 'On feature: half-done lexer',
+    branch: 'feature',
+    time: 0,
+    autostash: false,
+    anchor: { kind: 'base' },
+    files: { changed: 3, untracked: 1 },
+    ...over,
+  });
+
+  it('splits off the "On <branch>:" or "WIP on <branch>:" prefix', () => {
+    assert.deepEqual(stashLabel(s({})), { prefix: 'On feature:', text: 'half-done lexer' });
+    assert.deepEqual(stashLabel(s({ message: 'WIP on main: 1a2b3c4 Add lexer' })), {
+      prefix: 'WIP on main:',
+      text: '1a2b3c4 Add lexer',
+    });
+    assert.deepEqual(stashLabel(s({ message: 'autostash', autostash: true })), {
+      prefix: undefined,
+      text: 'autostash',
+    });
+  });
+
+  it('describes a stash with its base, its files and when it was made', () => {
+    assert.equal(
+      describeStash(s({}), { short: '4b5c6d7', subject: 'Add lexer' }, '13:40'),
+      'Stash stash@{1}: On feature: half-done lexer. Based on 4b5c6d7 "Add lexer". 3 files changed, 1 untracked. Stashed 13:40.',
+    );
+    assert.equal(
+      describeStash(s({ files: { changed: 1, untracked: 0 } }), { short: '4b5c6d7', subject: undefined }, '13:40'),
+      'Stash stash@{1}: On feature: half-done lexer. Based on 4b5c6d7. 1 file changed. Stashed 13:40.',
+    );
+    assert.equal(
+      describeStash(s({ files: undefined }), { short: '4b5c6d7', subject: undefined }, '13:40'),
+      'Stash stash@{1}: On feature: half-done lexer. Based on 4b5c6d7. Stashed 13:40.',
+    );
+  });
+
+  it('says when its base is no longer on its branch', () => {
+    const moved = s({ index: 0, message: 'autostash', autostash: true, anchor: { kind: 'tip', tip: 't'.repeat(40) } });
+    assert.equal(
+      describeStash(moved, { short: '776d4b4', subject: undefined }, '13:40'),
+      "Stash stash@{0}: autostash. Based on 776d4b4, no longer on 'feature'. 3 files changed, 1 untracked. Stashed 13:40.",
+    );
   });
 });
 

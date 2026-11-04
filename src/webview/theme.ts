@@ -7,6 +7,9 @@ export interface GraphTheme {
   foreground: string;
   /** Ring around the HEAD commit. */
   headRing: string;
+  /** Stash nodes and spines; an autostash left behind uses the warning color. */
+  stash: string;
+  stashWarning: string;
   lineWidth: number;
   nodeRadius: number;
   highContrast: boolean;
@@ -33,10 +36,17 @@ export function resolveGraphTheme(): GraphTheme {
     .map((v) => parseCssColor(read(style, v), bg))
     .filter((c): c is Rgb => c !== undefined);
   const fg = parseCssColor(read(style, '--vscode-foreground'), bg) ?? ([1, 1, 1] as Rgb);
+  const muted = parseCssColor(read(style, '--vscode-descriptionForeground'), bg) ?? fg;
+  const warning =
+    parseCssColor(read(style, '--vscode-list-warningForeground'), bg) ??
+    parseCssColor(read(style, '--vscode-editorWarning-foreground'), bg) ??
+    fg;
   return {
     lanes: lanePalette({ background: bg, surfaces, minContrast: highContrast ? 4.5 : 3 }),
     foreground: toHex(fg),
     headRing: toHex(fg),
+    stash: toHex(muted),
+    stashWarning: toHex(warning),
     lineWidth: highContrast ? 2 : 1.5,
     nodeRadius: highContrast ? 4 : 3.5,
     highContrast,

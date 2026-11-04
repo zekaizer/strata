@@ -63,17 +63,15 @@ describe('readRefs', () => {
     assert.deepEqual(await readRefs('git', d), { head: undefined, headBranch: 'trunk', refs: [], remotes: [] });
   });
 
-  it('includes the stash', async () => {
+  it('leaves the stash out: it is read with the stash list', async () => {
     const d = join(root, 'stash');
     scenarios.linear().write(d);
     writeFileSync(join(d, 'untracked.txt'), 'x');
     git(d, '-c', 'user.name=a', '-c', 'user.email=a@b', 'stash', 'push', '--quiet', '--include-untracked');
-    const stash = (await readRefs('git', d)).refs.find((r) => r.kind === 'stash');
-    assert.deepEqual(stash, {
-      name: 'refs/stash',
-      short: 'stash',
-      kind: 'stash',
-      hash: git(d, 'rev-parse', 'refs/stash'),
-    });
+    const snap = await readRefs('git', d);
+    assert.deepEqual(
+      snap.refs.map((r) => r.name),
+      ['refs/heads/main'],
+    );
   });
 });

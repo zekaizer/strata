@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { EPOCH } from './builder.ts';
 
 export interface StashSpec {
@@ -21,11 +22,12 @@ export interface StashSpec {
   time: number;
 }
 
+/** Outside .git: a file appearing there wakes vscode.git, which tests must not rely on. */
+const INDEX = join(tmpdir(), `strata-fixture-index-${process.pid}`);
+
 /** Fixed identity and date, and a private index: the same object ids on every run, the work tree untouched. */
 function plumbing(dir: string, time: number): (args: string[], input?: string) => string {
   const when = `${EPOCH + time} +0000`;
-  const index = resolve(dir, '.git', 'strata-fixture-index');
-  rmSync(index, { force: true });
   const env = {
     ...process.env,
     GIT_AUTHOR_NAME: 'Ada Lovelace',
@@ -34,7 +36,7 @@ function plumbing(dir: string, time: number): (args: string[], input?: string) =
     GIT_COMMITTER_EMAIL: 'ada@example.com',
     GIT_AUTHOR_DATE: when,
     GIT_COMMITTER_DATE: when,
-    GIT_INDEX_FILE: index,
+    GIT_INDEX_FILE: INDEX,
   };
   return (args, input) => execFileSync('git', args, { cwd: dir, env, input, encoding: 'utf8' }).trim();
 }
@@ -50,7 +52,9 @@ function tree(
       const blob = git(['hash-object', '-w', '--stdin'], content);
       git(['update-index', '--add', '--cacheinfo', `100644,${blob},${path}`]);
     }
-  return git(['write-tree']);
+  const written = git(['write-tree']);
+  rmSync(INDEX, { force: true });
+  return written;
 }
 
 /** A commit on `parent` that no ref reaches, like a branch's tip before a rebase or after the branch was deleted. */

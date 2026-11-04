@@ -6,6 +6,7 @@ import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import type { StashEntry } from '../core/stash.ts';
 import type { MenuCommand } from './menu-commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
@@ -30,7 +31,16 @@ export interface RepoInfo {
  */
 export type HostToWebview =
   | { type: 'init'; theme: ThemeKind }
-  | { type: 'reset'; generation: number; repo: RepoInfo; refs: RefSnapshot; options: ViewOptions }
+  | {
+      type: 'reset';
+      generation: number;
+      repo: RepoInfo;
+      refs: RefSnapshot;
+      options: ViewOptions;
+      stashes: StashEntry[];
+    }
+  /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
+  | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
@@ -79,6 +89,13 @@ export interface ProbeState {
   detailsShown: string | undefined;
   /** Subjects of the rendered (visible) rows, top to bottom. */
   visibleSubjects: string[];
+  /** The commit or stash commit of each rendered row, by row index. */
+  rowHashes: Record<number, string>;
+  /** Rendered stash rows by row index: badge, subject cell and aria-label text, and menu context. */
+  stashRows: Record<
+    number,
+    { badge: string; text: string; label: string; autostash: boolean; context: Record<string, unknown> }
+  >;
   /** Path of the file whose diff was opened last in the details pane. */
   openedFile: string | undefined;
   /** `data-vscode-context` of the changed files and of the selected row (context menu arguments). */

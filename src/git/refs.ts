@@ -8,13 +8,13 @@ const PREFIXES: [string, RefKind][] = [
 ];
 
 /**
- * Reads HEAD, the remotes, and all branch, remote-tracking, tag and stash refs pointing (after
- * peeling) at commits.
+ * Reads HEAD, the remotes, and all branch, remote-tracking and tag refs pointing (after peeling) at
+ * commits. Stashes are read on their own (readStashes).
  */
 export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
   const format = '%(refname)%00%(objecttype)%00%(objectname)%00%(*objecttype)%00%(*objectname)%00%(symref)';
   const [list, headBranch, head, remotes] = await Promise.all([
-    runGit(git, cwd, ['for-each-ref', `--format=${format}`, 'refs/heads', 'refs/remotes', 'refs/tags', 'refs/stash']),
+    runGit(git, cwd, ['for-each-ref', `--format=${format}`, 'refs/heads', 'refs/remotes', 'refs/tags']),
     // Exit status 1 means detached HEAD.
     runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(
       (s) => s.trim() || undefined,
@@ -42,10 +42,6 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
     if (symref) continue;
     const target = peeledType ? { type: peeledType, hash: peeledHash } : { type, hash };
     if (target.type !== 'commit') continue;
-    if (name === 'refs/stash') {
-      refs.push({ name, short: 'stash', kind: 'stash', hash: target.hash });
-      continue;
-    }
     const match = PREFIXES.find(([p]) => name.startsWith(p));
     if (!match) continue;
     refs.push({ name, short: name.slice(match[0].length), kind: match[1], hash: target.hash });

@@ -69,7 +69,7 @@ function reset(): void {
   generation++;
   offset = 0;
   visible = select(data, options);
-  toWebview({ type: 'reset', generation, repo: data.repo, refs: data.refs, options });
+  toWebview({ type: 'reset', generation, repo: data.repo, refs: data.refs, options, stashes: data.stashes });
 }
 
 async function onMessage(m: WebviewToHost): Promise<void> {
