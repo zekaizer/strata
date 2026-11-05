@@ -26,8 +26,8 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { fitBadges, landedRefs, rowBadges, type Badge } from './badges.ts';
-import { bannerOf } from './banner.ts';
+import { fitBadges, landedRefs, refsLabel, rowBadges, type Badge } from './badges.ts';
+import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
@@ -123,6 +123,8 @@ const BADGE_MIN_TEXT = 'abc…';
 interface BadgeChrome {
   /** Border, padding and icon of each look, and the font of its text. */
   look: Record<Badge['look'], { chrome: number; font: string }>;
+  /** The current branch's upstream: a remote look with its own font. */
+  tracked: { chrome: number; font: string };
   /** A branch's remote section without its names, and the names' font. */
   remotes: { chrome: number; font: string };
   max: number;
@@ -203,6 +205,8 @@ class App {
   );
   /** What the banner last said aloud: a new stop or leftover, not a subject that arrived later. */
   private bannerSaid = '';
+  /** The host notified how the last operation ended: the banner it brings is not said again. */
+  private bannerNotified = false;
   /** Stops seen with conflicts (stopKey): when none are left, they were resolved. */
   private readonly conflictedStops = new Set<string>();
   /**
@@ -220,6 +224,8 @@ class App {
   /** Width of a row's ref band, in px, as of the last render. */
   private bandWidth = 0;
   private operation: OperationState | undefined;
+  /** What rows say about the operation in progress, by commit. */
+  private operationNotes = new Map<string, OperationNote>();
   private leftover: Leftover | undefined;
   /** The Strata operation running, by its progress label. */
   private busyLabel: string | undefined;
@@ -408,7 +414,7 @@ class App {
         this.queueRender();
         break;
       case 'reset':
-        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.focus);
+        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result);
         break;
       case 'stashes':
         if (m.generation !== this.generation) return;
@@ -417,7 +423,11 @@ class App {
         break;
       case 'busy':
         this.busyLabel = m.label;
-        if (m.label !== undefined) this.selectionsAtBusy = this.selections;
+        this.banner.setBusy(m.label);
+        if (m.label !== undefined) {
+          this.selectionsAtBusy = this.selections;
+          this.announce(`${m.label}…`);
+        }
         if (m.label === undefined) this.scroller.removeAttribute('aria-busy');
         else this.scroller.setAttribute('aria-busy', 'true');
         // An error shown meanwhile stays until the next action.
@@ -425,6 +435,7 @@ class App {
         break;
       case 'repoState':
         this.operation = m.operation;
+        this.operationNotes = operationNotes(m.operation);
         this.leftover = m.leftover;
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
@@ -489,6 +500,7 @@ class App {
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refFilter.update(this.refs, null);
         this.operation = undefined;
+        this.operationNotes.clear();
         this.leftover = undefined;
         this.updateBanner();
         this.setStashes([]);
@@ -502,6 +514,7 @@ class App {
       case 'error':
         this.loading = false;
         this.status.textContent = m.message;
+        this.status.title = m.message;
         this.status.classList.add('error');
         this.status.classList.remove('busy');
         this.alerted = m.message;
@@ -539,8 +552,10 @@ class App {
     refs: RefSnapshot,
     options: ViewOptions,
     stashes: StashEntry[],
-    focus?: string,
+    result?: { focus?: string; notified?: true },
   ): void {
+    this.bannerNotified = result?.notified === true;
+    const focus = result?.focus;
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
     // scroll position too when the history itself is the same view. A row of a stash that is gone
     // hands both to the row that takes its place.
@@ -561,7 +576,7 @@ class App {
     // An operation's result: the badges it moved and the stash row it made pulse once shown.
     clearTimeout(this.landingTimer);
     this.landing =
-      focus !== undefined && this.repo?.root === repo.root
+      result !== undefined && this.repo?.root === repo.root
         ? {
             refs: new Set(landedRefs(this.refs, refs)),
             stash: stashes.some((s) => s.hash === focus) ? focus : undefined,
@@ -765,7 +780,7 @@ class App {
 
   /**
    * Shows the operation in progress or what one left behind. It is said politely when it says
-   * something new: VS Code already announces the toast the host shows for a stop.
+   * something new, unless the host notified it: VS Code reads that notification out.
    */
   private updateBanner(): void {
     const op = this.operation;
@@ -783,7 +798,9 @@ class App {
       : '';
     if (said === this.bannerSaid) return;
     this.bannerSaid = said;
-    if (banner) this.announce(this.banner.text);
+    if (!banner) return;
+    if (this.bannerNotified) this.bannerNotified = false;
+    else this.announce(this.banner.text);
   }
 
   /**
@@ -995,6 +1012,8 @@ class App {
   private updateStatus(): void {
     this.status.classList.remove('error');
     this.status.classList.toggle('busy', this.busyLabel !== undefined);
+    // The toolbar may be too narrow for all of it.
+    this.status.title = this.busyLabel ?? '';
     if (this.busyLabel !== undefined) {
       this.status.textContent = `${this.busyLabel}…`;
       return;
@@ -1399,6 +1418,17 @@ class App {
 
     const subject = el('span', 'subject');
     subject.append(el('span', 'text', c.subject));
+    const note = this.operationNotes.get(c.hash);
+    if (note) {
+      const e = el('span', note.warning ? 'operation-note warning' : 'operation-note');
+      e.append(el('span', 'operation-note-text', note.text));
+      if (note.warning) {
+        const mark = el('span', 'codicon codicon-warning');
+        mark.setAttribute('aria-hidden', 'true');
+        e.prepend(mark);
+      }
+      subject.append(e);
+    }
     row.append(
       el('span', 'graph-spacer'),
       subject,
@@ -1407,6 +1437,15 @@ class App {
       el('span', 'hash', shortHash(c.hash)),
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
+    const refsRead = refsLabel(rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs, (all) => all.length));
+    const said = [
+      c.subject,
+      refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
+      note?.text,
+      `${c.author}, ${formatDate(c.authorTime)}, ${shortHash(c.hash)}`,
+    ];
+    row.setAttribute('aria-label', said.filter((t) => t).join('. '));
     this.markMenuTarget(row, i);
     return row;
   }
@@ -1528,10 +1567,10 @@ class App {
 
   private badgeWidth(b: Badge, c: BadgeChrome): number {
     const names = remoteNames(b);
-    const key = `${b.look}\0${b.text}\0${names}`;
+    const key = `${b.look}\0${b.tracked}\0${b.text}\0${names}`;
     let width = this.badgeWidths.get(key);
     if (width === undefined) {
-      const look = c.look[b.look];
+      const look = b.tracked ? c.tracked : c.look[b.look];
       const remotes = b.remotes.length > 0 ? c.remotes.chrome + this.textWidth(names, c.remotes.font) : 0;
       width = Math.ceil(Math.min(c.max, look.chrome + this.textWidth(b.text, look.font) + remotes));
       this.badgeWidths.set(key, width);
@@ -1543,12 +1582,12 @@ class App {
   private measureBadgeChrome(): BadgeChrome {
     const band = el('div', 'refs');
     band.style.cssText = 'position: absolute; visibility: hidden; top: 0; left: 0';
-    const empty = (look: Badge['look'], remotes: Badge['remotes'] = []) =>
+    const empty = (look: Badge['look'], remotes: Badge['remotes'] = [], tracked = false) =>
       renderBadge({
         look,
         text: '',
         title: '',
-        tracked: false,
+        tracked,
         refs: [],
         remotes,
         also: [],
@@ -1558,8 +1597,9 @@ class App {
     const withRemote = empty('branch', [
       { text: '', context: { webviewSection: 'refs', strataHash: '', strataRefs: '' } },
     ]);
-    for (const [, e] of looks) e.style.minWidth = '0';
-    band.append(...looks.map(([, e]) => e), withRemote);
+    const tracked = empty('remote', [], true);
+    for (const e of [...looks.map(([, e]) => e), tracked]) e.style.minWidth = '0';
+    band.append(...looks.map(([, e]) => e), tracked, withRemote);
     document.body.append(band);
     const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.badge-text, .badge-remote-names') ?? e).font;
     const segment = withRemote.querySelector<HTMLElement>('.badge-remotes')!;
@@ -1568,6 +1608,7 @@ class App {
       look: Object.fromEntries(
         looks.map(([look, e]) => [look, { chrome: e.getBoundingClientRect().width, font: text(e) }]),
       ) as BadgeChrome['look'],
+      tracked: { chrome: tracked.getBoundingClientRect().width, font: text(tracked) },
       remotes: {
         // With the badge's own gap before it.
         chrome:
@@ -2148,6 +2189,18 @@ class App {
           return [i, this.list[i] ? rowHash(this.list[i]) : ''];
         }),
       ),
+      rowLabels: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
+          const row = this.list[Number(r.dataset['index'])];
+          return [row ? rowHash(row) : '', r.getAttribute('aria-label') ?? ''];
+        }),
+      ),
+      operationNotes: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.operation-note')].map((e) => {
+          const row = this.list[Number(e.closest<HTMLElement>('.row')?.dataset['index'])];
+          return [row ? rowHash(row) : '', e.textContent];
+        }),
+      ),
       stashRows: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.stash')].map((r) => [
           Number(r.dataset['index']),
@@ -2266,6 +2319,11 @@ class App {
             warning: this.banner.element.classList.contains('warning'),
             buttons: [...this.banner.element.querySelectorAll('.banner-button')].map((b) => b.textContent),
             links: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-link')].map((b) => b.title),
+            busy: this.banner.element.querySelector('.banner-busy')?.textContent ?? undefined,
+            tabStops: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-button')]
+              .filter((b) => b.tabIndex === 0)
+              .map((b) => b.textContent),
+            focus: this.banner.element.querySelector('.banner-button:focus')?.textContent ?? undefined,
           },
       status: this.status.textContent,
       listBusy: this.scroller.getAttribute('aria-busy') === 'true',

@@ -99,7 +99,8 @@ Pull and Push (or **Publish Branch...** when the current branch has no
 upstream); while an operation is stopped, for Continue, Abort and Fetch. Its
 **...** menu has the stash commands, **Show Stashes...**, Skip (while
 stopped), **Undo Last Operation** and **Show Git Output**. The Command
-Palette has them too.
+Palette has them too. While an operation runs, the toolbar and the banner say
+which, and the other commands wait for it.
 
 - **Branches and tags:** Checkout (a remote branch checks out its local
   branch, or creates one that tracks it; when the local branch of that name
@@ -164,7 +165,8 @@ Palette has them too.
   Continue or Skip finished), a created, renamed or deleted branch or tag, or a
   dropped stash. It only moves the branch the operation moved,
   and asks first if that branch moved since.
-- When an operation stops at conflicts, Strata says where and in which files;
+- When an operation stops at conflicts, Strata says where and in which files,
+  and marks the commit it stopped at (and a rebase's target) in the graph;
   **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
   leaves the stopped commit out, and other changes (except Fetch) are
   disabled until you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`

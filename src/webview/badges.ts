@@ -142,6 +142,24 @@ function refBadge(
   };
 }
 
+/** The refs of `badges` (not collapsed into "+N") as read: each by its kind, in order. */
+export function refsLabel(badges: readonly Badge[]): string {
+  return badges
+    .map((b) => {
+      if (b.context.webviewSection === 'head') return 'detached HEAD';
+      const kind =
+        b.look === 'head'
+          ? 'current branch'
+          : b.look === 'remote'
+            ? b.tracked
+              ? 'upstream'
+              : 'remote branch'
+            : b.look;
+      return `${kind} ${b.text}${b.also.length > 0 ? `, also ${b.also.join(', ')}` : ''}`;
+    })
+    .join('; ');
+}
+
 /**
  * Refs an operation moved, by full name: moved or new refs, the branch HEAD switched to, and
  * "HEAD" when a detached HEAD moved.

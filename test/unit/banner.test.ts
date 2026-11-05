@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Leftover, OperationState } from '../../src/core/repo-state.ts';
-import { bannerOf, type Banner, type BannerFacts } from '../../src/webview/banner.ts';
+import { bannerOf, operationNotes, type Banner, type BannerFacts } from '../../src/webview/banner.ts';
 
 const h = (c: string) => c.repeat(40);
 const SUBJECTS: Record<string, string> = { [h('a')]: 'Add lexer', [h('c')]: 'Fix parser' };
@@ -49,8 +49,11 @@ describe('the banner of a stopped operation', () => {
     assert.equal(b.label, 'Rebase in progress');
     assert.equal(
       text(b),
-      `Rebasing 'feature' onto 'main' stopped at 3 of 4, "Add lexer" (aaaaaaa): 2 conflicted files. ` +
-        "'feature' keeps its old commits until the rebase finishes. " +
+      `Rebasing 'feature' onto 'main' stopped at 3 of 4, "Add lexer" (aaaaaaa): 2 conflicted files.`,
+    );
+    assert.equal(
+      b.more,
+      "'feature' keeps its old commits until the rebase finishes. " +
         'Your uncommitted changes are held by git and come back when the rebase finishes or is aborted.',
     );
     assert.deepEqual(links(b), [{ short: 'aaaaaaa', hash: h('a') }]);
@@ -64,11 +67,8 @@ describe('the banner of a stopped operation', () => {
 
   it('links a rebase target it cannot name, and leaves out a subject it does not know', () => {
     const b = bannerOf({ ...rebase, onto: h('f'), applying: h('9'), autostash: false }, undefined, facts());
-    assert.equal(
-      text(b),
-      `Rebasing 'feature' onto fffffff stopped at 3 of 4 (9999999): 2 conflicted files. ` +
-        "'feature' keeps its old commits until the rebase finishes.",
-    );
+    assert.equal(text(b), `Rebasing 'feature' onto fffffff stopped at 3 of 4 (9999999): 2 conflicted files.`);
+    assert.equal(b?.more, "'feature' keeps its old commits until the rebase finishes.");
     assert.deepEqual(links(b), [
       { short: 'fffffff', hash: h('f') },
       { short: '9999999', hash: h('9') },
@@ -107,10 +107,10 @@ describe('the banner of a stopped operation', () => {
   it('names a stopped merge by its source and the branch it goes into', () => {
     const b = bannerOf(merge, undefined, facts());
     assert.equal(b?.label, 'Merge in progress');
+    assert.equal(text(b), "Merging 'topic' into 'main': 1 conflicted file.");
     assert.equal(
-      text(b),
-      "Merging 'topic' into 'main': 1 conflicted file. " +
-        'Your uncommitted changes are held by git and come back when the merge is committed or aborted.',
+      b.more,
+      'Your uncommitted changes are held by git and come back when the merge is committed or aborted.',
     );
     assert.deepEqual(actions(b), [
       ['Resolve...', 'strata.resolveConflicts', {}],
@@ -162,10 +162,10 @@ describe('the banner of a stopped operation', () => {
     const b = bannerOf(pick, pending, facts());
     assert.equal(b?.state, 'sequencer');
     assert.equal(b.label, 'Cherry pick in progress');
+    assert.equal(text(b), `Cherry picking ccccccc "Fix parser" onto 'main': 1 conflicted file.`);
     assert.equal(
-      text(b),
-      `Cherry picking ccccccc "Fix parser" onto 'main': 1 conflicted file. ` +
-        'Your uncommitted changes are in stash@{0} (Strata autostash); Strata restores them when you continue or abort here.',
+      b.more,
+      'Your uncommitted changes are in stash@{0} (Strata autostash); Strata restores them when you continue or abort here.',
     );
     assert.deepEqual(
       actions(b)?.map(([label, command]) => [label, command]),
@@ -222,10 +222,12 @@ describe('the banner of what an operation left behind', () => {
   it('counts unmerged files nobody is resolving, and names the stash git kept', () => {
     const b = bannerOf(undefined, { kind: 'unmerged', files: ['a', 'b'], count: 2, autostash: stash }, facts());
     assert.equal(b?.state, 'conflicts');
-    assert.equal(text(b), '2 files have conflicts. git kept stashed changes in stash@{1} (autostash).');
+    assert.equal(text(b), '2 files have conflicts.');
+    assert.equal(b.more, 'git kept stashed changes in stash@{1} (autostash).');
     assert.deepEqual(actions(b), [['Resolve...', 'strata.resolveConflicts', {}], showStash]);
     const one = bannerOf(undefined, { kind: 'unmerged', files: ['a'], count: 1, autostash: undefined }, facts());
     assert.equal(text(one), '1 file has conflicts.');
+    assert.equal(one?.more, '');
     assert.deepEqual(
       actions(one)?.map(([label]) => label),
       ['Resolve...'],
@@ -234,5 +236,23 @@ describe('the banner of what an operation left behind', () => {
 
   it('is absent with nothing in progress or left behind', () => {
     assert.equal(bannerOf(undefined, undefined, facts()), undefined);
+  });
+});
+
+describe('the rows an operation marks', () => {
+  it("marks the commit a rebase stopped at with its conflicts, and the rebase's target", () => {
+    assert.deepEqual(
+      [...operationNotes(rebase)],
+      [
+        [h('b'), { text: 'Rebasing onto', warning: false }],
+        [h('a'), { text: 'Stopped here: 2 conflicted files', warning: true }],
+      ],
+    );
+  });
+
+  it('marks a stop without conflicts quietly, and nothing without an operation', () => {
+    const resolved = { ...merge, conflicts: [], conflictCount: 0 };
+    assert.deepEqual([...operationNotes(resolved)], [[h('d'), { text: 'Stopped here', warning: false }]]);
+    assert.equal(operationNotes(undefined).size, 0);
   });
 });

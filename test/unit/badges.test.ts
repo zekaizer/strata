@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
-import { fitBadges, landedRefs, rowBadges } from '../../src/webview/badges.ts';
+import { fitBadges, landedRefs, refsLabel, rowBadges } from '../../src/webview/badges.ts';
 
 const h = (c: string) => c.repeat(40);
 const at = h('c');
@@ -218,5 +218,43 @@ describe('fitBadges', () => {
   });
   it('keeps the first badge even when nothing fits', () => {
     assert.equal(fit([100, 100], 10), 1);
+  });
+});
+
+describe('refsLabel', () => {
+  it('names each ref by its kind, the current branch, its upstream and merged remote names included', () => {
+    const refs = [
+      ref('refs/heads/main', 'refs/remotes/origin/main'),
+      ref('refs/remotes/origin/main'),
+      ref('refs/remotes/upstream/main'),
+      ref('refs/heads/topic'),
+      ref('refs/remotes/fork/other'),
+      ref('refs/tags/v1'),
+    ];
+    // Merged into main's badge only when no other branch sits between them (badgeOrder runs first).
+    assert.equal(
+      refsLabel(badgesOf(refs)),
+      'current branch main, also origin/main, upstream/main; branch topic; remote branch fork/other; tag v1',
+    );
+  });
+
+  it("names a detached HEAD and the current branch's upstream", () => {
+    const refs = [ref('refs/heads/main', 'refs/remotes/origin/main'), ref('refs/remotes/origin/main')];
+    assert.equal(refsLabel(detached(refs)), 'detached HEAD; branch main, also origin/main');
+    const apart = [ref('refs/heads/topic'), ref('refs/remotes/origin/main')];
+    assert.equal(
+      refsLabel(
+        rowBadges(
+          at,
+          apart,
+          {
+            ...snapshot(apart, 'main'),
+            refs: [...apart, { ...ref('refs/heads/main', 'refs/remotes/origin/main'), hash: h('d') }],
+          },
+          all,
+        ),
+      ),
+      'branch topic; upstream origin/main',
+    );
   });
 });

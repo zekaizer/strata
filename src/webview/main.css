@@ -284,7 +284,8 @@ body:not(.hover-off) .popover-item:hover {
   .stash-count-narrow {
     display: inline;
   }
-  .toolbar .status {
+  /* The commit count goes; a running operation and an error stay. */
+  .toolbar .status:not(.busy, .error) {
     display: none;
   }
 }
@@ -294,6 +295,10 @@ body:not(.hover-off) .popover-item:hover {
 }
 
 .toolbar .status {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--vscode-descriptionForeground);
 }
 
@@ -306,7 +311,8 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-foreground);
 }
 
-.toolbar .status.busy::before {
+.toolbar .status.busy::before,
+.banner-busy::before {
   display: inline-block;
   margin-right: 4px;
   vertical-align: -2px;
@@ -315,12 +321,14 @@ body:not(.hover-off) .popover-item:hover {
   animation: codicon-spin 1.5s steps(30) infinite;
 }
 
-body.vscode-reduce-motion .toolbar .status.busy::before {
+body.vscode-reduce-motion .toolbar .status.busy::before,
+body.vscode-reduce-motion .banner-busy::before {
   animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toolbar .status.busy::before {
+  .toolbar .status.busy::before,
+  .banner-busy::before {
     animation: none;
   }
 }
@@ -388,18 +396,15 @@ body.vscode-high-contrast .banner {
   color: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground));
 }
 
-/*
- * The icon and the sentence share the first line; the buttons take the rest of it or wrap below.
- * At most two lines of the sentence show; its tooltip and screen readers have all of it.
- */
+/* The icon and the sentences share the first line; the buttons take the rest of it or wrap below. */
 .banner-text {
   flex: 1 1 260px;
   min-width: 0;
   margin-left: -6px;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+}
+
+.banner-more {
+  display: block;
 }
 
 .banner-link {
@@ -432,11 +437,22 @@ body.vscode-high-contrast .banner {
   color: var(--vscode-button-foreground);
 }
 
-body:not(.hover-off) .banner-button:hover {
+/* Held while an operation runs (banner-view.ts), which the action area says. */
+.banner-busy {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.banner-button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+body:not(.hover-off) .banner-button:not([aria-disabled='true']):hover {
   background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
 }
 
-body:not(.hover-off) .banner-button.primary:hover {
+body:not(.hover-off) .banner-button.primary:not([aria-disabled='true']):hover {
   background: var(--vscode-button-hoverBackground);
 }
 
@@ -659,6 +675,11 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-hea
   --badge-color: var(--badge-remote);
 }
 
+/* The current branch's upstream stands out by weight too, which high contrast themes keep. */
+.badge-tracked {
+  font-weight: 600;
+}
+
 /*
  * Remote-tracking branches of the same name on the same commit, inside the local branch's badge:
  * "main | origin". The names give way before the branch name does.
@@ -809,6 +830,37 @@ body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codi
 .row.stash .text,
 .stash-note {
   color: var(--vscode-descriptionForeground);
+}
+
+/* Where the operation in progress stopped, and a rebase's target (banner.ts operationNotes). */
+.operation-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.operation-note.warning {
+  color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+.operation-note .codicon {
+  flex: none;
+  font-size: 12px;
+}
+
+.operation-note-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stash-message {

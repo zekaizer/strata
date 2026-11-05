@@ -146,7 +146,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
             refs: data.refs,
             options,
             stashes: data.stashes,
-            focus: moved.hash,
+            result: { focus: moved.hash },
           });
         }
       }

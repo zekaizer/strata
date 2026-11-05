@@ -37,10 +37,7 @@ export class OpRunner implements vscode.Disposable {
     remote: boolean,
     steps: (exec: Exec) => Promise<T>,
   ): Promise<T | undefined> {
-    if (this.running !== undefined) {
-      vscode.window.setStatusBarMessage(`Strata is busy: ${this.running}`, 4000);
-      return undefined;
-    }
+    if (this.refuseWhileBusy()) return undefined;
     this.running = label;
     host.busy(label);
     await setContext('strata.busy', true);
@@ -75,6 +72,13 @@ export class OpRunner implements vscode.Disposable {
       host.busy(undefined);
       await setContext('strata.busy', false);
     }
+  }
+
+  /** True, after saying what runs, while an operation runs. */
+  refuseWhileBusy(): boolean {
+    if (this.running === undefined) return false;
+    vscode.window.setStatusBarMessage(`Strata is busy: ${this.running}`, 4000);
+    return true;
   }
 
   private async exec(

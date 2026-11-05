@@ -284,5 +284,13 @@ const guarded = (env: FlowEnv, id: CommandId, handler: Handlers[CommandId]) => a
 
 export function registerCommands(env: FlowEnv): vscode.Disposable[] {
   const all = handlers(env);
-  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, guarded(env, id, all[id])));
+  return COMMAND_IDS.map((id) => {
+    const spec: CommandSpec = COMMANDS[id];
+    const handler = all[id];
+    // enablement (!strata.busy) does not stop executeCommand, which the banner's buttons use.
+    const run: typeof handler = spec.writes
+      ? (ctx, cid) => (env.runner.refuseWhileBusy() ? undefined : handler(ctx, cid))
+      : handler;
+    return vscode.commands.registerCommand(id, guarded(env, id, run));
+  });
 }

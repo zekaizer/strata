@@ -34,7 +34,11 @@ export interface RepoInfo {
  */
 export type HostToWebview =
   | { type: 'init'; theme: ThemeKind }
-  /** `focus`: a commit or stash to select and reveal once loaded, instead of the kept selection (the result of an operation). */
+  /**
+   * `result`: the history after an operation, which marks what it moved; its `focus` is a commit
+   * or stash to select and reveal once loaded, instead of the kept selection. `notified`: a
+   * notification, which VS Code reads out, says how the operation ended.
+   */
   | {
       type: 'reset';
       generation: number;
@@ -42,7 +46,7 @@ export type HostToWebview =
       refs: RefSnapshot;
       options: ViewOptions;
       stashes: StashEntry[];
-      focus?: string;
+      result?: { focus?: string; notified?: true };
     }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
@@ -109,6 +113,10 @@ export interface ProbeState {
   visibleSubjects: string[];
   /** The commit or stash commit of each rendered row, by row index. */
   rowHashes: Record<number, string>;
+  /** Accessible names of the rendered rows, by commit or stash commit. */
+  rowLabels: Record<string, string>;
+  /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
+  operationNotes: Record<string, string>;
   /** Label of the toolbar's stash count button; empty while it is hidden. */
   stashButton: string;
   /** Rendered stash rows by row index: badge, subject cell and aria-label text, and menu context. */
@@ -226,9 +234,24 @@ export interface ProbeState {
   alerted: string;
   /** Rendered elements marked as moved by the last operation: a badge's refs or "stash:<hash>", and how they show it. */
   landed: { refs: string; animation: string; outline: string }[];
-  /** The banner above the list: its state, region name, sentence, look, buttons and the commits it links. */
+  /**
+   * The banner above the list: its state, region name, sentence, look, buttons and the commits it
+   * links; `busy` is the running operation it shows instead of usable buttons.
+   */
   banner:
-    { state: string; label: string; text: string; warning: boolean; buttons: string[]; links: string[] } | undefined;
+    | {
+        state: string;
+        label: string;
+        text: string;
+        warning: boolean;
+        buttons: string[];
+        links: string[];
+        busy: string | undefined;
+        /** Buttons Tab reaches, and the button with focus. */
+        tabStops: string[];
+        focus: string | undefined;
+      }
+    | undefined;
   /** The toolbar's status text. */
   status: string;
   /** The list's aria-busy. */

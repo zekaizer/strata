@@ -209,7 +209,11 @@ describe('history operations', () => {
       actions: ['Resolve...', 'Skip...', 'Abort Rebase...'],
     });
     assert.equal(api().contextValue('strata.operation'), 'rebase');
-    await waitFor('rebase reported', async () => (await panel().probe()).operation?.kind === 'rebase');
+    const s = await waitFor('rebase reported', async () => {
+      const p = await panel().probe();
+      return p.banner?.state === 'rebase' && p;
+    });
+    assert.notEqual(s.announced, s.banner?.text, 'VS Code says the toast; the banner does not say it again');
 
     ui.clear();
     await run('strata.createBranch', commitMenu(git('rev-parse', 'main')));
