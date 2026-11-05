@@ -274,6 +274,26 @@ describe('ref operations', () => {
     assert.equal(git('rev-parse', 'refs/tags/v9.9'), object);
   });
 
+  it('creates a lightweight tag and undoes the deletion of an annotated one, with tag.gpgSign set', async () => {
+    git('config', 'tag.gpgSign', 'true');
+    const at = git('rev-parse', 'main~2');
+    ui.type('v9.8', '');
+    await run('strata.createTag', commitMenu(at));
+    assert.equal(git('cat-file', '-t', 'refs/tags/v9.8'), 'commit');
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'info', message: `Created tag 'v9.8' at ${at.slice(0, 7)}`, actions: ['Undo'] },
+    ]);
+
+    git('-c', 'tag.gpgSign=false', 'tag', '--annotate', '--message', 'Release 9.9', 'v9.9', at);
+    const object = git('rev-parse', 'refs/tags/v9.9');
+    await reload(panel());
+    ui.press('Delete Tag');
+    await run('strata.deleteTag', tagMenu('v9.9'));
+    assert.equal(git('tag', '--list', 'v9.9'), '');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'refs/tags/v9.9'), object);
+  });
+
   it('renames a branch and undoes that', async () => {
     ui.type('wip/renamed');
     await run('strata.renameBranch', branchMenu('wip/experiment', git('rev-parse', 'wip/experiment')));

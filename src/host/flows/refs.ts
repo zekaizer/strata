@@ -348,7 +348,7 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
       label: 'tag deletion',
       repo: host.cwd,
       guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: quote(ref.short) }] },
-      inverse: [{ kind: 'createTag', name: ref.short, at: object, message: undefined }],
+      inverse: [{ kind: 'restoreTag', name: ref.short, object }],
       focus: at.hash,
     },
   });
