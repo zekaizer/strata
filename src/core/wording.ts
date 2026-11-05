@@ -1,5 +1,5 @@
 import type { DirtyFacts, StashChoice, StashChoices, StashOp } from './autostash.ts';
-import { MORE_HISTORY, type ResetMode } from './operations.ts';
+import { MORE_HISTORY, type MergeMode, type ResetMode } from './operations.ts';
 import type { RefKind } from './refs.ts';
 import type { OperationKind } from './repo-state.ts';
 
@@ -290,8 +290,11 @@ const VERB: Record<StashOp, string> = {
 };
 
 /** The buttons of a confirmation that asks what to do with uncommitted changes, in the order of `choices`. */
-export function stashButtons<C extends StashChoice>(op: StashOp, choices: readonly C[]): { id: C; label: string }[] {
-  const verb = VERB[op];
+export function stashButtons<C extends StashChoice>(
+  op: StashOp,
+  choices: readonly C[],
+  verb = VERB[op],
+): { id: C; label: string }[] {
   const reset = op === 'resetHard' || op === 'resetKeep';
   const label: Record<StashChoice, string> = {
     stash: reset ? 'Stash Changes & Reset' : `Stash & ${verb}`,
@@ -478,35 +481,58 @@ export interface MergeFacts {
   canFastForward: boolean;
 }
 
+/** A dirty merge's answer: how it records the result, and what it does with the changes. */
+export type MergeStashAnswer = `${MergeMode}+${StashChoice}`;
+
+const MODE_VERB: Record<MergeMode, string> = { ff: 'Fast-Forward', noFastForward: 'Create Merge Commit' };
+
+export function mergeAnswer(id: MergeStashAnswer): { mode: MergeMode; choice: StashChoice } {
+  const [mode, choice] = id.split('+') as [MergeMode, StashChoice];
+  return { mode, choice };
+}
+
 /**
  * Clean: Fast-Forward or Create Merge Commit (merge commit first when merge.ff is false), or just
- * Merge. Dirty: the stash `buttons`, merging as `mode` says.
+ * Merge. Dirty: for each of `modes`, in order, a button per answer about the changes.
  */
+export function mergeConfirmation(f: MergeFacts, mergeFf: boolean | undefined): Confirmation<MergeMode>;
 export function mergeConfirmation(
   f: MergeFacts,
   mergeFf: boolean | undefined,
-  dirty?: { section: string; buttons: { id: StashChoice; label: string }[]; mode: 'ff' | 'noFastForward' },
-): Confirmation<'ff' | 'noFastForward' | StashChoice> {
+  dirty: { section: string; modes: { mode: MergeMode; choices: readonly StashChoice[] }[] },
+): Confirmation<MergeStashAnswer>;
+export function mergeConfirmation(
+  f: MergeFacts,
+  mergeFf: boolean | undefined,
+  dirty?: { section: string; modes: { mode: MergeMode; choices: readonly StashChoice[] }[] },
+): Confirmation<MergeMode | MergeStashAnswer> {
   const commits = plural(f.count, 'commit');
   const fastForwards = `${f.into} fast-forwards to ${f.short} (${commits}).`;
   const records = `Creates a merge commit on ${f.into} with ${commits} from ${f.src}.`;
+  const either = `${f.into} can fast-forward to ${f.short} (${commits}), or record a merge commit.`;
   const message = `Merge ${f.src} into ${f.into}?`;
-  if (dirty)
+  if (dirty) {
+    const [only] = dirty.modes;
+    const both = dirty.modes.length > 1;
     return {
       message,
-      detail: [f.canFastForward && dirty.mode === 'ff' ? fastForwards : records, dirty.section].join(' '),
-      buttons: dirty.buttons,
+      detail: [both ? either : f.canFastForward && only?.mode === 'ff' ? fastForwards : records, dirty.section].join(
+        ' ',
+      ),
+      buttons: dirty.modes.flatMap(({ mode, choices }) =>
+        stashButtons('merge', choices, both ? MODE_VERB[mode] : undefined).map((b) => ({
+          id: `${mode}+${b.id}` as const,
+          label: b.label,
+        })),
+      ),
     };
+  }
   if (!f.canFastForward) return { message, detail: records, buttons: [{ id: 'ff', label: 'Merge' }] };
-  const both: { id: 'ff' | 'noFastForward'; label: string }[] = [
+  const both: { id: MergeMode; label: string }[] = [
     { id: 'ff', label: 'Fast-Forward' },
     { id: 'noFastForward', label: 'Create Merge Commit' },
   ];
-  return {
-    message,
-    detail: `${f.into} can fast-forward to ${f.short} (${commits}), or record a merge commit.`,
-    buttons: mergeFf === false ? both.reverse() : both,
-  };
+  return { message, detail: either, buttons: mergeFf === false ? both.reverse() : both };
 }
 
 export interface RebaseFacts {
@@ -767,8 +793,9 @@ export const HISTORY_DONE = {
     `Rebased ${branch} onto ${onto} (${plural(count, 'commit')})`,
   picked: (short: string, onto: string): string => `Cherry-picked ${short} onto ${onto}`,
   reverted: (short: string): string => `Reverted ${short}`,
-  reset: (branch: string, short: string, stash: string | undefined): string =>
-    `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
+  /** `kept`: the reset kept the changes that are not in `stash` in place (reset --keep). */
+  reset: (branch: string, short: string, stash: string | undefined, kept = false): string =>
+    `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your ${kept ? 'changes to the files the reset changes' : 'uncommitted changes'} are in ${stash}`}`,
   continued: (kind: OperationKind): string => `Finished the ${OP_NAME[kind]}`,
   aborted: (kind: OperationKind, stash?: string): string =>
     `Aborted the ${OP_NAME[kind]}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
@@ -810,6 +837,9 @@ export const autostashRefused = (paths: readonly string[]): string =>
 export const OPEN_SCM = 'Open Source Control View';
 
 export const NOTHING_TO_STASH = 'No local changes to stash.';
+/** After `git stash push` made no stash, with `submodules` changed inside. */
+export const nothingStashed = (submodules: number): string =>
+  submodules > 0 ? 'No local changes to stash: git never stashes changes inside submodules.' : NOTHING_TO_STASH;
 
 /** `n` changed tracked files, `staged` of them staged; `untracked`: Include Untracked. */
 export function stashPushInput(n: number, staged: number, untracked: boolean): { title: string; prompt: string } {

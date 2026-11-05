@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { resolveStashChoices, type DirtyFacts, type StashChoices, type StashOp } from '../../core/autostash.ts';
 import { untrackedInTheWay } from '../../core/git-error.ts';
 import type { Operation } from '../../core/operations.ts';
-import type { Worktree } from '../../core/repo-state.ts';
+import { parseStatus, type Worktree } from '../../core/repo-state.ts';
 import {
   autostashRefused,
   dirtySection,
@@ -39,6 +39,8 @@ export interface Changes {
   choices: StashChoices;
   /** The closing section of the confirmation; '' when nothing needs asking. */
   section: string;
+  /** The choices with other facts about the operation (a merge that fast-forwards). */
+  resolve: (dirty: DirtyFacts) => StashChoices;
 }
 
 /** `target`: the commit a switch or a reset --keep moves to, for the overlap. */
@@ -53,10 +55,12 @@ export async function changes(host: FlowHost, op: StashOp, target?: string): Pro
       : [];
   // Changes inside submodules cannot be stashed and never block: they alone ask nothing.
   const files = Math.max(0, worktree.paths.length - worktree.submodules);
-  const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0 };
-  const choices = resolveStashChoices(op, dirty, host.settings().autoStash, mergeAutoStash);
+  const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0, fastForward: false };
+  const setting = host.settings().autoStash;
+  const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting, mergeAutoStash);
+  const choices = resolve(dirty);
   const section = choices.choices.length > 0 ? dirtySection(dirty, choices, worktree.submodules) : '';
-  return { worktree, overlap, dirty, choices, section };
+  return { worktree, overlap, dirty, choices, section, resolve };
 }
 
 /** A stash as Strata names it. */
@@ -79,23 +83,34 @@ export type Restored =
 const trackedStatus = (host: FlowHost) =>
   runGit(host.git, host.cwd, ['status', '--porcelain=v2', '-z', '--untracked-files=no']);
 
-/** Pops (or applies) the stash commit `hash`, resolving its index right before. */
+/**
+ * Pops (or applies) the stash commit `hash`, resolving its index right before. Staged changes come
+ * back staged, or unstaged when git refuses that (they no longer apply to the index).
+ */
 export async function restore(host: FlowHost, exec: Exec, hash: string, pop = true): Promise<Restored> {
   const stash = await readStash(host.git, host.cwd, hash);
   // The user popped it by hand meanwhile.
   if (!stash) return { kind: 'none' };
   const before = await trackedStatus(host);
-  let error: unknown;
-  try {
-    await exec(pop ? { kind: 'stashPop', index: stash.index } : { kind: 'stashApply', index: stash.index });
-  } catch (e) {
-    if (!(e instanceof GitOpError)) throw e;
-    error = e;
-  }
-  if (error === undefined) return { kind: 'restored' };
-  if ((await readUnmerged(host.git, host.cwd)).length > 0) return { kind: 'conflicted', stash };
-  if ((await trackedStatus(host)) !== before) return { kind: 'partial', stash };
-  return { kind: 'refused', stash, reason: gitFailure((error as GitOpError).message).split('\n')[0]! };
+  const attempt = async (withIndex: boolean): Promise<GitOpError | undefined> => {
+    try {
+      await exec({ kind: pop ? 'stashPop' : 'stashApply', index: stash.index, withIndex });
+      return undefined;
+    } catch (e) {
+      if (!(e instanceof GitOpError)) throw e;
+      return e;
+    }
+  };
+  const judge = async (error: GitOpError | undefined): Promise<Restored> => {
+    if (error === undefined) return { kind: 'restored' };
+    if ((await readUnmerged(host.git, host.cwd)).length > 0) return { kind: 'conflicted', stash };
+    if ((await trackedStatus(host)) !== before) return { kind: 'partial', stash };
+    return { kind: 'refused', stash, reason: gitFailure(error.message).split('\n')[0]! };
+  };
+  // A refused --index unstages what is staged now, so it is tried only with nothing staged.
+  if (parseStatus(before).staged > 0) return judge(await attempt(false));
+  const r = await judge(await attempt(true));
+  return r.kind === 'refused' ? judge(await attempt(false)) : r;
 }
 
 /**

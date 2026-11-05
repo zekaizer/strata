@@ -36,6 +36,8 @@ export type Operation =
   /** `mainline`: for a merge commit, the parent (1-based) its changes are taken relative to. */
   | { kind: 'cherryPick' | 'revert'; commit: string; mainline?: number }
   | { kind: 'reset'; commit: string; mode: ResetMode }
+  /** Puts `paths` back as HEAD has them, in the index and the work tree, deleting those HEAD lacks. */
+  | { kind: 'restoreHead'; paths: readonly string[] }
   | { kind: 'continue' | 'abort' | 'skip'; operation: OperationKind }
   /**
    * `untracked`: untracked files stashed too, none, those git does not ignore, or ignored ones as
@@ -47,7 +49,9 @@ export type Operation =
       untracked: 'none' | 'unignored' | 'all';
       paths?: readonly string[];
     }
-  | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
+  /** `withIndex`: staged changes come back staged (git refuses when they no longer apply to the index). */
+  | { kind: 'stashApply' | 'stashPop'; index: number; withIndex: boolean }
+  | { kind: 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
   /**
@@ -144,6 +148,8 @@ export function argv(op: Operation): string[] {
       return ['revert', '--no-edit', ...mainline(op.mainline), op.commit];
     case 'reset':
       return ['reset', `--${op.mode}`, op.commit];
+    case 'restoreHead':
+      return ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...op.paths.map((p) => `:(literal)${p}`)];
     case 'continue':
       // For a merge, `commit --no-edit` would keep the "# Conflicts:" notes; --continue's editor (none) strips them.
       return [GIT_COMMAND[op.operation], '--continue'];
@@ -161,9 +167,9 @@ export function argv(op: Operation): string[] {
         ...(op.paths === undefined ? [] : ['--', ...op.paths.map((p) => `:(literal)${p}`)]),
       ];
     case 'stashApply':
-      return ['stash', 'apply', stash(op.index)];
+      return ['stash', 'apply', ...(op.withIndex ? ['--index'] : []), stash(op.index)];
     case 'stashPop':
-      return ['stash', 'pop', stash(op.index)];
+      return ['stash', 'pop', ...(op.withIndex ? ['--index'] : []), stash(op.index)];
     case 'stashDrop':
       return ['stash', 'drop', stash(op.index)];
     case 'stashBranch':

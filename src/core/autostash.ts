@@ -31,6 +31,8 @@ export interface DirtyFacts {
   staged: number;
   /** Some of them differ between HEAD and the target too (switch, reset --keep). */
   overlap: boolean;
+  /** The merge fast-forwards (merge, pull with merge). */
+  fastForward: boolean;
 }
 
 const NAMES: Record<StashOp, string> = {
@@ -97,6 +99,13 @@ export function resolveStashChoices(
       };
     case 'merge':
     case 'pullMerge': {
+      // git refuses a merge commit over staged changes, even to other files; a fast-forward carries them.
+      if (dirty.staged > 0 && !dirty.fastForward)
+        return {
+          choices: ['stash'],
+          explain: "git can't create a merge commit with staged changes.",
+          mechanism: 'git',
+        };
       // Unset, git merges over changes it would only warn about losing: stashing comes first.
       const first =
         setting === 'gitConfig'

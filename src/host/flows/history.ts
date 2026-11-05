@@ -16,6 +16,7 @@ import {
   HISTORY_DONE,
   IN_THE_WAY_OF,
   mainlinePick,
+  mergeAnswer,
   mergeConfirmation,
   messageEditsConfirmation,
   type MergeParents,
@@ -274,22 +275,32 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
     readConfigBool(host.git, host.cwd, 'merge.ff'),
   ]);
   const facts = { src: src.name, into: h.name, short: from.short, count, canFastForward };
-  let mode: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
+  const preferred: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
+  let mode = preferred;
   let autostash = false;
   if (c.choices.choices.length > 0) {
+    // A pull merges as git pull would, without asking how.
+    const modes: MergeMode[] =
+      ask === 'always' && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
+    const options = modes.map((m) => ({
+      mode: m,
+      choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
+    }));
+    const explain = [...new Set(options.map((o) => o.choices.explain))].join(' ');
     const answer = await host.ui.confirm(
       mergeConfirmation(facts, mergeFf, {
-        section: c.section,
-        buttons: stashButtons('merge', c.choices.choices),
-        mode,
+        section: dirtySection(c.dirty, { ...options[0]!.choices, explain }, c.worktree.submodules),
+        modes: options.map((o) => ({ mode: o.mode, choices: o.choices.choices })),
       }),
     );
     if (answer === undefined) return;
-    autostash = answer === 'stash';
+    const picked = mergeAnswer(answer);
+    mode = picked.mode;
+    autostash = picked.choice === 'stash';
   } else if (ask === 'always') {
     const answer = await host.ui.confirm(mergeConfirmation(facts, mergeFf));
     if (answer === undefined) return;
-    mode = answer === 'noFastForward' ? 'noFastForward' : 'ff';
+    mode = answer;
   } else mode = 'ff';
   const r = await runStoppable(host, () =>
     runMovingUntracked(
@@ -454,18 +465,25 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
     if (answer === undefined) return;
   }
   const safety = answer === 'stash';
+  const safetyMessage = `Strata: before reset of ${h.branch ?? 'HEAD'} to ${t.short}`;
   const ran = await run(
     host,
     HISTORY_DOING.resetting(h.name, t.short),
     async (exec) => {
-      if (safety) {
+      if (safety && c && mode === 'keep') {
+        // Never popped. Only the changes --keep refuses to keep: the others stay in place.
+        const message = `On ${h.branch ?? '(no branch)'}: ${safetyMessage}`;
+        const commit = await createStash(host.git, host.cwd, c.overlap, message);
+        await exec({ kind: 'stashStore', commit, message });
+        await exec({ kind: 'restoreHead', paths: c.overlap });
+      } else if (safety) {
         // Never popped: it keeps what the reset would otherwise discard or overwrite.
         // With paths, only those: --all for overwritten files that are ignored, and none of the
         // staged deletions, which leave no file for a path to match (the reset restores them).
         const changed = c?.worktree.paths.filter((p) => !c.worktree.deleted.includes(p)) ?? [];
         await exec({
           kind: 'stashPush',
-          message: `Strata: before reset of ${h.branch ?? 'HEAD'} to ${t.short}`,
+          message: safetyMessage,
           untracked: overwritten.length > 0 ? 'all' : 'none',
           ...(overwritten.length > 0 ? { paths: [...changed, ...overwritten] } : {}),
         });
@@ -478,7 +496,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
   if (ran === undefined) return;
   const stash = safety ? await safetyStash(host) : undefined;
   await finish(host, {
-    message: HISTORY_DONE.reset(h.name, t.short, stash),
+    message: HISTORY_DONE.reset(h.name, t.short, stash, mode === 'keep'),
     focus: t.hash,
     undo: moveUndo(host, 'reset', h, t.hash, UNDO_MODE[mode]),
   });

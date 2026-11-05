@@ -9,10 +9,10 @@ import {
 } from '../../src/core/autostash.ts';
 import type { OperationState } from '../../src/core/repo-state.ts';
 
-const clean: DirtyFacts = { files: 0, staged: 0, overlap: false };
-const dirty: DirtyFacts = { files: 2, staged: 0, overlap: false };
-const staged: DirtyFacts = { files: 2, staged: 1, overlap: false };
-const overlapping: DirtyFacts = { files: 2, staged: 0, overlap: true };
+const clean: DirtyFacts = { files: 0, staged: 0, overlap: false, fastForward: false };
+const dirty: DirtyFacts = { files: 2, staged: 0, overlap: false, fastForward: false };
+const staged: DirtyFacts = { files: 2, staged: 1, overlap: false, fastForward: false };
+const overlapping: DirtyFacts = { files: 2, staged: 0, overlap: true, fastForward: false };
 const off = false;
 const on = true;
 
@@ -45,6 +45,20 @@ describe('resolveStashChoices', () => {
     assert.deepEqual(never.choices, ['keep', 'stash']);
     assert.match(never.explain, /strata\.autoStash is "never"/);
     assert.deepEqual(resolveStashChoices('pullMerge', dirty, 'always', off).choices, ['stash', 'keep']);
+  });
+
+  it('offers only stashing for a merge with staged changes, unless it fast-forwards', () => {
+    const commit = resolveStashChoices('merge', staged, 'never', off);
+    assert.deepEqual(commit.choices, ['stash']);
+    assert.equal(commit.explain, "git can't create a merge commit with staged changes.");
+    assert.equal(commit.mechanism, 'git');
+    assert.deepEqual(resolveStashChoices('pullMerge', staged, 'never', off).choices, ['stash']);
+    const ff = { ...staged, fastForward: true };
+    assert.deepEqual(resolveStashChoices('merge', ff, 'never', off).choices, ['keep', 'stash']);
+    assert.deepEqual(resolveStashChoices('merge', { ...dirty, fastForward: false }, 'never', off).choices, [
+      'keep',
+      'stash',
+    ]);
   });
 
   it('stashes explicitly where git has no --autostash', () => {

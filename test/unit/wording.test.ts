@@ -29,7 +29,7 @@ describe('wording', () => {
   });
 
   it('describes uncommitted changes and what happens to them', () => {
-    const dirty = { files: 3, staged: 1, overlap: false };
+    const dirty = { files: 3, staged: 1, overlap: false, fastForward: true };
     const s = dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig', true), 0);
     assert.equal(
       s,

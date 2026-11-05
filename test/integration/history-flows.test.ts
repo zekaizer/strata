@@ -106,6 +106,69 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-ahead'");
   });
 
+  it('offers fast-forward or a merge commit with uncommitted changes too', async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'mine\n');
+    await reload(panel());
+    ui.press('Create Merge Commit Keeping Changes');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    assert.deepEqual(ui.first('confirm').buttons, [
+      'Stash & Fast-Forward',
+      'Fast-Forward Keeping Changes',
+      'Stash & Create Merge Commit',
+      'Create Merge Commit Keeping Changes',
+    ]);
+    assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-ahead'));
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
+  it('keeps staged changes in place for a merge that fast-forwards', async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Fast-Forward Keeping Changes');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    const asked = ui.first('confirm');
+    assert.deepEqual(asked.buttons, [
+      'Stash & Fast-Forward',
+      'Fast-Forward Keeping Changes',
+      'Stash & Create Merge Commit',
+    ]);
+    assert.match(asked.detail, /git can't create a merge commit with staged changes\./);
+    assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
+    assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'still staged');
+  });
+
+  it('offers only stashing for a merge commit over staged changes', async () => {
+    branchWith('strata-side', 'main~1', 'side.txt', 'side\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Stash & Merge');
+    await run('strata.merge', branchMenu('strata-side', git('rev-parse', 'strata-side')));
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Merge']);
+    assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-side'));
+    assert.equal(read('NOTES.md'), 'staged\n');
+  });
+
+  it('gives staged changes back staged after a cherry pick stashed around them', async () => {
+    branchWith('strata-pick', 'main~1', 'pick.txt', 'picked\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(git('rev-parse', 'strata-pick')));
+    assert.equal(read('pick.txt'), 'picked\n');
+    assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'staged again');
+    assert.equal(git('stash', 'list'), '');
+  });
+
   it('merges the clicked branch when a tag has the same name', async () => {
     branchWith('strata-rel', 'main', 'tagged.txt', 'tagged\n');
     git('tag', 'strata-rel');
@@ -681,7 +744,7 @@ describe('history operations', () => {
   it("merges after moving untracked files out of its way, with git's autostash both times", async () => {
     const tip = await inTheWay();
     write('NOTES.md', 'dirty\n');
-    ui.press('Stash & Merge', 'Stash It & Retry');
+    ui.press('Stash & Fast-Forward', 'Stash It & Retry');
     await run('strata.merge', branchMenu('strata-new', tip));
     assert.equal(ui.of('confirm')[1]?.message, "1 untracked file is in the way of the merge of 'strata-new': new.txt.");
     assert.equal(git('rev-parse', 'HEAD'), tip, 'fast-forwarded');
@@ -1099,6 +1162,35 @@ describe('history operations', () => {
     assert.equal(git('stash', 'list', '--format=%gs'), `On main: Strata: before reset of main to ${short}`);
     await run('strata.undo');
     assert.equal(git('rev-parse', 'HEAD'), before);
+  });
+
+  it('stashes only the changes a keep reset cannot keep, and leaves the rest in place', async () => {
+    const target = git('rev-parse', 'main~2');
+    git('rm', '--quiet', 'main.txt');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    write('NOTES.md', 'unstaged\n');
+    write('feature_login.txt', 'staged\n');
+    git('add', 'feature_login.txt');
+    write('cross_x.txt', 'unstaged\n');
+    write('u.txt', 'untracked\n');
+    ui.choose('Keep').press('Stash Changes & Reset');
+    await run('strata.reset', commitMenu(target));
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash Changes & Reset']);
+    assert.equal(git('rev-parse', 'HEAD'), target);
+    const short = git('rev-parse', '--short', target);
+    assert.equal(git('stash', 'list', '--format=%gs'), `On main: Strata: before reset of main to ${short}`);
+    assert.equal(git('diff', '--name-only', 'stash@{0}^1', 'stash@{0}'), 'NOTES.md\nmain.txt');
+    assert.equal(git('diff', '--name-only', 'stash@{0}^1', 'stash@{0}^2'), 'NOTES.md\nmain.txt');
+    assert.equal(git('show', 'stash@{0}:NOTES.md'), 'unstaged');
+    assert.equal(git('show', 'stash@{0}^2:NOTES.md'), 'staged');
+    assert.equal(read('feature_login.txt'), 'staged\n');
+    assert.equal(read('cross_x.txt'), 'unstaged\n');
+    assert.equal(read('u.txt'), 'untracked\n');
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      `Reset 'main' to ${short}. Your changes to the files the reset changes are in stash@{0} ("On main: Strata: before reset of main to ${short}")`,
+    );
   });
 
   /** strata-reset, with HEAD on it: its tip untracks `file` (and ignores it), which its parent, returned, tracks. */

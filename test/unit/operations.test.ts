@@ -116,6 +116,18 @@ describe('operations', () => {
     assert.equal(run(d, 'show', '--format=', '--name-only', 'stash@{0}^3'), 'new [1].txt');
   });
 
+  it('puts paths back as HEAD has them, staged, unstaged, deleted or added', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'f.txt'), 'staged\n');
+    run(d, 'add', 'f.txt');
+    writeFileSync(join(d, 'f.txt'), 'unstaged\n');
+    writeFileSync(join(d, 'new [1].txt'), 'added\n');
+    run(d, 'add', 'new [1].txt');
+    writeFileSync(join(d, 'other.txt'), 'stays\n');
+    await op(d, { kind: 'restoreHead', paths: ['f.txt', 'new [1].txt'] });
+    assert.equal(run(d, 'status', '--porcelain'), '?? other.txt');
+  });
+
   it('puts a deleted branch back without switching to it, with its configuration', async () => {
     const d = repo();
     const tip = run(d, 'rev-parse', 'topic');
@@ -281,18 +293,31 @@ describe('operations', () => {
     writeFileSync(join(d, 'new.txt'), 'u\n');
     await op(d, { kind: 'stashPush', message: 'second', untracked: 'unignored' });
     assert.equal(run(d, 'stash', 'list', '--format=%gs'), 'On main: second\nOn main: first');
-    await op(d, { kind: 'stashApply', index: 1 });
+    await op(d, { kind: 'stashApply', index: 1, withIndex: false });
     assert.match(run(d, 'diff', '--name-only'), /f\.txt/);
     run(d, 'checkout', '--quiet', '--', 'f.txt');
     const second = run(d, 'rev-parse', 'stash@{0}');
     await op(d, { kind: 'stashDrop', index: 0 });
     await op(d, { kind: 'stashStore', commit: second, message: 'On main: second' });
     assert.equal(run(d, 'stash', 'list', '--format=%gs'), 'On main: second\nOn main: first');
-    await op(d, { kind: 'stashPop', index: 0 });
+    await op(d, { kind: 'stashPop', index: 0, withIndex: false });
     assert.equal(run(d, 'stash', 'list', '--format=%gs'), 'On main: first');
     run(d, 'stash', 'push', '--quiet', '--include-untracked');
     await op(d, { kind: 'stashBranch', name: 'from-stash', index: 1 });
     assert.equal(branch(d), 'from-stash');
+  });
+
+  it('applies and pops a stash with its staged changes staged again', async () => {
+    const d = repo();
+    appendFileSync(join(d, 'f.txt'), 'staged\n');
+    run(d, 'add', 'f.txt');
+    await op(d, { kind: 'stashPush', message: 'staged', untracked: 'none' });
+    await op(d, { kind: 'stashApply', index: 0, withIndex: true });
+    assert.equal(run(d, 'diff', '--cached', '--name-only'), 'f.txt');
+    run(d, 'reset', '--hard', '--quiet');
+    await op(d, { kind: 'stashPop', index: 0, withIndex: true });
+    assert.equal(run(d, 'diff', '--cached', '--name-only'), 'f.txt');
+    assert.equal(run(d, 'stash', 'list'), '');
   });
 
   it('fetches more history into a shallow clone, or all of it', async () => {

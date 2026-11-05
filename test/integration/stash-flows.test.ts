@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { flowSuite, menu, reload, run } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
+import { commitAside, storeStash } from '../fixtures/stashes.ts';
 import { gitRetry } from './repo-snapshot.ts';
 
 const notes = () => readFileSync(join(workspaceRoot(), 'NOTES.md'), 'utf8');
@@ -16,6 +17,59 @@ describe('stash operations', () => {
   it('says when there is nothing to stash', async () => {
     await run('strata.stash.push');
     assert.deepEqual(ui.asked, [{ kind: 'notify', level: 'info', message: 'No local changes to stash.', actions: [] }]);
+  });
+
+  it('says when the only changes are inside a submodule, which git never stashes', async () => {
+    const sub = join(workspaceRoot(), 'strata-sub');
+    try {
+      execFileSync('git', ['init', '--quiet', sub]);
+      writeFileSync(join(sub, 'f.txt'), 'one\n');
+      git('-C', sub, 'add', 'f.txt');
+      git('-C', sub, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'sub');
+      git('add', 'strata-sub');
+      git('commit', '--quiet', '-m', 'Add submodule');
+      writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'older\n');
+      git('stash', 'push', '--quiet');
+      const older = git('stash', 'list');
+      writeFileSync(join(sub, 'f.txt'), 'two\n');
+      await reload(panel());
+      ui.type('');
+      await run('strata.stash.push');
+      assert.equal(git('stash', 'list'), older, 'no stash was made');
+      assert.deepEqual(ui.of('notify'), [
+        {
+          kind: 'notify',
+          level: 'info',
+          message: 'No local changes to stash: git never stashes changes inside submodules.',
+          actions: [],
+        },
+      ]);
+    } finally {
+      rmSync(sub, { recursive: true, force: true });
+    }
+  });
+
+  it('pops staged changes back staged, and unstaged when they no longer apply to the index', async () => {
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), `${notes()}staged\n`);
+    git('add', 'NOTES.md');
+    ui.type('');
+    await run('strata.stash.push');
+    await run('strata.stash.pop', stashMenu(git('rev-parse', 'refs/stash')));
+    assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'staged again');
+    assert.equal(git('stash', 'list'), '');
+
+    git('stash', 'push', '--quiet');
+    const stash = git('rev-parse', 'refs/stash');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), `first\n${notes()}`);
+    git('commit', '--quiet', '-am', 'Prepend a line');
+    await run('strata.stash.pop', stashMenu(stash));
+    assert.equal(git('diff', '--cached', '--name-only'), '');
+    assert.match(notes(), /^first\n[\s\S]*staged\n$/);
+    assert.equal(git('stash', 'list'), '');
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
   });
 
   it('stashes, pops, drops and brings a dropped stash back with Undo', async () => {
@@ -45,16 +99,49 @@ describe('stash operations', () => {
     assert.equal(git('rev-parse', 'refs/stash'), again, 'the same stash is back');
   });
 
-  it('selects the row that takes the place of a popped or dropped stash, and loads no more history', async () => {
-    // HEAD on 400 commits more than branchy has, so the history takes more than one page.
+  /** HEAD on strata-deep, `length` commits more than branchy has, so the history takes more than one page. */
+  const deepHistory = async (length = 400) => {
     const main = git('rev-parse', 'main');
-    const stream = Array.from({ length: 400 }, (_, i) => {
+    const stream = Array.from({ length }, (_, i) => {
       const message = `Deep ${i}`;
       const from = i === 0 ? `from ${main}\n` : '';
       return `commit refs/heads/strata-deep\ncommitter Ada Lovelace <ada@example.com> ${1_700_010_000 + i * 60} +0000\ndata ${message.length}\n${message}\n${from}\n`;
     }).join('');
     execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
     await gitRetry('switch', '--quiet', 'strata-deep');
+  };
+
+  it('says at once that a stash no branch or HEAD reaches is not in the graph, loading no more history', async () => {
+    await deepHistory(3000);
+    const lost = commitAside(workspaceRoot(), 'main~1', 'Lost work', { 'lost.txt': 'lost\n' }, 9000);
+    const stash = storeStash(workspaceRoot(), {
+      base: lost,
+      branch: '(no branch)',
+      message: 'lost',
+      worktree: { 'lost.txt': 'wip\n' },
+      time: 9001,
+    });
+    await reload(panel());
+    assert.equal((await panel().probe()).done, false, 'more history to load');
+    const shown: Record<string, unknown>[] = [];
+    const pages: unknown[] = [];
+    const listening = panel().onDidReceiveMessage((m) => {
+      if (m.type === 'pickStash') shown.push(m.shown);
+      if (m.type === 'loadMore') pages.push(m);
+    });
+    try {
+      ui.choose(/^\$\(git-stash\) stash@\{0\} /);
+      await panel().simulate({ kind: 'click', selector: '.stash-button' });
+      await waitFor('announcement', async () => (await panel().probe()).announced === 'stash@{0} is not in this view');
+      assert.deepEqual(shown, [{ [stash]: 'notInView' }]);
+      assert.deepEqual(pages, []);
+    } finally {
+      listening.dispose();
+    }
+  });
+
+  it('selects the row that takes the place of a popped or dropped stash, and loads no more history', async () => {
+    await deepHistory();
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'older\n');
     await gitRetry('stash', 'push', '--quiet');
     const older = git('rev-parse', 'refs/stash');

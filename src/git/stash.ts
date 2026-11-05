@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CommitDetails } from '../core/details.ts';
-import { parseStashList, type StashEntry } from '../core/stash.ts';
+import { parseStashList, type StashAnchor, type StashEntry } from '../core/stash.ts';
 import { readChangedFiles, readCommitDetails } from './details.ts';
 import { runGit } from './run.ts';
 
@@ -43,7 +43,8 @@ export async function readStashList(git: string, cwd: string): Promise<StashEntr
 /**
  * The stash list, newest first; empty when there is no stash. A stash whose base left the branch it
  * was made on, and which no branch, remote-tracking branch or HEAD (the graph's start points) still
- * holds, is anchored at that branch's tip. Checks that take longer than `budgetMs` in all leave their
+ * holds, is anchored at that branch's tip, or nowhere when that branch is gone or it was made on a
+ * detached HEAD. Checks that take longer than `budgetMs` in all leave their
  * stashes at their base, uncounted.
  */
 export async function readStashes(
@@ -87,11 +88,16 @@ async function classify(
 ): Promise<StashEntry> {
   const tip = s.branch === undefined ? undefined : tips.get(s.branch);
   const [onBranch, files] = await Promise.all([
-    tip === undefined || tip === s.base ? true : isAncestor(git, cwd, s.base, tip, cache),
+    tip === undefined ? false : tip === s.base || isAncestor(git, cwd, s.base, tip, cache),
     countFiles(git, cwd, s, cache),
   ]);
-  const displaced = tip !== undefined && !onBranch && !(await isDrawn(git, cwd, s.base));
-  return { ...s, anchor: displaced ? { kind: 'tip', tip } : { kind: 'base' }, files };
+  const anchor: StashAnchor =
+    onBranch || (await isDrawn(git, cwd, s.base))
+      ? { kind: 'base' }
+      : tip !== undefined
+        ? { kind: 'tip', tip }
+        : { kind: 'unreachable' };
+  return { ...s, anchor, files };
 }
 
 /** Whether the graph's start points (LogReader's default) reach `commit`; not cached, since any ref moving changes it. */

@@ -1,7 +1,11 @@
 import type { Commit } from './commit.ts';
 
 /** Where a stash's row is drawn: above its base, or above its branch's tip once the base left that branch. */
-export type StashAnchor = { kind: 'base' } | { kind: 'tip'; tip: string };
+export type StashAnchor =
+  | { kind: 'base' }
+  | { kind: 'tip'; tip: string }
+  /** No start point of the graph (branch, remote-tracking branch, HEAD) reaches its base: never drawn. */
+  | { kind: 'unreachable' };
 
 /** One entry of the stash list (refs/stash and its reflog). */
 export interface StashEntry {
@@ -171,7 +175,10 @@ export function stashPickItems(
 const PICK_DETAIL: Record<StashShown, (s: StashEntry) => string> = {
   drawn: (s) => `In the graph above ${anchorOf(s).slice(0, 7)}`,
   notLoaded: () => 'Not loaded yet: Enter searches further down the history',
-  notInView: () => 'Not in this view (filter, first parent, or its branch was deleted)',
+  notInView: (s) =>
+    s.anchor.kind === 'unreachable'
+      ? `Not in the graph: no branch or HEAD contains its base commit ${s.base.slice(0, 7)}`
+      : 'Not in this view (filter, first parent, or its branch was deleted)',
   hidden: () => 'Stash rows are hidden: Enter shows them',
 };
 

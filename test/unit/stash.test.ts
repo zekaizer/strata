@@ -268,6 +268,15 @@ describe('Show Stashes items', () => {
     ]);
   });
 
+  it('says a stash no start point of the graph reaches is not in it, which no search changes', () => {
+    const lost = entry(4, 'main', { kind: 'unreachable' });
+    const [item] = stashPickItems([lost], { [lost.hash]: 'notInView' }, undefined, now);
+    assert.equal(
+      item?.kind === 'stash' && item.detail,
+      `Not in the graph: no branch or HEAD contains its base commit ${lost.base.slice(0, 7)}`,
+    );
+  });
+
   it('has no separators when every stash is in one group', () => {
     assert.deepEqual(
       stashPickItems(stashes, shown, 'other', now).map((i) => i.kind),
@@ -362,10 +371,26 @@ describe('readStashes', () => {
     assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'tip', tip });
   });
 
-  it('anchors a stash at its base when its branch is gone', async () => {
+  it('anchors a stash at its base when its branch is gone, while a ref still holds the base', async () => {
+    const base = run(dir, 'rev-parse', 'stash@{0}^1');
     run(dir, 'switch', '--quiet', 'main');
     run(dir, 'branch', '--quiet', '-D', 'topic');
+    assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'unreachable' });
+    run(dir, 'update-ref', 'refs/remotes/origin/topic', base);
     assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'base' });
+    run(dir, 'update-ref', '-d', 'refs/remotes/origin/topic');
+  });
+
+  it('finds a stash made on a detached HEAD drawn only while HEAD or a ref holds its base', async () => {
+    run(dir, 'switch', '--quiet', '--detach', 'main');
+    writeFileSync(join(dir, 'c.txt'), 'c\n');
+    run(dir, 'add', '.');
+    run(dir, 'commit', '--quiet', '-m', 'detached work');
+    appendFileSync(join(dir, 'c.txt'), 'wip\n');
+    run(dir, 'stash', 'push', '--quiet', '-m', 'detached');
+    assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'base' });
+    run(dir, 'switch', '--quiet', 'main');
+    assert.deepEqual((await readStashes('git', dir))[0]!.anchor, { kind: 'unreachable' });
   });
 
   it('anchors at the base and leaves files uncounted when git takes longer than allowed', async () => {

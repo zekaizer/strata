@@ -34,7 +34,7 @@ const stashX = (anchor: Row) => laneX(anchor.lane) - LANE_WIDTH / 2;
 type StashRow = Extract<ListRow, { kind: 'stash' }>;
 
 /** A stash row whose dashed spine runs down into its base, the commit it is drawn above. */
-const joined = (r: ListRow | undefined): r is StashRow => r?.kind === 'stash' && r.stash.anchor.kind === 'base';
+const joined = (r: ListRow | undefined): r is StashRow => r?.kind === 'stash' && r.stash.anchor.kind !== 'tip';
 
 /**
  * Draws list rows [first, last) into a canvas that covers the visible graph column.

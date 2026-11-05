@@ -109,7 +109,9 @@ operation is stopped, Continue, Abort and Skip.
   choose, and reverted, which undoes the commits it brought in from its other
   parents.
 - **Stashes:** Stash Changes (optionally with untracked files), Apply, Pop,
-  Drop, Create Branch from Stash and Copy Patch. Apply, Pop and Create Branch
+  Drop, Create Branch from Stash and Copy Patch. Apply and Pop bring staged
+  changes back staged, unless they no longer apply to the index or you have
+  staged changes of your own. Apply, Pop and Create Branch
   from Stash change nothing when files the stash's untracked part adds already
   exist in your work tree, and name those files so you can move them away
   first.
@@ -131,8 +133,11 @@ operation is stopped, Continue, Abort and Skip.
   default) follows `merge.autoStash` for merge and pull with merge (stashing
   first while it is not set) and keeps changes in place first for cherry pick
   and revert; `always` puts stashing first, `never` keeping them in place. A
-  rebase always needs the stash. A hard reset keeps your changes in a stash it
-  never pops, unless you discard them.
+  rebase always needs the stash, and so does a merge commit over staged
+  changes. A hard reset keeps your changes in a stash it
+  never pops, unless you discard them. A keep reset over changes to files it
+  changes moves just those changes into such a stash and keeps the rest in
+  place.
 - **Untracked files** in the way stop a checkout, merge, rebase, pull, cherry
   pick, revert or Create Branch from Stash that would put files of its own
   there. Strata names them and offers **Stash Them & Retry**, which moves just
