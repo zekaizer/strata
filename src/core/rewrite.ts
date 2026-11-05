@@ -157,6 +157,8 @@ export interface NewCommit {
   replaces: readonly string[];
   /** The original whose tree it has: a ref there moves to it unchanged in content. */
   last: string;
+  /** Its message is the one the edit wrote (the repository's commit-msg hook runs on it). */
+  edited: boolean;
 }
 
 /** The commits commit-tree makes for an in-place plan (inPlace), oldest first. */
@@ -167,6 +169,7 @@ export function chain(plan: RewritePlan, line: readonly LineCommit[]): NewCommit
   for (const s of plan.steps) {
     const c = byHash.get(s.commit)!;
     const group = s.action === 'fixup' ? made.pop() : undefined;
+    const message = s.action === 'fixup' ? s.message : undefined;
     if (!group) {
       made.push({
         tree: c.tree,
@@ -175,15 +178,17 @@ export function chain(plan: RewritePlan, line: readonly LineCommit[]): NewCommit
         message: s.action === 'reword' ? s.message : c.message,
         replaces: [c.hash],
         last: c.hash,
+        edited: s.action === 'reword',
       });
       continue;
     }
     made.push({
       ...group,
       tree: c.tree,
-      message: s.action === 'fixup' && s.message !== undefined ? s.message : group.message,
+      message: message ?? group.message,
       replaces: [...group.replaces, c.hash],
       last: c.hash,
+      edited: group.edited || message !== undefined,
     });
   }
   return made;
@@ -199,4 +204,56 @@ export function todoText(plan: RewritePlan): string {
   // git stops with "nothing to do" at a todo without a commit to apply.
   if (plan.steps.every((s) => s.action === 'drop')) lines.push('noop');
   return `${lines.join('\n')}\n`;
+}
+
+/** A local branch or tag that has a rewritten commit, other than the branch HEAD is on. */
+export interface RefTip {
+  /** Full name. */
+  name: string;
+  short: string;
+  kind: 'branch' | 'tag';
+  /** The commit it points at (a tag peeled). */
+  hash: string;
+  /** A branch checked out in another worktree. */
+  elsewhere: boolean;
+}
+
+/**
+ * Why a ref keeps the old commits: tags never move; a branch checked out in another worktree is
+ * not moved under it; one at a commit that has no counterpart of the same content (in a squash,
+ * or replayed by a rebase), or one that only branched off from the rewritten commits.
+ */
+export type StayReason = 'tag' | 'worktree' | 'old' | 'forked';
+
+export interface RefFates {
+  /** Branches that move to the new commit at that index of the chain. */
+  moves: { ref: RefTip; to: number }[];
+  stays: { ref: RefTip; why: StayReason }[];
+}
+
+/**
+ * What happens to `refs` when the commits `rewritten` are replaced: by `made` (in place), or by
+ * a rebase (undefined), which gives no exact counterpart of a commit.
+ */
+export function refFates(
+  refs: readonly RefTip[],
+  rewritten: ReadonlySet<string>,
+  made: readonly NewCommit[] | undefined,
+): RefFates {
+  const fates: RefFates = { moves: [], stays: [] };
+  for (const ref of refs) {
+    const to = made?.findIndex((c) => c.last === ref.hash) ?? -1;
+    const why: StayReason | undefined = !rewritten.has(ref.hash)
+      ? 'forked'
+      : ref.kind === 'tag'
+        ? 'tag'
+        : ref.elsewhere
+          ? 'worktree'
+          : to < 0
+            ? 'old'
+            : undefined;
+    if (why === undefined) fates.moves.push({ ref, to });
+    else fates.stays.push({ ref, why });
+  }
+  return fates;
 }

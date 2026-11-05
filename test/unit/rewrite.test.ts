@@ -5,8 +5,10 @@ import {
   cleanMessage,
   inPlace,
   planOf,
+  refFates,
   todoText,
   type LineCommit,
+  type RefTip,
   type RewritePlan,
 } from '../../src/core/rewrite.ts';
 
@@ -86,14 +88,14 @@ describe('rewrite plans', () => {
   it('chains new commits: parents by index, the first author, the last tree', () => {
     const p = plan(planOf({ kind: 'squash', oldest: 'b', newest: 'c', message: 'bc\n' }, line()));
     assert.deepEqual(chain(p, line()), [
-      { tree: 'Tc', parent: 'base', author: ident(3), message: 'bc\n', replaces: ['b', 'c'], last: 'c' },
-      { tree: 'Td', parent: 0, author: ident(1), message: 'd subject\n', replaces: ['d'], last: 'd' },
-      { tree: 'Te', parent: 1, author: ident(0), message: 'e subject\n', replaces: ['e'], last: 'e' },
+      { tree: 'Tc', parent: 'base', author: ident(3), message: 'bc\n', replaces: ['b', 'c'], last: 'c', edited: true },
+      { tree: 'Td', parent: 0, author: ident(1), message: 'd subject\n', replaces: ['d'], last: 'd', edited: false },
+      { tree: 'Te', parent: 1, author: ident(0), message: 'e subject\n', replaces: ['e'], last: 'e', edited: false },
     ]);
     const fixup = plan(planOf({ kind: 'fixup', commit: 'e', into: 'd' }, line()));
     assert.deepEqual(
-      chain(fixup, line()).map((c) => [c.tree, c.message, c.replaces.join('')]),
-      [['Te', 'd subject\n', 'de']],
+      chain(fixup, line()).map((c) => [c.tree, c.message, c.replaces.join(''), c.edited]),
+      [['Te', 'd subject\n', 'de', false]],
       'a fixup keeps the message of the commit it melds into',
     );
     const root = plan(planOf({ kind: 'reword', commit: 'a', message: 'root' }, line()));
@@ -109,5 +111,44 @@ describe('rewrite plans', () => {
       '  subject\n\n# Heading\n\tbody\n',
     );
     assert.equal(cleanMessage(' \n \n'), '');
+  });
+
+  it('moves a branch with its commit only where a new commit has the same content', () => {
+    const tip = (short: string, hash: string, kind: RefTip['kind'] = 'branch', elsewhere = false): RefTip => ({
+      name: `refs/${kind === 'tag' ? 'tags' : 'heads'}/${short}`,
+      short,
+      kind,
+      hash,
+      elsewhere,
+    });
+    const p = plan(planOf({ kind: 'squash', oldest: 'b', newest: 'c', message: 'bc' }, line()));
+    const made = chain(p, line());
+    const rewritten = new Set(['b', 'c', 'd', 'e']);
+    const refs = [
+      tip('at-c', 'c'),
+      tip('at-b', 'b'),
+      tip('v1', 'd', 'tag'),
+      tip('used', 'e', 'branch', true),
+      tip('off', 'x'),
+    ];
+    const fates = refFates(refs, rewritten, made);
+    assert.deepEqual(
+      fates.moves.map((m) => [m.ref.short, m.to]),
+      [['at-c', 0]],
+    );
+    assert.deepEqual(
+      fates.stays.map((s) => [s.ref.short, s.why]),
+      [
+        ['at-b', 'old'],
+        ['v1', 'tag'],
+        ['used', 'worktree'],
+        ['off', 'forked'],
+      ],
+    );
+    assert.deepEqual(
+      refFates([tip('at-c', 'c')], rewritten, undefined).stays.map((s) => s.why),
+      ['old'],
+      'a rebase gives no exact counterpart',
+    );
   });
 });
