@@ -1,6 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { CommitRef, ResetFacts } from '../core/wording.ts';
+import type { CommitList, CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
 import { readStashList } from './stash.ts';
 
@@ -38,6 +38,11 @@ async function commits(git: string, cwd: string, revs: string[]): Promise<Commit
 const count = async (git: string, cwd: string, revs: string[]) =>
   Number((await runGit(git, cwd, ['rev-list', '--count', ...revs, '--'])).trim());
 
+const commitList = async (git: string, cwd: string, revs: string[]): Promise<CommitList> => {
+  const [newest, n] = await Promise.all([commits(git, cwd, revs), count(git, cwd, revs)]);
+  return { newest, count: n };
+};
+
 /**
  * Every ref except the branch `except`: what still reaches a commit once that branch moves or goes.
  * --exclude takes the name without refs/heads/ and applies to the --branches right after it only.
@@ -61,12 +66,11 @@ export async function readResetFacts(
     optional(runGit(git, cwd, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'])),
   ]);
   const range = [`${target}..HEAD`];
-  const [[tip], dropped, gained, notOnUpstream, total, unreachable] = await Promise.all([
+  const [[tip], dropped, gained, notOnUpstream, unreachable] = await Promise.all([
     commits(git, cwd, ['--no-walk', target]),
-    commits(git, cwd, range),
+    commitList(git, cwd, range),
     count(git, cwd, [`HEAD..${target}`]),
     upstream === undefined ? Promise.resolve(0) : count(git, cwd, [...range, '--not', upstream]),
-    count(git, cwd, range),
     count(git, cwd, [...range, '--not', ...otherRefs(branch)]),
   ]);
   return {
@@ -74,7 +78,7 @@ export async function readResetFacts(
     target: tip!,
     dropped,
     gained,
-    onUpstream: upstream === undefined ? 0 : total - notOnUpstream,
+    onUpstream: upstream === undefined ? 0 : dropped.count - notOnUpstream,
     unreachable,
     upstream,
     dirtyFiles,
@@ -82,8 +86,8 @@ export async function readResetFacts(
 }
 
 /** Commits of `branch` on no other branch, remote-tracking branch or tag, newest first. */
-export function readUnmergedCommits(git: string, cwd: string, branch: string): Promise<CommitRef[]> {
-  return commits(git, cwd, [`refs/heads/${branch}`, '--not', ...otherRefs(branch)]);
+export function readUnmergedCommits(git: string, cwd: string, branch: string): Promise<CommitList> {
+  return commitList(git, cwd, [`refs/heads/${branch}`, '--not', ...otherRefs(branch)]);
 }
 
 /** Of `dirty` paths, those that also differ between HEAD and `target` (a switch would have to touch them). */
