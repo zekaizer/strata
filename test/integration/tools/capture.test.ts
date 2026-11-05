@@ -151,6 +151,15 @@ after(() => setTheme('dark'));
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `hidden-badges-${id}.png`));
+      // The ref card of a commit whose badge the rule hides.
+      await panel.simulate({ kind: 'key', key: 'Escape' });
+      const x = git('rev-parse', 'cross/x');
+      const row = Number(Object.entries((await panel.probe()).rowHashes).find(([, h]) => h === x)?.[0]);
+      await panel.simulate({ kind: 'hoverNode', index: row });
+      await waitFor('ref card', async () => (await panel.probe()).refCard !== undefined);
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await screenshot(join(shotDir!, `ref-card-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
       await panel.simulate({ kind: 'click', selector: '.popover-rule button[aria-label^="Remove"]' });
       await waitFor('rule removed', async () => !(await panel.probe()).badgeFilter.button.includes('hidden'));
       panel.dispose();
