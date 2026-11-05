@@ -1023,6 +1023,35 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), before);
   });
 
+  it('stashes only the changes a keep reset cannot keep, and leaves the rest in place', async () => {
+    const target = git('rev-parse', 'main~2');
+    git('rm', '--quiet', 'main.txt');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    write('NOTES.md', 'unstaged\n');
+    write('feature_login.txt', 'staged\n');
+    git('add', 'feature_login.txt');
+    write('cross_x.txt', 'unstaged\n');
+    write('u.txt', 'untracked\n');
+    ui.choose('Keep').press('Stash Changes & Reset');
+    await run('strata.reset', commitMenu(target));
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash Changes & Reset']);
+    assert.equal(git('rev-parse', 'HEAD'), target);
+    const short = git('rev-parse', '--short', target);
+    assert.equal(git('stash', 'list', '--format=%gs'), `On main: Strata: before reset of main to ${short}`);
+    assert.equal(git('diff', '--name-only', 'stash@{0}^1', 'stash@{0}'), 'NOTES.md\nmain.txt');
+    assert.equal(git('diff', '--name-only', 'stash@{0}^1', 'stash@{0}^2'), 'NOTES.md\nmain.txt');
+    assert.equal(git('show', 'stash@{0}:NOTES.md'), 'unstaged');
+    assert.equal(git('show', 'stash@{0}^2:NOTES.md'), 'staged');
+    assert.equal(read('feature_login.txt'), 'staged\n');
+    assert.equal(read('cross_x.txt'), 'unstaged\n');
+    assert.equal(read('u.txt'), 'untracked\n');
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      `Reset 'main' to ${short}. Your changes to the files the reset changes are in stash@{0} ("On main: Strata: before reset of main to ${short}")`,
+    );
+  });
+
   /** strata-reset, with HEAD on it: its tip untracks `file` (and ignores it), which its parent, returned, tracks. */
   const untrackedAtTip = async (file: string, ignore: boolean) => {
     branchWith('strata-reset', 'main', file, 'committed\n');

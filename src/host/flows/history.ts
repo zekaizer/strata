@@ -462,18 +462,25 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
     if (answer === undefined) return;
   }
   const safety = answer === 'stash';
+  const safetyMessage = `Strata: before reset of ${h.branch ?? 'HEAD'} to ${t.short}`;
   const ran = await run(
     host,
     HISTORY_DOING.resetting(h.name, t.short),
     async (exec) => {
-      if (safety) {
+      if (safety && c && mode === 'keep') {
+        // Never popped. Only the changes --keep refuses to keep: the others stay in place.
+        const message = `On ${h.branch ?? '(no branch)'}: ${safetyMessage}`;
+        const commit = await createStash(host.git, host.cwd, c.overlap, message);
+        await exec({ kind: 'stashStore', commit, message });
+        await exec({ kind: 'restoreHead', paths: c.overlap });
+      } else if (safety) {
         // Never popped: it keeps what the reset would otherwise discard or overwrite.
         // With paths, only those: --all for overwritten files that are ignored, and none of the
         // staged deletions, which leave no file for a path to match (the reset restores them).
         const changed = c?.worktree.paths.filter((p) => !c.worktree.deleted.includes(p)) ?? [];
         await exec({
           kind: 'stashPush',
-          message: `Strata: before reset of ${h.branch ?? 'HEAD'} to ${t.short}`,
+          message: safetyMessage,
           untracked: overwritten.length > 0 ? 'all' : 'none',
           ...(overwritten.length > 0 ? { paths: [...changed, ...overwritten] } : {}),
         });
@@ -486,7 +493,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
   if (ran === undefined) return;
   const stash = safety ? await safetyStash(host) : undefined;
   await finish(host, {
-    message: HISTORY_DONE.reset(h.name, t.short, stash),
+    message: HISTORY_DONE.reset(h.name, t.short, stash, mode === 'keep'),
     focus: t.hash,
     undo: moveUndo(host, 'reset', h, t.hash, UNDO_MODE[mode]),
   });

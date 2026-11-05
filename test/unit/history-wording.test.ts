@@ -214,6 +214,10 @@ describe('wording of history operations', () => {
       HISTORY_DONE.reset("'main'", 'abc1234', 'stash@{0} ("x")'),
       'Reset \'main\' to abc1234. Your uncommitted changes are in stash@{0} ("x")',
     );
+    assert.equal(
+      HISTORY_DONE.reset("'main'", 'abc1234', 'stash@{0} ("x")', true),
+      'Reset \'main\' to abc1234. Your changes to the files the reset changes are in stash@{0} ("x")',
+    );
     assert.equal(HISTORY_DONE.aborted('cherryPick'), 'Aborted the cherry pick');
     assert.equal(
       alreadyReverted('abc1234', "'main'"),

@@ -129,7 +129,9 @@ operation is stopped, Continue, Abort and Skip.
   and revert; `always` puts stashing first, `never` keeping them in place. A
   rebase always needs the stash, and so does a merge commit over staged
   changes. A hard reset keeps your changes in a stash it
-  never pops, unless you discard them.
+  never pops, unless you discard them. A keep reset over changes to files it
+  changes moves just those changes into such a stash and keeps the rest in
+  place.
 - **Untracked files** in the way stop a checkout, merge, rebase, pull, cherry
   pick, revert or Create Branch from Stash that would put files of its own
   there. Strata names them and offers **Stash Them & Retry**, which moves just

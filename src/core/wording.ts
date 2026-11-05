@@ -738,8 +738,9 @@ export const HISTORY_DONE = {
     `Rebased ${branch} onto ${onto} (${plural(count, 'commit')})`,
   picked: (short: string, onto: string): string => `Cherry-picked ${short} onto ${onto}`,
   reverted: (short: string): string => `Reverted ${short}`,
-  reset: (branch: string, short: string, stash: string | undefined): string =>
-    `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
+  /** `kept`: the reset kept the changes that are not in `stash` in place (reset --keep). */
+  reset: (branch: string, short: string, stash: string | undefined, kept = false): string =>
+    `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your ${kept ? 'changes to the files the reset changes' : 'uncommitted changes'} are in ${stash}`}`,
   continued: (kind: OperationKind): string => `Finished the ${OP_NAME[kind]}`,
   aborted: (kind: OperationKind, stash?: string): string =>
     `Aborted the ${OP_NAME[kind]}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,

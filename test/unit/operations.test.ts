@@ -98,6 +98,18 @@ describe('operations', () => {
     assert.equal(run(d, 'show', '--format=', '--name-only', 'stash@{0}^3'), 'new [1].txt');
   });
 
+  it('puts paths back as HEAD has them, staged, unstaged, deleted or added', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'f.txt'), 'staged\n');
+    run(d, 'add', 'f.txt');
+    writeFileSync(join(d, 'f.txt'), 'unstaged\n');
+    writeFileSync(join(d, 'new [1].txt'), 'added\n');
+    run(d, 'add', 'new [1].txt');
+    writeFileSync(join(d, 'other.txt'), 'stays\n');
+    await op(d, { kind: 'restoreHead', paths: ['f.txt', 'new [1].txt'] });
+    assert.equal(run(d, 'status', '--porcelain'), '?? other.txt');
+  });
+
   it('puts a deleted branch back without switching to it, with its configuration', async () => {
     const d = repo();
     const tip = run(d, 'rev-parse', 'topic');
