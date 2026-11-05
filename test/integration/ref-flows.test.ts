@@ -4,7 +4,18 @@ import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { parseGitVersion } from '../../src/core/git-version.ts';
-import { branchMenu, commitMenu, flowSuite, menu, reload, run, selected, stashRow, tagMenu } from './flow-helpers.ts';
+import {
+  branchMenu,
+  commitMenu,
+  flowSuite,
+  menu,
+  reload,
+  remoteMenu,
+  run,
+  selected,
+  stashRow,
+  tagMenu,
+} from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('ref operations', () => {
@@ -79,6 +90,57 @@ describe('ref operations', () => {
     await run('strata.renameBranch', branchMenu('wip/experiment', tip));
     assert.equal(ui.first('input').problem, undefined);
     assert.equal(git('rev-parse', 'refs/heads/wip/experiment/old'), tip);
+  });
+
+  it('creates nothing when the branch or tag appeared since the graph read its refs, and refreshes', async () => {
+    const at = git('rev-parse', 'main~3');
+    let before = (await panel().probe()).generation;
+    ui.type('strata/new').meanwhile(() => git('branch', 'strata/new', 'main~1'));
+    await run('strata.createBranch', commitMenu(at));
+    assert.deepEqual(ui.of('notify'), [
+      {
+        kind: 'notify',
+        level: 'error',
+        message: "A branch named 'strata/new' now exists; nothing was done.",
+        actions: [],
+      },
+    ]);
+    assert.equal(git('rev-parse', 'strata/new'), git('rev-parse', 'main~1'));
+    assert.equal(git('branch', '--show-current'), 'main');
+    assert.ok((await panel().probe()).generation > before);
+
+    ui.clear();
+    before = (await panel().probe()).generation;
+    ui.type('v9.7', '').meanwhile(() => git('tag', 'v9.7', 'main~1'));
+    await run('strata.createTag', commitMenu(at));
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'error', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
+    ]);
+    assert.equal(git('rev-parse', 'v9.7'), git('rev-parse', 'main~1'));
+    assert.ok((await panel().probe()).generation > before);
+  });
+
+  it('creates no local branch for a remote branch when one appeared since the graph read its refs', async () => {
+    git('remote', 'add', 'origin', join(tmpdir(), 'strata-no-such-remote'));
+    git('update-ref', 'refs/remotes/origin/strata-remote', 'main~1');
+    git('switch', '--quiet', '--detach', 'main');
+    const lonely = git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'Lonely');
+    git('update-ref', '--no-deref', 'HEAD', lonely);
+    await reload(panel());
+    const before = (await panel().probe()).generation;
+    ui.press('Switch Anyway').meanwhile(() => git('branch', 'strata-remote', 'main~2'));
+    await run('strata.checkout', remoteMenu('origin/strata-remote'));
+    assert.deepEqual(ui.of('notify'), [
+      {
+        kind: 'notify',
+        level: 'error',
+        message: "A branch named 'strata-remote' now exists; nothing was done.",
+        actions: [],
+      },
+    ]);
+    assert.equal(git('rev-parse', 'HEAD'), lonely);
+    assert.equal(git('rev-parse', 'strata-remote'), git('rev-parse', 'main~2'));
+    assert.ok((await panel().probe()).generation > before);
   });
 
   it('deletes a branch with commits no other ref has, after saying so, and undoes that', async () => {

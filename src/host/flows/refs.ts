@@ -20,6 +20,7 @@ import {
   NEEDS_NEW_NAME,
   quote,
   REF_ACTIONS,
+  refAppeared,
   refExists,
   refPathConflict,
   renameInput,
@@ -59,8 +60,8 @@ interface SwitchTo {
   branch?: string;
   /** The commit HEAD ends on. */
   commit: string;
-  /** The ref named as the target, which must not move before the switch. */
-  ref?: Expect;
+  /** Refs the target names, which must not move (or appear) before the switch. */
+  expect?: readonly Expect[];
   op: (migrate: boolean) => Operation;
   done: string;
   undo?: Undo;
@@ -74,7 +75,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   ]);
   const expect: Expect[] = [
     { rev: 'HEAD', hash: head.hash, name: head.branch === undefined ? 'HEAD' : quote(head.branch) },
-    ...(s.ref ? [s.ref] : []),
+    ...(s.expect ?? []),
   ];
   if (left > 0) {
     const head = await readCommit(host.git, host.cwd, 'HEAD');
@@ -139,7 +140,7 @@ export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
     to: quote(ref.short),
     branch: ref.short,
     commit: tip.hash,
-    ref: { rev: ref.name, hash: tip.hash, name: quote(ref.short) },
+    expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
     op: (migrate) => ({ kind: 'switch', branch: ref.short, migrate }),
     done: DONE.switched(ref.short),
   });
@@ -156,7 +157,7 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
     await switchTo(host, {
       to: quote(rb.branch),
       commit: tip.hash,
-      ref: { rev: ref.name, hash: tip.hash, name: quote(ref.short) },
+      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }, absent('branch', rb.branch)],
       op: (migrate) => ({ kind: 'trackRemote', name: rb.branch, remoteRef: ref.name, migrate }),
       done: DONE.tracking(rb.branch, ref.short),
     });
@@ -170,7 +171,7 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
     to: quote(rb.branch),
     branch: rb.branch,
     commit: tip.hash,
-    ref: { rev: local.name, hash: tip.hash, name: quote(rb.branch) },
+    expect: [{ rev: local.name, hash: tip.hash, name: quote(rb.branch) }],
     op: (migrate) => ({ kind: 'switch', branch: rb.branch, migrate }),
     done: DONE.switched(rb.branch, behind > 0 ? { count: behind, upstream: ref.short } : undefined),
   });
@@ -186,6 +187,14 @@ export async function checkoutDetached(host: FlowHost, rev: string): Promise<voi
     done: DONE.detached(at.short),
   });
 }
+
+/** A branch or tag about to be created, which the graph's refs say does not exist. */
+export const absent = (kind: 'branch' | 'tag', name: string): Expect => ({
+  rev: `refs/${kind === 'branch' ? 'heads' : 'tags'}/${name}`,
+  hash: undefined,
+  name: quote(name),
+  changed: refAppeared(kind, name),
+});
 
 /**
  * Validates a new branch or tag name against git's rules and the names the graph knows. `renaming`:
@@ -224,6 +233,7 @@ export async function createBranch(host: FlowHost, at: string): Promise<void> {
     to: quote(name),
     branch: name,
     commit: commit.hash,
+    expect: [absent('branch', name)],
     op: (migrate) => ({ kind: 'createBranch', name, at: commit.hash, migrate }),
     done: DONE.branchCreated(name, commit.short),
     undo: {
@@ -242,8 +252,11 @@ export async function createTag(host: FlowHost, at: string): Promise<void> {
   if (name === undefined) return;
   const message = await host.ui.input({ ...tagMessageInput(name, commit), validate: () => undefined });
   if (message === undefined) return;
-  const ran = await run(host, DOING.creatingTag(name), (exec) =>
-    exec({ kind: 'createTag', name, at: commit.hash, message: message === '' ? undefined : message }),
+  const ran = await run(
+    host,
+    DOING.creatingTag(name),
+    (exec) => exec({ kind: 'createTag', name, at: commit.hash, message: message === '' ? undefined : message }),
+    { expect: [absent('tag', name)] },
   );
   if (ran === undefined) return;
   const object = (await runGit(host.git, host.cwd, ['rev-parse', '--verify', `refs/tags/${name}`])).trim();
@@ -278,7 +291,7 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
     DOING.renaming(ref.short),
     (exec) => exec({ kind: 'renameBranch', from: ref.short, to }),
     {
-      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }, absent('branch', to)],
     },
   );
   if (ran === undefined) return;

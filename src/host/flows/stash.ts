@@ -27,7 +27,7 @@ import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
 import { Outdated } from '../target.ts';
 import { reportRestore, restore, runMovingUntracked } from './changes.ts';
-import { newName } from './refs.ts';
+import { absent, newName } from './refs.ts';
 
 /** A stash row's stash, as it is now; Outdated when it left the list. */
 async function current(host: FlowHost, hash: string) {
@@ -154,6 +154,7 @@ export async function stashBranch(host: FlowHost, hash: string): Promise<void> {
         const now = await current(host, hash);
         return exec({ kind: 'stashBranch', name, index: now.index });
       },
+      [absent('branch', name)],
     );
     if (ran === undefined) return;
   } catch (e) {

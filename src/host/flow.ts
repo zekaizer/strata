@@ -100,6 +100,8 @@ export interface Expect {
   hash: string | undefined;
   /** As sentences name it: a quoted branch, or HEAD. */
   name: string;
+  /** What to say when it no longer holds; changedMeanwhile(name) when absent. */
+  changed?: string;
 }
 
 const resolve = (host: FlowHost, rev: string) =>
@@ -121,7 +123,7 @@ export function run<T>(
 ) {
   return host.runner.run(host, label, opts.remote ?? false, async (exec) => {
     for (const e of opts.expect ?? [])
-      if ((await resolve(host, e.rev)) !== e.hash) throw new Outdated(changedMeanwhile(e.name));
+      if ((await resolve(host, e.rev)) !== e.hash) throw new Outdated(e.changed ?? changedMeanwhile(e.name));
     host.setUndo(undefined);
     return steps(exec);
   });

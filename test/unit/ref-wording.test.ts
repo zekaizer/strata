@@ -15,6 +15,7 @@ import {
   migrateConflicted,
   NEEDS_NEW_NAME,
   popConflicted,
+  refAppeared,
   refExists,
   refPathConflict,
   renameInput,
@@ -114,6 +115,7 @@ describe('wording of ref operations', () => {
   it('reports what went wrong around a switch', () => {
     assert.equal(staleTarget('gone'), "'gone' no longer exists; the graph has been refreshed.");
     assert.equal(changedMeanwhile("'topic'"), "'topic' changed while you were deciding; nothing was done.");
+    assert.equal(refAppeared('branch', 'topic'), "A branch named 'topic' now exists; nothing was done.");
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
     assert.equal(

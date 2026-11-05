@@ -265,6 +265,10 @@ export const quote = (name: string): string => `'${name}'`;
 /** `name`, as sentences name it, moved between the confirmation and the operation. */
 export const changedMeanwhile = (name: string): string => `${name} changed while you were deciding; nothing was done.`;
 
+/** A branch or tag Strata was about to create appeared since the graph read its refs. */
+export const refAppeared = (kind: 'branch' | 'tag', name: string): string =>
+  `A ${kind} named '${name}' now exists; nothing was done.`;
+
 /** A menu opened on a ref that is gone. */
 export const staleTarget = (name: string): string => `'${name}' no longer exists; the graph has been refreshed.`;
 
