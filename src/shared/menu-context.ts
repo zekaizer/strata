@@ -13,6 +13,11 @@ export interface CommitContext {
   strataHasRefs: boolean;
   /** Full names of the refs on the commit, space-separated, those collapsed into "+N" included. */
   strataRefs: string;
+  /**
+   * Full name of the one local branch on the commit other than the current one, else empty:
+   * the row's Checkout, Merge and Rebase act on it instead of on the commit.
+   */
+  strataBranch: string;
 }
 
 export interface StashContext {

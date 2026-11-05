@@ -111,6 +111,11 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.copyRefName',
       'strata.deleteRemoteBranch',
     ]);
+    assert.deepEqual(
+      refActions('commit', { strataBranch: 'refs/heads/topic', strataHasRefs: true }).slice(0, 2),
+      ['strata.checkout', 'strata.checkoutDetached'],
+      "a branch tip's row checks out the branch first",
+    );
     assert.deepEqual(refActions('tag', {}), [
       'strata.checkoutDetached',
       'strata.pushTag',

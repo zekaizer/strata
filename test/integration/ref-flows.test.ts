@@ -49,6 +49,16 @@ describe('ref operations', () => {
     assert.equal(api().contextValue('strata.canUndo'), false);
   });
 
+  it('checks out the branch of a commit row, not its commit', async () => {
+    git('branch', 'strata-tip', 'main~2');
+    await reload(panel());
+    await run('strata.checkout', {
+      ...commitMenu(git('rev-parse', 'strata-tip')),
+      strataBranch: 'refs/heads/strata-tip',
+    });
+    assert.equal(git('branch', '--show-current'), 'strata-tip');
+  });
+
   it('drops Undo when HEAD moves to another branch outside Strata', async () => {
     ui.type('strata/elsewhere');
     await run('strata.createBranch', commitMenu(git('rev-parse', 'main~2')));

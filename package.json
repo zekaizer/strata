@@ -385,6 +385,11 @@
         },
         {
           "command": "strata.checkout",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataBranch",
+          "group": "2_checkout@1"
+        },
+        {
+          "command": "strata.checkout",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
           "group": "1_checkout@1"
         },
@@ -396,7 +401,7 @@
         {
           "command": "strata.checkoutDetached",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "2_checkout@1"
+          "group": "2_checkout@2"
         },
         {
           "command": "strata.checkoutDetached",
@@ -406,7 +411,7 @@
         {
           "command": "strata.createBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "2_checkout@2"
+          "group": "2_checkout@3"
         },
         {
           "command": "strata.createBranch",
@@ -416,7 +421,7 @@
         {
           "command": "strata.createTag",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "2_checkout@3"
+          "group": "2_checkout@4"
         },
         {
           "command": "strata.cherryPick",

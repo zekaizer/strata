@@ -36,7 +36,7 @@ import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, 
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
-import { parseTarget, type TargetKind, type TargetOf } from './target.ts';
+import { parseBranchTarget, parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
 /** A context menu argument: the clicked element's data-vscode-context (set by the webview) plus the webview id. */
 type MenuArg = Record<string, unknown> | undefined;
@@ -153,6 +153,12 @@ const stashHash = (ctx: MenuArg): string => {
 const on = <K extends TargetKind>(kinds: readonly K[], flow: (host: FlowHost, t: TargetOf<K>) => Promise<void>) =>
   write((host, ctx) => flow(host, parseTarget(ctx, kinds, host.refs)));
 
+/** A write command on a menu target of one of `kinds`, a commit row naming a branch being that branch. */
+const onBranch = <K extends TargetKind>(
+  kinds: readonly K[],
+  flow: (host: FlowHost, t: TargetOf<K | 'branch'>) => Promise<void>,
+) => write((host, ctx) => flow(host, parseBranchTarget(ctx, kinds, host.refs)));
+
 type Handlers = Record<CommandId, (ctx: MenuArg) => unknown>;
 
 const handlers = (env: FlowEnv): Handlers => ({
@@ -187,9 +193,11 @@ const handlers = (env: FlowEnv): Handlers => ({
     if (!(await atShallowEdge(panel().flowHost(), hash))) await panel().copyCommitPatch(hash);
   },
 
-  'strata.checkout': on(['branch', 'remoteBranch'], (host, t) =>
-    t.kind === 'branch' ? checkoutBranch(host, t.ref) : checkoutRemote(host, t.ref),
-  ),
+  'strata.checkout': write((host, ctx) => {
+    const t = parseBranchTarget(ctx, ['branch', 'remoteBranch', 'commit'], host.refs);
+    if (t.kind === 'commit') throw new Error('no branch to check out');
+    return t.kind === 'branch' ? checkoutBranch(host, t.ref) : checkoutRemote(host, t.ref);
+  }),
   'strata.checkoutDetached': on(['commit', 'tag'], (host, t) =>
     checkoutDetached(host, t.kind === 'commit' ? t.hash : t.ref.name),
   ),
@@ -211,8 +219,12 @@ const handlers = (env: FlowEnv): Handlers => ({
     return refActionsOf(host, (str(ctx?.['strataRefs']) ?? '').split(' ').filter(Boolean));
   },
 
-  'strata.merge': on(['commit', 'branch', 'remoteBranch'], async (host, t) => merge(host, await sourceOf(host, t))),
-  'strata.rebase': on(['commit', 'branch', 'remoteBranch'], async (host, t) => rebase(host, await sourceOf(host, t))),
+  'strata.merge': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
+    merge(host, await sourceOf(host, t)),
+  ),
+  'strata.rebase': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
+    rebase(host, await sourceOf(host, t)),
+  ),
   'strata.cherryPick': on(['commit'], (host, t) => pick(host, 'cherryPick', t.hash)),
   'strata.revert': on(['commit'], (host, t) => pick(host, 'revert', t.hash)),
   'strata.reset': on(['commit'], (host, t) => reset(host, t.hash)),

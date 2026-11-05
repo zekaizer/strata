@@ -88,7 +88,11 @@ page, so it opens quickly even on very large repositories.
 
 Right-click a commit, a branch, remote branch or tag badge, or a stash row for
 what you can do with it; **Branch and Tag Actions...** in a commit's menu
-offers the same for its badges from the keyboard. The graph tab's title bar
+offers the same for its badges from the keyboard. On the row of a commit one
+local branch points at (besides the current one), Checkout, Merge and Rebase
+act on that branch, so a merge commit names it, and **Checkout (Detached)**
+checks out the commit; with several branches there, the row acts on the
+commit and you pick a branch from its badge. The graph tab's title bar
 and the Command Palette have Fetch, Pull, Push, the stash commands, **Show
 Stashes...**, **Undo Last Operation** and **Show Git Output**, and, while an
 operation is stopped, Continue, Abort and Skip.

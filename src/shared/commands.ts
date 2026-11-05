@@ -12,7 +12,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataHasRefs'],
+  commit: ['strataIsHead', 'strataHasRefs', 'strataBranch'],
   stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],
@@ -75,6 +75,7 @@ export const COMMANDS = {
   'strata.checkout': {
     title: 'Checkout',
     menus: [
+      commit('2_checkout@1', 'strataBranch'),
       { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent' },
       { section: 'remoteBranch', group: '1_checkout@1' },
     ],
@@ -82,15 +83,15 @@ export const COMMANDS = {
   },
   'strata.checkoutDetached': {
     title: 'Checkout (Detached)',
-    menus: [commit('2_checkout@1', '!strataIsHead'), { section: 'tag', group: '1_checkout@1' }],
+    menus: [commit('2_checkout@2', '!strataIsHead'), { section: 'tag', group: '1_checkout@1' }],
     writes: true,
   },
   'strata.createBranch': {
     title: 'Create Branch...',
-    menus: [commit('2_checkout@2'), { section: 'head', group: '1_checkout@1' }],
+    menus: [commit('2_checkout@3'), { section: 'head', group: '1_checkout@1' }],
     writes: true,
   },
-  'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
+  'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@4')], writes: true },
   'strata.cherryPick': {
     title: 'Cherry Pick',
     menus: [commit('3_apply@1', '!strataIsHead')],

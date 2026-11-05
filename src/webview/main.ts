@@ -1367,6 +1367,9 @@ class App {
     const c = r.commit;
     const badges = rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs, (all) => this.fitBand(all));
     const refs = badges.flatMap((b) => b.refs);
+    const branches = (this.refsByHash.get(c.hash) ?? []).filter(
+      (r) => r.kind === 'branch' && r.short !== this.refs.headBranch,
+    );
     const context: CommitContext = {
       webviewSection: 'commit',
       preventDefaultContextMenuItems: true,
@@ -1375,6 +1378,7 @@ class App {
       strataIsHead: c.hash === this.refs.head,
       strataHasRefs: refs.length > 0,
       strataRefs: refs.join(' '),
+      strataBranch: branches.length === 1 ? branches[0]!.name : '',
     };
     row.setAttribute('data-vscode-context', JSON.stringify(context));
     if (badges.length > 0) {
