@@ -73,6 +73,7 @@
   --color-icon: var(--vscode-icon-foreground, var(--vscode-foreground));
   --color-border: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
   --color-focus: var(--vscode-focusBorder);
+  --color-ruler: var(--vscode-editorRuler-foreground, var(--color-muted));
   --color-hover: var(--vscode-list-hoverBackground);
   --color-toolbar-hover: var(--vscode-toolbar-hoverBackground);
   --color-toolbar-active: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));

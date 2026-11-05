@@ -182,9 +182,17 @@ function fields(): HTMLElement {
     b.checked = checked;
     return b;
   };
+  const multiline = () => {
+    const f = el('textarea', 'field multiline');
+    f.rows = 4;
+    f.cols = 48;
+    f.value = 'parser: recover from a missing brace\n\nResynchronise at the next statement keyword.';
+    return f;
+  };
   return section(
     'Fields',
     row(...states('.field', field(''), ['default', 'focus']), spec('.field with text', field('cross/*')())),
+    row(...states('.field.multiline', multiline, ['default', 'focus'])),
     row(
       ...states('.checkbox', box(false), ['default', 'focus-visible']),
       ...states('.checkbox checked', box(true), ['default', 'focus-visible']),
