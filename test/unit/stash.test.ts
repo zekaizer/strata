@@ -83,6 +83,8 @@ describe('parseStashList', () => {
     assert.equal(parse('autostash'), true);
     assert.equal(parse('On main: Strata autostash: reset to 1a2b3c4'), true);
     assert.equal(parse('Strata autostash: rebase'), true);
+    assert.equal(parse("On main: Strata: changes set aside for the switch to 'x'"), true);
+    assert.equal(parse('On main: Strata: before reset of main to 1a2b3c4'), false, 'a safety stash Strata never pops');
     assert.equal(parse('On main: autostash later'), false);
     assert.equal(parse('On main: not a Strata autostash: x'), false);
   });

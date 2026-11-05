@@ -141,10 +141,10 @@ describe('confirmation facts', () => {
   });
 
   it('finds dirty files a switch would have to touch', async () => {
-    assert.deepEqual(await readOverlap('git', dir, run(dir, 'rev-parse', 'topic'), ['a.txt', 'c.txt', 'z.txt']), [
-      'a.txt',
-      'c.txt',
-    ]);
+    assert.deepEqual(
+      await readOverlap('git', dir, ['HEAD', run(dir, 'rev-parse', 'topic')], ['a.txt', 'c.txt', 'z.txt']),
+      ['a.txt', 'c.txt'],
+    );
   });
 
   it('names a commit by id, abbreviation and subject', async () => {

@@ -8,15 +8,17 @@ import { shellCommand, shellKind } from '../core/shell.ts';
 import {
   changedMeanwhile,
   commandUnquotable,
+  failedDuring,
   gitFailure,
-  quote,
+  refName,
   signInConfirmation,
+  UNDO_STALE,
   undoGone,
   undoLabel,
   undoMovedConfirmation,
   undone,
 } from '../core/wording.ts';
-import { readCommit, readHead } from '../git/facts.ts';
+import { countCommits, readCommit, readHead } from '../git/facts.ts';
 import { GitOpError } from '../git/op.ts';
 import { runGit } from '../git/run.ts';
 import { commandLine, type Exec, type OpRunner, type RunnerHost } from './runner.ts';
@@ -128,21 +130,76 @@ export function run<T>(
     for (const e of opts.expect ?? [])
       if ((await resolve(host, e.rev)) !== e.hash) throw new Outdated(e.changed ?? changedMeanwhile(e.name));
     host.setUndo(undefined);
-    return steps(exec);
+    try {
+      return await steps(exec);
+    } catch (e) {
+      // The innermost run names the failure: an undo or a retry runs inside the operation's own.
+      if (e instanceof GitOpError && !DURING.has(e)) DURING.set(e, label);
+      throw e;
+    }
   });
 }
 
-/** After an operation succeeded: reload the graph at `focus`, report, and offer Undo. */
-export async function finish(host: FlowHost, r: { message: string; focus?: string; undo?: Undo }): Promise<void> {
+/** The progress label of the operation each git failure happened in, for fail(). */
+const DURING = new WeakMap<GitOpError, string>();
+
+/** What to offer after an operation, besides Undo (Push after a Pull that a rejected push started). */
+export interface Next {
+  action: string;
+  run: () => Promise<void>;
+}
+
+/**
+ * After an operation succeeded: reload the graph at `focus`, report, and offer Undo and `next` in
+ * a notification. `quiet`: an operation that leaves history as it was (create or rename a branch
+ * or tag) reports in the status bar only; Undo Last Operation still undoes it.
+ */
+export async function finish(
+  host: FlowHost,
+  r: { message: string; focus?: string; undo?: Undo; next?: Next; quiet?: boolean },
+): Promise<void> {
   await host.refresh(r.focus);
   host.setUndo(r.undo);
   host.done(r.message);
-  const undo = r.undo;
-  if (undo)
-    notify(host, 'info', r.message, ['Undo'], async () => {
-      // A newer operation replaced this one's Undo.
-      if (host.lastUndo === undo) await undoLast(host);
-    });
+  const { next } = r;
+  const undo = r.quiet ? undefined : r.undo;
+  if (undo || next)
+    notify(host, 'info', r.message, [...(undo ? ['Undo'] : []), ...(next ? [next.action] : [])], (a) =>
+      a === 'Undo' && undo ? undoIfLatest(host, undo) : next?.run(),
+    );
+}
+
+/**
+ * After an operation ran but left something to settle (stashed changes that did not come back):
+ * reload the graph at `focus` and show `warning` alone, with `actions` and Undo when it has one.
+ */
+export async function finishWithWarning(
+  host: FlowHost,
+  r: { warning: string; focus?: string; undo?: Undo },
+  actions: string[],
+  then: (action: string) => Promise<void> | void,
+): Promise<void> {
+  await host.refresh(r.focus);
+  host.setUndo(r.undo);
+  warnWithUndo(host, r.warning, r.undo, actions, then);
+}
+
+/** A warning about an operation that finished (finishWithWarning), with Undo when it has one. */
+export function warnWithUndo(
+  host: FlowHost,
+  warning: string,
+  undo: Undo | undefined,
+  actions: string[],
+  then: (action: string) => Promise<void> | void,
+): void {
+  notify(host, 'warning', warning, [...actions, ...(undo ? ['Undo'] : [])], (a) =>
+    a === 'Undo' && undo ? undoIfLatest(host, undo) : then(a),
+  );
+}
+
+async function undoIfLatest(host: FlowHost, undo: Undo): Promise<void> {
+  if (host.lastUndo === undo) await undoLast(host);
+  else void host.ui.notify('info', UNDO_STALE);
 }
 
 /** Where failures are shown: a graph (which refresh when what it showed is outdated), or just the Ui. */
@@ -192,7 +249,7 @@ export async function fail(
   remote?: { name: string | undefined; op: Operation; cwd: string; rerun?: string },
 ): Promise<void> {
   if (e instanceof Outdated) {
-    void host.ui.notify('error', e.message);
+    void host.ui.notify('info', e.message);
     await host.refresh?.();
     return;
   }
@@ -202,7 +259,15 @@ export async function fail(
     else if (choice === 'output') host.runner.showOutput();
     return;
   }
-  const message = e instanceof GitOpError ? gitFailure(e.message) : e instanceof Error ? e.message : String(e);
+  const during = e instanceof GitOpError ? DURING.get(e) : undefined;
+  const message =
+    e instanceof GitOpError
+      ? during === undefined
+        ? gitFailure(e.message)
+        : failedDuring(during, gitFailure(e.message))
+      : e instanceof Error
+        ? e.message
+        : String(e);
   notify(host, 'error', message, e instanceof GitOpError ? ['Show Output'] : [], () => {
     host.runner.showOutput();
   });
@@ -222,19 +287,20 @@ export async function undoLast(host: FlowHost): Promise<void> {
   if (undo.guard.kind === 'head') {
     const g = undo.guard;
     const head = await readHead(host.git, host.cwd);
-    const name = head.branch === undefined ? 'HEAD' : quote(head.branch);
+    const name = head.branch === undefined ? 'HEAD' : refName(head.branch);
     // Never move another branch than the one the operation moved.
     if (headRef(head.branch) !== g.ref) {
       host.setUndo(undefined);
-      notify(host, 'error', undoGone(undo.label, name), [], () => undefined);
+      notify(host, 'info', undoGone(undo.label, name), [], () => undefined);
       return;
     }
     if (head.hash !== g.after) {
-      const [now, back] = await Promise.all([
+      const [now, back, newer] = await Promise.all([
         readCommit(host.git, host.cwd, head.hash),
         readCommit(host.git, host.cwd, g.before),
+        countCommits(host.git, host.cwd, [`${g.after}..${head.hash}`]),
       ]);
-      const ask = undoMovedConfirmation(head.branch, undo.label, now.short, back.short, g.deletes);
+      const ask = undoMovedConfirmation(head.branch, undo.label, newer, now, back.short);
       if (!(await host.ui.confirm(ask))) return;
     }
     expect = [{ rev: 'HEAD', hash: head.hash, name }];

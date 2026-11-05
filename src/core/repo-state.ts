@@ -29,6 +29,9 @@ export interface OperationState {
 
 export const CONFLICTS_SHOWN = 50;
 
+/** Whether `text` still has git's conflict markers, or is binary (git writes no markers into it). */
+export const hasConflictMarkers = (text: string): boolean => text.includes('\0') || /^(?:<{7}|>{7})(?: |$)/m.test(text);
+
 /** Uncommitted changes to tracked files (untracked files are not counted: autostash leaves them alone). */
 export interface Worktree {
   /** Paths with staged or unstaged changes, conflicts included. */

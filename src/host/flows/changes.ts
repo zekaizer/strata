@@ -14,26 +14,21 @@ import {
   popConflicted,
   popPartial,
   popRefused,
+  stashConflicted,
   stashLabel,
+  stashPartial,
 } from '../../core/wording.ts';
-import {
-  readConfigBool,
-  readOverlap,
-  readStash,
-  readStashTop,
-  readUnmerged,
-  readUntrackedIn,
-} from '../../git/facts.ts';
+import { readOverlap, readStash, readStashTop, readUnmerged, readUntrackedIn } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readOperationState, readWorktree } from '../../git/state.ts';
-import { notify, run, type Expect, type FlowHost } from '../flow.ts';
+import { finish, run, warnWithUndo, type Expect, type FlowHost, type Next, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 
 /** Uncommitted changes as an operation meets them, read right before it confirms. */
 export interface Changes {
   worktree: Worktree;
-  /** Dirty paths the operation's target changes too (switch, reset --keep). */
+  /** Dirty paths the operation changes too. */
   overlap: string[];
   dirty: DirtyFacts;
   choices: StashChoices;
@@ -43,23 +38,17 @@ export interface Changes {
   resolve: (dirty: DirtyFacts) => StashChoices;
 }
 
-/** `target`: the commit a switch or a reset --keep moves to, for the overlap. */
-export async function changes(host: FlowHost, op: StashOp, target?: string): Promise<Changes> {
-  const [worktree, mergeAutoStash] = await Promise.all([
-    readWorktree(host.git, host.cwd),
-    readConfigBool(host.git, host.cwd, 'merge.autoStash'),
-  ]);
-  const overlap =
-    target !== undefined && (op === 'switch' || op === 'resetKeep')
-      ? await readOverlap(host.git, host.cwd, target, worktree.paths)
-      : [];
+/** `touches`: the two commits whose difference is what the operation changes in the work tree. */
+export async function changes(host: FlowHost, op: StashOp, touches?: readonly [string, string]): Promise<Changes> {
+  const worktree = await readWorktree(host.git, host.cwd);
+  const overlap = touches === undefined ? [] : await readOverlap(host.git, host.cwd, touches, worktree.paths);
   // Changes inside submodules cannot be stashed and never block: they alone ask nothing.
   const files = Math.max(0, worktree.paths.length - worktree.submodules);
   const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0, fastForward: false };
   const setting = host.settings().autoStash;
-  const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting, mergeAutoStash);
+  const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting);
   const choices = resolve(dirty);
-  const section = choices.choices.length > 0 ? dirtySection(dirty, choices, worktree.submodules) : '';
+  const section = choices.choices.length > 0 ? dirtySection(dirty, op, worktree.submodules) : '';
   return { worktree, overlap, dirty, choices, section, resolve };
 }
 
@@ -205,31 +194,40 @@ export async function resolveConflicts(host: FlowHost, paths: readonly string[])
 }
 
 /**
- * Tells how putting the stashed changes back after `done` went, when it did not simply work. A
- * stash whose restore conflicted is never offered for restoring again; one restored in part is
- * kept out of the leftover banner, which would advise dropping it.
+ * Finishes an operation that put stashed changes back: as finish() when they all came back, else
+ * with one warning saying what did not. `stash`: the operation was Apply or Pop of that stash
+ * (stashLabel). A stash whose restore conflicted is never offered for restoring again; one
+ * restored in part is kept out of the leftover banner, which would advise dropping it.
  */
-export async function reportRestore(host: FlowHost, done: string, r: Restored): Promise<void> {
-  if (r.kind === 'none' || r.kind === 'restored') return;
-  const label = stashLabel(r.stash.index, r.stash.message);
+export async function finishRestoring(
+  host: FlowHost,
+  r: Restored,
+  done: { message: string; focus?: string; undo?: Undo; next?: Next; quiet?: boolean },
+  stash?: { label: string; pop: boolean },
+): Promise<void> {
+  if (r.kind === 'none' || r.kind === 'restored') return finish(host, done);
+  // Marks are kept only for stashes the graph lists: it reads the stash git kept first.
+  await host.refresh(done.focus);
+  host.setUndo(done.undo);
+  const label = stashLabel(r.stash.message);
   if (r.kind === 'conflicted') {
     await host.leftovers.markRestoreConflicted(r.stash.hash);
     const paths = await readUnmerged(host.git, host.cwd);
-    notify(
-      host,
-      'warning',
-      popConflicted(done, paths, paths.length, label),
-      ['Resolve...', 'Show Stash'],
-      async (a) => {
-        if (a === 'Resolve...') await resolveConflicts(host, paths);
-        else host.reveal(r.stash.hash);
-      },
-    );
+    const warning = stash ? stashConflicted(stash.label, paths, stash.pop) : popConflicted(done.message, paths, label);
+    warnWithUndo(host, warning, done.undo, ['Resolve...', 'Show Stash'], async (a) => {
+      if (a === 'Resolve...') await resolveConflicts(host, paths);
+      else host.reveal(r.stash.hash);
+    });
     return;
   }
   await host.leftovers.keep(r.stash.hash);
-  const message = r.kind === 'refused' ? popRefused(done, r.reason, label) : popPartial(done, label);
-  notify(host, 'warning', message, ['Show Stash', 'Show Output'], (a) => {
+  const warning =
+    r.kind === 'refused'
+      ? popRefused(done.message, r.reason, label)
+      : stash
+        ? stashPartial(stash.label, stash.pop)
+        : popPartial(done.message, label);
+  warnWithUndo(host, warning, done.undo, ['Show Stash', 'Show Output'], (a) => {
     if (a === 'Show Stash') host.reveal(r.stash.hash);
     else host.runner.showOutput();
   });

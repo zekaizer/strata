@@ -11,14 +11,13 @@ import {
   createBranchInput,
   createTagInput,
   deleteBranchConfirmation,
-  deleteTagConfirmation,
   DOING,
   DONE,
   IN_THE_WAY_OF,
   leaveBehindConfirmation,
   migrateConflicted,
   NEEDS_NEW_NAME,
-  quote,
+  refName,
   REF_ACTIONS,
   refAppeared,
   refExists,
@@ -43,11 +42,11 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { finish, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import { finish, finishWithWarning, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import {
   changes,
   execAutostash,
-  reportRestore,
+  finishRestoring,
   resolveConflicts,
   runMovingUntracked,
   stashAround,
@@ -76,14 +75,14 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     countCommits(host.git, host.cwd, ['HEAD', '--not', s.commit, '--branches', '--remotes', '--tags']),
   ]);
   const expect: Expect[] = [
-    { rev: 'HEAD', hash: head.hash, name: head.branch === undefined ? 'HEAD' : quote(head.branch) },
+    { rev: 'HEAD', hash: head.hash, name: head.branch === undefined ? 'HEAD' : refName(head.branch) },
     ...(s.expect ?? []),
   ];
   if (left > 0) {
     const head = await readCommit(host.git, host.cwd, 'HEAD');
     if (!(await host.ui.confirm(leaveBehindConfirmation(left, head)))) return;
   }
-  const c = await changes(host, 'switch', s.commit);
+  const c = await changes(host, 'switch', ['HEAD', s.commit]);
   let choice: StashChoice | undefined;
   if (c.choices.choices.length > 0) {
     choice = await host.ui.confirm(
@@ -111,17 +110,14 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     throw e;
   }
   if (restored === undefined) return;
-  await finish(host, { message: s.done, focus: s.commit, ...(s.undo ? { undo: s.undo } : {}) });
-  await reportRestore(host, s.done, restored);
-  // Since git 2.55 a conflicting switch --merge keeps the changes in a stash, reported above.
-  if (choice === 'migrate' && restored.kind === 'none') {
-    // switch --merge exits 0 even when it leaves conflicts.
-    const paths = await readUnmerged(host.git, host.cwd);
-    if (paths.length > 0)
-      notify(host, 'warning', migrateConflicted(s.done, paths.length), ['Resolve...'], () =>
-        resolveConflicts(host, paths),
-      );
-  }
+  const done = { message: s.done, focus: s.commit, quiet: true, ...(s.undo ? { undo: s.undo } : {}) };
+  // switch --merge exits 0 even when it leaves conflicts; since git 2.55 it keeps the changes in a stash then.
+  const migrated = choice === 'migrate' && restored.kind === 'none' ? await readUnmerged(host.git, host.cwd) : [];
+  if (migrated.length > 0)
+    await finishWithWarning(host, { ...done, warning: migrateConflicted(s.done, migrated) }, ['Resolve...'], () =>
+      resolveConflicts(host, migrated),
+    );
+  else await finishRestoring(host, restored, done);
 }
 
 /**
@@ -139,10 +135,10 @@ export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
   if (!(await notElsewhere(host, ref))) return;
   const tip = await readCommit(host.git, host.cwd, ref.name);
   await switchTo(host, {
-    to: quote(ref.short),
+    to: refName(ref.short),
     branch: ref.short,
     commit: tip.hash,
-    expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+    expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }],
     op: (migrate) => ({ kind: 'switch', branch: ref.short, migrate }),
     done: DONE.switched(ref.short),
   });
@@ -152,9 +148,9 @@ export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
 async function track(host: FlowHost, ref: Ref, name: string): Promise<void> {
   const tip = await readCommit(host.git, host.cwd, ref.name);
   await switchTo(host, {
-    to: quote(name),
+    to: refName(name),
     commit: tip.hash,
-    expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }, absent('branch', name)],
+    expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }, absent('branch', name)],
     op: (migrate) => ({ kind: 'trackRemote', name, remoteRef: ref.name, migrate }),
     done: DONE.tracking(name, ref.short),
   });
@@ -166,7 +162,7 @@ async function track(host: FlowHost, ref: Ref, name: string): Promise<void> {
  */
 export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
   const rb = remoteBranch(ref.name, host.refs.remotes);
-  if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
+  if (!rb) throw new Error(`${refName(ref.short)} is not a branch of a known remote.`);
   const local = host.refs.refs.find((r) => r.kind === 'branch' && r.short === rb.branch);
   if (!local) return track(host, ref, rb.branch);
   if (local.upstream !== undefined && local.upstream !== ref.name) {
@@ -189,10 +185,10 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
     countCommits(host.git, host.cwd, [`${local.name}..${ref.name}`]),
   ]);
   await switchTo(host, {
-    to: quote(rb.branch),
+    to: refName(rb.branch),
     branch: rb.branch,
     commit: tip.hash,
-    expect: [{ rev: local.name, hash: tip.hash, name: quote(rb.branch) }],
+    expect: [{ rev: local.name, hash: tip.hash, name: refName(rb.branch) }],
     op: (migrate) => ({ kind: 'switch', branch: rb.branch, migrate }),
     done: DONE.switched(rb.branch, behind > 0 ? { count: behind, upstream: ref.short } : undefined),
   });
@@ -213,7 +209,7 @@ export async function checkoutDetached(host: FlowHost, rev: string): Promise<voi
 export const absent = (kind: 'branch' | 'tag', name: string): Expect => ({
   rev: `refs/${kind === 'branch' ? 'heads' : 'tags'}/${name}`,
   hash: undefined,
-  name: quote(name),
+  name: refName(name),
   changed: refAppeared(kind, name),
 });
 
@@ -251,7 +247,7 @@ export async function createBranch(host: FlowHost, at: string): Promise<void> {
       ? { kind: 'detach', commit: head.hash, migrate: false }
       : { kind: 'switch', branch: head.branch, migrate: false };
   await switchTo(host, {
-    to: quote(name),
+    to: refName(name),
     branch: name,
     commit: commit.hash,
     expect: [absent('branch', name)],
@@ -283,11 +279,12 @@ export async function createTag(host: FlowHost, at: string): Promise<void> {
   const object = (await runGit(host.git, host.cwd, ['rev-parse', '--verify', `refs/tags/${name}`])).trim();
   await finish(host, {
     message: DONE.tagCreated(name, commit.short),
+    quiet: true,
     focus: commit.hash,
     undo: {
       label: 'tag creation',
       repo: host.cwd,
-      guard: { kind: 'refs', expect: [{ rev: `refs/tags/${name}`, hash: object, name: quote(name) }] },
+      guard: { kind: 'refs', expect: [{ rev: `refs/tags/${name}`, hash: object, name: refName(name) }] },
       inverse: [{ kind: 'deleteTag', name }],
       focus: commit.hash,
     },
@@ -312,12 +309,13 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
     DOING.renaming(ref.short),
     (exec) => exec({ kind: 'renameBranch', from: ref.short, to }),
     {
-      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }, absent('branch', to)],
+      expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }, absent('branch', to)],
     },
   );
   if (ran === undefined) return;
   await finish(host, {
     message: DONE.renamed(ref.short, to),
+    quiet: true,
     focus: tip.hash,
     undo: {
       label: 'rename',
@@ -325,8 +323,8 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
       guard: {
         kind: 'refs',
         expect: [
-          { rev: `refs/heads/${to}`, hash: tip.hash, name: quote(to) },
-          { rev: ref.name, hash: undefined, name: quote(ref.short) },
+          { rev: `refs/heads/${to}`, hash: tip.hash, name: refName(to) },
+          { rev: ref.name, hash: undefined, name: refName(ref.short) },
         ],
       },
       inverse: [{ kind: 'renameBranch', from: to, to: ref.short }],
@@ -344,13 +342,14 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
     // `branch -D` drops the whole branch.<b> section; Undo puts it back.
     readBranchConfig(host.git, host.cwd, ref.short),
   ]);
-  if (!(await host.ui.confirm(deleteBranchConfirmation(ref.short, tip, unmerged, upstream?.name)))) return;
+  const ask = deleteBranchConfirmation(ref.short, unmerged, upstream?.name);
+  if (ask && !(await host.ui.confirm(ask))) return;
   // Where the branch hung off the current line, which stays in the graph.
   const forkPoint = await readMergeBase(host.git, host.cwd, 'HEAD', tip.hash);
   let ran: unknown;
   try {
     ran = await run(host, DOING.deletingBranch(ref.short), (exec) => exec({ kind: 'deleteBranch', name: ref.short }), {
-      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+      expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }],
     });
   } catch (e) {
     if (e instanceof GitOpError && e.kind === 'checkedOutElsewhere') {
@@ -366,7 +365,7 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
     undo: {
       label: 'branch deletion',
       repo: host.cwd,
-      guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: quote(ref.short) }] },
+      guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: refName(ref.short) }] },
       inverse: [
         { kind: 'branchAt', name: ref.short, at: tip.hash },
         ...config.map(([key, value]): Operation => ({ kind: 'configAdd', key, value })),
@@ -382,9 +381,8 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
     runGit(host.git, host.cwd, ['rev-parse', '--verify', ref.name]).then((s) => s.trim()),
     readCommit(host.git, host.cwd, ref.name),
   ]);
-  if (!(await host.ui.confirm(deleteTagConfirmation(ref.short, at)))) return;
   const ran = await run(host, DOING.deletingTag(ref.short), (exec) => exec({ kind: 'deleteTag', name: ref.short }), {
-    expect: [{ rev: ref.name, hash: object, name: quote(ref.short) }],
+    expect: [{ rev: ref.name, hash: object, name: refName(ref.short) }],
   });
   if (ran === undefined) return;
   await finish(host, {
@@ -393,7 +391,7 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
     undo: {
       label: 'tag deletion',
       repo: host.cwd,
-      guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: quote(ref.short) }] },
+      guard: { kind: 'refs', expect: [{ rev: ref.name, hash: undefined, name: refName(ref.short) }] },
       inverse: [{ kind: 'restoreTag', name: ref.short, object }],
       focus: at.hash,
     },

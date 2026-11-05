@@ -66,11 +66,71 @@ describe('remote operations', () => {
       assert.equal(asked.length, 2);
       assert.equal(asked[0]!.message, "'origin/strata-pub' has 1 commit that 'strata-pub' doesn't have.");
       assert.deepEqual(asked[0]!.buttons, ['Force Push (With Lease)...'], 'not the current branch: no Pull');
-      assert.match(asked[1]!.detail, /\(newest "Their fix"\)/);
+      assert.match(asked[1]!.detail, /, newest "Their fix"\.\n/);
       assert.equal(remote('rev-parse', 'strata-pub'), mine);
     } finally {
       await config.update('allowForcePush', undefined, vscode.ConfigurationTarget.Global);
     }
+  });
+
+  /** strata-pub published, then a commit of someone else pushed and one of mine made: they diverged. */
+  const diverged = async () => {
+    await publish();
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    writeFileSync(join(other, 'theirs.txt'), 'theirs\n');
+    execFileSync('git', [...IDENTITY, '-C', other, 'add', '.']);
+    execFileSync('git', [...IDENTITY, '-C', other, 'commit', '--quiet', '-m', 'Their fix']);
+    execFileSync('git', ['-C', other, 'push', '--quiet', 'origin', 'strata-pub']);
+    const mine = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Mine');
+    git('update-ref', 'refs/heads/strata-pub', mine);
+    await reload(panel());
+    return mine;
+  };
+
+  it('says how to get past a rejected push of another branch when it has nothing to offer', async () => {
+    const mine = await diverged();
+    await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+    assert.deepEqual(ui.of('confirm'), []);
+    assert.deepEqual(
+      errors().map((e) => [e.message, e.actions]),
+      [
+        [
+          "'origin/strata-pub' has 1 commit that 'strata-pub' doesn't have. Switch to 'strata-pub' and pull it first.",
+          ['Show Output'],
+        ],
+      ],
+    );
+  });
+
+  it('offers to push again after the Pull a rejected push offered', async () => {
+    const mine = await diverged();
+    git('switch', '--quiet', 'strata-pub');
+    git('config', 'pull.rebase', 'true');
+    await reload(panel());
+    ui.press('Pull').click('Push');
+    await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+    assert.equal(ui.first('confirm').detail, "Pulling brings it into 'strata-pub', then you can push.");
+    const done = ui.of('notify').find((n) => n.actions.includes('Push'));
+    assert.deepEqual(done?.actions, ['Undo', 'Push']);
+    await waitFor('pushed after the pull', () => remote('rev-parse', 'strata-pub') === git('rev-parse', 'strata-pub'));
+    assert.equal(git('log', '-1', '--format=%s', 'strata-pub'), 'Mine');
+  });
+
+  it('asks once how to pull a branch that diverged, and about uncommitted changes in the same question', async () => {
+    await diverged();
+    git('switch', '--quiet', 'strata-pub');
+    writeFileSync(join(workspaceRoot(), 'main.txt'), 'mine, uncommitted\n');
+    await reload(panel());
+    ui.press('Stash & Rebase');
+    await run('strata.pull');
+    const asked = ui.of('confirm');
+    assert.deepEqual(
+      asked.map((q) => [q.message, q.buttons]),
+      [["'strata-pub' has 1 commit 'origin/strata-pub' lacks and is 1 behind.", ['Stash & Rebase', 'Merge']]],
+    );
+    assert.equal(git('log', '--format=%s', '-2', 'strata-pub'), 'Mine\nTheir fix');
+    assert.equal(readFileSync(join(workspaceRoot(), 'main.txt'), 'utf8'), 'mine, uncommitted\n');
   });
 
   it('refuses the force push when the remote moved after the confirmation read it', async () => {
@@ -97,7 +157,7 @@ describe('remote operations', () => {
         newest = theirs('Their second fix');
       });
       await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
-      assert.match(ui.of('confirm')[1]?.detail ?? '', /\(newest "Their fix"\)/);
+      assert.match(ui.of('confirm')[1]?.detail ?? '', /, newest "Their fix"\.\n/);
       assert.match(errors()[0]?.message ?? '', /\[rejected\].*\(stale info\)/);
       assert.equal(remote('rev-parse', 'strata-pub'), newest);
     } finally {
@@ -113,7 +173,7 @@ describe('remote operations', () => {
     await reload(panel());
     ui.press("Push to new 'origin/strata-fix'");
     await run('strata.push', { ...branchMenu('strata-fix', fix), strataUpstream: true });
-    assert.equal(ui.first('confirm').message, "'strata-fix' tracks origin/strata-pub, which has another name.");
+    assert.equal(ui.first('confirm').message, "'strata-fix' tracks 'origin/strata-pub', which has another name.");
     assert.equal(remote('rev-parse', 'strata-fix'), fix);
     assert.notEqual(remote('rev-parse', 'strata-pub'), fix, 'the upstream of another name is untouched');
   });
@@ -234,9 +294,9 @@ describe('remote operations', () => {
     writeFileSync(join(workspaceRoot(), 'mine.txt'), 'mine, uncommitted\n');
     await reload(panel());
 
-    ui.press('Stash & Rebase');
+    ui.press('Stash & Pull');
     await run('strata.pull');
-    assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-pub' on top of 'origin\/strata-pub'/);
+    assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-pub' on 'origin\/strata-pub'/);
     assert.deepEqual(errors(), []);
     assert.equal(api().contextValue('strata.operation'), '');
     assert.equal(git('log', '--format=%s', '-2', 'strata-pub'), 'Mine\nUpstream one, amended');
@@ -259,7 +319,7 @@ describe('remote operations', () => {
       await reload(panel());
       await vscode.env.clipboard.writeText('untouched');
       const terminals = vscode.window.terminals.length;
-      ui.press('Run in Terminal');
+      ui.press('Type in Terminal');
       await run('strata.publish', branchMenu('strata-fix&docs'));
       assert.equal(ui.first('confirm').message, "Strata couldn't sign in to 'origin'.");
       assert.equal(await vscode.env.clipboard.readText(), 'untouched');
@@ -296,10 +356,7 @@ describe('remote operations', () => {
     await run('strata.deleteRemoteBranch', remoteMenu('origin/strata-pub'));
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Delete branch 'strata-pub' from 'origin'?");
-    assert.match(
-      asked.detail,
-      / No commits are lost\. Local branch 'strata-pub' tracks it and stays\. Strata can't undo this\.$/,
-    );
+    assert.match(asked.detail, /\nStrata can't undo this\.\nLocal branch 'strata-pub' tracks it and stays\.$/);
     assert.deepEqual(errors(), []);
     assert.equal(remote('branch', '--list', 'strata-pub'), '');
     assert.equal(tracked('origin/strata-pub'), '', 'git drops the remote-tracking branch');
@@ -316,7 +373,7 @@ describe('remote operations', () => {
     assert.equal(asked[0]!.message, "Delete branch 'strata-x' from 'origin' and its 1 unmerged commit?");
     assert.match(
       asked[1]!.detail,
-      /^'origin\/strata-x' changed on 'origin' since the last fetch\. 2 commits would be on no branch, newest "Their fix"/,
+      /^'origin\/strata-x' changed on 'origin' since the last fetch\. 2 commits would be on no branch, newest [0-9a-f]+ "Their fix"\./,
     );
     assert.deepEqual(errors(), []);
     assert.equal(remote('branch', '--list', 'strata-x'), '');

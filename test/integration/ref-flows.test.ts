@@ -38,9 +38,8 @@ describe('ref operations', () => {
     assert.equal(git('branch', '--show-current'), 'strata/new');
     assert.equal(git('rev-parse', 'HEAD'), at);
     await selected(panel(), at);
-    assert.deepEqual(ui.of('notify'), [
-      { kind: 'notify', level: 'info', message: `Created 'strata/new' at ${short}`, actions: ['Undo'] },
-    ]);
+    assert.deepEqual(ui.of('notify'), [], 'history is as it was: the status bar says it');
+    await waitFor('announced', async () => (await panel().probe()).announced === `Created 'strata/new' at ${short}`);
     assert.equal(api().contextValue('strata.canUndo'), true);
 
     await run('strata.undo');
@@ -57,6 +56,22 @@ describe('ref operations', () => {
       strataBranch: 'refs/heads/strata-tip',
     });
     assert.equal(git('branch', '--show-current'), 'strata-tip');
+  });
+
+  it("says so when a notification's Undo is clicked after a newer operation", async () => {
+    git('branch', 'strata-one', 'main~1');
+    git('branch', 'strata-two', 'main~1');
+    await reload(panel());
+    const click = ui.later();
+    await run('strata.deleteBranch', branchMenu('strata-one', git('rev-parse', 'main~1')));
+    const undoOne = await click;
+    await run('strata.deleteBranch', branchMenu('strata-two', git('rev-parse', 'main~1')));
+    ui.clear();
+    await undoOne('Undo');
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'info', message: 'Undo is no longer available: a newer operation ran.', actions: [] },
+    ]);
+    assert.equal(git('branch', '--list', 'strata-one'), '', 'not restored');
   });
 
   it('drops Undo when HEAD moves to another branch outside Strata', async () => {
@@ -110,7 +125,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('notify'), [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "A branch named 'strata/new' now exists; nothing was done.",
         actions: [],
       },
@@ -124,7 +139,7 @@ describe('ref operations', () => {
     ui.type('v9.7', '').meanwhile(() => git('tag', 'v9.7', 'main~1'));
     await run('strata.createTag', commitMenu(at));
     assert.deepEqual(ui.of('notify'), [
-      { kind: 'notify', level: 'error', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
+      { kind: 'notify', level: 'info', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
     ]);
     assert.equal(git('rev-parse', 'v9.7'), git('rev-parse', 'main~1'));
     assert.ok((await panel().probe()).generation > before);
@@ -143,7 +158,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('notify'), [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "A branch named 'strata-remote' now exists; nothing was done.",
         actions: [],
       },
@@ -165,7 +180,7 @@ describe('ref operations', () => {
     const asked = {
       kind: 'confirm',
       message: "'strata-up' tracks 'upstream/strata-up', not 'origin/strata-up'.",
-      detail: "Switch to 'strata-up' anyway, or create a branch of another name that tracks 'origin/strata-up'.",
+      detail: '',
       buttons: ['Create Tracking Branch...', "Switch to 'strata-up'"],
     };
 
@@ -210,7 +225,7 @@ describe('ref operations', () => {
     await run('strata.deleteBranch', branchMenu('wip/experiment', tip));
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Delete branch 'wip/experiment' and its 1 unmerged commit?");
-    assert.match(asked.detail, /^1 commit would be on no branch, newest "Unmerged experiment"/);
+    assert.match(asked.detail, /^1 commit would be on no branch, newest [0-9a-f]+ "Unmerged experiment"\./);
     assert.equal(git('branch', '--list', 'wip/experiment'), '');
     await selected(panel(), git('merge-base', 'HEAD', tip));
 
@@ -220,13 +235,23 @@ describe('ref operations', () => {
     await selected(panel(), tip);
   });
 
+  it('deletes a branch whose commits another ref has without asking, and undoes that', async () => {
+    git('branch', 'strata-merged', 'main~1');
+    await reload(panel());
+    await run('strata.deleteBranch', branchMenu('strata-merged', git('rev-parse', 'main~1')));
+    assert.deepEqual(ui.of('confirm'), []);
+    assert.equal(git('branch', '--list', 'strata-merged'), '');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'strata-merged'), git('rev-parse', 'main~1'));
+  });
+
   it('refuses a menu on a branch that is gone, says so and refreshes the graph', async () => {
     const before = (await panel().probe()).generation;
     await run('strata.deleteBranch', branchMenu('strata-gone'));
     assert.deepEqual(ui.asked, [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "'strata-gone' no longer exists; the graph has been refreshed.",
         actions: [],
       },
@@ -242,7 +267,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('notify'), [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "'wip/experiment' changed while you were deciding; nothing was done.",
         actions: [],
       },
@@ -257,17 +282,19 @@ describe('ref operations', () => {
     await run('strata.checkout', branchMenu('feature/search', git('rev-parse', 'feature/search')));
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Switching to 'feature/search' would overwrite your changes to 1 file.");
-    assert.match(asked.detail, /^main\.txt\. Stash them and bring them back after switching, or let git merge/);
-    assert.match(asked.detail, /Uncommitted changes: 1 file\./);
+    assert.equal(
+      asked.detail,
+      "'feature/search' changes main.txt too.\nUncommitted changes in 1 file; untracked files stay in place.",
+    );
     assert.deepEqual(asked.buttons, ['Stash & Switch', 'Migrate Changes']);
     assert.equal(git('branch', '--show-current'), 'feature/search');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0} (\"On main: Strata autostash: switch to 'feature/search'\").",
+      "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash \"Strata: changes set aside for the switch to 'feature/search'\".",
     );
     assert.equal(
       git('stash', 'list', '--format=%gs'),
-      "On main: Strata autostash: switch to 'feature/search'\nOn main: my own",
+      "On main: Strata: changes set aside for the switch to 'feature/search'\nOn main: my own",
       'the stash Strata made is kept, the older one untouched',
     );
   });
@@ -297,7 +324,7 @@ describe('ref operations', () => {
         kind: 'confirm',
         message: "2 untracked files are in the way of the switch to 'strata-new': new.txt and two words.txt.",
         detail:
-          "Strata can move them into a stash and try again. That stash stays in the list; Strata does not bring the files back, because the switch to 'strata-new' puts its own versions there.",
+          "The stash keeps them; Strata doesn't bring them back, because the switch to 'strata-new' puts its own versions there.",
         buttons: ['Stash Them & Retry'],
       },
     ]);
@@ -365,7 +392,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('confirm'), []);
     assert.match(
       ui.of('notify').find((n) => n.level === 'error')?.message ?? '',
-      /^error: The following untracked working tree files would be overwritten by checkout:\n\ta\nb\.txt$/,
+      /^Couldn't switch to 'strata-new': error: The following untracked working tree files would be overwritten by checkout:\n\ta\nb\.txt$/,
     );
     assert.equal(git('branch', '--show-current'), 'main');
   });
@@ -381,11 +408,11 @@ describe('ref operations', () => {
       // git 2.55 keeps the changes in a stash when merging them conflicts.
       assert.equal(
         warning,
-        "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0} (\"autostash while switching to 'feature/search'\").",
+        "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash \"autostash while switching to 'feature/search'\".",
       );
       assert.equal(git('stash', 'list', '--format=%gs'), "autostash while switching to 'feature/search'");
     } else {
-      assert.equal(warning, "Switched to 'feature/search'; your changes conflicted in 1 file.");
+      assert.equal(warning, "Switched to 'feature/search'; your changes conflicted in main.txt.");
       assert.equal(git('stash', 'list'), '');
     }
   });
@@ -398,7 +425,7 @@ describe('ref operations', () => {
     await run('strata.checkoutDetached', commitMenu(git('rev-parse', 'main~1')));
     const asked = ui.first('confirm');
     assert.equal(asked.message, 'Leave 1 commit behind?');
-    assert.match(asked.detail, /\(newest "Lonely"\)/);
+    assert.match(asked.detail, /; newest [0-9a-f]+ "Lonely"\./);
     assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main~1'));
   });
 
@@ -410,9 +437,8 @@ describe('ref operations', () => {
     assert.equal(git('cat-file', '-t', object), 'tag');
     await selected(panel(), at);
 
-    ui.press('Delete Tag');
     await run('strata.deleteTag', tagMenu('v9.9'));
-    assert.equal(ui.first('confirm').message, "Delete tag 'v9.9'?");
+    assert.deepEqual(ui.of('confirm'), [], 'Undo restores the tag: nothing to confirm');
     assert.equal(git('tag', '--list', 'v9.9'), '');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'refs/tags/v9.9'), object);
@@ -424,14 +450,11 @@ describe('ref operations', () => {
     ui.type('v9.8', '');
     await run('strata.createTag', commitMenu(at));
     assert.equal(git('cat-file', '-t', 'refs/tags/v9.8'), 'commit');
-    assert.deepEqual(ui.of('notify'), [
-      { kind: 'notify', level: 'info', message: `Created tag 'v9.8' at ${at.slice(0, 7)}`, actions: ['Undo'] },
-    ]);
+    assert.deepEqual(ui.of('notify'), []);
 
     git('-c', 'tag.gpgSign=false', 'tag', '--annotate', '--message', 'Release 9.9', 'v9.9', at);
     const object = git('rev-parse', 'refs/tags/v9.9');
     await reload(panel());
-    ui.press('Delete Tag');
     await run('strata.deleteTag', tagMenu('v9.9'));
     assert.equal(git('tag', '--list', 'v9.9'), '');
     await run('strata.undo');

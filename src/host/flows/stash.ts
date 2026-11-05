@@ -27,14 +27,14 @@ import { runGit } from '../../git/run.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
 import { Outdated } from '../target.ts';
-import { reportRestore, restore, runMovingUntracked } from './changes.ts';
+import { finishRestoring, restore, runMovingUntracked } from './changes.ts';
 import { absent, newName } from './refs.ts';
 
 /** A stash row's stash, as it is now; Outdated when it left the list. */
 async function current(host: FlowHost, hash: string) {
   const s = await readStash(host.git, host.cwd, hash);
   if (!s) throw new Outdated(staleTarget(`stash ${hash.slice(0, 7)}`));
-  return { ...s, label: stashLabel(s.index, s.message) };
+  return { ...s, label: stashLabel(s.message) };
 }
 
 const hasUntracked = async (host: FlowHost) =>
@@ -78,7 +78,7 @@ export async function stashPush(host: FlowHost, includeUntracked: boolean): Prom
   }
   const s = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
   if (!s) return;
-  await finish(host, { message: STASH_DONE.stashed(wt.paths.length, stashLabel(s.index, s.message)), focus: s.hash });
+  await finish(host, { message: STASH_DONE.stashed(wt.paths.length, stashLabel(s.message)), focus: s.hash });
 }
 
 /** Apply (`pop` false) or Pop, judged by what came back rather than by git's exit code. */
@@ -103,8 +103,7 @@ export async function restoreStash(host: FlowHost, hash: string, pop: boolean): 
   const done = pop ? STASH_DONE.popped(s.label) : STASH_DONE.applied(s.label);
   // Applied, Strata owes it no restore: popping it again would apply the changes twice.
   if (r.kind === 'restored' && !pop) await host.leftovers.keep(hash);
-  await finish(host, { message: done });
-  await reportRestore(host, done, r);
+  await finishRestoring(host, r, { message: done }, { label: s.label, pop });
 }
 
 export async function dropStash(host: FlowHost, hash: string): Promise<void> {

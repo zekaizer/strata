@@ -106,14 +106,16 @@ which, and the other commands wait for it.
   branch, or creates one that tracks it; when the local branch of that name
   tracks something else, you choose between switching to it anyway and
   creating a tracking branch of another name), Create Branch, Create Tag,
-  Rename, Delete and Copy Name. Deleting a branch says which commits no other branch
-  or tag has. Push Tag pushes a tag to a remote (you pick one when there are
+  Rename, Delete and Copy Name. Deleting a branch asks first only when no
+  other branch or tag has its commits, and names them. Push Tag pushes a tag to a remote (you pick one when there are
   several), and says so when the remote already has a different tag of that
   name. Delete Remote Tag deletes it there and keeps your local tag;
   that can't be undone.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
-  Branch to Here in any of git's modes. Each confirmation says what happens to
+  Branch to Here in any of git's modes. Strata asks first only when there is a
+  choice to make, when Undo couldn't bring back what is lost, or when commits
+  already pushed would be rewritten; the confirmation says what happens to
   which commits. A merge commit can be cherry picked relative to the parent you
   choose, and reverted, which undoes the commits it brought in from its other
   parents.
@@ -131,20 +133,22 @@ which, and the other commands wait for it.
   checkout sets) or one a single-branch clone doesn't fetch. When the remote
   deleted the upstream, Pull says so and offers to publish the branch again
   or unset its upstream. A rejected push
-  says how many commits the remote has that your branch doesn't, and offers a
-  force push with lease when `git.allowForcePush` is on. Delete Remote Branch, on a
+  says how many commits the remote has that your branch doesn't, and offers
+  Pull for the current branch (then Push again) and a force push with lease
+  when `git.allowForcePush` is on. Delete Remote Branch, on a
   remote branch badge, says which commits no other branch or tag has and which
   local branches track it (they stay). It deletes nothing when someone pushed
   to the branch since your last fetch, and asks again with what they pushed.
   Deleting a remote branch can't be undone.
-- **Uncommitted changes** are named in the confirmation, with the choice to
-  stash them around the operation (and bring them back after it) or keep them
-  in place. `strata.autoStash` decides which comes first: `gitConfig` (the
-  default) follows `merge.autoStash` for merge and pull with merge (stashing
-  first while it is not set) and keeps changes in place first for cherry pick
-  and revert; `always` puts stashing first, `never` keeping them in place. A
-  rebase always needs the stash, and so does a merge commit over staged
-  changes. A hard reset keeps your changes in a stash it
+- **Uncommitted changes** stay in place, without a question, when git
+  carries them over the operation: a switch, merge, pull, cherry pick or
+  revert leaves changes to other files alone. When git can't (changes to files
+  the operation changes, any change before a rebase, staged changes before a
+  merge commit, cherry pick or revert), the confirmation names them and offers
+  to stash them around the operation and bring them back after it. A switch
+  also offers to let git merge them into the target; `strata.autoStash` set to
+  `never` puts that
+  first. A hard reset keeps your changes in a stash it
   never pops, unless you discard them. A keep reset over changes to files it
   changes moves just those changes into such a stash and keeps the rest in
   place.
@@ -164,7 +168,10 @@ which, and the other commands wait for it.
   merge, rebase, cherry pick or revert (also one that stopped and that
   Continue or Skip finished), a created, renamed or deleted branch or tag, or a
   dropped stash. It only moves the branch the operation moved,
-  and asks first if that branch moved since.
+  and asks first if that branch moved since. Operations that change history or
+  delete something also offer Undo in the notification that reports them;
+  creating, renaming or checking out a branch or tag reports in the status bar
+  only.
 - When an operation stops at conflicts, Strata says where and in which files,
   and marks the commit it stopped at (and a rebase's target) in the graph;
   **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)

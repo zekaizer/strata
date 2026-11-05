@@ -92,7 +92,7 @@ describe('stash operations', () => {
     const again = git('rev-parse', 'refs/stash');
     ui.press('Drop Stash');
     await run('strata.stash.drop', stashMenu(again));
-    assert.match(ui.first('confirm').message, /^Drop stash@\{0\} \("WIP on main: /);
+    assert.match(ui.first('confirm').message, /^Drop stash "[^"]+"\?$/);
     assert.match(ui.first('confirm').detail, /^1 changed file on [0-9a-f]+ "/);
     assert.equal(git('stash', 'list'), '');
     await run('strata.undo');
@@ -195,10 +195,11 @@ describe('stash operations', () => {
     git('commit', '--quiet', '-am', 'change notes');
     await run('strata.stash.pop', stashMenu(w));
     assert.equal(git('rev-parse', 'refs/stash'), w, 'git kept it');
-    assert.match(
-      ui.of('notify').find((n) => n.level === 'warning')?.message ?? '',
-      /^Popped stash@\{0\} \("WIP on main: .*"\), but restoring your stashed changes conflicted in 1 file \(NOTES\.md\)\./,
-    );
+    const [only, ...more] = ui.of('notify');
+    assert.deepEqual(more, [], 'no success message before the warning');
+    assert.equal(only?.level, 'warning');
+    assert.match(only.message, /^Applied stash ".*" with conflicts in NOTES\.md; the stash was kept\.$/);
+    assert.deepEqual(only.actions, ['Resolve...', 'Show Stash']);
   });
 
   it('applies the stash of its row and keeps it, leaving the other stash alone', async () => {
@@ -281,8 +282,7 @@ describe('stash operations', () => {
       {
         kind: 'notify',
         level: 'error',
-        message:
-          'stash@{0} ("On main: with new") adds a file that already exists here: strata-new.txt. Move it away and apply again.',
+        message: 'stash "with new" adds a file that already exists here: strata-new.txt. Move it away and apply again.',
         actions: [],
       },
     ]);
@@ -316,7 +316,7 @@ describe('stash operations', () => {
         kind: 'notify',
         level: 'error',
         message:
-          'stash@{0} ("On main: with new") adds a file that already exists here: strata-new.txt. Move it away and create the branch again.',
+          'stash "with new" adds a file that already exists here: strata-new.txt. Move it away and create the branch again.',
         actions: [],
       },
     ]);
@@ -358,7 +358,7 @@ describe('stash operations', () => {
       [
         [
           'warning',
-          'Created \'strata-from-stash\' from stash@{0} ("On main: with new"), but strata-new.txt did not come back because it already exists here. The stash is kept.',
+          'Created \'strata-from-stash\' from stash "with new", but strata-new.txt did not come back because it already exists here. The stash is kept.',
           ['Show Stash'],
         ],
       ],

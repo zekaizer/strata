@@ -1,3 +1,4 @@
+import { isStrataAutostash } from './autostash.ts';
 import type { Commit } from './commit.ts';
 
 /** Where a stash's row is drawn: above its base, or above its branch's tip once the base left that branch. */
@@ -57,7 +58,7 @@ export function parseStashList(out: string): StashEntry[] {
       message,
       branch: branch === '(no branch)' ? undefined : branch,
       time: Number(time),
-      autostash: message === 'autostash' || message.replace(BRANCH, '').startsWith('Strata autostash:'),
+      autostash: message === 'autostash' || isStrataAutostash(message.replace(BRANCH, '')),
       anchor: { kind: 'base' },
       files: undefined,
     });

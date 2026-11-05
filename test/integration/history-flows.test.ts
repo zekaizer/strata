@@ -84,14 +84,15 @@ describe('history operations', () => {
 
     ui.clear();
     await run('strata.undo');
-    assert.equal(
-      ui.first('confirm').message,
-      `'main' has moved since the merge (now at ${git('rev-parse', '--short', later)}).`,
+    assert.equal(ui.first('confirm').message, "Undo the merge and lose 1 commit on 'main'?");
+    assert.match(
+      ui.first('confirm').detail,
+      new RegExp(`^Made since the merge, newest ${git('rev-parse', '--short', later)} "Later"\\.`),
     );
     assert.equal(git('rev-parse', 'main'), later);
 
     ui.clear();
-    ui.press('Undo Anyway');
+    ui.press('Undo and Drop 1 Commit');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'main'), before);
   });
@@ -118,22 +119,29 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-ahead'");
   });
 
-  it('offers fast-forward or a merge commit with uncommitted changes too', async () => {
+  it('asks nothing about uncommitted changes the merge does not touch, and keeps them in place', async () => {
     branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
     git('switch', '--quiet', 'main');
     write('NOTES.md', 'mine\n');
     await reload(panel());
-    ui.press('Create Merge Commit Keeping Changes');
+    ui.press('Create Merge Commit');
     await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
-    assert.deepEqual(ui.first('confirm').buttons, [
-      'Stash & Fast-Forward',
-      'Fast-Forward Keeping Changes',
-      'Stash & Create Merge Commit',
-      'Create Merge Commit Keeping Changes',
-    ]);
+    assert.deepEqual(ui.first('confirm').buttons, ['Fast-Forward', 'Create Merge Commit']);
     assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-ahead'));
     assert.equal(read('NOTES.md'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
+  });
+
+  it('offers only stashing for a merge over changes to the files it changes', async () => {
+    branchWith('strata-ahead', 'main', 'NOTES.md', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'mine\n');
+    await reload(panel());
+    ui.press('Stash & Fast-Forward');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Fast-Forward', 'Stash & Create Merge Commit']);
+    assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
+    assert.equal(git('stash', 'list', '--format=%gs'), 'autostash', 'the restore conflicted: git keeps the stash');
   });
 
   it('keeps staged changes in place for a merge that fast-forwards', async () => {
@@ -145,12 +153,8 @@ describe('history operations', () => {
     ui.press('Fast-Forward Keeping Changes');
     await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
     const asked = ui.first('confirm');
-    assert.deepEqual(asked.buttons, [
-      'Stash & Fast-Forward',
-      'Fast-Forward Keeping Changes',
-      'Stash & Create Merge Commit',
-    ]);
-    assert.match(asked.detail, /git can't create a merge commit with staged changes\./);
+    assert.deepEqual(asked.buttons, ['Fast-Forward Keeping Changes', 'Stash & Create Merge Commit']);
+    assert.match(asked.detail, /\nUncommitted changes in 1 file \(1 staged\); untracked files stay in place\.$/);
     assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
     assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'still staged');
   });
@@ -199,9 +203,8 @@ describe('history operations', () => {
   it('stops a rebase at a conflict, reports it, holds other writes, and aborts back', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
-    assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-topic' on top of 'main'/);
+    assert.deepEqual(ui.of('confirm'), [], 'Undo restores the commits: nothing to confirm');
     assert.deepEqual(ui.of('notify').at(-1), {
       kind: 'notify',
       level: 'warning',
@@ -235,7 +238,6 @@ describe('history operations', () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
     const notes = read('NOTES.md');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.equal(api().contextValue('strata.operation'), 'rebase');
     write('NOTES.md', 'mine\n');
@@ -252,17 +254,14 @@ describe('history operations', () => {
     ui.press('Stash Changes & Abort');
     await run('strata.operation.abort');
     const asked = ui.first('confirm');
-    assert.match(
-      asked.detail,
-      / Your uncommitted changes in 2 files \(NOTES\.md and added\.txt\) would be discarded: Stash Changes & Abort keeps them in the stash list; Discard Changes & Abort throws them away\.$/,
-    );
+    assert.match(asked.detail, /\nYour uncommitted changes in 2 files \(NOTES\.md and added\.txt\) would be lost\.$/);
     assert.deepEqual(asked.buttons, ['Stash Changes & Abort', 'Discard Changes & Abort']);
     assert.equal(git('rev-parse', 'HEAD'), tip);
     assert.equal(git('stash', 'list', '--format=%gs'), 'On strata-topic: Strata: before abort of the rebase');
     assert.equal(git('show', 'stash@{0}:NOTES.md'), 'mine');
     assert.equal(git('show', 'stash@{0}^2:added.txt'), 'added', 'staged, as it was');
     await announced(
-      /^Aborted the rebase\. Your uncommitted changes are in stash@\{0\} \("On strata-topic: Strata: before abort of the rebase"\)$/,
+      /^Aborted the rebase\. Your uncommitted changes are in stash "Strata: before abort of the rebase"$/,
     );
   });
 
@@ -319,7 +318,7 @@ describe('history operations', () => {
     assert.match(
       ui.first('confirm').detail,
       new RegExp(
-        `^'main' goes back to ${git('rev-parse', '--short', start)} as before the cherry pick, dropping the 1 commit it has made so far\\.`,
+        `^'main' goes back to ${git('rev-parse', '--short', start)}, dropping the 1 commit it made and your conflict resolutions\\.`,
       ),
     );
     assert.equal(git('rev-parse', 'HEAD'), start);
@@ -328,7 +327,6 @@ describe('history operations', () => {
   it('names where a rebase started even when ORIG_HEAD moved while it was stopped', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     git('update-ref', 'ORIG_HEAD', 'main~1');
     ui.clear();
@@ -336,25 +334,27 @@ describe('history operations', () => {
     await run('strata.operation.abort');
     assert.match(
       ui.first('confirm').detail,
-      new RegExp(`^'strata-topic' goes back to ${git('rev-parse', '--short', tip)} as before the rebase\\.`),
+      new RegExp(`^'strata-topic' goes back to ${git('rev-parse', '--short', tip)}, dropping `),
     );
     assert.equal(git('rev-parse', 'HEAD'), tip);
   });
 
-  it('continues a rebase once its conflict is resolved, not before, and the banner goes', async () => {
+  it('continues a rebase once its conflict is resolved, staging it, not before, and the banner goes', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     await waitFor('rebase banner', async () => (await panel().probe()).banner?.state === 'rebase');
 
     ui.clear();
     await run('strata.operation.continue');
     assert.equal(ui.first('confirm').message, '1 file still has conflicts: main.txt.');
+    assert.deepEqual(ui.first('confirm').buttons, ['Resolve...']);
     assert.equal(api().contextValue('strata.operation'), 'rebase');
 
+    ui.clear();
     write('main.txt', 'resolved\n');
-    git('add', 'main.txt');
+    ui.press('Stage & Continue');
     await run('strata.operation.continue');
+    assert.equal(ui.first('confirm').message, '1 resolved file is not staged yet: main.txt.');
     assert.equal(git('rev-parse', 'HEAD~1'), git('rev-parse', 'main'));
     assert.equal(git('show', 'HEAD:main.txt'), 'resolved');
     assert.equal(api().contextValue('strata.operation'), '');
@@ -364,7 +364,6 @@ describe('history operations', () => {
   it('undoes a rebase that stopped and then finished with Continue, back to where it started', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     write('main.txt', 'resolved\n');
     git('add', 'main.txt');
@@ -418,8 +417,8 @@ describe('history operations', () => {
     assert.equal(asked.message, 'Continuing this rebase edits commit messages.');
     assert.equal(
       asked.detail,
-      `git opens an editor for reword ${b.slice(0, 7)} and fixup -c ${c.slice(0, 7)}, which Strata can't show. ` +
-        'Continue in a terminal to edit them there, or continue here with the messages git prepares, unedited.',
+      `git would open an editor for reword ${b.slice(0, 7)} and fixup -c ${c.slice(0, 7)}, which Strata can't show.\n` +
+        'Continued here, they keep the messages git prepares.',
     );
     assert.deepEqual(asked.buttons, ['Continue in Terminal', 'Continue Anyway']);
     assert.equal(api().contextValue('strata.operation'), 'rebase', 'cancelled');
@@ -444,7 +443,6 @@ describe('history operations', () => {
   it('undoes a rebase that stopped and then finished with Skip, back to where it started', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.equal(api().contextValue('strata.operation'), 'rebase');
     ui.press('Skip Commit');
@@ -468,7 +466,6 @@ describe('history operations', () => {
     await run('strata.undo');
     assert.equal(git('rev-parse', 'HEAD'), before);
 
-    ui.press('Merge');
     await run('strata.merge', branchMenu('strata-pick', picked));
     assert.equal(api().contextValue('strata.operation'), 'merge');
     write('main.txt', 'resolved\n');
@@ -490,7 +487,7 @@ describe('history operations', () => {
     ui.clear();
     ui.press('Abort Rebase');
     await run('strata.operation.abort');
-    assert.match(ui.first('confirm').detail, /Your stashed changes are restored\.$/);
+    assert.match(ui.first('confirm').detail, /\nYour stashed changes come back\.$/);
     assert.equal(git('rev-parse', 'HEAD'), tip);
     assert.equal(read('NOTES.md'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
@@ -501,6 +498,7 @@ describe('history operations', () => {
     git('switch', '--quiet', 'main');
     await reload(panel());
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Merge');
     await run('strata.merge', branchMenu('strata-topic', git('rev-parse', 'strata-topic')));
     assert.equal(api().contextValue('strata.operation'), 'merge');
@@ -518,6 +516,7 @@ describe('history operations', () => {
     git('switch', '--quiet', 'main');
     await reload(panel());
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Merge');
     await run('strata.merge', branchMenu('strata-topic', git('rev-parse', 'strata-topic')));
     assert.equal(api().contextValue('strata.operation'), 'merge');
@@ -532,7 +531,7 @@ describe('history operations', () => {
     assert.equal(git('show', `${stash}:NOTES.md`), 'mine');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      'Finished the merge, but git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They\'re safe in stash@{0} ("autostash").',
+      'Finished the merge; git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They stay in the stash git made.',
     );
     await reload(panel());
     assert.equal(await leftover(), undefined, 'not a resolved restore conflict whose stash could be dropped');
@@ -542,6 +541,7 @@ describe('history operations', () => {
     const picked = await conflicting();
     const before = git('rev-parse', 'HEAD');
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Cherry Pick');
     await run('strata.cherryPick', commitMenu(picked));
     assert.equal(api().contextValue('strata.operation'), 'cherryPick');
@@ -560,7 +560,8 @@ describe('history operations', () => {
     git('stash', 'push', '--quiet', '--message', 'theirs');
     const theirs = git('rev-parse', 'refs/stash');
     write('NOTES.md', 'mine\n');
-    ui.press('Stash & Cherry Pick').meanwhile(() => git('checkout', '--', 'NOTES.md'));
+    git('add', 'NOTES.md');
+    ui.press('Stash & Cherry Pick').meanwhile(() => git('checkout', 'HEAD', '--', 'NOTES.md'));
     await run('strata.cherryPick', commitMenu(git('rev-parse', 'wip/experiment')));
     assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
     assert.equal(git('rev-parse', 'refs/stash'), theirs);
@@ -574,11 +575,14 @@ describe('history operations', () => {
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.deepEqual(ui.first('confirm').buttons, ['Stash & Rebase']);
     assert.equal(git('rev-parse', 'HEAD~1'), git('rev-parse', 'main'), 'rebased');
-    const warning = ui.of('notify').find((n) => n.level === 'warning');
+    const [warning, ...more] = ui.of('notify');
+    assert.deepEqual(more, [], 'no success message before the warning');
+    assert.equal(warning?.level, 'warning');
     assert.match(
-      warning?.message ?? '',
-      /^Rebased 'strata-topic' onto 'main' \(1 commit\), but restoring your stashed changes conflicted in 1 file \(main\.txt\)\. Your changes are safe in stash@\{0\} \("autostash"\)\.$/,
+      warning.message,
+      /^Rebased 'strata-topic' onto 'main' \(1 commit\); restoring your stashed changes conflicted in main\.txt\. They stay in the stash git made\.$/,
     );
+    assert.deepEqual(warning.actions, ['Resolve...', 'Show Stash', 'Undo']);
     const stash = git('rev-parse', 'refs/stash');
     await waitFor('leftover reported', async () => {
       const l = (await panel().probe()).leftover;
@@ -586,12 +590,11 @@ describe('history operations', () => {
     });
   });
 
-  it('cherry picks onto uncommitted changes through its own stash, and gives them back', async () => {
+  it('cherry picks over uncommitted changes to other files without asking, keeping them in place', async () => {
     const picked = git('rev-parse', 'wip/experiment');
     write('NOTES.md', 'mine\n');
-    ui.press('Stash & Cherry Pick');
     await run('strata.cherryPick', commitMenu(picked));
-    assert.deepEqual(ui.first('confirm').buttons, ['Cherry Pick Keeping Changes', 'Stash & Cherry Pick']);
+    assert.deepEqual(ui.of('confirm'), []);
     assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
     assert.equal(readFileSync(join(workspaceRoot(), 'NOTES.md'), 'utf8'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
@@ -645,11 +648,12 @@ describe('history operations', () => {
     const picked = await conflicting();
     const notes = read('NOTES.md');
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Cherry Pick');
     await run('strata.cherryPick', commitMenu(picked));
     assert.match(
       ui.of('notify').at(-1)?.message ?? '',
-      /Your uncommitted changes are in stash@\{0\} \("On main: Strata autostash: cherry pick [0-9a-f]+ onto 'main'"\)\.$/,
+      /Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick of [0-9a-f]+ onto 'main'"\.$/,
     );
     await waitFor('the banner names the held stash', async () =>
       (await panel().probe()).banner?.text.includes('Your uncommitted changes are in stash@{0} (Strata autostash)'),
@@ -667,6 +671,7 @@ describe('history operations', () => {
     const picked = await conflicting();
     const notes = read('NOTES.md');
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Cherry Pick');
     await run('strata.cherryPick', commitMenu(picked));
     const kept = git('rev-parse', 'refs/stash');
@@ -723,12 +728,16 @@ describe('history operations', () => {
     git('cherry-pick', picked);
     const notes = read('NOTES.md');
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Cherry Pick');
     await run('strata.cherryPick', commitMenu(picked));
     const stop = ui.of('notify').at(-1);
     assert.equal(stop?.level, 'warning');
     assert.match(stop.message, /^Cherry pick stopped \("Unmerged experiment"\): The previous cherry-pick is now empty/);
-    assert.match(stop.message, /Your uncommitted changes are in stash@\{0\}/);
+    assert.match(
+      stop.message,
+      /Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick of [0-9a-f]+ onto 'main'"\.$/,
+    );
     assert.deepEqual(stop.actions, ['Skip...', 'Abort Cherry Pick...']);
     assert.equal(read('NOTES.md'), notes, 'not popped into the stopped cherry pick');
 
@@ -757,10 +766,10 @@ describe('history operations', () => {
     );
   };
 
-  it("merges after moving untracked files out of its way, with git's autostash both times", async () => {
+  it('merges after moving untracked files out of its way, keeping other changes in place', async () => {
     const tip = await inTheWay();
     write('NOTES.md', 'dirty\n');
-    ui.press('Stash & Fast-Forward', 'Stash It & Retry');
+    ui.press('Fast-Forward', 'Stash It & Retry');
     await run('strata.merge', branchMenu('strata-new', tip));
     assert.equal(ui.of('confirm')[1]?.message, "1 untracked file is in the way of the merge of 'strata-new': new.txt.");
     assert.equal(git('rev-parse', 'HEAD'), tip, 'fast-forwarded');
@@ -775,10 +784,10 @@ describe('history operations', () => {
     const onto = await inTheWay();
     branchWith('strata-topic', 'main~1', 'topic.txt', 'topic\n');
     await reload(panel());
-    ui.press('Rebase', 'Stash It & Retry');
+    ui.press('Stash It & Retry');
     await run('strata.rebase', branchMenu('strata-new', onto));
     assert.equal(
-      ui.of('confirm')[1]?.message,
+      ui.of('confirm')[0]?.message,
       "1 untracked file is in the way of the rebase onto 'strata-new': new.txt.",
     );
     assert.equal(git('rev-parse', 'HEAD~1'), onto);
@@ -794,6 +803,7 @@ describe('history operations', () => {
     const picked = await inTheWay();
     const short = git('rev-parse', '--short', picked);
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Cherry Pick', 'Stash It & Retry');
     await run('strata.cherryPick', commitMenu(picked));
     assert.equal(
@@ -850,7 +860,6 @@ describe('history operations', () => {
     git('update-ref', '-d', 'refs/remotes/origin/main');
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     await reload(panel());
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.equal(api().contextValue('strata.operation'), 'rebase');
 
@@ -886,8 +895,7 @@ describe('history operations', () => {
       {
         kind: 'confirm',
         message: "This clone is shallow: 'strata-deep' and 'strata-topic' have no common commit in it.",
-        detail:
-          'Fetch More History goes 100 commits further back; Fetch Full History fetches the whole history. Then try again.',
+        detail: 'Fetch more of it, then try again.',
         buttons: ['Fetch More History', 'Fetch Full History'],
       },
     ]);
@@ -1057,7 +1065,7 @@ describe('history operations', () => {
       [
         [
           `Revert ${short(merge)} "Merge branch 'strata-side'" on 'main'?`,
-          `Undoes the changes of the 2 commits it merged into ${short(`${merge}^1`)} "Mainline" from ${short(`${merge}^2`)} "side.txt: side 2". Merging those commits again later won't bring them back.`,
+          `Undoes the changes of the 2 commits it merged into ${short(`${merge}^1`)} "Mainline" from ${short(`${merge}^2`)} "side.txt: side 2". Merging them again won't bring them back.`,
           ['Revert'],
         ],
       ],
@@ -1072,6 +1080,7 @@ describe('history operations', () => {
     const { merge, fork } = await mergedSide();
     git('switch', '--quiet', '--create', 'strata-target', fork);
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     await reload(panel());
     ui.choose(/^Parent 2:/).press('Stash & Cherry Pick');
     await run('strata.cherryPick', commitMenu(merge));
@@ -1083,7 +1092,7 @@ describe('history operations', () => {
     assert.match(
       ui.first('confirm').detail,
       new RegExp(
-        `^Applies the changes of the 1 commit it merged into ${short(`${merge}^2`)} "side\\.txt: side 2" from ${short(`${merge}^1`)} "Mainline"\\. `,
+        `^Applies the changes of the 1 commit it merged into ${short(`${merge}^2`)} "side\\.txt: side 2" from ${short(`${merge}^1`)} "Mainline"\\.\n`,
       ),
     );
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-side'");
@@ -1148,6 +1157,7 @@ describe('history operations', () => {
     git('revert', '--no-edit', '-m', '1', merge);
     const again = git('rev-parse', 'HEAD');
     write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
     ui.press('Stash & Revert');
     await run('strata.revert', commitMenu(merge));
     assert.equal(
@@ -1168,10 +1178,7 @@ describe('history operations', () => {
     await run('strata.reset', commitMenu(target));
     const asked = ui.first('confirm');
     assert.deepEqual(asked.buttons, ['Stash Changes & Reset', 'Discard Changes & Reset']);
-    assert.match(
-      asked.detail,
-      /Stash Changes & Reset keeps them in the stash list; Discard Changes & Reset throws them away\./,
-    );
+    assert.match(asked.detail, /\nUndo can't bring back your uncommitted changes in 1 file once discarded\.$/);
     assert.equal(git('rev-parse', 'HEAD'), target);
     assert.equal(git('status', '--porcelain', '--untracked-files=no'), '');
     const short = git('rev-parse', '--short', target);
@@ -1205,7 +1212,7 @@ describe('history operations', () => {
     assert.equal(read('u.txt'), 'untracked\n');
     assert.equal(
       ui.of('notify').at(-1)?.message,
-      `Reset 'main' to ${short}. Your changes to the files the reset changes are in stash@{0} ("On main: Strata: before reset of main to ${short}")`,
+      `Reset 'main' to ${short}. Your changes to the files the reset changes are in stash "Strata: before reset of main to ${short}"`,
     );
   });
 

@@ -1,12 +1,12 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveStashChoices } from '../../src/core/autostash.ts';
 import {
   abortConfirmation,
   commandUnquotable,
   deleteBranchConfirmation,
   dirtySection,
   fileList,
+  failedDuring,
   gitFailure,
   gitTooOld,
   HISTORY_DONE,
@@ -29,15 +29,14 @@ describe('wording', () => {
   });
 
   it('describes uncommitted changes and what happens to them', () => {
-    const dirty = { files: 3, staged: 1, overlap: false, fastForward: true };
-    const s = dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig', true), 0);
+    const dirty = { files: 3, staged: 1, overlap: true, fastForward: true };
     assert.equal(
-      s,
-      'Uncommitted changes: 3 files (1 staged). merge.autoStash is on. Untracked files are not stashed; they stay in place.',
+      dirtySection(dirty, 'merge', 0),
+      'Uncommitted changes in 3 files (1 staged); untracked files stay in place.',
     );
-    assert.match(
-      dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig', true), 2),
-      /2 submodules are not stashed/,
+    assert.equal(
+      dirtySection(dirty, 'merge', 2),
+      'Uncommitted changes in 3 files (1 staged); untracked files and changes inside submodules stay in place.',
     );
   });
 
@@ -58,7 +57,7 @@ describe('wording', () => {
     assert.equal(r.message, "Reset 'main' to a1b2c3d?");
     assert.equal(
       r.detail,
-      '\'main\' moves back 2 commits: "Two" and "One". 2 of them are on no other branch; Undo or the reflog can restore them. Their changes stay in your files, unstaged.',
+      '\'main\' moves back 2 commits ("Two" and "One"); their changes stay in your files, unstaged.\nUndo brings them back.',
     );
     assert.deepEqual(r.buttons, [{ id: 'reset', label: "Reset 'main'" }]);
   });
@@ -68,16 +67,20 @@ describe('wording', () => {
       { ...reset, dropped: { newest: [c('1111111', 'Two')], count: 1 }, onUpstream: 1, unreachable: 0, dirtyFiles: 4 },
       'hard',
     );
-    assert.match(r!.detail, /1 of them is on origin\/main; 'main' will be 1 behind it \(a pull brings it back\)\./);
-    assert.match(
+    assert.equal(
       r!.detail,
-      /Their changes are discarded\. Your uncommitted changes in 4 files: Stash Changes & Reset keeps them in the stash list; Discard Changes & Reset throws them away\./,
+      "'main' moves back 1 commit (\"Two\"); their changes are discarded.\nUndo brings it back (1 also on 'origin/main').",
+    );
+    const partly = resetConfirmation({ ...reset, onUpstream: 1, unreachable: 1 }, 'keep');
+    assert.match(
+      partly!.detail,
+      /\nUndo brings them back \(1 on no other branch; 1 also on 'origin\/main'\)\.\nYour uncommitted changes stay\.$/,
     );
   });
 
   it('counts the commits a reset drops beyond those it names', () => {
     const r = resetConfirmation({ ...reset, dropped: { newest: reset.dropped.newest, count: 60 } }, 'mixed');
-    assert.match(r!.detail, /^'main' moves back 60 commits: "Two", "One" and 58 more\./);
+    assert.match(r!.detail, /^'main' moves back 60 commits \("Two", "One" and 58 more\);/);
   });
 
   it('asks nothing for a reset that drops nothing and discards nothing', () => {
@@ -88,28 +91,18 @@ describe('wording', () => {
   });
 
   it('says when deleting a branch loses commits', () => {
-    const safe = deleteBranchConfirmation('topic', c('abc1234', 'Tip'), { newest: [], count: 0 }, 'origin/topic');
-    assert.equal(safe.message, "Delete branch 'topic'?");
-    assert.equal(
-      safe.detail,
-      'It points at abc1234 "Tip", which is also on another branch. No commits are lost. The remote branch origin/topic is not deleted.',
-    );
+    assert.equal(deleteBranchConfirmation('topic', { newest: [], count: 0 }, 'origin/topic'), undefined);
     const lossy = deleteBranchConfirmation(
       'topic',
-      c('abc1234', 'Tip'),
       { newest: [c('abc1234', 'Tip'), c('def5678', 'Older')], count: 2 },
       undefined,
     );
+    assert.ok(lossy);
     assert.equal(lossy.message, "Delete branch 'topic' and its 2 unmerged commits?");
-    assert.match(lossy.detail, /^2 commits would be on no branch, newest "Tip" \(abc1234\)\./);
+    assert.match(lossy.detail, /^2 commits would be on no branch, newest abc1234 "Tip"\./);
     assert.deepEqual(lossy.buttons, [{ id: 'delete', label: 'Delete Branch and Commits' }]);
-    const long = deleteBranchConfirmation(
-      'topic',
-      c('abc1234', 'Tip'),
-      { newest: [c('abc1234', 'Tip')], count: 60 },
-      undefined,
-    );
-    assert.equal(long.message, "Delete branch 'topic' and its 60 unmerged commits?");
+    const long = deleteBranchConfirmation('topic', { newest: [c('abc1234', 'Tip')], count: 60 }, undefined);
+    assert.equal(long?.message, "Delete branch 'topic' and its 60 unmerged commits?");
   });
 
   it('says what aborting gives back', () => {
@@ -117,23 +110,23 @@ describe('wording', () => {
     assert.equal(a.message, 'Abort the rebase?');
     assert.equal(
       a.detail,
-      "'topic' goes back to 9f8e7d6 as before the rebase. Conflict resolutions you've made are discarded. Your stashed changes are restored.",
+      "'topic' goes back to 9f8e7d6, dropping your conflict resolutions.\nStrata can't undo this.\nYour stashed changes come back.",
     );
     assert.deepEqual(a.buttons, [{ id: 'abort', label: 'Abort Rebase' }]);
     assert.match(
       abortConfirmation('cherryPick', undefined, '9f8e7d6', false).detail,
-      /^HEAD goes back to 9f8e7d6 as before the cherry pick\./,
+      /^HEAD goes back to 9f8e7d6, dropping your conflict resolutions\.\nStrata can't undo this\.$/,
     );
   });
 
   it('counts the commits an Abort drops', () => {
     assert.match(
       abortConfirmation('rebase', 'topic', '9f8e7d6', false, [], 2).detail,
-      /^'topic' goes back to 9f8e7d6 as before the rebase, dropping the 2 commits it has replayed so far\./,
+      /^'topic' goes back to 9f8e7d6, dropping the 2 commits it replayed and your conflict resolutions\./,
     );
     assert.match(
       abortConfirmation('revert', 'main', '9f8e7d6', false, [], 1).detail,
-      /^'main' goes back to 9f8e7d6 as before the revert, dropping the 1 commit it has made so far\./,
+      /^'main' goes back to 9f8e7d6, dropping the 1 commit it made and your conflict resolutions\./,
     );
   });
 
@@ -141,12 +134,12 @@ describe('wording', () => {
     const a = abortConfirmation('merge', 'main', '9f8e7d6', false, ['a.ts']);
     assert.equal(
       a.detail,
-      "'main' goes back to 9f8e7d6 as before the merge. Conflict resolutions you've made are discarded. Your uncommitted changes in 1 file (a.ts) would be discarded: Stash Changes & Abort keeps them in the stash list; Discard Changes & Abort throws them away.",
+      "'main' goes back to 9f8e7d6, dropping your conflict resolutions.\nStrata can't undo this.\nYour uncommitted changes in 1 file (a.ts) would be lost.",
     );
     const s = skipConfirmation(c('abc1234', 'Add lexer'), "'topic'", ['a.ts', 'b.ts']);
     assert.match(
       s.detail,
-      /^Its changes won't be in 'topic'\. Your uncommitted changes in 2 files \(a\.ts and b\.ts\)/,
+      /^Its changes won't be in 'topic'\.\nYour uncommitted changes in 2 files \(a\.ts and b\.ts\) would be lost\.$/,
     );
     assert.deepEqual(s.buttons, [
       { id: 'stash', label: 'Stash Changes & Skip' },
@@ -161,21 +154,17 @@ describe('wording', () => {
 
 describe('wording of undo and failures', () => {
   it('asks before an undo that would drop commits made since', () => {
-    const c = undoMovedConfirmation('main', 'merge', 'abc1234', 'def5678');
-    assert.equal(c.message, "'main' has moved since the merge (now at abc1234).");
-    assert.equal(c.detail, 'Undo would move it back to def5678 and drop the newer commits.');
-    assert.deepEqual(c.buttons, [{ id: 'undo', label: 'Undo Anyway' }]);
-    assert.match(
-      undoMovedConfirmation(undefined, 'cherry pick', 'a', 'b').message,
-      /^HEAD has moved since the cherry pick/,
-    );
+    const now = c('abc1234', 'Later');
+    const moved = undoMovedConfirmation('main', 'merge', 0, now, 'def5678');
+    assert.equal(moved.message, "'main' has moved since the merge (now at abc1234).");
+    assert.equal(moved.detail, 'Undo moves it back to def5678.');
+    assert.deepEqual(moved.buttons, [{ id: 'undo', label: 'Undo Anyway' }]);
+    assert.match(undoMovedConfirmation(undefined, 'cherry pick', 0, now, 'b').message, /^HEAD has moved since/);
     assert.equal(undone('branch deletion'), 'Undid the branch deletion');
-    const created = undoMovedConfirmation('topic', 'branch creation', 'abc1234', 'def5678', 'topic');
-    assert.equal(created.message, "'topic' has moved since the branch creation (now at abc1234).");
-    assert.equal(
-      created.detail,
-      "Undo would switch back to def5678 and delete 'topic', with the commits made on it since.",
-    );
+    const created = undoMovedConfirmation('topic', 'branch creation', 2, now, 'def5678');
+    assert.equal(created.message, "Undo the branch creation and lose 2 commits on 'topic'?");
+    assert.equal(created.detail, 'Made since the branch creation, newest abc1234 "Later".\nStrata can\'t undo this.');
+    assert.deepEqual(created.buttons, [{ id: 'undo', label: 'Undo and Drop 2 Commits' }]);
     assert.equal(
       undoGone('rebase', "'main'"),
       "HEAD is now on 'main', not on the branch the rebase moved, so Undo was dropped.",
@@ -187,17 +176,28 @@ describe('wording of undo and failures', () => {
     assert.equal(gitFailure('  fatal: bad\n'), 'fatal: bad');
   });
 
+  it('names the operation a git failure happened in', () => {
+    assert.equal(
+      failedDuring("Merging 'topic' into 'main'", 'fatal: x'),
+      "Couldn't merge 'topic' into 'main': fatal: x",
+    );
+    assert.equal(failedDuring('Cherry picking abc1234', 'fatal: x'), "Couldn't cherry pick abc1234: fatal: x");
+    assert.equal(failedDuring("Pushing 'x' to 'origin/x'", 'e'), "Couldn't push 'x' to 'origin/x': e");
+    assert.equal(failedDuring('Frobbing it', 'e'), 'Frobbing it failed: e');
+  });
+
   it('hands a failed sign-in to a terminal', () => {
     const auth = signInConfirmation('origin', 'auth');
     assert.equal(auth.message, "Strata couldn't sign in to 'origin'.");
     assert.equal(
       auth.detail,
-      'git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there.',
+      "git needs you to sign in, which Strata can't show. Run the same command in a terminal to sign in there.",
     );
     assert.deepEqual(
       auth.buttons.map((b) => b.label),
-      ['Run in Terminal', 'Show Output'],
+      ['Type in Terminal', 'Show Output'],
     );
+    assert.equal(auth.level, 'info');
     assert.equal(signInConfirmation(undefined, 'hostKey').message, "Strata couldn't connect to a remote.");
     assert.equal(
       signInConfirmation('origin', 'hostKey').detail,

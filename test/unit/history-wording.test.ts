@@ -1,6 +1,5 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveStashChoices } from '../../src/core/autostash.ts';
 import {
   conflictsInProgress,
   dirtySection,
@@ -19,23 +18,29 @@ import {
   skipConfirmation,
   stillConflicted,
   stoppedMessage,
+  type MergeFacts,
+  unstagedResolutions,
 } from '../../src/core/wording.ts';
 
 const labels = (b: { label: string }[]) => b.map((x) => x.label);
 const c = { short: 'abc1234', subject: 'Add lexer' };
 
 describe('wording of history operations', () => {
-  const merge = { src: "'topic'", into: "'main'", short: 'abc1234', count: 2, canFastForward: true };
+  const merge: MergeFacts = {
+    op: 'merge',
+    src: "'topic'",
+    into: "'main'",
+    short: 'abc1234',
+    count: 2,
+    canFastForward: true,
+  };
 
   it('offers fast-forward or a merge commit, merge commit first when merge.ff is false', () => {
     const ff = mergeConfirmation(merge, undefined);
     assert.equal(ff.message, "Merge 'topic' into 'main'?");
-    assert.equal(ff.detail, "'main' can fast-forward to abc1234 (2 commits), or record a merge commit.");
+    assert.equal(ff.detail, "Brings 2 commits from 'topic' (abc1234) into 'main'.");
     assert.deepEqual(labels(ff.buttons), ['Fast-Forward', 'Create Merge Commit']);
     assert.deepEqual(labels(mergeConfirmation(merge, false).buttons), ['Create Merge Commit', 'Fast-Forward']);
-    const diverged = mergeConfirmation({ ...merge, canFastForward: false }, undefined);
-    assert.equal(diverged.detail, "Creates a merge commit on 'main' with 2 commits from 'topic'.");
-    assert.deepEqual(labels(diverged.buttons), ['Merge']);
   });
 
   it('says how a merge with uncommitted changes records the result, and asks about the changes', () => {
@@ -45,7 +50,7 @@ describe('wording of history operations', () => {
     });
     assert.equal(
       d.detail,
-      "Creates a merge commit on 'main' with 2 commits from 'topic'. Uncommitted changes: 1 file.",
+      "Creates a merge commit on 'main' with 2 commits from 'topic'.\nUncommitted changes: 1 file.",
     );
     assert.deepEqual(labels(d.buttons), ['Stash & Merge', 'Merge Keeping Changes']);
     assert.deepEqual(mergeAnswer(d.buttons[1]!.id), { mode: 'ff', choice: 'keep' });
@@ -53,7 +58,19 @@ describe('wording of history operations', () => {
       section: 'Uncommitted changes: 1 file.',
       modes: [{ mode: 'ff', choices: ['stash'] }],
     });
-    assert.equal(pull.detail, "'main' fast-forwards to abc1234 (2 commits). Uncommitted changes: 1 file.");
+    assert.equal(pull.detail, "'main' fast-forwards to abc1234 (2 commits).\nUncommitted changes: 1 file.");
+  });
+
+  it('calls the merge or rebase of a pull Pull', () => {
+    const dirty = { section: '', modes: [{ mode: 'ff' as const, choices: ['stash' as const] }] };
+    const pull = mergeConfirmation({ ...merge, op: 'pullMerge', src: "'origin/main'" }, undefined, dirty);
+    assert.equal(pull.message, "Pull 'origin/main' into 'main'?");
+    assert.deepEqual(labels(pull.buttons), ['Stash & Pull']);
+    const facts = { branch: "'main'", onto: "'origin/main'", ontoShort: 'e4f5a6b', replay: 1, merges: 0 };
+    const r = rebaseConfirmation({ ...facts, op: 'pullRebase', onUpstream: 0, upstream: undefined }, '', [
+      { id: 'stash', label: 'Stash & Pull' },
+    ]);
+    assert.equal(r.message, "Pull 'origin/main' into 'main'?");
   });
 
   it('offers fast-forward or a merge commit with uncommitted changes too, each with what to do about them', () => {
@@ -64,10 +81,7 @@ describe('wording of history operations', () => {
         { mode: 'ff', choices: ['keep', 'stash'] },
       ],
     });
-    assert.equal(
-      d.detail,
-      "'main' can fast-forward to abc1234 (2 commits), or record a merge commit. Uncommitted changes: 1 file.",
-    );
+    assert.equal(d.detail, "Brings 2 commits from 'topic' (abc1234) into 'main'.\nUncommitted changes: 1 file.");
     assert.deepEqual(labels(d.buttons), [
       'Stash & Create Merge Commit',
       'Fast-Forward Keeping Changes',
@@ -86,6 +100,7 @@ describe('wording of history operations', () => {
   it('says what a rebase replays and drops', () => {
     const r = rebaseConfirmation(
       {
+        op: 'rebase',
         branch: "'feature'",
         onto: "'main'",
         ontoShort: 'e4f5a6b',
@@ -100,7 +115,7 @@ describe('wording of history operations', () => {
     assert.equal(r.message, "Rebase 'feature' onto 'main'?");
     assert.equal(
       r.detail,
-      "Replays 4 commits of 'feature' on top of 'main' (e4f5a6b). 1 merge commit is dropped; the commits they brought in are replayed one by one. 2 of them are on origin/feature: you'll need to force push afterwards. Undo restores the original commits.",
+      "Replays 4 commits of 'feature' on 'main' (e4f5a6b), without its 1 merge commit. 2 are on 'origin/feature': you'll need to force push.\nUndo restores the original commits.",
     );
   });
 
@@ -124,7 +139,7 @@ describe('wording of history operations', () => {
     assert.equal(p.message, 'Revert abc1234 "Add lexer" on \'main\'?');
     assert.equal(
       p.detail,
-      'Undoes the changes of the 3 commits it merged into aaa1111 "Release prep" from bbb2222 "Add parser". Merging those commits again later won\'t bring them back.',
+      'Undoes the changes of the 3 commits it merged into aaa1111 "Release prep" from bbb2222 "Add parser". Merging them again won\'t bring them back.',
     );
   });
 
@@ -132,7 +147,7 @@ describe('wording of history operations', () => {
     const p = pickConfirmation('cherryPick', c, 'HEAD', true, '', [], { parents, mainline: 2 });
     assert.equal(
       p.detail,
-      'Applies the changes of the 5 commits it merged into bbb2222 "Add parser" from aaa1111 "Release prep". HEAD is detached: the new commit will be on no branch.',
+      'Applies the changes of the 5 commits it merged into bbb2222 "Add parser" from aaa1111 "Release prep".\nHEAD is detached: the new commit will be on no branch.',
     );
     const octopus = [...parents, { short: 'ccc3333', subject: 'Add docs', mergedIn: 1 }];
     assert.match(
@@ -182,6 +197,9 @@ describe('wording of history operations', () => {
       'Cherry pick stopped ("Add lexer"): The previous cherry-pick is now empty.',
     );
     assert.equal(stillConflicted(['a.ts'], 1).message, '1 file still has conflicts: a.ts.');
+    const stage = unstagedResolutions(['a.ts', 'b.ts']);
+    assert.equal(stage.message, '2 resolved files are not staged yet: a.ts and b.ts.');
+    assert.deepEqual(labels(stage.buttons), ['Stage & Continue']);
     assert.equal(skipConfirmation(c, "'main'").detail, "Its changes won't be in 'main'.");
   });
 
@@ -196,12 +214,11 @@ describe('wording of history operations', () => {
 
   it('names the untracked files a hard reset would overwrite instead of claiming they stay', () => {
     const dirty = { files: 1, staged: 0, overlap: false, fastForward: false };
-    const choices = resolveStashChoices('resetHard', dirty, 'gitConfig', undefined);
     assert.equal(
-      dirtySection(dirty, choices, 0, ['parser.ts']),
-      'Uncommitted changes: 1 file. A hard reset discards uncommitted changes; stashing first keeps them in the stash list. 1 untracked file at paths the reset restores would be overwritten (parser.ts); stashing takes them too.',
+      dirtySection(dirty, 'resetHard', 0, ['parser.ts']),
+      "Undo can't bring back your uncommitted changes in 1 file and untracked parser.ts once discarded.",
     );
-    assert.doesNotMatch(dirtySection(dirty, choices, 0, []), /stay in place/);
+    assert.doesNotMatch(dirtySection(dirty, 'resetHard', 0, []), /stay in place/);
     assert.deepEqual(resetPick("'main'", c, 2), {
       title: 'Reset \'main\' to abc1234 "Add lexer"',
       placeholder: "2 commits leave 'main'. What happens to their changes?",
@@ -228,11 +245,11 @@ describe('wording of history operations', () => {
   it('says when restoring stashed changes only partly worked, or not at all', () => {
     assert.equal(
       popPartial("Merged 'topic' into 'main'", 'stash@{0} ("On main: x")'),
-      "Merged 'topic' into 'main', but only part of your stashed changes came back (git could not restore some files). The rest is safe in stash@{0} (\"On main: x\").",
+      "Merged 'topic' into 'main'; only part of your stashed changes came back. The rest stays in stash@{0} (\"On main: x\").",
     );
     assert.equal(
       popRefused("Switched to 'x'", 'your local changes would be overwritten.', 'stash@{1} ("y")'),
-      "Switched to 'x', but git could not restore your stashed changes: your local changes would be overwritten. They're safe in stash@{1} (\"y\").",
+      'Switched to \'x\'; git could not restore your stashed changes: your local changes would be overwritten. They stay in stash@{1} ("y").',
     );
   });
 });

@@ -16,8 +16,6 @@ export type StashChoice = 'stash' | 'keep' | 'migrate' | 'discard';
 export interface StashChoices {
   /** Answers in order; the first is the default. Empty when nothing needs asking. */
   choices: StashChoice[];
-  /** One sentence for the confirmation, naming where the default came from. */
-  explain: string;
   /**
    * How 'stash' runs: git's own --autostash, Strata's stash push / operation / stash pop, or a
    * stash that is never popped (it keeps what a reset would otherwise discard).
@@ -29,48 +27,27 @@ export interface DirtyFacts {
   /** Tracked files with uncommitted changes. */
   files: number;
   staged: number;
-  /** Some of them differ between HEAD and the target too (switch, reset --keep). */
+  /** Some of them are files the operation changes too. */
   overlap: boolean;
   /** The merge fast-forwards (merge, pull with merge). */
   fastForward: boolean;
 }
 
-const NAMES: Record<StashOp, string> = {
-  rebase: 'rebase',
-  merge: 'merge',
-  pullRebase: 'pull',
-  pullMerge: 'pull',
-  cherryPick: 'cherry-pick',
-  revert: 'revert',
-  switch: 'switch',
-  resetHard: 'reset',
-  resetKeep: 'reset',
-};
-
 /** Decides which answers an operation offers for uncommitted changes, and in which order. */
-export function resolveStashChoices(
-  op: StashOp,
-  dirty: DirtyFacts,
-  setting: AutostashSetting,
-  /** merge.autoStash in git config; undefined when unset. */
-  mergeAutoStash: boolean | undefined,
-): StashChoices {
-  const none: StashChoices = { choices: [], explain: '', mechanism: 'git' };
+export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: AutostashSetting): StashChoices {
+  const none: StashChoices = { choices: [], mechanism: 'git' };
   if (dirty.files === 0) return none;
-  const name = NAMES[op];
   switch (op) {
     case 'resetHard':
       // Strata never pops this stash: popping would undo the reset. Offered first even with "never".
       return {
         choices: ['stash', 'discard'],
-        explain: 'A hard reset discards uncommitted changes; stashing first keeps them in the stash list.',
         mechanism: 'safety',
       };
     case 'resetKeep':
       if (!dirty.overlap) return none;
       return {
         choices: ['stash'],
-        explain: "git can't keep changes to files the reset also changes.",
         mechanism: 'safety',
       };
     case 'switch':
@@ -78,73 +55,57 @@ export function resolveStashChoices(
       if (!dirty.overlap) return none;
       return {
         choices: setting === 'never' ? ['migrate', 'stash'] : ['stash', 'migrate'],
-        explain:
-          setting === 'never' ? 'strata.autoStash is "never".' : 'Stashing brings the changes back after switching.',
         mechanism: 'explicit',
       };
     case 'rebase':
     case 'pullRebase':
-      return { choices: ['stash'], explain: `git can't ${name} with uncommitted changes.`, mechanism: 'git' };
+      return { choices: ['stash'], mechanism: 'git' };
     case 'cherryPick':
     case 'revert':
-      if (dirty.staged > 0)
-        return { choices: ['stash'], explain: `git can't ${name} with staged changes.`, mechanism: 'explicit' };
+      // git refuses over any staged change, or over changes to the files the commit changes,
+      // before touching anything; other changes stay in place, also through a conflict and its abort.
+      if (dirty.staged > 0) return { choices: ['stash'], mechanism: 'explicit' };
+      if (!dirty.overlap) return none;
       return {
-        choices: setting === 'always' ? ['stash', 'keep'] : ['keep', 'stash'],
-        explain:
-          setting === 'always'
-            ? 'strata.autoStash is "always".'
-            : `git ${name} has no autostash; changes stay in place.`,
+        choices: ['stash'],
         mechanism: 'explicit',
       };
     case 'merge':
-    case 'pullMerge': {
+    case 'pullMerge':
       // git refuses a merge commit over staged changes, even to other files; a fast-forward carries them.
       if (dirty.staged > 0 && !dirty.fastForward)
         return {
           choices: ['stash'],
-          explain: "git can't create a merge commit with staged changes.",
           mechanism: 'git',
         };
-      // Unset, git merges over changes it would only warn about losing: stashing comes first.
-      const first =
-        setting === 'gitConfig'
-          ? mergeAutoStash === false
-            ? 'keep'
-            : 'stash'
-          : setting === 'always'
-            ? 'stash'
-            : 'keep';
-      const explain =
-        setting !== 'gitConfig'
-          ? `strata.autoStash is "${setting}".`
-          : mergeAutoStash === undefined
-            ? 'merge.autoStash is not set.'
-            : `merge.autoStash is ${mergeAutoStash ? 'on' : 'off'}.`;
+      if (!dirty.overlap) return none;
       return {
-        choices: first === 'stash' ? ['stash', 'keep'] : ['keep', 'stash'],
-        explain,
+        choices: ['stash'],
         mechanism: 'git',
       };
-    }
   }
 }
 
 /** Operations Strata stashes around itself (git has no autostash for them). */
 export type ExplicitStashOp = 'switch' | 'cherryPick' | 'revert';
 
-const AUTOSTASH = 'Strata autostash: ';
+/** What Strata's stash messages start with, new first: older versions wrote "Strata autostash: ". */
+const PREFIXES = ['Strata: changes set aside for the ', 'Strata autostash: '];
 const EXPLICIT: Record<ExplicitStashOp, string> = { switch: 'switch', cherryPick: 'cherry pick', revert: 'revert' };
 
 /** The message of a stash Strata pushes before `op` and pops after it; `target` names what it was for. */
 export const autostashMessage = (op: ExplicitStashOp, target: string): string =>
-  `${AUTOSTASH}${EXPLICIT[op]} ${target}`;
+  `${PREFIXES[0]!}${EXPLICIT[op]} ${target}`;
 
-/** The operation a stash was Strata's autostash for, from its reflog subject ("On main: Strata autostash: …"). */
+/** Whether stash message `message` (without git's "On main: ") is one autostashMessage made. */
+export const isStrataAutostash = (message: string): boolean => PREFIXES.some((p) => message.startsWith(p));
+
+/** The operation a stash was Strata's autostash for, from its reflog subject ("On main: Strata: …"). */
 export function strataAutostashOf(reflogSubject: string): ExplicitStashOp | undefined {
   const message = /^On [^:]+: (.*)$/s.exec(reflogSubject)?.[1];
-  if (!message?.startsWith(AUTOSTASH)) return undefined;
-  const rest = message.slice(AUTOSTASH.length);
+  const prefix = message === undefined ? undefined : PREFIXES.find((p) => message.startsWith(p));
+  if (message === undefined || prefix === undefined) return undefined;
+  const rest = message.slice(prefix.length);
   return (Object.keys(EXPLICIT) as ExplicitStashOp[]).find((op) => rest.startsWith(`${EXPLICIT[op]} `));
 }
 

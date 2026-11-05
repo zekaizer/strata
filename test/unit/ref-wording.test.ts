@@ -8,7 +8,6 @@ import {
   checkedOutElsewhere,
   createBranchInput,
   createTagInput,
-  deleteTagConfirmation,
   DOING,
   DONE,
   leaveBehindConfirmation,
@@ -55,10 +54,7 @@ describe('wording of ref operations', () => {
       { id: 'stash', label: 'Stash & Switch' },
     ]);
     assert.equal(c.message, "Switching to 'topic' would overwrite your changes to 2 files.");
-    assert.equal(
-      c.detail,
-      "a.txt and b.txt. Stash them and bring them back after switching, or let git merge them into 'topic' (conflicts are possible). Uncommitted changes: 2 files.",
-    );
+    assert.equal(c.detail, "'topic' changes a.txt and b.txt too.\nUncommitted changes: 2 files.");
     assert.equal(
       switchConfirmation('abc1234', ['a.txt'], '', []).message,
       'Switching to abc1234 would overwrite your changes to 1 file.',
@@ -70,7 +66,7 @@ describe('wording of ref operations', () => {
     assert.equal(c.message, 'Leave 2 commits behind?');
     assert.equal(
       c.detail,
-      'HEAD is detached at abc1234 with 2 commits on no branch (newest "WIP"). After switching they\'re only reachable through the reflog.',
+      'No branch has them; newest abc1234 "WIP".\nUndo can\'t bring them back; only the reflog keeps them.',
     );
     assert.deepEqual(labels(c.buttons), ['Switch Anyway']);
     assert.equal(leaveBehindConfirmation(1, tip).message, 'Leave 1 commit behind?');
@@ -97,8 +93,9 @@ describe('wording of ref operations', () => {
 
   it('asks what to do when the local namesake of a remote branch tracks another', () => {
     assert.deepEqual(tracksOtherConfirmation('main', 'upstream/main', 'origin/main'), {
+      level: 'info',
       message: "'main' tracks 'upstream/main', not 'origin/main'.",
-      detail: "Switch to 'main' anyway, or create a branch of another name that tracks 'origin/main'.",
+      detail: '',
       buttons: [
         { id: 'new', label: 'Create Tracking Branch...' },
         { id: 'switch', label: "Switch to 'main'" },
@@ -113,20 +110,10 @@ describe('wording of ref operations', () => {
   it('says a renamed branch keeps its remote name', () => {
     assert.deepEqual(renameInput('topic', 'origin'), {
       title: "Rename Branch 'topic'",
-      prompt: "Enter the new name. 'topic' on origin keeps its name.",
+      prompt: "Enter the new name. 'topic' on 'origin' keeps its name.",
     });
     assert.equal(renameInput('topic', undefined).prompt, 'Enter the new name.');
     assert.equal(NEEDS_NEW_NAME, 'Enter a different name.');
-  });
-
-  it('says what deleting a tag leaves', () => {
-    const c = deleteTagConfirmation('v1', tip);
-    assert.equal(c.message, "Delete tag 'v1'?");
-    assert.equal(
-      c.detail,
-      'It points at abc1234 "Tip". A tag already pushed stays on its remote, and a fetch brings it back.',
-    );
-    assert.deepEqual(c.buttons, [{ id: 'delete', label: 'Delete Tag' }]);
   });
 
   it('reports what went wrong around a switch', () => {
@@ -136,12 +123,12 @@ describe('wording of ref operations', () => {
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
     assert.equal(
-      popConflicted("Switched to 'topic'", ['a.txt'], 1, stashLabel(0, 'On main: autostash')),
-      'Switched to \'topic\', but restoring your stashed changes conflicted in 1 file (a.txt). Your changes are safe in stash@{0} ("On main: autostash").',
+      popConflicted("Switched to 'topic'", ['a.txt'], stashLabel('autostash')),
+      "Switched to 'topic'; restoring your stashed changes conflicted in a.txt. They stay in the stash git made.",
     );
     assert.equal(
-      migrateConflicted("Switched to 'topic'", 2),
-      "Switched to 'topic'; your changes conflicted in 2 files.",
+      migrateConflicted("Switched to 'topic'", ['a.txt', 'b.txt']),
+      "Switched to 'topic'; your changes conflicted in a.txt and b.txt.",
     );
   });
 });
@@ -149,13 +136,24 @@ describe('wording of ref operations', () => {
 describe("Strata's autostash entries", () => {
   it('are recognised by their message, whatever branch they were made on', () => {
     const message = autostashMessage('cherryPick', "a1b2c3d onto 'main'");
-    assert.equal(message, "Strata autostash: cherry pick a1b2c3d onto 'main'");
+    assert.equal(message, "Strata: changes set aside for the cherry pick a1b2c3d onto 'main'");
     assert.equal(strataAutostashOf(`On main: ${message}`), 'cherryPick');
     assert.equal(strataAutostashOf(`On feature/x: ${autostashMessage('switch', "to 'b'")}`), 'switch');
     assert.equal(strataAutostashOf(`On main: ${autostashMessage('revert', 'a1b2c3d')}`), 'revert');
     assert.equal(strataAutostashOf('autostash'), undefined, "git's own autostash");
     assert.equal(strataAutostashOf('On main: my work'), undefined);
     assert.equal(strataAutostashOf('WIP on main: abc1234 Strata autostash: cherry pick x'), undefined);
+  });
+
+  it('are still recognised by the prefix older versions wrote', () => {
+    assert.equal(strataAutostashOf("On main: Strata autostash: cherry pick a1b2c3d onto 'main'"), 'cherryPick');
+    assert.equal(strataAutostashOf("On main: Strata autostash: switch to 'b'"), 'switch');
+  });
+
+  it("name a stash by its message, without git's prefix", () => {
+    assert.equal(stashLabel('On main: half-done lexer'), 'stash "half-done lexer"');
+    assert.equal(stashLabel('WIP on feature/x: 1a2b3c4 Add lexer'), 'stash "Add lexer"');
+    assert.equal(stashLabel('autostash'), 'the stash git made');
   });
 });
 
@@ -187,7 +185,7 @@ describe('results and progress of ref operations', () => {
   it('says what was done', () => {
     const cases: [string, string][] = [
       [DONE.switched('topic'), "Switched to 'topic'"],
-      [DONE.switched('x', { count: 3, upstream: 'origin/x' }), "Switched to 'x' (3 behind origin/x)"],
+      [DONE.switched('x', { count: 3, upstream: 'origin/x' }), "Switched to 'x' (3 behind 'origin/x')"],
       [DONE.tracking('x', 'origin/x'), "Created 'x' tracking 'origin/x'"],
       [DONE.detached('abc1234'), 'Detached HEAD at abc1234'],
       [DONE.branchCreated('x', 'abc1234'), "Created 'x' at abc1234"],

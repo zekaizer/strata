@@ -1,7 +1,6 @@
-import * as vscode from 'vscode';
 import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
 import { MORE_HISTORY, type MergeMode, type Operation, type ResetMode } from '../../core/operations.ts';
-import type { OperationState } from '../../core/repo-state.ts';
+import { CONFLICTS_SHOWN, type OperationState } from '../../core/repo-state.ts';
 import {
   abortButton,
   abortConfirmation,
@@ -22,7 +21,7 @@ import {
   type MergeParents,
   opName,
   pickConfirmation,
-  quote,
+  refName,
   rebaseConfirmation,
   rebaseContinues,
   RESET_MODES,
@@ -36,6 +35,7 @@ import {
   stillConflicted,
   stoppedMessage,
   UNRELATED,
+  unstagedResolutions,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -44,6 +44,7 @@ import {
   isShallowEdge,
   readCommit,
   readConfigBool,
+  readConflictResolution,
   readDiscardedByAbort,
   readHead,
   readMergeBase,
@@ -60,13 +61,23 @@ import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readAbortTarget, readMessageEdits, readOperationState } from '../../git/state.ts';
 import { createStash } from '../../git/stash.ts';
-import { finish, headRef, notify, run, typeInTerminal, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import {
+  finish,
+  headRef,
+  notify,
+  run,
+  typeInTerminal,
+  type Expect,
+  type FlowHost,
+  type Next,
+  type Undo,
+} from '../flow.ts';
 import type { Exec } from '../runner.ts';
 import type { TargetOf } from '../target.ts';
 import {
   changes,
   execAutostash,
-  reportRestore,
+  finishRestoring,
   resolveConflicts,
   restore,
   runMovingUntracked,
@@ -104,7 +115,7 @@ export async function refSource(host: FlowHost, ref: { name: string; short: stri
     (out) => out.split('\n')[0],
     () => undefined,
   );
-  return { rev: ref.name, arg: reads === ref.name ? ref.short : ref.name, name: quote(ref.short), ref: ref.name };
+  return { rev: ref.name, arg: reads === ref.name ? ref.short : ref.name, name: refName(ref.short), ref: ref.name };
 }
 
 /** The branch HEAD is on (or HEAD itself), as Undo guards and sentences name it. */
@@ -117,7 +128,7 @@ interface Head {
 
 async function head(host: FlowHost): Promise<Head> {
   const h = await readHead(host.git, host.cwd);
-  const name = h.branch === undefined ? 'HEAD' : quote(h.branch);
+  const name = h.branch === undefined ? 'HEAD' : refName(h.branch);
   return { ...h, name, expect: { rev: 'HEAD', hash: h.hash, name } };
 }
 
@@ -204,7 +215,7 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
     subject,
     state.conflicts,
     state.conflictCount,
-    held && stashLabel(held.index, held.message),
+    held && stashLabel(held.message),
     reason,
   );
   const skip = state.kind === 'merge' ? [] : ['Skip...'];
@@ -251,57 +262,65 @@ async function runStoppable(
   }
 }
 
-/** The usual feedback, then how the stashed changes came back when that did not simply work. */
-async function finishWithRestore(
-  host: FlowHost,
-  restored: Restored,
-  done: { message: string; focus: string; undo?: Undo },
-): Promise<void> {
-  await finish(host, done);
-  await reportRestore(host, done.message, restored);
+/**
+ * How a pull runs its merge or rebase: as git pull would, asking only about uncommitted changes,
+ * unless `stash` answered that already. `next`: offered with the result.
+ */
+export interface PullRun {
+  next?: Next;
+  stash?: boolean;
 }
 
-export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDirty' = 'always'): Promise<void> {
+export async function merge(host: FlowHost, src: Source, via: 'menu' | PullRun = 'menu'): Promise<void> {
+  const pull = via === 'menu' ? undefined : via;
   const [h, from] = await Promise.all([head(host), readCommit(host.git, host.cwd, src.rev)]);
   if (await isAncestor(host.git, host.cwd, from.hash, h.hash)) {
     void host.ui.notify('info', alreadyContains(h.name, src.name));
     return;
   }
   if (!(await deepEnough(host, 'merge', h.hash, from.hash, [h.name, src.name]))) return;
-  const [canFastForward, count, c, mergeFf] = await Promise.all([
+  const op = pull ? ('pullMerge' as const) : ('merge' as const);
+  const [canFastForward, count, base, mergeFf] = await Promise.all([
     isAncestor(host.git, host.cwd, h.hash, from.hash),
     countCommits(host.git, host.cwd, [`${h.hash}..${from.hash}`]),
-    changes(host, 'merge'),
+    readMergeBase(host.git, host.cwd, h.hash, from.hash),
     readConfigBool(host.git, host.cwd, 'merge.ff'),
   ]);
-  const facts = { src: src.name, into: h.name, short: from.short, count, canFastForward };
+  const c = await changes(host, op, [base ?? h.hash, from.hash]);
+  const facts = { op, src: src.name, into: h.name, short: from.short, count, canFastForward };
   const preferred: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
   let mode = preferred;
   let autostash = false;
-  if (c.choices.choices.length > 0) {
-    // A pull merges as git pull would, without asking how.
-    const modes: MergeMode[] =
-      ask === 'always' && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
-    const options = modes.map((m) => ({
-      mode: m,
-      choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
-    }));
-    const explain = [...new Set(options.map((o) => o.choices.explain))].join(' ');
+  const modes: MergeMode[] =
+    !pull && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
+  const options = modes.map((m) => ({
+    mode: m,
+    choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
+  }));
+  const asked = options.filter((o) => o.choices.choices.length > 0);
+  if (pull?.stash !== undefined && (pull.stash || asked.length === 0)) {
+    mode = 'ff';
+    autostash = pull.stash;
+  } else if (asked.length > 0) {
     const answer = await host.ui.confirm(
       mergeConfirmation(facts, mergeFf, {
-        section: dirtySection(c.dirty, { ...options[0]!.choices, explain }, c.worktree.submodules),
-        modes: options.map((o) => ({ mode: o.mode, choices: o.choices.choices })),
+        section: dirtySection(c.dirty, op, c.worktree.submodules),
+        // A mode git runs over these changes keeps them in place.
+        modes: options.map((o) => ({
+          mode: o.mode,
+          choices: o.choices.choices.length > 0 ? o.choices.choices : (['keep'] as const),
+        })),
       }),
     );
     if (answer === undefined) return;
     const picked = mergeAnswer(answer);
     mode = picked.mode;
     autostash = picked.choice === 'stash';
-  } else if (ask === 'always') {
+  } else if (!pull && canFastForward) {
     const answer = await host.ui.confirm(mergeConfirmation(facts, mergeFf));
     if (answer === undefined) return;
     mode = answer;
-  } else mode = 'ff';
+  } else mode = pull ? 'ff' : preferred;
   const r = await runStoppable(host, () =>
     runMovingUntracked(
       host,
@@ -320,10 +339,11 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
   const after = await readHead(host.git, host.cwd);
   if (after.hash === h.hash) throw new Error(`git did not merge ${src.name}; see the output.`);
   const fastForwarded = after.hash === from.hash;
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: fastForwarded ? HISTORY_DONE.fastForwarded(h.name, from.short) : HISTORY_DONE.merged(src.name, h.name),
     focus: after.hash,
     undo: moveUndo(host, 'merge', h, after.hash),
+    ...(pull?.next ? { next: pull.next } : {}),
   });
 }
 
@@ -331,26 +351,30 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
 export async function rebase(
   host: FlowHost,
   onto: Source,
-  ask: 'always' | 'whenDirty' = 'always',
+  via: 'menu' | PullRun = 'menu',
   from?: string,
 ): Promise<void> {
+  const pull = via === 'menu' ? undefined : via;
   const [h, target] = await Promise.all([head(host), readCommit(host.git, host.cwd, onto.rev)]);
   if (await isAncestor(host.git, host.cwd, target.hash, h.hash)) {
     void host.ui.notify('info', alreadyBased(h.name, onto.name));
     return;
   }
   if (!(await deepEnough(host, 'rebase', h.hash, target.hash, [h.name, onto.name]))) return;
+  const op = pull ? ('pullRebase' as const) : ('rebase' as const);
   const upstream = h.branch === undefined ? undefined : await readUpstream(host.git, host.cwd, h.branch);
   const [counts, c] = await Promise.all([
     readRebaseCounts(host.git, host.cwd, target.hash, upstream?.ref, from),
-    changes(host, 'rebase'),
+    changes(host, op),
   ]);
   const dirty = c.choices.choices.length > 0;
-  if (dirty || ask === 'always') {
+  // Undo restores the original commits: ask only about changes, dropped merges and pushed commits.
+  const warns = counts.merges > 0 || (counts.onUpstream > 0 && upstream !== undefined);
+  if ((dirty && !pull?.stash) || (!pull && warns)) {
     const buttons: { id: StashChoice | 'rebase'; label: string }[] = dirty
-      ? stashButtons('rebase', c.choices.choices)
+      ? stashButtons(op, c.choices.choices)
       : [{ id: 'rebase', label: 'Rebase' }];
-    const facts = { branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
+    const facts = { op, branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
     if ((await host.ui.confirm(rebaseConfirmation(facts, c.section, buttons))) === undefined) return;
   }
   const r = await runStoppable(host, () =>
@@ -364,10 +388,11 @@ export async function rebase(
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: HISTORY_DONE.rebased(h.name, onto.name, counts.replay),
     focus: after.hash,
     undo: moveUndo(host, 'rebase', h, after.hash),
+    ...(pull?.next ? { next: pull.next } : {}),
   });
 }
 
@@ -390,7 +415,11 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
     if (mainline === undefined) return;
     merge = { parents, mainline };
   }
-  const ch = await changes(host, kind);
+  const base = (await runGit(host.git, host.cwd, ['rev-list', '--parents', '--max-count=1', c.hash, '--']))
+    .trim()
+    .split(' ')[merge?.mainline ?? 1];
+  // A root commit has no parent to diff against: git refuses on its own if the changes overlap it.
+  const ch = await changes(host, kind, base === undefined ? undefined : [base, c.hash]);
   const detached = h.branch === undefined;
   let choice: StashChoice | 'go' | undefined = 'go';
   if (ch.choices.choices.length > 0 || detached || (merge !== undefined && kind === 'revert')) {
@@ -410,7 +439,12 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
       IN_THE_WAY_OF[kind](c.short),
       async (exec) => {
         if (choice === 'stash')
-          return stashAround(host, exec, autostashMessage(kind, `${c.short} onto ${h.name}`), () => exec(op));
+          return stashAround(
+            host,
+            exec,
+            autostashMessage(kind, `of ${c.short} ${kind === 'revert' ? 'on' : 'onto'} ${h.name}`),
+            () => exec(op),
+          );
         await exec(op);
         return { kind: 'none' } satisfies Restored;
       },
@@ -423,7 +457,7 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
   });
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: kind === 'cherryPick' ? HISTORY_DONE.picked(c.short, h.name) : HISTORY_DONE.reverted(c.short),
     focus: after.hash,
     undo: moveUndo(host, kind === 'cherryPick' ? 'cherry pick' : 'revert', h, after.hash),
@@ -442,7 +476,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
   });
   if (mode === undefined) return;
   const op = mode === 'hard' ? 'resetHard' : mode === 'keep' ? 'resetKeep' : undefined;
-  const c = op === undefined ? undefined : await changes(host, op, t.hash);
+  const c = op === undefined ? undefined : await changes(host, op, ['HEAD', t.hash]);
   const overwritten = mode === 'hard' ? await readUntrackedAt(host.git, host.cwd, t.hash) : [];
   const facts = await readResetFacts(host.git, host.cwd, t.hash, c?.dirty.files ?? 0);
   // A hard reset over untracked files at paths it restores needs the same answer as over changes.
@@ -454,12 +488,10 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
   let answer: StashChoice | 'reset' | undefined = 'reset';
   if (ask) {
     const section =
-      c && choices.length > 0
-        ? dirtySection(c.dirty, c.choices, c.worktree.submodules, mode === 'hard' ? overwritten : undefined)
-        : '';
+      c && choices.length > 0 ? dirtySection(c.dirty, op ?? 'resetKeep', c.worktree.submodules, overwritten) : '';
     answer = await host.ui.confirm({
       ...ask,
-      detail: [ask.detail, section].filter((s) => s !== '').join(' '),
+      detail: [ask.detail, section].filter((s) => s !== '').join('\n'),
       buttons: choices.length > 0 ? stashButtons(op ?? 'resetKeep', choices) : ask.buttons,
     });
     if (answer === undefined) return;
@@ -505,7 +537,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
 async function safetyStash(host: FlowHost): Promise<string | undefined> {
   const top = await readStashTop(host.git, host.cwd);
   const s = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
-  return s && stashLabel(s.index, s.message);
+  return s && stashLabel(s.message);
 }
 
 async function inProgress(host: FlowHost): Promise<OperationState | undefined> {
@@ -552,7 +584,7 @@ async function settle(
     started === undefined ? undefined : readOperationState(host.git, host.cwd),
     kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
   ]);
-  const keptIn = stash && stashLabel(stash.index, stash.message);
+  const keptIn = stash && stashLabel(stash.message);
   if (still) {
     const where = keptIn === undefined ? '' : ` Your uncommitted changes are in ${keptIn}.`;
     await stopped(host, still, `Continue ${rebaseContinues(still.step)}.${where}`);
@@ -563,7 +595,7 @@ async function settle(
     started === undefined
       ? undefined
       : moveUndo(host, opName(state.kind), { branch: state.branch, hash: started }, after.hash);
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: done(keptIn),
     focus: after.hash,
     ...(undo ? { undo } : {}),
@@ -584,8 +616,17 @@ export async function continueOperation(host: FlowHost): Promise<void> {
   const state = await inProgress(host);
   if (!state) return;
   if (state.conflictCount > 0) {
-    if (await host.ui.confirm(stillConflicted(state.conflicts, state.conflictCount)))
-      await vscode.commands.executeCommand('workbench.view.scm');
+    const { resolved, unresolved } = await readConflictResolution(host.git, host.cwd);
+    if (unresolved.length > 0) {
+      if (await host.ui.confirm(stillConflicted(unresolved.slice(0, CONFLICTS_SHOWN), unresolved.length)))
+        await resolveConflicts(host, unresolved);
+      return;
+    }
+    if (!(await host.ui.confirm(unstagedResolutions(resolved)))) return;
+    const staged = await run(host, HISTORY_DOING.staging(resolved.length), (exec) =>
+      exec({ kind: 'stage', paths: resolved }),
+    );
+    if (staged !== undefined) await continueOperation(host);
     return;
   }
   const op: Operation = { kind: 'continue', operation: state.kind };
@@ -636,7 +677,7 @@ export async function skipCommit(host: FlowHost): Promise<void> {
     readCommit(host.git, host.cwd, state.applying),
     readDiscardedByAbort(host.git, host.cwd, state),
   ]);
-  const branch = state.branch === undefined ? 'HEAD' : quote(state.branch);
+  const branch = state.branch === undefined ? 'HEAD' : refName(state.branch);
   const answer = await host.ui.confirm(skipConfirmation(c, branch, discards));
   if (answer === undefined) return;
   const op: Operation = { kind: 'skip', operation: state.kind };

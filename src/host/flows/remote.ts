@@ -15,7 +15,8 @@ import {
   PULL_NOTES,
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
-  quote,
+  pushRejectedNotice,
+  refName,
   REMOTE_DOING,
   REMOTE_DONE,
   tagExistsOnRemote,
@@ -27,17 +28,19 @@ import {
   readConfig,
   readForkPoint,
   readHead,
+  readMergeBase,
   readTrackingBranches,
   readUnmergedRemoteCommits,
   readUpstream,
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { fail, finish, notify, run, type Expect, type FlowHost } from '../flow.ts';
-import { merge, rebase, refSource, type Source } from './history.ts';
+import { fail, finish, notify, run, type Expect, type FlowHost, type Next } from '../flow.ts';
+import { changes } from './changes.ts';
+import { merge, rebase, refSource, type PullRun, type Source } from './history.ts';
 
 /**
- * Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it
+ * Runs a remote operation; a failed sign-in becomes the Type in Terminal question. Resolves whether it
  * ran. `rerun`: the command `op` is only the first step of.
  */
 async function remoteRun(
@@ -83,8 +86,11 @@ const BOOL: Record<string, boolean> = {
   '0': false,
 };
 
-/** Fetches the upstream of the current branch, then fast-forwards, merges or rebases onto it. */
-export async function pull(host: FlowHost): Promise<void> {
+/**
+ * Fetches the upstream of the current branch, then fast-forwards, merges or rebases onto it.
+ * `next`: offered with the result once the branch has what it fetched.
+ */
+export async function pull(host: FlowHost, next?: Next): Promise<void> {
   const h = await readHead(host.git, host.cwd);
   if (h.branch === undefined) {
     void host.ui.notify('info', detachedNoBranch('pull'));
@@ -117,8 +123,9 @@ export async function pull(host: FlowHost): Promise<void> {
   }
   const src: Source = upstream.ref
     ? await refSource(host, { name: upstream.ref, short: upstream.name })
-    : { rev: tracking, arg: tracking, name: quote(upstream.name) };
-  if (ahead === 0) return merge(host, src, 'whenDirty');
+    : { rev: tracking, arg: tracking, name: refName(upstream.name) };
+  const how: PullRun = next ? { next } : {};
+  if (ahead === 0) return merge(host, src, how);
   const [rebaseCfg, ff] = await Promise.all([
     readConfig(host.git, host.cwd, `branch.${branch}.rebase`).then(
       async (v) => v ?? (await readConfig(host.git, host.cwd, 'pull.rebase')),
@@ -128,16 +135,27 @@ export async function pull(host: FlowHost): Promise<void> {
   const rebaseFirst = rebaseCfg === undefined ? undefined : BOOL[rebaseCfg.toLowerCase()];
   const canMerge = ff !== 'only';
   // As git pull --rebase: commits upstream had before a force push are not the branch's own.
-  const rebaseOnto = async () => rebase(host, src, 'whenDirty', await readForkPoint(host.git, host.cwd, tracking));
-  if (rebaseFirst === true) return rebaseOnto();
-  if (rebaseFirst === false && canMerge) return merge(host, src, 'whenDirty');
-  // Unset, "merges" or "interactive": ask, saying what Strata can do.
+  const rebaseOnto = async (r: PullRun) => rebase(host, src, r, await readForkPoint(host.git, host.cwd, tracking));
+  if (rebaseFirst === true) return rebaseOnto(how);
+  if (rebaseFirst === false && canMerge) return merge(host, src, how);
+  // Unset, "merges" or "interactive": ask, saying what Strata can do, and about changes at once.
   const note = !canMerge ? PULL_NOTES.ffOnly : rebaseCfg?.startsWith('m') ? PULL_NOTES.rebaseMerges : undefined;
+  const base = await readMergeBase(host.git, host.cwd, 'HEAD', tracking);
+  const [forRebase, forMerge] = await Promise.all([
+    changes(host, 'pullRebase'),
+    changes(host, 'pullMerge', [base ?? 'HEAD', tracking]),
+  ]);
+  const stashRebase = forRebase.choices.choices.length > 0;
+  const stashMerge = forMerge.choices.choices.length > 0;
+  const buttons: { id: 'rebase' | 'merge'; label: string }[] = [
+    { id: 'rebase', label: stashRebase ? 'Stash & Rebase' : 'Rebase' },
+    ...(canMerge ? [{ id: 'merge' as const, label: stashMerge ? 'Stash & Merge' : 'Merge' }] : []),
+  ];
   const answer = await host.ui.confirm(
-    divergedConfirmation(quote(branch), upstream.name, ahead, behind, { rebase: true, merge: canMerge }, note),
+    divergedConfirmation(refName(branch), upstream.name, ahead, behind, buttons, note, forRebase.section),
   );
-  if (answer === 'rebase') await rebaseOnto();
-  else if (answer === 'merge') await merge(host, src, 'whenDirty');
+  if (answer === 'rebase') await rebaseOnto({ ...how, stash: stashRebase });
+  else if (answer === 'merge') await merge(host, src, { ...how, stash: stashMerge });
 }
 
 /** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */
@@ -217,10 +235,21 @@ async function rejected(
     readCommit(host.git, host.cwd, theirs),
     readHead(host.git, host.cwd),
   ]);
-  const answer = await host.ui.confirm(
-    pushRejectedConfirmation(destName, op.branch, count, h.branch === op.branch, host.settings().allowForcePush),
+  const ask = pushRejectedConfirmation(
+    destName,
+    op.branch,
+    count,
+    h.branch === op.branch,
+    host.settings().allowForcePush,
   );
-  if (answer === 'pull') return pull(host);
+  if (!ask) {
+    notify(host, 'error', pushRejectedNotice(destName, op.branch, count), ['Show Output'], () => {
+      host.runner.showOutput();
+    });
+    return;
+  }
+  const answer = await host.ui.confirm(ask);
+  if (answer === 'pull') return pull(host, { action: 'Push', run: () => push(host, op.branch) });
   if (answer !== 'force') return;
   if (!(await host.ui.confirm(forcePushConfirmation(op.branch, op.remote, destName, count, newest.subject)))) return;
   const force = { ...op, forceWithLease: theirs };
@@ -289,7 +318,7 @@ export async function deleteRemoteTag(host: FlowHost, ref: Ref): Promise<void> {
  */
 export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false): Promise<void> {
   const rb = remoteBranch(ref.name, host.refs.remotes);
-  if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
+  if (!rb) throw new Error(`${refName(ref.short)} is not a branch of a known remote.`);
   const { remote, branch } = rb;
   const [tip, unmerged, tracking] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
@@ -304,7 +333,7 @@ export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false
   try {
     if (
       !(await remoteRun(host, label, remote, op, {
-        expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+        expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }],
       }))
     )
       return;
