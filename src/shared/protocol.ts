@@ -108,6 +108,8 @@ export type HostToWebview =
       position: number | undefined;
       reachedBy: string[];
     }
+  /** The user clicked the action notShown offered for commit `hash`. */
+  | { type: 'showNotShown'; hash: string }
   /** Find Commit... from the Command Palette or its key: opens the find widget. */
   | { type: 'find' }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
@@ -181,6 +183,11 @@ export type WebviewToHost =
   | { type: 'find'; generation: number; id: number; query: FindQuery }
   /** The find widget closed: stops its search and locate in flight. */
   | { type: 'findStop' }
+  /**
+   * Find went to commit `hash`, which the view leaves out: the host says `message` and offers
+   * `action`, answering showNotShown when it is clicked.
+   */
+  | { type: 'notShown'; hash: string; message: string; action: string | undefined }
   /** Where commit `hash` is in the history shown: answered with located. A newer locate stops this one. */
   | { type: 'locate'; generation: number; id: number; hash: string }
   /** Go to HEAD found HEAD outside the branch filter: answered with goToHead (include) on request. */

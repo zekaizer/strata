@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { matchCount, matchRanges, matchRefs, nextMatch, parseFindQuery } from '../../src/core/find.ts';
+import { matchCount, matchRanges, matchRefs, nextMatch, outOfView, parseFindQuery } from '../../src/core/find.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
 
 describe('parseFindQuery', () => {
@@ -155,5 +155,41 @@ describe('matchCount', () => {
   it('says when nothing matched, or nothing yet', () => {
     assert.equal(matchCount(0, undefined, false), 'No results');
     assert.equal(matchCount(0, undefined, true), 'Searching…');
+  });
+});
+
+describe('outOfView', () => {
+  const all = { refs: null, firstParent: false };
+  const picked = { refs: ['refs/heads/main'], firstParent: false };
+
+  it('offers all parents when only first-parent following leaves it out', () => {
+    assert.deepEqual(outOfView(['refs/heads/main'], { ...all, firstParent: true }), {
+      text: 'it is not on the first-parent line.',
+      action: { label: 'Show All Parents', firstParent: false },
+    });
+    assert.equal(outOfView(['refs/heads/main'], { ...picked, firstParent: true }).action?.label, 'Show All Parents');
+  });
+
+  it('only says why when every branch is shown', () => {
+    assert.deepEqual(outOfView(['refs/tags/v1.4-rc2'], all), {
+      text: 'only tag v1.4-rc2 reaches it, and the graph starts from branches, not tags.',
+    });
+    assert.deepEqual(outOfView(['refs/tags/v1', 'refs/tags/v2', 'refs/tags/v3', 'refs/tags/v4'], all), {
+      text: 'only tags v1, v2, v3 and 1 more reach it, and the graph starts from branches, not tags.',
+    });
+    assert.deepEqual(outOfView([], all), { text: 'no branch or tag reaches it.' });
+  });
+
+  it('offers to add a branch, else a remote branch, else a tag, to a selection', () => {
+    assert.deepEqual(outOfView(['refs/tags/v1', 'refs/remotes/origin/dev', 'refs/heads/dev'], picked), {
+      text: 'the branch filter leaves it out.',
+      action: { label: 'Show dev Too', refs: ['refs/heads/main', 'refs/heads/dev'] },
+    });
+    assert.equal(outOfView(['refs/tags/v1', 'refs/remotes/origin/dev'], picked).action?.label, 'Show origin/dev Too');
+    assert.deepEqual(outOfView(['refs/tags/v1'], picked).action, {
+      label: 'Show v1 Too',
+      refs: ['refs/heads/main', 'refs/tags/v1'],
+    });
+    assert.deepEqual(outOfView([], picked), { text: 'no branch or tag reaches it.' });
   });
 });

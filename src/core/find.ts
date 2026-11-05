@@ -86,3 +86,42 @@ export function matchCount(total: number, ordinal: number | undefined, more: boo
   if (total === 0) return more ? 'Searching…' : 'No results';
   return `${ordinal === undefined ? '?' : ordinal.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}${more ? '+' : ''}`;
 }
+
+/** Why the view leaves a commit out, and the change of view that would show it, if one is offered. */
+export interface OutOfView {
+  /** Completes "… is not in the graph: ", e.g. "the branch filter leaves it out." */
+  text: string;
+  action?: { label: string; refs?: string[]; firstParent?: false };
+}
+
+/**
+ * Explains why a view leaves out a commit that the refs `reachedBy` (full names) reach. A view of
+ * every branch is never narrowed to a selection: it only says why.
+ */
+export function outOfView(
+  reachedBy: readonly string[],
+  view: { refs: string[] | null; firstParent: boolean },
+): OutOfView {
+  const short = (name: string) => name.replace(/^refs\/(heads|remotes|tags)\//, '');
+  const shown = (name: string) =>
+    view.refs === null ? /^refs\/(heads|remotes)\//.test(name) : view.refs.includes(name);
+  if (view.firstParent && reachedBy.some(shown))
+    return {
+      text: 'it is not on the first-parent line.',
+      action: { label: 'Show All Parents', firstParent: false },
+    };
+  if (reachedBy.length === 0) return { text: 'no branch or tag reaches it.' };
+  if (view.refs === null) {
+    const tags = reachedBy.map(short);
+    const named = tags.length > 3 ? `${tags.slice(0, 3).join(', ')} and ${tags.length - 3} more` : tags.join(', ');
+    return {
+      text: `only ${tags.length === 1 ? 'tag' : 'tags'} ${named} ${tags.length === 1 ? 'reaches' : 'reach'} it, and the graph starts from branches, not tags.`,
+    };
+  }
+  const prefix = ['refs/heads/', 'refs/remotes/', 'refs/tags/'];
+  const ref = prefix.map((p) => reachedBy.find((r) => r.startsWith(p))).find((r) => r !== undefined)!;
+  return {
+    text: 'the branch filter leaves it out.',
+    action: { label: `Show ${short(ref)} Too`, refs: [...view.refs, ref] },
+  };
+}

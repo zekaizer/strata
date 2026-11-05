@@ -8,9 +8,11 @@ import {
   matchRanges,
   matchRefs,
   nextMatch,
+  outOfView,
   parseFindQuery,
   type FindHit,
   type FindQuery,
+  type OutOfView,
 } from '../core/find.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
@@ -205,6 +207,8 @@ class App {
   /** ↓ (false) or ↑ (true) asked for before the search's first hits arrived. */
   private pendingStep: boolean | undefined;
   private jump: Jump | undefined;
+  /** The commit find last said the view leaves out, and the change of view the host offered. */
+  private notShown: { hash: string; generation: number; action?: OutOfView['action'] } | undefined;
   /** Index of each loaded commit in `commits`, built when the find widget first needs it. */
   private commitIndex: Map<string, number> | undefined;
   /** Go to HEAD under a branch filter, until the host says whether the filter's refs reach HEAD. */
@@ -646,6 +650,9 @@ class App {
         break;
       case 'located':
         this.onLocated(m);
+        break;
+      case 'showNotShown':
+        this.showNotShown(m.hash);
         break;
       case 'headReached': {
         const q = this.headQuery;
@@ -1179,7 +1186,9 @@ class App {
     if (m.position === undefined) {
       this.stopJump();
       this.findWidget.setCount({ text: 'Not in view', problem: true });
-      this.announce(`${shortHash(m.hash)} is not in this view`);
+      const why = outOfView(m.reachedBy, this.options);
+      this.notShown = { hash: m.hash, generation: this.generation, ...(why.action ? { action: why.action } : {}) };
+      vscode.postMessage({ type: 'notShown', hash: m.hash, message: why.text, action: why.action?.label });
       return;
     }
     if (m.position >= MAX_LIST_PX / ROW_HEIGHT) {
@@ -1204,6 +1213,23 @@ class App {
     jump.restore = restore;
     this.applyRestore();
     this.syncJump();
+  }
+
+  /** The host's notification offered a change of view that shows `hash`: makes it, then goes there. */
+  private showNotShown(hash: string): void {
+    const offer = this.notShown;
+    if (offer?.hash !== hash || offer.generation !== this.generation || !offer.action) return;
+    this.notShown = undefined;
+    const { refs, firstParent } = offer.action;
+    this.selections++;
+    this.restore = {
+      selectedHash: hash,
+      centre: true,
+      expanded: this.expanded,
+      searchLimit: Infinity,
+      page: FIND_PAGE,
+    };
+    this.setOptions({ ...this.options, ...(refs ? { refs } : {}), ...(firstParent === false ? { firstParent } : {}) });
   }
 
   /** Ends the jump once its restore found the match, gave up or was replaced (a click, a reload). */

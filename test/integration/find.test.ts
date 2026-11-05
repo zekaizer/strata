@@ -8,7 +8,7 @@ import { git, waitFor, workspaceRoot } from './helpers.ts';
 const FIRST_PAGE = 300;
 
 describe('find commits', () => {
-  const { panel } = flowSuite();
+  const { panel, ui } = flowSuite();
   const until = (what: string, test: (s: ProbeState) => boolean) =>
     waitFor(what, async () => {
       const s = await panel().probe();
@@ -179,16 +179,42 @@ describe('find commits', () => {
     assert.equal(s.find.input, 'login');
   });
 
-  it('says when a commit is not in the view', async () => {
+  it('offers to add a branch that reaches a commit the branch filter leaves out', async () => {
     await panel().simulate({ kind: 'click', selector: '.ref-filter-button' });
     await panel().simulate({ kind: 'click', selector: 'input[data-ref="refs/heads/wip/experiment"]' });
     await panel().simulate({ kind: 'key', key: 'Escape' });
     await until('filtered', (p) => p.options.refs !== null && p.done);
     const outside = git('rev-parse', 'cross/x');
+    ui.click('Show cross/x Too');
     await open();
     await type(outside.slice(0, 7));
     await until('counted', (p) => p.find.count === '? of 1');
     await key('Enter');
+    const s = await until('shown and selected', (p) => p.selected === outside);
+    assert.equal(
+      ui.first('notify').message,
+      `Commit ${outside.slice(0, 7)} is not in the graph: the branch filter leaves it out.`,
+    );
+    assert.deepEqual(s.options.refs, ['refs/heads/wip/experiment', 'refs/heads/cross/x']);
+  });
+
+  it('says why a commit only a tag reaches is not in the graph', async () => {
+    const stream = `commit refs/heads/strata-tmp\ncommitter Ada Lovelace <ada@example.com> 1700000000 +0000\ndata 7\nhotfix\nfrom ${git('rev-parse', 'main~1')}\n\n`;
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
+    git('tag', 'v9-hotfix', 'strata-tmp');
+    git('branch', '-D', 'strata-tmp');
+    const hotfix = git('rev-parse', 'v9-hotfix');
+    await reload(panel());
+    await open();
+    await type(hotfix.slice(0, 7));
+    await until('counted', (p) => p.find.count === '? of 1');
+    await key('Enter');
     await until('not in view', (p) => p.find.count === 'Not in view');
+    await waitFor('told', () => ui.of('notify').length > 0);
+    assert.equal(
+      ui.first('notify').message,
+      `Commit ${hotfix.slice(0, 7)} is not in the graph: only tag v9-hotfix reaches it, and the graph starts from branches, not tags.`,
+    );
+    assert.deepEqual(ui.first('notify').actions, []);
   });
 });

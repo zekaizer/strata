@@ -256,6 +256,17 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         case 'locate':
           await this.locate(m.generation, m.id, m.hash);
           break;
+        case 'notShown': {
+          if (!isCommitId(m.hash)) throw new Error('invalid commit id');
+          const actions = m.action === undefined ? [] : [m.action];
+          const clicked = await this.ui.notify(
+            'info',
+            `Commit ${m.hash.slice(0, 7)} is not in the graph: ${m.message}`,
+            ...actions,
+          );
+          if (clicked !== undefined && clicked === m.action) this.post({ type: 'showNotShown', hash: m.hash });
+          break;
+        }
         case 'headNotShown': {
           const at = m.branch ?? `detached at ${m.hash.slice(0, 7)}`;
           const action = m.branch === undefined ? 'Show All Branches' : `Show ${m.branch} Too`;
