@@ -1,4 +1,4 @@
-import type { ViewOptions } from '../shared/protocol.ts';
+import type { MessageDraft, ViewOptions } from '../shared/protocol.ts';
 
 /** How far a panel remembers the views of the repositories it showed. */
 export const REMEMBERED_REPOS = 20;
@@ -16,6 +16,8 @@ export interface RepoView {
   /** Whether the selected commit's details were expanded. */
   expanded?: boolean | undefined;
   options?: ViewOptions | undefined;
+  /** The inline message editor's draft and text, kept across restarts. */
+  draft?: { draft: MessageDraft; text: string } | undefined;
 }
 
 /** Persisted with setState: survives hiding and VS Code restarts (the panel is restored by a serializer). */
@@ -67,4 +69,25 @@ export function savedOptions(state: SavedState): Record<string, ViewOptions> {
   const all: Record<string, ViewOptions> = {};
   for (const [root, view] of state.repos ?? []) if (view.options) all[root] = view.options;
   return all;
+}
+
+const isString = (v: unknown): v is string => typeof v === 'string';
+
+/** A saved editor draft as setState kept it, or undefined when it is not one. */
+export function savedDraft(raw: unknown): { draft: MessageDraft; text: string } | undefined {
+  if (!isObject(raw) || !isString(raw['text']) || !isObject(raw['draft'])) return undefined;
+  const d = raw['draft'];
+  const commits = d['commits'];
+  const ok =
+    (d['kind'] === 'reword' || d['kind'] === 'squash') &&
+    isString(d['head']) &&
+    isString(d['message']) &&
+    (d['effects'] === undefined || isString(d['effects'])) &&
+    Array.isArray(commits) &&
+    commits.length > 0 &&
+    commits.every(
+      (c) =>
+        isObject(c) && isString(c['hash']) && isString(c['short']) && isString(c['subject']) && isString(c['message']),
+    );
+  return ok ? { draft: d as unknown as MessageDraft, text: raw['text'] } : undefined;
 }

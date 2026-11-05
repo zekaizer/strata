@@ -32,6 +32,8 @@
 - Stash, apply, pop and drop stashes, shown as rows above the commits they
   were made on.
 - See which branches other worktrees have checked out, open or remove them.
+- Tidy recent commits before you push: edit a message in place, squash a
+  Shift-click selection, fix up or drop a commit.
 - Stopped at conflicts? Strata says where, opens the files and offers
   Continue, Skip and Abort.
 - Hide noisy badges, such as CI tags, with patterns per repository.

@@ -1379,3 +1379,80 @@ body:not(.hover-off) .row:hover .row-diff,
   color: var(--color-fg);
   font-family: var(--font-mono);
 }
+
+/* While several commits are selected, rows Shift-click cannot add step back. */
+.row.out-of-reach {
+  opacity: var(--opacity-disabled);
+}
+
+/* Edit Message beside a rewritable commit's subject: shown on hover or keyboard focus. */
+.details-edit {
+  margin-left: var(--space-4);
+  vertical-align: middle;
+  visibility: hidden;
+}
+
+body:not(.hover-off) .details-subject:hover .details-edit,
+.details-edit:focus-visible {
+  visibility: visible;
+}
+
+/* The selection panel and the message editor (squash, edit message). */
+.tidy-note {
+  margin-bottom: var(--space-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.tidy-status {
+  margin: var(--space-4) 0 var(--space-8);
+}
+
+.tidy-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.tidy-count.over {
+  color: var(--color-warning);
+}
+
+.tidy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.tidy-keys {
+  margin-left: var(--space-8);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+.tidy-title {
+  margin-bottom: var(--space-4);
+}
+
+.tidy-commits .list-row {
+  padding: 0;
+}
+
+.tidy-hash {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+/* A guide at column 72, where commit bodies are filled to (the field's padding is --space-4). */
+.message-editor {
+  background-image: linear-gradient(
+    to right,
+    transparent calc(72ch + var(--space-4)),
+    var(--color-ruler) calc(72ch + var(--space-4)),
+    var(--color-ruler) calc(72ch + var(--space-4) + 1px),
+    transparent calc(72ch + var(--space-4) + 1px)
+  );
+  background-attachment: local;
+}

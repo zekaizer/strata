@@ -17,9 +17,11 @@ import type { Commit } from '../src/core/commit.ts';
 import { parsePathFilter } from '../src/core/path-filter.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import type { WorktreeInfo } from '../src/core/worktrees.ts';
+import { rewriteEffects } from '../src/core/wording.ts';
 import {
   DEFAULT_OPTIONS,
   type HostToWebview,
+  type MessageDraft,
   type RepoItem,
   type ThemeKind,
   type ViewOptions,
@@ -60,6 +62,12 @@ const land = params.get('land');
  */
 const findText = params.get('find');
 const findList = params.get('findList') === '1';
+/** `range=i,j`: click row i, then Shift-click row j (a multi-selection). */
+const rangeRows = params.get('range')?.split(',').map(Number);
+/** `edit=reword` (on `select`) or `edit=squash` (on `range`): the message editor as the host opens it. */
+const editKind = params.get('edit');
+/** `editText=...`: what is typed into the editor; `saving=1` presses Save (the host never answers). */
+const editText = params.get('editText');
 if (params.get('reduceMotion') === '1') document.body.classList.add('vscode-reduce-motion');
 
 for (const [k, v] of Object.entries(themes[theme])) document.documentElement.style.setProperty(k, v);
@@ -160,6 +168,38 @@ function reset(): void {
   toWebview({ type: 'repositories', repos: repositories() });
 }
 
+/** The draft the host would open the editor with on `hashes` (oldest first): the scenario's own facts. */
+function draftOf(d: PlaygroundData, kind: 'reword' | 'squash', hashes: string[]): MessageDraft {
+  const at = (h: string) => d.commits.findIndex((c) => c.hash === h);
+  const commits = hashes.map((hash) => {
+    const message = d.details[hash]?.message ?? '';
+    return { hash, short: hash.slice(0, 7), subject: message.split('\n')[0] ?? '', message: `${message}\n` };
+  });
+  const onTop = at(hashes.at(-1)!);
+  return {
+    kind,
+    head: d.refs.head!,
+    commits,
+    message: commits[0]!.message,
+    effects: rewriteEffects({
+      edit: kind,
+      branch: `'${d.refs.headBranch ?? 'HEAD'}'`,
+      what: '',
+      onTop,
+      pushed: undefined,
+      moves: [],
+      stays: [],
+    }),
+  };
+}
+
+/** The rows of `range` (list indexes), oldest first, as hashes. */
+const rangeHashes = (from: number, to: number) =>
+  visible
+    .slice(Math.min(from, to), Math.max(from, to) + 1)
+    .map((c) => c.hash)
+    .reverse();
+
 async function onMessage(m: WebviewToHost): Promise<void> {
   sent.push(m);
   switch (m.type) {
@@ -221,7 +261,27 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       if (selectRow !== null && offset === commits.length) {
         setTimeout(() => {
           toWebview({ type: 'simulate', action: { kind: 'clickRow', index: Number(selectRow) } });
+          if (editKind === 'reword')
+            toWebview({ type: 'editMessage', draft: draftOf(data!, 'reword', [visible[Number(selectRow)]!.hash]) });
         }, 50);
+      }
+      if (rangeRows !== undefined && offset === commits.length) {
+        setTimeout(() => {
+          toWebview({ type: 'simulate', action: { kind: 'clickRow', index: rangeRows[0]! } });
+          toWebview({ type: 'simulate', action: { kind: 'clickRow', index: rangeRows[1]!, shiftKey: true } });
+          if (editKind === 'squash')
+            toWebview({
+              type: 'editMessage',
+              draft: draftOf(data!, 'squash', rangeHashes(rangeRows[0]!, rangeRows[1]!)),
+            });
+        }, 50);
+      }
+      if (editText !== null && editKind !== null && offset === commits.length) {
+        setTimeout(() => {
+          toWebview({ type: 'simulate', action: { kind: 'type', selector: '.message-editor', text: editText } });
+          if (params.get('saving') === '1')
+            toWebview({ type: 'simulate', action: { kind: 'click', selector: '.tidy-actions .button.primary' } });
+        }, 300);
       }
       if (busy !== null && offset === commits.length) toWebview({ type: 'busy', label: busy });
       if (findText !== null && offset === commits.length) {
@@ -336,6 +396,20 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       badgeRules = m.rules;
       toWebview({ type: 'badgeRules', rules: badgeRules });
       break;
+    case 'menuCommand': {
+      // The message editor's commands, answered as the host would for a clean, unpushed branch.
+      const ctx = m.context;
+      const selection = typeof ctx['strataSelection'] === 'string' ? ctx['strataSelection'].split(' ').reverse() : [];
+      if (data && m.command === 'strata.editMessage' && typeof ctx['strataHash'] === 'string')
+        toWebview({ type: 'editMessage', draft: draftOf(data, 'reword', [ctx['strataHash']]) });
+      if (data && m.command === 'strata.squashSelected')
+        toWebview({ type: 'editMessage', draft: draftOf(data, 'squash', selection) });
+      if (m.command === 'strata.saveEdit')
+        setTimeout(() => {
+          toWebview({ type: 'editEnded', applied: false });
+        }, 1500);
+      break;
+    }
     case 'select': {
       const details = data?.details[m.hash];
       if (details) toWebview({ type: 'details', generation, details });

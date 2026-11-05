@@ -6,13 +6,15 @@
 
 /**
  * Elements that carry a data-vscode-context (src/shared/menu-context.ts): the `webviewSection` VS
- * Code matches menus against. `refs` is a "+N" badge.
+ * Code matches menus against. `refs` is a "+N" badge; `selection` a row of several selected commits.
  */
-export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'worktree' | 'file';
+export type Section =
+  'commit' | 'selection' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'worktree' | 'file';
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataHasRefs', 'strataBranch'],
+  commit: ['strataIsHead', 'strataHasRefs', 'strataBranch', 'strataRewritable', 'strataParentRewritable'],
+  selection: [],
   stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream', 'strataInWorktree'],
   remoteBranch: [],
@@ -110,6 +112,33 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.revert': { title: 'Revert', menus: [commit('3_pick@2')], writes: true },
+  'strata.editMessage': {
+    title: 'Edit Message...',
+    menus: [commit('3_tidy@1', 'strataRewritable')],
+    writes: true,
+  },
+  'strata.fixupIntoParent': {
+    title: 'Fixup into Parent',
+    menus: [commit('3_tidy@2', 'strataParentRewritable')],
+    writes: true,
+  },
+  'strata.fixupIntoOlder': {
+    title: 'Fixup into Older Commit...',
+    menus: [commit('3_tidy@3', 'strataParentRewritable')],
+    writes: true,
+  },
+  'strata.dropCommit': { title: 'Drop Commit...', menus: [commit('3_tidy@4', 'strataRewritable')], writes: true },
+  'strata.squashSelected': {
+    title: 'Squash Selected Commits...',
+    menus: [{ section: 'selection', group: '1_tidy@1' }],
+    writes: true,
+  },
+  'strata.dropSelected': {
+    title: 'Drop Selected Commits...',
+    menus: [{ section: 'selection', group: '1_tidy@2' }],
+    writes: true,
+  },
+  'strata.copySelectedHashes': { title: 'Copy Commit Hashes', menus: [{ section: 'selection', group: '5_copy@1' }] },
   'strata.merge': {
     title: 'Merge into Current Branch...',
     menus: [
@@ -291,6 +320,8 @@ export const COMMANDS = {
   /** The graph handles Ctrl+F itself while it has focus; the key binding covers the rest of its tab. */
   'strata.find': { title: 'Find Commit...', palette: true, key: { key: 'ctrl+f', mac: 'cmd+f' } },
 
+  /** Save in the inline message editor (menuCommand); the editor stays open unless it was applied. */
+  'strata.saveEdit': { title: 'Save Commit Message' },
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
   'strata.showStash': { title: 'Show Stash' },

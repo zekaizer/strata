@@ -18,6 +18,20 @@ export interface CommitContext {
    * the row's Checkout, Merge and Rebase act on it instead of on the commit.
    */
   strataBranch: string;
+  /** On HEAD's first-parent line with no merge up to HEAD: its message can be edited, it can be dropped. */
+  strataRewritable: boolean;
+  /** Rewritable, and so is its parent: it can be fixed up into an older commit. */
+  strataParentRewritable: boolean;
+}
+
+/** A row of a multi-selection (two or more rewritable commits in a row); the row's own keys are not set. */
+export interface SelectionContext {
+  webviewSection: 'selection';
+  preventDefaultContextMenuItems: true;
+  /** The row's commit. */
+  strataHash: string;
+  /** The selected commits, newest first, space-separated. */
+  strataSelection: string;
 }
 
 export interface StashContext {

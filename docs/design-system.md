@@ -62,6 +62,7 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
 | A confirming action in a popover or banner             | `.button`, `.button.primary` for the leading one      |
 | Navigation inside text (commit links)                  | `.link-button`                                        |
 | A text input                                           | `.field`                                              |
+| Several lines of text (a commit message)               | `.field.multiline` on a `<textarea>`                  |
 | A checkbox                                             | `input.checkbox` inside a `label.list-row.clickable`  |
 | A dialog opened from the toolbar                       | `.popover` and its parts                              |
 | A one-line dialog over the list (find)                 | `.popover.bar`, `.popover-progress` for progress      |
@@ -148,6 +149,7 @@ All tokens are custom properties on `:root` in `tokens.css`.
 | `--color-disabled`           | `--vscode-disabledForeground`                                               | Disabled links, hidden refs            |
 | `--color-icon`               | `--vscode-icon-foreground`, else foreground                                 | Icon buttons, chevrons                 |
 | `--color-border`             | `--vscode-widget-border`, else foreground at 16%                            | Dividers, segmented controls           |
+| `--color-ruler`              | `--vscode-editorRuler-foreground`, else muted                               | A column guide in a multi-line field   |
 | `--color-focus`              | `--vscode-focusBorder`                                                      | Focus ring, accents                    |
 | `--color-hover`              | `--vscode-list-hoverBackground` (`--surface-sunken-hover` in details)       | Hovered rows                           |
 | `--color-toolbar-hover`      | `--vscode-toolbar-hoverBackground`                                          | Hovered buttons                        |
@@ -196,6 +198,9 @@ or size a button by hand; every button is `--control-height` tall.
 ### Fields
 
 `.field` is a text input: 22px, `--radius-sm`, input colors, the focus border on `:focus`.
+`.field.multiline` is a `<textarea>` of fixed-width text in the commit body's font and line height
+(`--font-mono`, `--font-size-sm`, `--line-height-prose`), as wide as its container, resized only
+vertically.
 `input.checkbox` is a 16px checkbox drawn in checkbox colors, with the focus ring.
 
 ### Lists

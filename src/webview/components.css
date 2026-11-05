@@ -203,6 +203,20 @@ body.vscode-high-contrast .link-button {
   border-color: var(--color-focus);
 }
 
+/* Several lines of fixed-width text, as commit messages are shown: grows by hand, never sideways. */
+.field.multiline {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-prose);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
 .checkbox {
   appearance: none;
   display: inline-grid;

@@ -9,8 +9,14 @@ export function parseGitVersion(out: string): GitVersion | undefined {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3] ?? 0)] : undefined;
 }
 
-/** Whether Strata's write operations run with this git. */
-export function canWrite(v: GitVersion): boolean {
-  for (let i = 0; i < 3; i++) if (v[i] !== WRITES_NEED[i]) return v[i]! > WRITES_NEED[i]!;
+/** Whether `v` is `need` or newer. */
+export function atLeast(v: GitVersion, need: GitVersion): boolean {
+  for (let i = 0; i < 3; i++) if (v[i] !== need[i]) return v[i]! > need[i]!;
   return true;
 }
+
+/** Whether Strata's write operations run with this git. */
+export const canWrite = (v: GitVersion): boolean => atLeast(v, WRITES_NEED);
+
+/** `git hook run`, which runs a hook as git's own commands do (core.hooksPath, Windows), is 2.36's. */
+export const HOOK_RUN: GitVersion = [2, 36, 0];

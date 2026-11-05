@@ -44,6 +44,19 @@ export interface RepoInfo {
   root: string;
 }
 
+/** The inline message editor as the host opens it, after checking the commits can be rewritten. */
+export interface MessageDraft {
+  kind: 'reword' | 'squash';
+  /** HEAD when it opened: saving is refused once HEAD has moved. */
+  head: string;
+  /** The commits whose message it writes, oldest first; it opens under the first. */
+  commits: { hash: string; short: string; subject: string; message: string }[];
+  /** What it opens with: the message of the (oldest) commit. */
+  message: string;
+  /** What saving rewrites and moves (rewriteEffects); undefined until the host has read it (editEffects). */
+  effects: string | undefined;
+}
+
 /**
  * Each `reset` starts a new generation. Messages carry the generation they
  * belong to so late replies for a previous history are dropped.
@@ -115,6 +128,12 @@ export type HostToWebview =
   | { type: 'showNotShown'; hash: string }
   /** Find Commit... from the Command Palette or its key: opens the find widget. */
   | { type: 'find' }
+  /** Opens the inline message editor (Edit Message..., Squash Selected Commits...). */
+  | { type: 'editMessage'; draft: MessageDraft }
+  /** What saving the editor opened at HEAD `head` rewrites and moves, read after it opened. */
+  | { type: 'editEffects'; head: string; effects: string }
+  /** Save in the message editor ended: `applied` closes it; otherwise it stays open with its text. */
+  | { type: 'editEnded'; applied: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -239,6 +258,24 @@ export interface ProbeState {
   generation: number;
   /** Root of the repository shown. */
   repo: string | undefined;
+  /** The commits of a multi-selection, newest first; empty without one. */
+  selection: string[];
+  /** Rendered rows (by index) that a multi-selection cannot take in. */
+  outOfReach: number[];
+  /** The message editor while open: its commits (oldest first), whether it is on screen, its text, status line and Save label. */
+  editor:
+    | {
+        kind: 'reword' | 'squash';
+        commits: string[];
+        shown: boolean;
+        text: string;
+        status: string;
+        save: string;
+        saving: boolean;
+      }
+    | undefined;
+  /** The multi-selection's panel is shown under its oldest commit. */
+  selectionPanel: boolean;
   /**
    * The toolbar's repository name: a label with one repository, else the switcher's button; and
    * while the switcher is open, its rows (name, path, branch), the shown one marked "shown".
@@ -451,8 +488,8 @@ export interface ProbeState {
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */
 export type SimulatedAction =
-  /** `y`: px below the row's top to click at (default: its middle). */
-  | { kind: 'clickRow'; index: number; y?: number }
+  /** `y`: px below the row's top to click at (default: its middle); `shiftKey`: Shift-click. */
+  | { kind: 'clickRow'; index: number; y?: number; shiftKey?: boolean }
   /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
   | { kind: 'scrollToRow'; index: number }
   /** Moves the pointer onto row `index`'s graph node, or `dx` px right of it. */

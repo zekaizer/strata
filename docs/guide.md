@@ -262,6 +262,37 @@ wait for it.
   commits. A merge commit can be cherry picked relative to the parent you
   choose, and reverted, which undoes the commits it brought in from its other
   parents.
+- **Tidying recent commits:** commits of the current branch's first-parent
+  line, from HEAD down to the first merge, can be rewritten before you push
+  them. A file or folder history shows only the commits that change it, so it
+  offers none of this; clear the path filter first.
+  - **Edit Message...** (also the pencil beside the subject in the details)
+    turns the subject and body into a fixed-width field with a guide at column
+    72 and the subject's length. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (<kbd>⌘</kbd>
+    on macOS) saves, <kbd>Esc</kbd> cancels; the draft stays while you look at
+    other commits and after a restart, until HEAD moves.
+  - Shift-click another commit of the line to select the run between the two.
+    The panel under the oldest offers **Squash...**, **Drop...** and **Copy
+    Hashes** (also in the rows' menu). Squash opens the editor with the oldest
+    commit's message; append the others' from the list beside it. The result
+    keeps the oldest commit's author and date.
+  - **Fixup into Parent** melds a commit into the one below it, keeping that
+    one's message. **Fixup into Older Commit...** lets you pick any older
+    commit of the line. **Drop Commit...** removes a commit.
+  - Editing a message, squashing a run and fixing up into the parent keep
+    every commit in place, so Strata writes the new commits directly: your
+    work tree, staged changes, stashes and file times are not touched, and
+    nothing can conflict. Commits are signed when `commit.gpgSign` is set, and
+    the repository's `commit-msg` hook (a Gerrit Change-Id, say) runs on the
+    message you wrote. Fixing up into an older commit and dropping run an
+    interactive rebase instead, with uncommitted changes stashed around it; if
+    it stops at a conflict, continue or abort from the banner.
+  - Strata asks first when a remote-tracking branch already has commits that
+    would be rewritten, or when other refs are on them. Other local branches
+    on a rewritten commit move along by default (the confirmation's first
+    button); tags, branches checked out in another worktree and branches that
+    only branched off stay on the old commits. Undo puts every moved branch
+    back.
 - **Stashes:** Stash Changes (optionally with untracked files), Apply, Pop,
   Drop, Create Branch from Stash and Copy Patch. Apply and Pop bring staged
   changes back staged, unless they no longer apply to the index or you have
@@ -305,7 +336,8 @@ wait for it.
   changes from the whole tree. Run the operation again once the history is
   there.
 - **Undo Last Operation** puts back what the last operation changed: a reset,
-  merge, rebase, cherry pick or revert (also one that stopped and that Continue
+  merge, rebase, cherry pick or revert, an edited message, squash, fixup or
+  drop (also one that stopped and that Continue
   or Skip finished), a created, renamed or deleted branch or tag, or a dropped
   stash. It only moves the branch the operation moved, and asks first if that
   branch moved since. Operations that change history or delete something also

@@ -36,6 +36,8 @@ import {
 import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { pruneWorktrees, removeWorktree } from './flows/worktree.ts';
+import { dropCommits, fixupIntoOlder, fixupIntoParent, openEditor, saveEdit } from './flows/rewrite.ts';
+import type { Edit } from '../core/rewrite.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
 import { repoList } from './repositories.ts';
@@ -67,6 +69,29 @@ function commitArg(ctx: MenuArg): { hash: string; subject: string } {
   const hash = str(ctx?.['strataHash']);
   if (!hash || !isCommitId(hash)) throw new Error('invalid commit id');
   return { hash, subject: str(ctx?.['strataSubject']) ?? '' };
+}
+
+/** The commits of a multi-selection, newest first. */
+function selectionArg(ctx: MenuArg): string[] {
+  const hashes = (str(ctx?.['strataSelection']) ?? '').split(' ').filter((h) => h !== '');
+  if (ctx?.['webviewSection'] !== 'selection' || hashes.length < 2 || !hashes.every(isCommitId))
+    throw new Error('invalid selection');
+  return hashes;
+}
+
+/** Save in the message editor: the edit, and HEAD when the editor opened. */
+function editArg(ctx: MenuArg): { edit: Edit; head: string } {
+  const kind = str(ctx?.['strataEdit']);
+  const hashes = (str(ctx?.['strataHashes']) ?? '').split(' ').filter((h) => h !== '');
+  const head = str(ctx?.['strataHead']);
+  const message = str(ctx?.['strataMessage']);
+  if (!head || !isCommitId(head) || hashes.length === 0 || !hashes.every(isCommitId))
+    throw new Error('invalid commit id');
+  if (message === undefined) throw new Error('no message');
+  if (kind === 'reword' && hashes.length === 1) return { edit: { kind, commit: hashes[0]!, message }, head };
+  if (kind === 'squash' && hashes.length > 1)
+    return { edit: { kind, oldest: hashes[0]!, newest: hashes[hashes.length - 1]!, message }, head };
+  throw new Error(`invalid edit: ${String(kind)}`);
 }
 
 function panel(): GraphPanel {
@@ -255,6 +280,30 @@ const handlers = (env: FlowEnv): Handlers => ({
     return refActionsOf(host, (str(ctx?.['strataRefs']) ?? '').split(' ').filter(Boolean));
   },
 
+  'strata.editMessage': on(['commit'], (host, t) => openEditor(host, 'reword', t.hash, t.hash)),
+  'strata.fixupIntoParent': on(['commit'], (host, t) => fixupIntoParent(host, t.hash)),
+  'strata.fixupIntoOlder': on(['commit'], (host, t) => fixupIntoOlder(host, t.hash)),
+  'strata.dropCommit': on(['commit'], (host, t) => dropCommits(host, [t.hash])),
+  'strata.squashSelected': write((host, ctx) => {
+    const hashes = selectionArg(ctx);
+    return openEditor(host, 'squash', hashes[hashes.length - 1]!, hashes[0]!);
+  }),
+  'strata.dropSelected': write((host, ctx) => dropCommits(host, selectionArg(ctx))),
+  'strata.copySelectedHashes': copy(
+    (ctx) => selectionArg(ctx).join('\n'),
+    (text) => DONE.copiedHashes(text.split('\n').length),
+  ),
+  'strata.saveEdit': async (ctx, id) => {
+    let applied = false;
+    try {
+      await write(async (host, c) => {
+        const { edit, head } = editArg(c);
+        applied = await saveEdit(host, edit, head);
+      })(ctx, id);
+    } finally {
+      GraphPanel.current?.editEnded(applied);
+    }
+  },
   'strata.merge': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
     merge(host, await sourceOf(host, t)),
   ),
