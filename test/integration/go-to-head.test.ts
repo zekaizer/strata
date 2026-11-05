@@ -45,6 +45,20 @@ describe('go to HEAD', () => {
     execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
   };
 
+  /**
+   * Reloads and selects the newest commit, `branch`'s tip. reload() returns once the reset is
+   * posted, before its first page draws: a click then could land on a row of the old list.
+   */
+  const reloadAndSelectTip = async (branch: string) => {
+    const tip = git('rev-parse', branch);
+    await reload(panel());
+    await until('the first page', (p) => p.commits > 0);
+    await panel().simulate({ kind: 'scrollToRow', index: 0 });
+    await until('the tip on top', (p) => p.rowHashes[0] === tip);
+    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await until('the tip selected', (p) => p.selected === tip);
+  };
+
   afterEach(async () => {
     if ((await panel().probe()).options.refs !== null) await filter(null);
   });
@@ -89,10 +103,8 @@ describe('go to HEAD', () => {
   it('loads further history under a branch filter when the filter reaches HEAD', async () => {
     const main = git('rev-parse', 'main');
     longBranch('strata-long', FIRST_PAGE + 100, main);
-    await reload(panel());
     // A selection the filtered history has near its top, which the reload finds at once.
-    await panel().simulate({ kind: 'scrollToRow', index: 0 });
-    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await reloadAndSelectTip('strata-long');
     let s = await filter('refs/heads/strata-long', false);
     assert.ok(s.commits <= FIRST_PAGE && !s.done, 'HEAD is not loaded yet');
     await goToHead();
@@ -103,10 +115,8 @@ describe('go to HEAD', () => {
 
   it('says at once when the filter leaves HEAD out, loading no history to look for it', async () => {
     longBranch('strata-lone', FIRST_PAGE + 100);
-    await reload(panel());
     // A selection the filtered history has near its top, which the reload finds at once.
-    await panel().simulate({ kind: 'scrollToRow', index: 0 });
-    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await reloadAndSelectTip('strata-lone');
     let s = await filter('refs/heads/strata-lone', false);
     const loaded = s.commits;
     assert.ok(!s.done, 'more history to load');
