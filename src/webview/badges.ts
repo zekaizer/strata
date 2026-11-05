@@ -186,6 +186,17 @@ export function landedRefs(before: RefSnapshot, after: RefSnapshot): string[] {
   return [...new Set([...moved, ...switched, ...detached])];
 }
 
+/**
+ * Whether a commit's `badges`, as rowBadges laid them out, leave any of its `refs` out of sight:
+ * collapsed into "+N" or a branch's "+k" remote names, or given no badge (hidden by a rule).
+ */
+export function leavesOut(badges: readonly Badge[], refs: readonly Ref[]): boolean {
+  const collapsed = (b: Badge) => b.look === 'more' || b.remotes.some((r) => r.context.webviewSection === 'refs');
+  if (badges.some(collapsed)) return true;
+  const shown = new Set(badges.flatMap((b) => b.refs));
+  return refs.some((r) => !shown.has(r.name));
+}
+
 /** One line of a commit's ref card. */
 export interface CardRef {
   look: Exclude<Badge['look'], 'more'>;

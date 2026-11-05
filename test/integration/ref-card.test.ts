@@ -22,6 +22,7 @@ describe('ref card on graph nodes', () => {
     restore = await snapshotRepo();
     await gitRetry('tag', 'strata-v1', 'cross/x');
     await gitRetry('tag', 'strata-v1-rc1', 'cross/x');
+    await gitRetry('tag', 'strata-main-rc1', 'main');
     panel = (await strata()).show();
     await panel.whenReady();
     await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
@@ -59,14 +60,20 @@ describe('ref card on graph nodes', () => {
     await until('card gone', (p) => p.refCard === undefined);
   });
 
-  it('marks the current branch, and shows no card for a commit without refs', async () => {
+  it('marks the current branch', async () => {
     let s = await panel.probe();
     await panel.simulate({ kind: 'hoverNode', index: rowOf(s, git('rev-parse', 'main')) });
     s = await until('card shown', (p) => p.refCard !== undefined);
-    assert.deepEqual(s.refCard!.lines, ['main · current branch']);
-    await panel.simulate({ kind: 'hoverNode', index: rowOf(s, git('rev-parse', 'main~1')) });
-    await delay(600);
-    assert.equal((await panel.probe()).refCard, undefined);
+    assert.deepEqual(s.refCard!.lines, ['main · current branch', 'strata-main-rc1 · hidden by *-rc*']);
+  });
+
+  it('shows no card for a commit whose badges show all its refs, nor for one without refs', async () => {
+    const s = await panel.probe();
+    for (const at of ['feature/search', 'main~1']) {
+      await panel.simulate({ kind: 'hoverNode', index: rowOf(s, git('rev-parse', at)) });
+      await delay(600);
+      assert.equal((await panel.probe()).refCard, undefined, at);
+    }
   });
 
   it('closes when hover highlights go off, as when keys move the selection', async () => {

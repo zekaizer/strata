@@ -27,7 +27,7 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { cardRefs, fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
+import { cardRefs, fitBadges, landedRefs, leavesOut, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { codicon, el, formatDate, formatShortDate, shortHash } from './format.ts';
@@ -1128,7 +1128,11 @@ class App {
     };
     if (Math.abs(clientX - centre.x) > NODE_REACH || Math.abs(clientY - centre.y) > NODE_REACH) return undefined;
     const hash = item.commit.hash;
-    return { hash, refs: cardRefs(hash, this.refsByHash.get(hash) ?? [], this.refs, this.hiddenBadges), ...centre };
+    const refs = this.refsByHash.get(hash) ?? [];
+    const badges = rowBadges(hash, this.badgeRefsByHash.get(hash) ?? [], this.refs, (all) => this.fitBand(all));
+    // A card only for a node whose badges leave something out.
+    const card = leavesOut(badges, refs) ? cardRefs(hash, refs, this.refs, this.hiddenBadges) : [];
+    return { hash, refs: card, ...centre };
   }
 
   /**
