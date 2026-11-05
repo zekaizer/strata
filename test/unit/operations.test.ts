@@ -88,6 +88,24 @@ describe('operations', () => {
     assert.equal(run(d, 'tag', '--list'), 'v1');
   });
 
+  it('creates a lightweight tag and puts back a deleted tag as it was, whatever tag.gpgSign says', async () => {
+    const d = repo();
+    run(d, 'config', 'tag.gpgSign', 'true');
+    await op(d, { kind: 'createTag', name: 'v1', at: head(d), message: undefined });
+    assert.equal(run(d, 'cat-file', '-t', 'v1'), 'commit');
+    run(d, '-c', 'tag.gpgSign=false', 'tag', '--annotate', '--message', 'Release 2', 'v2', head(d));
+    const object = run(d, 'rev-parse', 'refs/tags/v2');
+    run(d, 'tag', '--delete', 'v2');
+    await op(d, { kind: 'restoreTag', name: 'v2', object });
+    assert.equal(run(d, 'rev-parse', 'refs/tags/v2'), object, 'the same tag object, not a tag of it');
+    run(d, 'tag', '--delete', 'v1');
+    await op(d, { kind: 'restoreTag', name: 'v1', object: head(d) });
+    assert.equal(run(d, 'cat-file', '-t', 'v1'), 'commit');
+    run(d, 'update-ref', 'refs/tags/v1', 'topic');
+    await assert.rejects(op(d, { kind: 'restoreTag', name: 'v1', object: head(d) }), GitOpError);
+    assert.equal(run(d, 'rev-parse', 'v1'), run(d, 'rev-parse', 'topic'), 'a tag that came back meanwhile stays');
+  });
+
   it('stashes only the paths named, untracked ones included', async () => {
     const d = repo();
     writeFileSync(join(d, 'f.txt'), 'dirty\n');

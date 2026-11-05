@@ -265,6 +265,10 @@ export const quote = (name: string): string => `'${name}'`;
 /** `name`, as sentences name it, moved between the confirmation and the operation. */
 export const changedMeanwhile = (name: string): string => `${name} changed while you were deciding; nothing was done.`;
 
+/** A branch or tag Strata was about to create appeared since the graph read its refs. */
+export const refAppeared = (kind: 'branch' | 'tag', name: string): string =>
+  `A ${kind} named '${name}' now exists; nothing was done.`;
+
 /** A menu opened on a ref that is gone. */
 export const staleTarget = (name: string): string => `'${name}' no longer exists; the graph has been refreshed.`;
 
@@ -350,6 +354,28 @@ export const createBranchInput = (at: CommitRef): { title: string; prompt: strin
   prompt: 'Creates the branch and switches to it.',
 });
 
+/** Checkout of remote branch `remote` whose local namesake `branch` tracks `upstream` instead. */
+export function tracksOtherConfirmation(
+  branch: string,
+  upstream: string,
+  remote: string,
+): Confirmation<'switch' | 'new'> {
+  return {
+    message: `'${branch}' tracks '${upstream}', not '${remote}'.`,
+    detail: `Switch to '${branch}' anyway, or create a branch of another name that tracks '${remote}'.`,
+    buttons: [
+      { id: 'new', label: 'Create Tracking Branch...' },
+      { id: 'switch', label: `Switch to '${branch}'` },
+    ],
+  };
+}
+
+/** A new branch tracking remote branch `remote` (e.g. origin/main). */
+export const trackingBranchInput = (remote: string): { title: string; prompt: string } => ({
+  title: `Create Branch Tracking '${remote}'`,
+  prompt: 'Creates the branch and switches to it.',
+});
+
 export const createTagInput = (at: CommitRef): { title: string; prompt: string } => ({
   title: `Create Tag at ${at.short} "${at.subject}"`,
   prompt: 'Enter the tag name.',
@@ -362,6 +388,10 @@ export const tagMessageInput = (tag: string, at: CommitRef): { title: string; pr
 
 export const refExists = (kind: 'branch' | 'tag', name: string, short: string): string =>
   `A ${kind} named '${name}' already exists (at ${short}).`;
+
+/** `name` would be a directory of `other` or the other way around (pathConflict). */
+export const refPathConflict = (kind: 'branch' | 'tag', name: string, other: string): string =>
+  `A ${kind} can't be named '${name}' while the ${kind} '${other}' exists.`;
 
 /** A rename to the name it has. */
 export const NEEDS_NEW_NAME = 'Enter a different name.';

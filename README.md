@@ -94,8 +94,10 @@ Stashes...**, **Undo Last Operation** and **Show Git Output**, and, while an
 operation is stopped, Continue, Abort and Skip.
 
 - **Branches and tags:** Checkout (a remote branch checks out its local
-  branch, or creates one that tracks it), Create Branch, Create Tag, Rename,
-  Delete and Copy Name. Deleting a branch says which commits no other branch
+  branch, or creates one that tracks it; when the local branch of that name
+  tracks something else, you choose between switching to it anyway and
+  creating a tracking branch of another name), Create Branch, Create Tag,
+  Rename, Delete and Copy Name. Deleting a branch says which commits no other branch
   or tag has. Push Tag pushes a tag to a remote (you pick one when there are
   several), and says so when the remote already has a different tag of that
   name. Delete Tag from Remote deletes it there and keeps your local tag;

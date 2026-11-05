@@ -18,6 +18,8 @@ export type Operation =
   /** A branch at `at` without switching to it (Undo of a deletion). */
   | { kind: 'branchAt'; name: string; at: string }
   | { kind: 'createTag'; name: string; at: string; message: string | undefined }
+  /** Tag `name` on `object`, a tag object or a commit, failing when the tag exists (Undo of a deletion). */
+  | { kind: 'restoreTag'; name: string; object: string }
   | { kind: 'renameBranch'; from: string; to: string }
   /** Adds a config value (Undo of a deletion puts back the branch's configuration). */
   | { kind: 'configAdd'; key: string; value: string }
@@ -97,9 +99,13 @@ export function argv(op: Operation): string[] {
     case 'branchAt':
       return ['branch', op.name, op.at];
     case 'createTag':
+      // tag.gpgSign makes every tag a signed annotated one, and an empty message fails it.
       return op.message === undefined
-        ? ['tag', op.name, op.at]
+        ? ['-c', 'tag.gpgSign=false', 'tag', op.name, op.at]
         : ['tag', '--annotate', '--message', op.message, op.name, op.at];
+    case 'restoreTag':
+      // `git tag` would make a new tag of a tag object; the empty old value fails when the tag exists.
+      return ['update-ref', `refs/tags/${op.name}`, op.object, ''];
     case 'renameBranch':
       return ['branch', '--move', op.from, op.to];
     case 'configAdd':

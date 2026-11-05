@@ -15,13 +15,17 @@ import {
   migrateConflicted,
   NEEDS_NEW_NAME,
   popConflicted,
+  refAppeared,
   refExists,
+  refPathConflict,
   renameInput,
   stashButtons,
   stashLabel,
   staleTarget,
   switchConfirmation,
   tagMessageInput,
+  trackingBranchInput,
+  tracksOtherConfirmation,
 } from '../../src/core/wording.ts';
 
 const tip = { short: 'abc1234', subject: 'Tip' };
@@ -84,6 +88,26 @@ describe('wording of ref operations', () => {
     });
     assert.equal(refExists('branch', 'main', 'abc1234'), "A branch named 'main' already exists (at abc1234).");
     assert.equal(refExists('tag', 'v1', 'abc1234'), "A tag named 'v1' already exists (at abc1234).");
+    assert.equal(
+      refPathConflict('branch', 'feature/x', 'feature'),
+      "A branch can't be named 'feature/x' while the branch 'feature' exists.",
+    );
+    assert.equal(refPathConflict('tag', 'v1', 'v1/rc'), "A tag can't be named 'v1' while the tag 'v1/rc' exists.");
+  });
+
+  it('asks what to do when the local namesake of a remote branch tracks another', () => {
+    assert.deepEqual(tracksOtherConfirmation('main', 'upstream/main', 'origin/main'), {
+      message: "'main' tracks 'upstream/main', not 'origin/main'.",
+      detail: "Switch to 'main' anyway, or create a branch of another name that tracks 'origin/main'.",
+      buttons: [
+        { id: 'new', label: 'Create Tracking Branch...' },
+        { id: 'switch', label: "Switch to 'main'" },
+      ],
+    });
+    assert.deepEqual(trackingBranchInput('origin/main'), {
+      title: "Create Branch Tracking 'origin/main'",
+      prompt: 'Creates the branch and switches to it.',
+    });
   });
 
   it('says a renamed branch keeps its remote name', () => {
@@ -108,6 +132,7 @@ describe('wording of ref operations', () => {
   it('reports what went wrong around a switch', () => {
     assert.equal(staleTarget('gone'), "'gone' no longer exists; the graph has been refreshed.");
     assert.equal(changedMeanwhile("'topic'"), "'topic' changed while you were deciding; nothing was done.");
+    assert.equal(refAppeared('branch', 'topic'), "A branch named 'topic' now exists; nothing was done.");
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
     assert.equal(

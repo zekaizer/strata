@@ -4,7 +4,18 @@ import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { parseGitVersion } from '../../src/core/git-version.ts';
-import { branchMenu, commitMenu, flowSuite, menu, reload, run, selected, stashRow, tagMenu } from './flow-helpers.ts';
+import {
+  branchMenu,
+  commitMenu,
+  flowSuite,
+  menu,
+  reload,
+  remoteMenu,
+  run,
+  selected,
+  stashRow,
+  tagMenu,
+} from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('ref operations', () => {
@@ -57,6 +68,129 @@ describe('ref operations', () => {
       `A branch named 'main' already exists (at ${git('rev-parse', 'main').slice(0, 7)}).`,
     );
     assert.equal(git('branch', '--show-current'), 'main');
+  });
+
+  it('refuses a branch name that would put a branch inside another, or the other way around', async () => {
+    ui.type('feature');
+    await run('strata.createBranch', commitMenu(git('rev-parse', 'main~1')));
+    assert.match(
+      ui.first('input').problem ?? '',
+      /^A branch can't be named 'feature' while the branch 'feature\/\w+' exists\.$/,
+    );
+    ui.clear();
+    ui.type('main/next');
+    await run('strata.createBranch', commitMenu(git('rev-parse', 'main~1')));
+    assert.equal(ui.first('input').problem, "A branch can't be named 'main/next' while the branch 'main' exists.");
+    assert.equal(git('branch', '--show-current'), 'main');
+  });
+
+  it('renames a branch into a name under its own', async () => {
+    const tip = git('rev-parse', 'wip/experiment');
+    ui.type('wip/experiment/old');
+    await run('strata.renameBranch', branchMenu('wip/experiment', tip));
+    assert.equal(ui.first('input').problem, undefined);
+    assert.equal(git('rev-parse', 'refs/heads/wip/experiment/old'), tip);
+  });
+
+  it('creates nothing when the branch or tag appeared since the graph read its refs, and refreshes', async () => {
+    const at = git('rev-parse', 'main~3');
+    let before = (await panel().probe()).generation;
+    ui.type('strata/new').meanwhile(() => git('branch', 'strata/new', 'main~1'));
+    await run('strata.createBranch', commitMenu(at));
+    assert.deepEqual(ui.of('notify'), [
+      {
+        kind: 'notify',
+        level: 'error',
+        message: "A branch named 'strata/new' now exists; nothing was done.",
+        actions: [],
+      },
+    ]);
+    assert.equal(git('rev-parse', 'strata/new'), git('rev-parse', 'main~1'));
+    assert.equal(git('branch', '--show-current'), 'main');
+    assert.ok((await panel().probe()).generation > before);
+
+    ui.clear();
+    before = (await panel().probe()).generation;
+    ui.type('v9.7', '').meanwhile(() => git('tag', 'v9.7', 'main~1'));
+    await run('strata.createTag', commitMenu(at));
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'error', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
+    ]);
+    assert.equal(git('rev-parse', 'v9.7'), git('rev-parse', 'main~1'));
+    assert.ok((await panel().probe()).generation > before);
+  });
+
+  it('creates no local branch for a remote branch when one appeared since the graph read its refs', async () => {
+    git('remote', 'add', 'origin', join(tmpdir(), 'strata-no-such-remote'));
+    git('update-ref', 'refs/remotes/origin/strata-remote', 'main~1');
+    git('switch', '--quiet', '--detach', 'main');
+    const lonely = git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'Lonely');
+    git('update-ref', '--no-deref', 'HEAD', lonely);
+    await reload(panel());
+    const before = (await panel().probe()).generation;
+    ui.press('Switch Anyway').meanwhile(() => git('branch', 'strata-remote', 'main~2'));
+    await run('strata.checkout', remoteMenu('origin/strata-remote'));
+    assert.deepEqual(ui.of('notify'), [
+      {
+        kind: 'notify',
+        level: 'error',
+        message: "A branch named 'strata-remote' now exists; nothing was done.",
+        actions: [],
+      },
+    ]);
+    assert.equal(git('rev-parse', 'HEAD'), lonely);
+    assert.equal(git('rev-parse', 'strata-remote'), git('rev-parse', 'main~2'));
+    assert.ok((await panel().probe()).generation > before);
+  });
+
+  describe('checkout of a remote branch whose local namesake tracks another', () => {
+    const setUp = async () => {
+      for (const remote of ['origin', 'upstream'])
+        git('remote', 'add', remote, join(tmpdir(), 'strata-no-such-remote'));
+      git('update-ref', 'refs/remotes/origin/strata-up', 'main~1');
+      git('update-ref', 'refs/remotes/upstream/strata-up', 'main~2');
+      git('branch', '--quiet', '--track', 'strata-up', 'upstream/strata-up');
+      await reload(panel());
+    };
+    const asked = {
+      kind: 'confirm',
+      message: "'strata-up' tracks 'upstream/strata-up', not 'origin/strata-up'.",
+      detail: "Switch to 'strata-up' anyway, or create a branch of another name that tracks 'origin/strata-up'.",
+      buttons: ['Create Tracking Branch...', "Switch to 'strata-up'"],
+    };
+
+    it('switches to the local branch when told to', async () => {
+      await setUp();
+      ui.press("Switch to 'strata-up'");
+      await run('strata.checkout', remoteMenu('origin/strata-up'));
+      assert.deepEqual(ui.of('confirm'), [asked]);
+      assert.equal(git('branch', '--show-current'), 'strata-up');
+      assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main~2'));
+    });
+
+    it('creates a branch of another name tracking the remote branch', async () => {
+      await setUp();
+      ui.press('Create Tracking Branch...').type('strata-up');
+      await run('strata.checkout', remoteMenu('origin/strata-up'));
+      assert.deepEqual(ui.of('input'), [
+        {
+          kind: 'input',
+          title: "Create Branch Tracking 'origin/strata-up'",
+          prompt: 'Creates the branch and switches to it.',
+          value: 'origin-strata-up',
+          problem: `A branch named 'strata-up' already exists (at ${git('rev-parse', '--short=7', 'main~2')}).`,
+        },
+      ]);
+      assert.equal(git('branch', '--show-current'), 'main', 'a name in use is refused');
+
+      ui.clear();
+      ui.press('Create Tracking Branch...').type('origin-strata-up');
+      await run('strata.checkout', remoteMenu('origin/strata-up'));
+      assert.equal(git('branch', '--show-current'), 'origin-strata-up');
+      assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main~1'));
+      assert.equal(git('rev-parse', '--abbrev-ref', 'origin-strata-up@{upstream}'), 'origin/strata-up');
+      assert.equal(git('rev-parse', '--abbrev-ref', 'strata-up@{upstream}'), 'upstream/strata-up');
+    });
   });
 
   it('deletes a branch with commits no other ref has, after saying so, and undoes that', async () => {
@@ -269,6 +403,26 @@ describe('ref operations', () => {
     ui.press('Delete Tag');
     await run('strata.deleteTag', tagMenu('v9.9'));
     assert.equal(ui.first('confirm').message, "Delete tag 'v9.9'?");
+    assert.equal(git('tag', '--list', 'v9.9'), '');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'refs/tags/v9.9'), object);
+  });
+
+  it('creates a lightweight tag and undoes the deletion of an annotated one, with tag.gpgSign set', async () => {
+    git('config', 'tag.gpgSign', 'true');
+    const at = git('rev-parse', 'main~2');
+    ui.type('v9.8', '');
+    await run('strata.createTag', commitMenu(at));
+    assert.equal(git('cat-file', '-t', 'refs/tags/v9.8'), 'commit');
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'info', message: `Created tag 'v9.8' at ${at.slice(0, 7)}`, actions: ['Undo'] },
+    ]);
+
+    git('-c', 'tag.gpgSign=false', 'tag', '--annotate', '--message', 'Release 9.9', 'v9.9', at);
+    const object = git('rev-parse', 'refs/tags/v9.9');
+    await reload(panel());
+    ui.press('Delete Tag');
+    await run('strata.deleteTag', tagMenu('v9.9'));
     assert.equal(git('tag', '--list', 'v9.9'), '');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'refs/tags/v9.9'), object);

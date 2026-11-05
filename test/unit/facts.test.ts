@@ -236,6 +236,21 @@ describe('confirmation facts', () => {
     run(dir, 'config', '--remove-section', 'branch.topic.x');
   });
 
+  it("reads only the repository's own branch configuration, which deleting the branch drops", async () => {
+    const global = join(root, 'global.gitconfig');
+    writeFileSync(global, '[branch "topic"]\n\tdescription = everywhere\n');
+    const was = process.env['GIT_CONFIG_GLOBAL'];
+    process.env['GIT_CONFIG_GLOBAL'] = global;
+    try {
+      run(dir, 'config', 'branch.topic.pushRemote', 'origin');
+      assert.deepEqual(await readBranchConfig('git', dir, 'topic'), [['branch.topic.pushremote', 'origin']]);
+    } finally {
+      if (was === undefined) delete process.env['GIT_CONFIG_GLOBAL'];
+      else process.env['GIT_CONFIG_GLOBAL'] = was;
+      run(dir, 'config', '--remove-section', 'branch.topic');
+    }
+  });
+
   it('counts what a rebase replays, and which replayed commits are on the upstream', async () => {
     assert.deepEqual(await readRebaseCounts('git', dir, 'main~3', 'origin/main'), {
       replay: 3,
