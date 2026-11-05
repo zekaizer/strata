@@ -1,19 +1,13 @@
 import * as vscode from 'vscode';
-import type {
-  HostToWebview,
-  ProbeState,
-  SimulatedAction,
-  ThemeKind,
-  ViewOptions,
-  WebviewToHost,
-} from '../shared/protocol.ts';
+import type { HostToWebview, ProbeState, SimulatedAction, ThemeKind, WebviewToHost } from '../shared/protocol.ts';
 import type { FileChange, FileView } from '../core/details.ts';
 import type { Ref } from '../core/refs.ts';
-import { GraphController } from './controller.ts';
+import { GraphController, type SavedView } from './controller.ts';
 import type { RepoSession } from './session.ts';
 import type { FlowEnv, FlowHost } from './flow.ts';
 import { isCommandId } from '../shared/commands.ts';
-import { getGitApi } from './git-api.ts';
+import { parseRepoKey, type RepoKey } from '../core/repos.ts';
+import { repoList } from './repositories.ts';
 
 export type ReadyInfo = Extract<WebviewToHost, { type: 'ready' }>;
 
@@ -28,6 +22,8 @@ export class GraphPanel implements vscode.Disposable {
   readonly onDidReceiveMessage = this.messageEmitter.event;
   private readonly ready: Promise<ReadyInfo>;
   private controller: GraphController | undefined;
+  /** A repository chosen before the controller started: it shows that one first. */
+  private chosen: RepoKey | undefined;
 
   /** Where the webview's state is mirrored (workspace storage); set on activation. */
   static memento: vscode.Memento | undefined;
@@ -172,6 +168,18 @@ export class GraphPanel implements vscode.Disposable {
     return s;
   }
 
+  /**
+   * Shows the repository whose root is `root`, as the user's choice. Resolves false, showing
+   * nothing else, when no open repository has that root.
+   */
+  async showRepository(root: unknown): Promise<boolean> {
+    const key = parseRepoKey(root, (await repoList()).keys());
+    if (key === undefined) return false;
+    if (this.controller) await this.controller.choose(key);
+    else this.chosen = key;
+    return true;
+  }
+
   /** Writes a commit-graph for the shown repository and reloads. */
   writeCommitGraph(): Promise<void> {
     return this.controller?.shown?.writeCommitGraph() ?? Promise.resolve();
@@ -223,7 +231,7 @@ export class GraphPanel implements vscode.Disposable {
     switch (m.type) {
       case 'ready':
         this.post({ type: 'init', theme: themeKind() });
-        void this.startController(m.options);
+        void this.startController(m);
         break;
       case 'error':
         void vscode.window.showErrorMessage(`Strata: ${m.message}`);
@@ -256,18 +264,20 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   /** A reloaded webview (e.g. after being hidden) sends `ready` again and gets a fresh history. */
-  private async startController(options: ViewOptions | undefined): Promise<void> {
+  private async startController(saved: SavedView | undefined): Promise<void> {
     try {
       const env = GraphPanel.env;
       if (!env) throw new Error('Strata is not activated');
       this.controller ??= new GraphController(
-        await getGitApi(),
+        await repoList(),
         (m) => {
           this.post(m);
         },
         env,
       );
-      await this.controller.start(options);
+      const chosen = this.chosen;
+      this.chosen = undefined;
+      await this.controller.start(saved && { last: saved.last, views: saved.views, options: saved.options }, chosen);
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }

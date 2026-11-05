@@ -1,3 +1,4 @@
+import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
@@ -67,18 +68,34 @@ export const commitTree = (cwd: string, parent: string, message: string): string
     message,
   );
 
-/** Makes the graph start again on the repository at `root`, through the active editor it follows on a start. */
-export async function startOn(panel: GraphPanel, root: string): Promise<void> {
+/** Shows the repository at `root` as the user's choice. */
+export async function switchTo(panel: GraphPanel, root: string): Promise<void> {
+  assert.ok(await panel.showRepository(root), `${root} is open`);
+  await showing(panel, root);
+}
+
+/** Reloads the webview, which starts the graph again, and waits for its history. */
+export async function restart(panel: GraphPanel): Promise<void> {
+  const before = (await panel.probe()).generation;
+  const ready = new Promise<void>((resolve) => {
+    const sub = panel.onDidReceiveMessage((m) => {
+      if (m.type !== 'ready') return;
+      sub.dispose();
+      resolve();
+    });
+  });
+  await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+  await ready;
+  await waitFor('the reloaded graph', async () => {
+    const p = await panel.probe();
+    return p.generation !== before && p.done;
+  });
+}
+
+/** Opens a file of the repository at `root` in an editor, making it the active editor's repository. */
+export async function editIn(root: string): Promise<void> {
   const file = gitIn(root, 'ls-files').split('\n')[0]!;
   await vscode.window.showTextDocument(vscode.Uri.file(join(root, file)), { preview: true });
-  const before = (await panel.probe()).generation;
-  await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
-  await waitFor('the reloaded graph', async () => {
-    const p = await panel.probe().catch(() => undefined);
-    return p !== undefined && p.generation !== before && p.done;
-  });
-  await showing(panel, root);
-  await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
 }
 
 /** A local branch badge's menu context in the repository at `cwd`. */

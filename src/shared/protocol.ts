@@ -83,8 +83,18 @@ export type HostToWebview =
   | { type: 'simulate'; action: SimulatedAction };
 
 export type WebviewToHost =
-  /** `options` carries view options saved by a previous session of this panel. */
-  | { type: 'ready'; workerOk: boolean; options: ViewOptions | undefined }
+  /**
+   * What a previous session of this panel saved: the root of the repository it showed last, the
+   * view options of each repository it showed by root, and view options saved before they were
+   * kept per repository (for the repository shown first).
+   */
+  | {
+      type: 'ready';
+      workerOk: boolean;
+      last: string | undefined;
+      views: Record<string, ViewOptions>;
+      options: ViewOptions | undefined;
+    }
   | { type: 'loadMore'; generation: number; count: number }
   | { type: 'select'; generation: number; hash: string }
   | {

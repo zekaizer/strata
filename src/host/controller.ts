@@ -1,34 +1,40 @@
+import { basename } from 'node:path';
 import * as vscode from 'vscode';
-import type { RepoKey } from '../core/repos.ts';
+import { pickRepo, type RepoKey, type RepoPreference } from '../core/repos.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import { setContext } from './context.ts';
 import type { FlowEnv } from './flow.ts';
-import { repoKey, type GitApi, type GitRepository } from './git-api.ts';
+import type { GitRepository } from './git-api.ts';
+import type { RepoList } from './repositories.ts';
 import { RepoSession } from './session.ts';
+
+/** What the webview saved in a previous session of the panel (see the `ready` message). */
+export type SavedView = Pick<Extract<WebviewToHost, { type: 'ready' }>, 'last' | 'views' | 'options'>;
 
 /** Serves one webview: picks the repository it shows and keeps a RepoSession for it. */
 export class GraphController implements vscode.Disposable {
-  private readonly api: GitApi;
+  private readonly repos: RepoList;
   private readonly send: (m: HostToWebview) => void;
   private readonly env: FlowEnv;
   private disposed = false;
   private session: RepoSession | undefined;
-  /** Options for the next session when there is none to take them from. */
-  private options: ViewOptions = DEFAULT_OPTIONS;
+  /** The repository the panel showed last, until it is shown or the user chooses another. */
+  private restored: string | undefined;
+  /** View options of each repository the panel showed, by root, as the webview saved them. */
+  private readonly views = new Map<string, ViewOptions>();
+  /** Options saved before they were kept per repository: the first repository shown takes them. */
+  private unkeyed: ViewOptions | undefined;
   /** Repositories already offered a commit-graph in this session. */
   private readonly suggested = new Set<string>();
   private readonly disposables: vscode.Disposable[] = [];
 
-  constructor(api: GitApi, post: (m: HostToWebview) => void, env: FlowEnv) {
-    this.api = api;
+  constructor(repos: RepoList, post: (m: HostToWebview) => void, env: FlowEnv) {
+    this.repos = repos;
     this.send = post;
     this.env = env;
     this.disposables.push(
-      api.onDidOpenRepository(() => {
-        if (!this.session) void this.start();
-      }),
-      api.onDidCloseRepository((r) => {
-        if (repoKey(r) === this.session?.key) void this.start();
+      repos.onDidChange(() => {
+        void this.follow();
       }),
     );
   }
@@ -38,42 +44,89 @@ export class GraphController implements vscode.Disposable {
     return this.session;
   }
 
-  /** Picks the repository of the active editor, else the first one, and starts a new history. */
-  start(options?: ViewOptions): Promise<void> {
-    const active = vscode.window.activeTextEditor?.document.uri;
-    return this.show((active && this.api.getRepository(active)) ?? this.api.repositories[0], options);
+  /**
+   * The webview (re)started: shows `chosen` (the user's choice) when given, else the repository
+   * it showed last when open, else the best one open.
+   */
+  start(saved?: SavedView, chosen?: RepoKey): Promise<void> {
+    if (saved) {
+      this.restored = saved.last;
+      this.views.clear();
+      for (const [root, options] of Object.entries(saved.views)) this.views.set(root, options);
+      this.unkeyed = saved.options;
+    }
+    if (chosen !== undefined) this.restored = undefined;
+    return this.pick({ chosen }, saved !== undefined);
   }
 
-  /** Shows `repo` (none: says there is no repository), keeping its session when it is shown already. */
-  private async show(repo: GitRepository | undefined, options?: ViewOptions): Promise<void> {
+  /** Shows the repository the user chose, when it is open. */
+  choose(key: RepoKey): Promise<void> {
+    this.restored = undefined;
+    return this.pick({ chosen: key });
+  }
+
+  /** A repository opened or closed: the restored one may be open now, or the shown one gone. */
+  private async follow(): Promise<void> {
+    const before = this.session?.key;
+    await this.pick({});
+    const now = this.session?.key;
+    if (before === undefined || now === before || this.repos.get(before)) return;
+    const message = `${basename(before)} was closed${now === undefined ? '' : `; showing ${basename(now)}`}`;
+    vscode.window.setStatusBarMessage(message, 5000);
+    this.post({ type: 'notice', message });
+  }
+
+  private pick(p: Pick<RepoPreference, 'chosen'>, reloaded = false): Promise<void> {
+    const key = pickRepo(this.repos.keys(), {
+      ...p,
+      restored: this.restored,
+      shown: this.session?.key,
+      active: this.repos.active(),
+    });
+    if (key === this.restored) this.restored = undefined;
+    return this.show(key, reloaded);
+  }
+
+  /** Shows `key` (none: says there is no repository), keeping its session when it is shown already. */
+  private async show(key: RepoKey | undefined, reloaded: boolean): Promise<void> {
     if (this.disposed) return;
-    this.options = options ?? this.session?.options ?? this.options;
-    const key = repo && repoKey(repo);
-    if (key !== this.session?.key) {
-      const generation = this.session?.generation ?? 0;
-      this.session?.dispose();
-      this.session = repo && this.newSession(repo, generation);
-    } else if (this.session) this.session.options = this.options;
-    if (this.session) await this.session.reset();
-    else {
+    const repo = key && this.repos.get(key);
+    if (!repo) {
+      this.replace(undefined);
       this.post({ type: 'noRepository' });
       await Promise.all([
         setContext('strata.operation', ''),
         setContext('strata.head', ''),
         setContext('strata.canUndo', false),
       ]);
+      return;
     }
+    if (key !== this.session?.key) this.replace(this.newSession(key, repo));
+    else if (reloaded) this.session.options = this.optionsOf(key);
+    await this.session!.reset();
   }
 
-  private newSession(repo: GitRepository, generation: number): RepoSession {
-    return new RepoSession(repo, {
-      api: this.api,
+  private replace(session: RepoSession | undefined): void {
+    const old = this.session;
+    if (old) this.views.set(old.key, old.options);
+    old?.dispose();
+    this.session = session;
+  }
+
+  private optionsOf(key: RepoKey): ViewOptions {
+    // States saved before an option existed lack it.
+    return { ...DEFAULT_OPTIONS, ...(this.views.get(key) ?? this.unkeyed) };
+  }
+
+  private newSession(key: RepoKey, repo: GitRepository): RepoSession {
+    const session = new RepoSession(repo, {
+      api: this.repos.api,
       env: this.env,
       post: (m) => {
         this.post(m);
       },
-      generation,
-      options: this.options,
+      generation: this.session?.generation ?? 0,
+      options: this.optionsOf(key),
       suggested: this.suggested,
       busy: (label) => {
         this.post({ type: 'busy', label });
@@ -82,15 +135,13 @@ export class GraphController implements vscode.Disposable {
         void this.reveal(key, hash);
       },
     });
+    this.unkeyed = undefined;
+    return session;
   }
 
   private async reveal(key: RepoKey, hash: string): Promise<void> {
-    if (this.session?.key !== key) {
-      const repo = this.api.repositories.find((r) => repoKey(r) === key);
-      if (!repo) return;
-      await this.show(repo);
-    }
-    this.post({ type: 'reveal', hash });
+    if (this.session?.key !== key) await this.choose(key);
+    if (this.session?.key === key) this.post({ type: 'reveal', hash });
   }
 
   private post(m: HostToWebview): void {

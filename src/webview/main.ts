@@ -37,6 +37,7 @@ import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
+import { parseSaved, remember, savedOptions, viewOf, type RepoView, type SavedState } from './saved-state.ts';
 import { savedState, vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
 
@@ -54,27 +55,14 @@ const REF_BAND = 14;
 /** The inline details never take more than this share of the list height. */
 const MAX_EXPANSION_SHARE = 0.45;
 
-/** Persisted with setState: survives hiding and VS Code restarts (the panel is restored by a serializer). */
-interface SavedState {
-  selectedHash?: string | undefined;
-  /**
-   * The first row in view and how far into it the list is scrolled. Row heights depend on the
-   * refs, so a pixel offset alone points at other rows once refs above it change.
-   */
-  scrollAnchor?: { hash: string; offset: number } | undefined;
-  /** Pixel offset; used when the anchor's commit is not found (and by states saved before anchors). */
-  scrollTop?: number | undefined;
+/** A view being restored once the history containing it has loaded. */
+interface Restore extends RepoView {
   /** Set when a scroll position was restored together with the selection; do not scroll to the selection. */
   keepScroll?: boolean | undefined;
   /** The selection is the host's focus hint: reveal it even when a scroll position is restored with it. */
   reveal?: boolean | undefined;
-  /** Whether the selected commit's details were expanded. */
-  expanded?: boolean | undefined;
-  /** Loaded commits past which a restore stops looking; default RESTORE_SEARCH_LIMIT. Not saved. */
+  /** Loaded commits past which a restore stops looking; default RESTORE_SEARCH_LIMIT. */
   searchLimit?: number | undefined;
-  /** Whether the meta table under the byline is unfolded: a view preference, not tied to a commit. */
-  metaOpen?: boolean | undefined;
-  options?: ViewOptions | undefined;
 }
 
 /** Details that take longer than this are reported as not coming (the extension host went away). */
@@ -154,10 +142,11 @@ class App {
   private showHiddenBadges = false;
   /** `refsByHash` less the hidden badges' refs: what the ref bands show. */
   private badgeRefsByHash = new Map<string, Ref[]>();
-  // Declared before `options`, which is initialized from it.
-  private restore: SavedState | undefined = savedState() as SavedState | undefined;
-  // States saved before an option existed lack it.
-  private options: ViewOptions = { ...DEFAULT_OPTIONS, ...this.restore?.options };
+  private saved: SavedState;
+  /** A view saved before views were kept per repository: the first repository shown restores it. */
+  private unkeyed: RepoView | undefined;
+  private restore: Restore | undefined;
+  private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
   /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
@@ -189,8 +178,7 @@ class App {
   private openedFile: string | undefined;
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
-  /** Read directly: `restore` is cleared once applied, but this preference outlives it. */
-  private metaOpen = (savedState() as SavedState | undefined)?.metaOpen ?? false;
+  private metaOpen: boolean;
   /** Whether the selected commit's body is shown in full. */
   private bodyExpanded = false;
   private copiedTimer: ReturnType<typeof setTimeout> | undefined;
@@ -278,6 +266,8 @@ class App {
 
   constructor(root: HTMLElement) {
     this.root = root;
+    ({ state: this.saved, unkeyed: this.unkeyed } = parseSaved(savedState()));
+    this.metaOpen = this.saved.metaOpen ?? false;
     const refresh = el('button', 'icon-button codicon codicon-refresh');
     refresh.title = 'Refresh';
     refresh.addEventListener('click', () => {
@@ -418,7 +408,13 @@ class App {
     window.addEventListener('message', (e: MessageEvent<HostToWebview>) => {
       this.onHost(e.data);
     });
-    vscode.postMessage({ type: 'ready', workerOk, options: this.options });
+    vscode.postMessage({
+      type: 'ready',
+      workerOk,
+      last: this.saved.last,
+      views: savedOptions(this.saved),
+      options: this.unkeyed?.options,
+    });
   }
 
   private onHost(m: HostToWebview): void {
@@ -596,7 +592,13 @@ class App {
         // What was in the history before a reload is within what was loaded; past one more page, it is gone.
         searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
       };
+    } else if (this.repo?.root !== repo.root) {
+      // Another repository: keep this one's view, and restore what that one showed last.
+      if (this.repo) this.saveState();
+      const view = viewOf(this.saved, repo.root) ?? this.unkeyed;
+      this.restore = view && { ...view };
     }
+    this.unkeyed = undefined;
     const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
     if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
     if (focus !== undefined) this.selectionsAtBusy = undefined;
@@ -703,15 +705,16 @@ class App {
 
   private saveState(): void {
     // While a restore is pending, keep the saved position rather than the not yet restored one.
-    const state: SavedState = {
-      selectedHash: this.restore?.selectedHash ?? this.selectedHash(),
-      scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
-      scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
-      expanded: this.restore?.expanded ?? this.expanded,
-      metaOpen: this.metaOpen,
-      options: this.options,
-    };
-    vscode.setState(state);
+    if (this.repo)
+      this.saved = remember(this.saved, this.repo.root, {
+        selectedHash: this.restore?.selectedHash ?? this.selectedHash(),
+        scrollAnchor: this.restore ? this.restore.scrollAnchor : this.scrollAnchor(),
+        scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
+        expanded: this.restore?.expanded ?? this.expanded,
+        options: this.options,
+      });
+    this.saved = { ...this.saved, metaOpen: this.metaOpen };
+    vscode.setState(this.saved);
     // Mirrored to the host (at most every half second): an extension host restart leaves this
     // webview behind, and the host then re-creates the panel from it.
     if (this.mirrorTimer === undefined) {
@@ -726,7 +729,7 @@ class App {
    * The row at the top of the view and the offset into it; undefined with no rows. With `stashes`,
    * a stash row they lack is named by its successor.
    */
-  private scrollAnchor(stashes = this.stashes): SavedState['scrollAnchor'] {
+  private scrollAnchor(stashes = this.stashes): RepoView['scrollAnchor'] {
     const top = this.scroller.scrollTop;
     const index = Math.min(this.rowFloor(top), this.list.length - 1);
     const hash = this.successor(index, stashes);

@@ -4,6 +4,7 @@ import { contextValue, type ContextKey } from './host/context.ts';
 import type { FlowEnv } from './host/flow.ts';
 import { registerCommands } from './host/menus.ts';
 import { GraphPanel } from './host/panel.ts';
+import { disposeRepoList } from './host/repositories.ts';
 import { OpRunner } from './host/runner.ts';
 import { vscodeUi, type Ui } from './host/ui.ts';
 
@@ -71,4 +72,5 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
 
 export function deactivate(): void {
   GraphPanel.current?.dispose();
+  disposeRepoList();
 }
