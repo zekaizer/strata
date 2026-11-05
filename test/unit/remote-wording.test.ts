@@ -123,7 +123,7 @@ describe('wording of remote operations', () => {
     assert.deepEqual(deleteRemoteTagConfirmation('v1', 'origin', { short: 'abc1234', subject: 'Release' }), {
       message: "Delete tag 'v1' from 'origin'?",
       detail: 'The local tag stays at abc1234 "Release".\nStrata can\'t undo this.',
-      buttons: [{ id: 'delete', label: 'Delete Tag from Remote' }],
+      buttons: [{ id: 'delete', label: 'Delete Remote Tag' }],
     });
   });
 
