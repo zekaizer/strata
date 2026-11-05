@@ -115,6 +115,37 @@ describe('LogReader', () => {
     assert.equal(all.length, 31);
   });
 
+  it("starts from other worktrees' detached HEADs too, skipping missing ones", async () => {
+    const dir = join(root, 'worktree-heads');
+    scenarios.linear().write(dir);
+    const other = join(root, 'worktree-heads-other');
+    git(dir, 'worktree', 'add', '--quiet', '--detach', other, 'HEAD~2');
+    execFileSync('git', ['commit', '--quiet', '--allow-empty', '-m', 'work in the other worktree'], {
+      cwd: other,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'a',
+        GIT_AUTHOR_EMAIL: 'a@b',
+        GIT_COMMITTER_NAME: 'a',
+        GIT_COMMITTER_EMAIL: 'a@b',
+      },
+    });
+    const head = git(other, 'rev-parse', 'HEAD');
+    const missing = 'f'.repeat(40);
+    const all = await readAll({ git: 'git', cwd: dir, heads: [head, missing] }, 10);
+    assert.equal(all.length, 31);
+    assert.ok(all.includes(head));
+    assert.ok(!(await readAll({ git: 'git', cwd: dir }, 10)).includes(head), 'not without it');
+    const picked = await readAll({ git: 'git', cwd: dir, refs: ['refs/heads/main'], heads: [head] }, 10);
+    assert.ok(!picked.includes(head), 'only with every branch shown');
+  });
+
+  it('rejects worktree heads that are not commit ids', async () => {
+    const r = new LogReader({ git: 'git', cwd: join(root, 'branchy'), heads: ['--all'] });
+    await assert.rejects(r.next(1), /invalid commit id/);
+    r.dispose();
+  });
+
   it('returns an empty, finished page for a repository without commits', async () => {
     const dir = join(root, 'empty');
     mkdirSync(dir);

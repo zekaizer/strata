@@ -8,6 +8,7 @@ const refs: RefSnapshot = {
   head: hash,
   headBranch: 'main',
   remotes: ['origin'],
+  worktrees: [],
   refs: [
     { name: 'refs/heads/main', short: 'main', kind: 'branch', hash },
     { name: 'refs/remotes/origin/main', short: 'origin/main', kind: 'remote', hash },

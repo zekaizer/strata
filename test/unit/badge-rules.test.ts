@@ -80,6 +80,7 @@ describe('hiddenRefs', () => {
     headBranch,
     refs,
     remotes: ['origin'],
+    worktrees: [],
   });
 
   it('hides refs of every kind by short name, with the rule that hides them', () => {
@@ -104,7 +105,7 @@ describe('hiddenRefs', () => {
 describe('ruleCounts', () => {
   it('counts the refs each rule is the last match of, the current branch aside', () => {
     const refs = [ref('tag', 'IR-1'), ref('tag', 'IR-release-1'), ref('tag', 'IR-2'), ref('branch', 'IR-main')];
-    const snap: RefSnapshot = { head: H, headBranch: 'IR-main', refs, remotes: [] };
+    const snap: RefSnapshot = { head: H, headBranch: 'IR-main', refs, remotes: [], worktrees: [] };
     assert.deepEqual(ruleCounts([hide('IR*'), keep('IR*release*'), hide('v*')], snap), [2, 1, 0]);
   });
 });

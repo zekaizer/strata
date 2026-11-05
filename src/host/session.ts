@@ -437,6 +437,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       cwd: this.cwd,
       firstParent: this.options.firstParent,
       refs: this.options.refs ?? undefined,
+      heads: this.snapshot?.worktrees.flatMap((w) => (w.branch === undefined && w.head !== undefined ? [w.head] : [])),
     };
   }
 

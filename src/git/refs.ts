@@ -1,5 +1,5 @@
 import type { Ref, RefKind, RefSnapshot } from '../core/refs.ts';
-import { configuredUpstream, readBranchConfigs } from './facts.ts';
+import { configuredUpstream, readBranchConfigs, readWorktrees } from './facts.ts';
 import { runGit } from './run.ts';
 
 const PREFIXES: [string, RefKind][] = [
@@ -9,13 +9,13 @@ const PREFIXES: [string, RefKind][] = [
 ];
 
 /**
- * Reads HEAD, the remotes, and all branch, remote-tracking and tag refs pointing (after peeling) at
- * commits. Stashes are read on their own (readStashes).
+ * Reads HEAD, the remotes, all branch, remote-tracking and tag refs pointing (after peeling) at
+ * commits, and the other worktrees. Stashes are read on their own (readStashes).
  */
 export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
   const format =
     '%(refname)%00%(objecttype)%00%(objectname)%00%(*objecttype)%00%(*objectname)%00%(symref)%00%(upstream)';
-  const [list, headBranch, head, remotes, config] = await Promise.all([
+  const [list, headBranch, head, remotes, config, worktrees] = await Promise.all([
     runGit(git, cwd, ['for-each-ref', `--format=${format}`, 'refs/heads', 'refs/remotes', 'refs/tags']),
     // Exit status 1 means detached HEAD.
     runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(
@@ -29,6 +29,7 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
     ),
     runGit(git, cwd, ['remote']).then((s) => s.split('\n').filter(Boolean)),
     readBranchConfigs(git, cwd),
+    readWorktrees(git, cwd),
   ]);
   const refs: Ref[] = [];
   // Ref names cannot contain NUL or newline, so one ref per line is unambiguous.
@@ -59,5 +60,5 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
       ...(tracks ? { tracks: true } : {}),
     });
   }
-  return { head, headBranch, refs, remotes };
+  return { head, headBranch, refs, remotes, worktrees };
 }

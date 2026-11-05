@@ -71,6 +71,7 @@ describe('matchRefs', () => {
       ref('refs/heads/main', 'branch'),
     ],
     remotes: ['origin'],
+    worktrees: [],
   };
 
   it('lists refs whose short name contains the text: current branch, branches, remotes, tags', () => {

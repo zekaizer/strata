@@ -90,7 +90,31 @@ describe('readRefs', () => {
     const d = join(root, 'empty');
     mkdirSync(d);
     git(d, 'init', '--quiet', '-b', 'trunk');
-    assert.deepEqual(await readRefs('git', d), { head: undefined, headBranch: 'trunk', refs: [], remotes: [] });
+    assert.deepEqual(await readRefs('git', d), {
+      head: undefined,
+      headBranch: 'trunk',
+      refs: [],
+      remotes: [],
+      worktrees: [],
+    });
+  });
+
+  it("lists the repository's other worktrees", async () => {
+    const d = join(root, 'worktrees');
+    scenarios.linear().write(d);
+    const other = join(root, 'worktrees-other');
+    git(d, 'worktree', 'add', '--quiet', '--detach', other, 'HEAD~1');
+    const snap = await readRefs('git', d);
+    assert.deepEqual(snap.worktrees, [
+      {
+        path: other,
+        name: 'worktrees-other',
+        head: git(d, 'rev-parse', 'HEAD~1'),
+        branch: undefined,
+        state: { kind: 'active' },
+        main: false,
+      },
+    ]);
   });
 
   it('leaves the stash out: it is read with the stash list', async () => {

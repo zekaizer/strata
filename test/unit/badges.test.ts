@@ -22,6 +22,7 @@ const snapshot = (refs: Ref[], headBranch: string | undefined): RefSnapshot => (
   headBranch,
   refs,
   remotes: ['origin', 'upstream', 'fork'],
+  worktrees: [],
 });
 const all = (badges: readonly unknown[]) => badges.length;
 const badgesOf = (refs: Ref[], headBranch: string | undefined = 'main', keep = all) =>
@@ -99,6 +100,7 @@ describe('rowBadges', () => {
           headBranch,
           refs: [...others.map((r) => ({ ...r, hash: elsewhere })), ...row],
           remotes: ['origin', 'upstream'],
+          worktrees: [],
         },
         all,
       ).map((b) => [b.text, b.tracked]);
@@ -179,6 +181,7 @@ describe('landedRefs', () => {
     headBranch,
     refs,
     remotes: [],
+    worktrees: [],
   });
   const main = b('main', h('1'));
   const topic = b('topic', h('2'));

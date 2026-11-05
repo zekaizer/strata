@@ -195,7 +195,7 @@ class App {
 
   private generation = -1;
   private repo: RepoInfo | undefined;
-  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
   private refsByHash = new Map<string, Ref[]>();
   /** The repository's badge rules, and the refs they hide by full name. */
   private badgeRules: BadgeRule[] = [];
@@ -700,7 +700,7 @@ class App {
         this.status.textContent = '';
         this.refFilter.close();
         this.badgeFilter.close();
-        this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+        this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
         this.updateHeadButton();
         this.refsByHash = new Map();
         this.badgeRules = [];
