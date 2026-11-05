@@ -1,4 +1,4 @@
-import { pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { headUpstream, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { BadgeContext } from '../shared/menu-context.ts';
 
 /** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
@@ -43,10 +43,7 @@ export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnaps
       remotes: [],
       also: [],
     });
-  const upstream =
-    snapshot.headBranch === undefined
-      ? undefined
-      : snapshot.refs.find((r) => r.kind === 'branch' && r.short === snapshot.headBranch)?.upstream;
+  const upstream = headUpstream(snapshot);
   for (const { ref, remotes } of pairRefs(refs, snapshot.remotes))
     all.push(refBadge(hash, ref, remotes, snapshot.headBranch, upstream));
   if (all.length <= MAX_BADGES) return all;

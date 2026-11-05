@@ -3,7 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
-import { badgeOrder, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import {
   anchoredAt,
@@ -555,9 +555,10 @@ class App {
       list.push(r);
       this.refsByHash.set(r.hash, list);
     }
-    // Refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    // The upstream and refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    const upstream = headUpstream(refs);
     for (const [hash, list] of this.refsByHash)
-      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
+      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, options.refs));
     this.setStashes(stashes);
     this.updateBanner();
     this.commits = [];
