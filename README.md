@@ -27,6 +27,9 @@ page, so it opens quickly even on very large repositories.
   history: glob rules per repository (`IR*`), with exceptions, that leave the
   commits and lines in place. Strata keeps the rules itself; nothing is written
   to the repository or its git config.
+- Several repositories in one workspace: switch between them from the
+  toolbar. Each keeps its own filters and selection, and the graph comes back
+  on the repository you looked at last.
 - The graph comes back after restarting VS Code, pinned if you pinned it, at
   the commit you had selected and with the same filters.
 - Works in narrow editors: columns collapse as space shrinks, and commit
@@ -39,8 +42,20 @@ page, so it opens quickly even on very large repositories.
 
 ## Usage
 
-- Run **Strata: Show Commit Graph** from the Command Palette, or click the
-  commit-graph button in the Source Control view title bar.
+- Open the graph from:
+  - the **Graph** item in the status bar, which shows the repository of the
+    file you are editing (right-click the status bar to hide it);
+  - the graph button on a repository in the Source Control view, or
+    **Open in Commit Graph** on a row of its Repositories list, which show
+    that repository;
+  - **Strata: Show Commit Graph** in the Command Palette.
+- With more than one repository open, click the repository name at the left of
+  the toolbar to pick another one, or run **Strata: Switch Repository...**. The
+  list is the one in the Source Control view, in the same order
+  (`scm.repositories.sortOrder`), with each repository's current branch. The
+  graph tab's title names the repository it shows. The graph stays on the
+  repository you picked until you pick another; when that repository is
+  closed, it shows another one and says so in the status bar.
 - Scroll to load more history.
 - Click a commit to unfold its details under it; click it again, or press
   <kbd>Esc</kbd> in the list, to fold them. <kbd>Esc</kbd> inside the details
