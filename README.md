@@ -145,7 +145,8 @@ operation is stopped, Continue, Abort and Skip.
   dropped stash. It only moves the branch the operation moved,
   and asks first if that branch moved since.
 - When an operation stops at conflicts, Strata says where and in which files;
-  **Resolve...** opens them, and other changes wait until you continue or
+  **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
+  leaves the stopped commit out, and other changes wait until you continue or
   abort. A Continue that stops again (at the next conflict, or at an `edit`
   or `break` of a rebase you started with `git rebase -i`) says so. A cherry
   pick or revert of several commits that you ended with `git commit` instead

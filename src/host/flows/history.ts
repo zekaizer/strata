@@ -206,8 +206,10 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
     held && stashLabel(held.index, held.message),
     reason,
   );
-  const next = state.kind === 'rebase' ? ['Continue'] : state.kind === 'merge' ? [] : ['Skip...'];
-  const actions = [...(state.conflictCount > 0 ? ['Resolve...'] : next), abortButton(state.kind)];
+  const skip = state.kind === 'merge' ? [] : ['Skip...'];
+  // No Skip at a rebase stop without conflicts: at an edit git made the commit already, and --skip keeps it.
+  const next = state.kind === 'rebase' ? ['Continue'] : skip;
+  const actions = [...(state.conflictCount > 0 ? ['Resolve...', ...skip] : next), abortButton(state.kind)];
   notify(host, 'warning', message, actions, (a) =>
     a === 'Resolve...'
       ? resolveConflicts(host, state.conflicts)

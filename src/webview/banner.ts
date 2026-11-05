@@ -177,7 +177,7 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
               ? [' Your uncommitted changes are held by git and come back when the rebase finishes or is aborted.']
               : []),
           ],
-          [RESOLVE, CONTINUE, ABORT],
+          [RESOLVE, CONTINUE, SKIP, ABORT],
         );
       }
       const finishes: BannerPart[] =
@@ -186,10 +186,11 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
         return banner(
           'rebaseResolved',
           ['Conflicts resolved. Continue finishes ', ...finishes, ` and ${rest}.`],
-          [CONTINUE, ABORT],
+          [CONTINUE, SKIP, ABORT],
         );
       const what: BannerPart[] =
         subject !== undefined ? [` ("${subject}")`] : op.applying !== undefined ? [' (', short(op.applying), ')'] : [];
+      // No Skip: at an edit's stop git made the commit already, and --skip keeps it.
       return banner('rebaseStopped', [`Rebase stopped${at}`, ...what, `. Continue ${rest}.`], [CONTINUE, ABORT]);
     }
     case 'merge': {

@@ -131,7 +131,7 @@ describe('history operations', () => {
       kind: 'notify',
       level: 'warning',
       message: 'Rebase stopped at 1 of 1 ("main.txt: topic") with conflicts in 1 file (main.txt).',
-      actions: ['Resolve...', 'Abort Rebase...'],
+      actions: ['Resolve...', 'Skip...', 'Abort Rebase...'],
     });
     assert.equal(api().contextValue('strata.operation'), 'rebase');
     await waitFor('rebase reported', async () => (await panel().probe()).operation?.kind === 'rebase');

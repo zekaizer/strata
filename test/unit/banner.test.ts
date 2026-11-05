@@ -57,6 +57,7 @@ describe('the banner of a stopped operation', () => {
     assert.deepEqual(actions(b), [
       ['Resolve...', 'strata.resolveConflicts', {}],
       ['Continue', 'strata.operation.continue', {}],
+      ['Skip...', 'strata.operation.skip', {}],
       ['Abort...', 'strata.operation.abort', {}],
     ]);
   });
@@ -82,7 +83,7 @@ describe('the banner of a stopped operation', () => {
     assert.equal(text(b), 'Conflicts resolved. Continue finishes "Add lexer" and replays the remaining 1 commit.');
     assert.deepEqual(
       actions(b)?.map(([label]) => label),
-      ['Continue', 'Abort...'],
+      ['Continue', 'Skip...', 'Abort...'],
     );
     const last = { ...resolved, step: { current: 4, total: 4 } };
     assert.equal(
@@ -96,6 +97,11 @@ describe('the banner of a stopped operation', () => {
     const b = bannerOf(edit, undefined, facts(false));
     assert.equal(b?.state, 'rebaseStopped');
     assert.equal(text(b), 'Rebase stopped at 2 of 4 ("Add lexer"). Continue replays the remaining 2 commits.');
+    // git's --skip at an edit stop keeps the commit it already made.
+    assert.deepEqual(
+      actions(b)?.map(([label]) => label),
+      ['Continue', 'Abort...'],
+    );
   });
 
   it('names a stopped merge by its source and the branch it goes into', () => {
