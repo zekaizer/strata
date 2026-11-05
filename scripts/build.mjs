@@ -101,6 +101,7 @@ if (playground) {
         ...(await listTests('test/integration')),
         ...(await listTests('test/perf')),
         ...(await listTests('test/multirepo')),
+        ...(await listTests('test/readme')),
         'test/restart/driver.ts',
       ],
       outdir: 'out/test',

@@ -114,7 +114,7 @@ jobs:
           cache: npm
       - run: npm ci
       # CI builds only (release packaging does not do this): version <version>-ci.<run> and a
-      # build note at the top of the README, which the Extensions view shows as the details page.
+      # build note under the README header, which the Extensions view shows as the details page.
       - name: Mark as a CI build
         run: node scripts/ci-stamp.mjs "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"
       - run: npm run package

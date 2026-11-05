@@ -48,10 +48,21 @@ const multi = {
   workspaceFolder: join(import.meta.dirname, 'out', 'fixtures', 'multi-repo'),
 };
 
+// npm run shot:readme: the README screenshot of the showcase fixture (test/fixtures/showcase.ts).
+const readme = {
+  ...base,
+  label: 'readme',
+  version: 'stable',
+  files: 'out/test/readme/*.test.cjs',
+  workspaceFolder: join(import.meta.dirname, 'out', 'fixtures', 'showcase', 'quillboard'),
+  launchArgs: launchArgs('readme'),
+};
+
 export default defineConfig([
   { ...base, label: 'stable', version: 'stable', launchArgs: launchArgs('stable') },
   { ...base, label: 'min', version: '1.90.0', launchArgs: launchArgs('min') },
   { ...multi, label: 'multi', version: 'stable', launchArgs: launchArgs('multi') },
   { ...multi, label: 'multi-min', version: '1.90.0', launchArgs: launchArgs('multi-min') },
   perf,
+  readme,
 ]);

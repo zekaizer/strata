@@ -15,6 +15,11 @@
     "url": "https://github.com/zekaizer/strata/issues"
   },
   "homepage": "https://github.com/zekaizer/strata#readme",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1b2230",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0",
     "node": ">=22.18"
@@ -24,6 +29,21 @@
   ],
   "categories": [
     "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "graph",
+    "git graph",
+    "git history",
+    "history",
+    "log",
+    "commit",
+    "branch",
+    "merge",
+    "rebase",
+    "cherry-pick",
+    "stash",
+    "tag"
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
@@ -39,7 +59,7 @@
         "command": "strata.show",
         "title": "Show Commit Graph",
         "category": "Strata",
-        "icon": "$(git-merge)"
+        "icon": "$(strata-graph)"
       },
       {
         "command": "strata.writeCommitGraph",
@@ -55,7 +75,7 @@
         "command": "strata.openInGraph",
         "title": "Open in Commit Graph",
         "category": "Strata",
-        "icon": "$(git-merge)"
+        "icon": "$(strata-graph)"
       },
       {
         "command": "strata.showActive",
@@ -960,6 +980,15 @@
         }
       ]
     },
+    "icons": {
+      "strata-graph": {
+        "description": "Strata commit graph",
+        "default": {
+          "fontPath": "media/strata-icons.woff",
+          "fontCharacter": "\\f101"
+        }
+      }
+    },
     "configuration": {
       "title": "Strata",
       "properties": {
@@ -1001,6 +1030,7 @@
     "test": "npm run check && npm run test:integration",
     "playground": "node scripts/build.mjs --playground",
     "shot": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
+    "shot:readme": "npm run build && node test/fixtures/cli.ts showcase && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots TZ=UTC -- vscode-test --label readme",
     "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies -o artifacts/strata.vsix",
     "vscode:prepublish": "node scripts/build.mjs --production",
     "format": "prettier --write .",

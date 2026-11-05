@@ -45,7 +45,7 @@ async function switchRepository(extensionUri: vscode.Uri, env: FlowEnv): Promise
 function statusBarItem(list: RepoList): vscode.Disposable {
   const item = vscode.window.createStatusBarItem('strata.graph', vscode.StatusBarAlignment.Left, STATUS_PRIORITY);
   item.name = 'Strata Commit Graph';
-  item.text = '$(git-merge) Graph';
+  item.text = '$(strata-graph) Graph';
   item.tooltip = 'Show Commit Graph';
   item.command = 'strata.showActive';
   statusBar = item;

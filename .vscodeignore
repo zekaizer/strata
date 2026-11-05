@@ -6,3 +6,7 @@
 !dist/webview/*.js
 !dist/webview/*.css
 !dist/webview/codicons/**
+!media/icon.png
+!media/strata-icons.woff
+!media/strata-graph-light.svg
+!media/strata-graph-dark.svg

@@ -22,6 +22,7 @@ npm ci
 | Everything                             | `npm test`                                          |
 | Screenshot the context menus           | `STRATA_MENU_SHOT_DIR=<dir>` with `npm run shot`    |
 | Screenshot the panel in all themes     | `npm run shot` → `artifacts/shots/*.png`            |
+| Screenshot for the README              | `npm run shot:readme` → `artifacts/shots/`          |
 | Webview playground in a browser        | `npm run playground` → http://localhost:5173/       |
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
 | Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
@@ -52,6 +53,11 @@ repository holding `alpha` and `beta` and `gamma` nested in `beta`. The tests in
 `scripts/restart-test.mjs <version> multi` checks the repository shown last is
 restored. `npm run test:integration` and `test:integration:min` run them after
 the single-repository tests.
+
+It also writes `showcase`, holding `quillboard` (`test/fixtures/showcase.ts`):
+49 commits of an invented web app by six invented authors, with pull request
+merges, release tags, a release branch and remote-tracking branches. Only the
+README screenshot uses it, under the `readme` label (`test/readme/`).
 
 ## Headless environments
 
@@ -86,6 +92,36 @@ scripts/             build, xvfb wrapper, screenshot tooling
 
 Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
 
+## Icons and screenshot
+
+`media/icon.svg` is the source of the extension icon `media/icon.png`
+(256×256). `media/strata-mono.svg` is the monochrome design of the product
+icon; icon fonts cannot carry its translucent bars, so
+`media/product-icons/strata-graph.svg` is the font-safe version (one filled
+path: solid bars cut back from the lane). It is contributed as
+`$(strata-graph)` from `media/strata-icons.woff` at U+F101. After changing it,
+regenerate the font with a pinned one-off fantasticon (not a dependency):
+
+```bash
+mkdir -p artifacts/icon-font
+npx -y fantasticon@4.1.0 media/product-icons -o artifacts/icon-font \
+  -n strata-icons -t woff -g json --normalize -h 1000
+cp artifacts/icon-font/strata-icons.woff media/
+```
+
+`artifacts/icon-font/strata-icons.json` must still map `strata-graph` to
+`61697` (U+F101); a second SVG in `media/product-icons/` takes the next code
+point.
+
+`media/screenshot.png`, the README's screenshot, comes from
+`npm run shot:readme` (`artifacts/shots/readme.png`, on the default 1600×1000
+screen, dates in UTC) without the window title bar, reduced to 256 colors:
+
+```bash
+convert artifacts/shots/readme.png -crop 1440x864+80+86 +repage -strip \
+  -dither None -colors 256 PNG8:media/screenshot.png
+```
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request: typecheck,
@@ -99,9 +135,10 @@ GitHub releases. Runners are pinned to `ubuntu-24.04`.
 
 Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes
 `<version>-ci.<run number>` and the README (the extension's details page in
-the Extensions view) starts with the build's commit and date, so an installed
-CI build says which one it is. A release of the same version sorts above it.
-Release packaging (`npm run package`) does not stamp.
+the Extensions view) gets the build's commit and date under its header, at the
+`<!-- ci-stamp -->` line, so an installed CI build says which one it is. The
+script fails if the README lacks that line. A release of the same version
+sorts above it. Release packaging (`npm run package`) does not stamp.
 
 `package.json` overrides the `glob` used by mocha (through
 `@vscode/test-cli`) with glob 13: mocha 11 pins the deprecated glob 10,
