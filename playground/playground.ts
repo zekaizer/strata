@@ -10,12 +10,15 @@
 //   &worktrees=1: other worktrees (branchy): feature/search locked, feature/login, wip/experiment
 //     prunable, and one detached on "Prepare criss-cross"; with &repos=N the first is open here
 //   &path=src/auth/session.ts[,older]: the history of those paths (repo=paths); &pathSlow=1: still searching it
+//   &detach=<ref|commit subject|hash>: HEAD detached there, e.g. on a commit with children; "unborn": no HEAD
+//   &refs=refs/heads/a,refs/tags/b: the ref filter's selection
+//   &changes=<staged>,<changed>,<conflicts>,<untracked>[,<submodules>]: uncommitted changes ("-" untracked: not counted)
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
 import { parsePathFilter } from '../src/core/path-filter.ts';
-import type { Leftover, OperationState } from '../src/core/repo-state.ts';
+import type { ChangedPath, ChangesSummary, Leftover, OperationState } from '../src/core/repo-state.ts';
 import type { WorktreeInfo } from '../src/core/worktrees.ts';
 import { rewriteEffects } from '../src/core/wording.ts';
 import {
@@ -68,6 +71,17 @@ const rangeRows = params.get('range')?.split(',').map(Number);
 const editKind = params.get('edit');
 /** `editText=...`: what is typed into the editor; `saving=1` presses Save (the host never answers). */
 const editText = params.get('editText');
+const changes = ((q: string | null): ChangesSummary | undefined => {
+  if (q === null) return undefined;
+  const [staged = 0, unstaged = 0, conflicted = 0, untracked, submodules = 0] = q.split(',').map((n) => Number(n));
+  return {
+    staged,
+    unstaged,
+    conflicted,
+    untracked: Number.isNaN(untracked) ? undefined : (untracked ?? 0),
+    submodules,
+  };
+})(params.get('changes'));
 if (params.get('reduceMotion') === '1') document.body.classList.add('vscode-reduce-motion');
 
 for (const [k, v] of Object.entries(themes[theme])) document.documentElement.style.setProperty(k, v);
@@ -87,6 +101,7 @@ const queried: Partial<ViewOptions> = {
   ...(params.has('firstParent') ? { firstParent: params.get('firstParent') === '1' } : {}),
   ...(params.has('showStashes') ? { showStashes: params.get('showStashes') !== '0' } : {}),
   ...(params.has('path') ? { path: parsePathFilter({ paths: params.get('path')!.split(',') }) ?? null } : {}),
+  ...(params.has('refs') ? { refs: params.get('refs')!.split(',') } : {}),
 };
 const pathSlow = params.get('pathSlow') === '1';
 let options: ViewOptions = { ...DEFAULT_OPTIONS, ...queried };
@@ -165,6 +180,7 @@ function reset(): void {
     stashes: data.stashes,
     badgeRules,
   });
+  if (changes) toWebview({ type: 'changes', generation, changes });
   toWebview({ type: 'repositories', repos: repositories() });
 }
 
@@ -207,6 +223,14 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       toWebview({ type: 'init', theme });
       data = (await (await fetch(`data/${repo}.json`)).json()) as PlaygroundData;
       if (params.get('worktrees') === '1') data.refs.worktrees = worktrees(data);
+      const detach = params.get('detach');
+      if (detach !== null) {
+        const at =
+          data.refs.refs.find((r) => r.short === detach)?.hash ??
+          data.commits.find((c) => c.subject === detach)?.hash ??
+          (detach === 'unborn' ? undefined : detach);
+        data.refs = { ...data.refs, head: at, headBranch: undefined };
+      }
       if (m.options) options = { ...m.options, ...queried };
       reset();
       break;
@@ -408,6 +432,34 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         setTimeout(() => {
           toWebview({ type: 'editEnded', applied: false });
         }, 1500);
+      break;
+    }
+    case 'selectChanges': {
+      if (!changes) break;
+      const n = (k: number | undefined) => Array.from({ length: Math.min(k ?? 0, 40) }, (_, i) => i);
+      const files: ChangedPath[] = [
+        ...n(changes.conflicted).map((i): ChangedPath => ({
+          group: 'conflicted',
+          status: 'M',
+          path: `src/merge-${i}.ts`,
+        })),
+        ...n(changes.staged).map((i): ChangedPath => ({
+          group: 'staged',
+          status: i === 1 ? 'A' : 'M',
+          path: i ? `src/token-${i}.ts` : 'src/lexer.ts',
+        })),
+        ...n(changes.unstaged).map((i): ChangedPath => ({
+          group: 'unstaged',
+          status: i === 2 ? 'D' : 'M',
+          path: ['src/lexer.ts', 'README.md', 'docs/old.md'][i] ?? `docs/page-${i}.md`,
+        })),
+        ...n(changes.untracked).map((i): ChangedPath => ({
+          group: 'untracked',
+          status: 'A',
+          path: i ? `notes/scratch-${i}/` : 'notes/todo.txt',
+        })),
+      ];
+      toWebview({ type: 'changesDetails', generation, details: { files, truncated: 0 } });
       break;
     }
     case 'select': {

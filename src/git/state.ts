@@ -5,9 +5,9 @@ import {
   parseStatus,
   type OperationKind,
   type OperationState,
-  type Worktree,
+  type WorkingChanges,
 } from '../core/repo-state.ts';
-import { runGit } from './run.ts';
+import { runGit, type GitLimits } from './run.ts';
 import { messageEdits, sequencerTodo } from '../core/todo.ts';
 
 /** Files git keeps while an operation is stopped. */
@@ -140,9 +140,32 @@ export async function readMessageEdits(git: string, cwd: string): Promise<string
   return messageEdits(done ?? '', todo ?? '');
 }
 
-/** Uncommitted changes to tracked files. Untracked files are not scanned: slow on huge trees, and autostash ignores them. */
-export async function readWorktree(git: string, cwd: string): Promise<Worktree> {
+/** Uncommitted changes to tracked files, as an operation meets them: autostash leaves untracked files alone. */
+export async function readWorkingChanges(git: string, cwd: string): Promise<WorkingChanges> {
   return parseStatus(
     await runGit(git, cwd, ['status', '--porcelain=v2', '-z', '--untracked-files=no', '--ignore-submodules=none']),
   );
+}
+
+/**
+ * `git status --porcelain=v2 -z` as the graph reads it, on its own schedule. `--no-optional-locks`:
+ * it never takes index.lock from git commands the user runs meanwhile. `untracked`: also untracked
+ * files, a folder git does not ignore as one entry ("dir/"), so a huge one costs no more than a
+ * small one. `paths`: only those (a path history's).
+ */
+export function readGraphStatus(
+  git: string,
+  cwd: string,
+  opts: { untracked: boolean; paths?: readonly string[] | undefined; limits?: GitLimits },
+): Promise<string> {
+  const args = [
+    '--no-optional-locks',
+    'status',
+    '--porcelain=v2',
+    '-z',
+    `--untracked-files=${opts.untracked ? 'normal' : 'no'}`,
+    '--ignore-submodules=none',
+  ];
+  const paths = opts.paths?.map((p) => `:(literal)${p}`) ?? [];
+  return runGit(git, cwd, paths.length > 0 ? [...args, '--', ...paths] : args, {}, opts.limits);
 }

@@ -1,5 +1,6 @@
 import { isStrataAutostash } from './autostash.ts';
 import type { Commit } from './commit.ts';
+import type { ChangesSummary } from './repo-state.ts';
 
 /** Where a stash's row is drawn: above its base, or above its branch's tip once the base left that branch. */
 export type StashAnchor =
@@ -87,25 +88,45 @@ export function anchoredAt(stashes: readonly StashEntry[]): Map<string, StashEnt
   return map;
 }
 
-/** A row of the commit list. `row` is the layout row of the commit, or of the commit a stash is drawn above. */
+/**
+ * A row of the commit list. `row` is the layout row of the commit, of the commit a stash is drawn
+ * above, or of HEAD for the uncommitted changes (-1 before the first commit: there is no HEAD).
+ */
 export type ListRow =
-  { kind: 'commit'; commit: Commit; row: number } | { kind: 'stash'; stash: StashEntry; row: number };
+  | { kind: 'commit'; commit: Commit; row: number }
+  | { kind: 'stash'; stash: StashEntry; row: number }
+  | { kind: 'changes'; changes: ChangesSummary; row: number };
 
-/** What a row stands for: the commit, or the stash commit W. */
-export const rowHash = (r: ListRow): string => (r.kind === 'commit' ? r.commit.hash : r.stash.hash);
+/** What the uncommitted changes row stands for in rowHash: no commit id, so no saved selection names it by mistake. */
+export const CHANGES_ROW = 'changes';
+
+/** What a row stands for: the commit, the stash commit W, or CHANGES_ROW. */
+export const rowHash = (r: ListRow): string =>
+  r.kind === 'commit' ? r.commit.hash : r.kind === 'stash' ? r.stash.hash : CHANGES_ROW;
+
+/** The uncommitted changes and the commit they are on (undefined before the first commit). */
+export interface ChangesAt {
+  head: string | undefined;
+  summary: ChangesSummary;
+}
 
 /**
  * Rows of one page: each commit, preceded by the stashes drawn above it, in anchoredAt's order.
- * Looks at nothing but the page and the map, so pages can be interleaved one at a time.
+ * The uncommitted changes go above HEAD and its stashes, or first in the list without a HEAD.
+ * Looks at nothing but the page, the map and the changes, so pages can be interleaved one at a time.
  */
 export function interleave(
   page: readonly Commit[],
   firstLayoutRow: number,
   anchors: ReadonlyMap<string, readonly StashEntry[]>,
+  changes?: ChangesAt,
 ): ListRow[] {
   const rows: ListRow[] = [];
+  if (changes && changes.head === undefined && firstLayoutRow === 0)
+    rows.push({ kind: 'changes', changes: changes.summary, row: -1 });
   page.forEach((commit, i) => {
     const row = firstLayoutRow + i;
+    if (changes && commit.hash === changes.head) rows.push({ kind: 'changes', changes: changes.summary, row });
     for (const stash of anchors.get(commit.hash) ?? []) rows.push({ kind: 'stash', stash, row });
     rows.push({ kind: 'commit', commit, row });
   });

@@ -21,24 +21,36 @@ import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
-import type { Leftover, OperationState } from '../core/repo-state.ts';
+import {
+  changeCounts,
+  describeChanges,
+  type ChangedPath,
+  type ChangeCount,
+  type ChangeGroup,
+  type ChangesSummary,
+  type Leftover,
+  type OperationState,
+} from '../core/repo-state.ts';
 import { samePath } from '../core/worktrees.ts';
 import {
   anchoredAt,
+  CHANGES_ROW,
   describeStash,
   interleave,
   rowHash,
   stashLabel,
+  type ChangesAt,
   type ListRow,
   type StashEntry,
   type StashShown,
 } from '../core/stash.ts';
-import { MENU_SECTIONS, type CommandId } from '../shared/commands.ts';
-import type { CommitContext, SelectionContext, StashContext } from '../shared/menu-context.ts';
+import { COMMANDS, MENU_SECTIONS, type CommandId, type CommandSpec } from '../shared/commands.ts';
+import type { ChangesContext, CommitContext, SelectionContext, StashContext } from '../shared/menu-context.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
   HostToWebview,
+  WorkingDetails,
   ProbeState,
   RepoInfo,
   SimulatedAction,
@@ -220,6 +232,35 @@ const BADGE_ICON: Record<Exclude<Badge['look'], 'more'>, string> = {
   worktree: 'worktree',
 };
 
+/** What clicking an uncommitted change opens, as its tooltip says. */
+const CHANGE_OPEN: Record<ChangeGroup, (f: ChangedPath) => string> = {
+  staged: (f) =>
+    f.status === 'A' ? 'open staged file' : f.status === 'D' ? 'open deleted file' : 'open staged changes',
+  unstaged: (f) => (f.status === 'D' ? 'open deleted file' : f.status === 'A' ? 'open file' : 'open changes'),
+  conflicted: () => 'resolve conflicts',
+  untracked: (f) => (f.path.endsWith('/') ? 'reveal in Explorer' : 'open file'),
+};
+
+/** Source Control's letters where a status letter says less: "!" conflicted, "U" untracked. */
+const CHANGE_LETTER: Partial<Record<ChangeGroup, string>> = { conflicted: '!', untracked: 'U' };
+
+/** Groups of the unfolded uncommitted changes row, in order, with what each compares. */
+const CHANGE_GROUPS: readonly { group: ChangeGroup; title: string; compares: string | undefined }[] = [
+  { group: 'conflicted', title: 'Conflicts', compares: undefined },
+  { group: 'staged', title: 'Staged', compares: 'HEAD ↔ index' },
+  { group: 'unstaged', title: 'Changes', compares: 'index ↔ working tree' },
+  { group: 'untracked', title: 'Untracked', compares: undefined },
+];
+
+const CHANGES_CONTEXT: ChangesContext = { webviewSection: 'changes', preventDefaultContextMenuItems: true };
+
+const CHANGE_ICON: Record<ChangeCount['kind'], string> = {
+  conflicted: 'warning',
+  staged: 'check',
+  unstaged: 'edit',
+  untracked: 'diff-added',
+};
+
 class App {
   private worker: Worker | undefined;
   private theme: GraphTheme = resolveGraphTheme();
@@ -292,6 +333,8 @@ class App {
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
   private stashes: StashEntry[] = [];
+  /** The uncommitted changes, as the host last reported them; kept across reloads until it reports again. */
+  private changes: ChangesSummary | undefined;
   /** Stashes by the commit their rows are drawn above. */
   private anchors: ReadonlyMap<string, readonly StashEntry[]> = new Map();
   private readonly spans = new SpanIndex();
@@ -308,6 +351,8 @@ class App {
   private loading = false;
   private selected = -1;
   private details: CommitDetails | undefined;
+  /** The unfolded uncommitted changes row's paths; `details` is then undefined. */
+  private working: WorkingDetails | undefined;
   /** Commit whose details were last requested; replies for any other commit are stale. */
   private pendingDetails: string | undefined;
   private openedFile: string | undefined;
@@ -470,7 +515,7 @@ class App {
     this.findButton.addEventListener('click', () => {
       this.openFind();
     });
-    this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'));
+    this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'), el('span', 'head-dot', '•'));
     this.headButton.addEventListener('click', () => {
       this.goToHead();
     });
@@ -660,6 +705,18 @@ class App {
         this.setStashes(m.stashes);
         this.relist();
         break;
+      case 'changes':
+        if (m.generation !== this.generation) return;
+        if (JSON.stringify(m.changes) !== JSON.stringify(this.changes)) {
+          this.changes = m.changes;
+          this.relist();
+        }
+        // Sent when any path or state changed, counts or not: the unfolded row lists them again.
+        if (this.expanded && this.working && this.selectedHash() === CHANGES_ROW) {
+          this.pendingDetails = CHANGES_ROW;
+          vscode.postMessage({ type: 'selectChanges', generation: this.generation });
+        }
+        break;
       case 'busy':
         this.busyLabel = m.label;
         this.banner.setBusy(m.label);
@@ -667,6 +724,7 @@ class App {
           this.selectionsAtBusy = this.selections;
           this.announce(`${m.label}…`);
         }
+        this.holdChangesActions();
         if (m.label === undefined) this.scroller.removeAttribute('aria-busy');
         else this.scroller.setAttribute('aria-busy', 'true');
         // An error shown meanwhile stays until the next action.
@@ -679,6 +737,7 @@ class App {
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
         this.updateBanner();
+        this.holdChangesActions();
         // Stash rows carry whether restoring them conflicted.
         this.queueRender();
         break;
@@ -687,7 +746,7 @@ class App {
         this.loading = false;
         this.done = m.done;
         for (const h of m.unchanged ?? []) this.unchanged.add(h);
-        this.appendRows(interleave(m.commits, this.commits.length, this.anchors));
+        this.appendRows(interleave(m.commits, this.commits.length, this.anchors, this.changesAt()));
         if (this.commitIndex)
           for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
         this.commits.push(...m.commits);
@@ -701,6 +760,7 @@ class App {
         });
         this.updateStatus();
         this.updateStashButton();
+        this.updateHeadButton();
         if (this.landing && this.landing.start === undefined) {
           this.landing.start = performance.now();
           this.landingTimer = setTimeout(() => {
@@ -727,6 +787,15 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'changesDetails': {
+        if (m.generation !== this.generation || this.pendingDetails !== CHANGES_ROW || !this.expanded) return;
+        // Changes that moved while the row was open: its folds and scroll position stay.
+        const again = this.working !== undefined;
+        this.pendingDetails = undefined;
+        this.working = m.details;
+        this.renderChangesDetails(again);
+        break;
+      }
       case 'openBadgeFilter':
         this.badgeFilter.openWith(m.pattern);
         break;
@@ -823,6 +892,7 @@ class App {
         this.leftover = undefined;
         this.updateBanner();
         this.setStashes([]);
+        this.changes = undefined;
         this.commits = [];
         this.parentsOf.clear();
         this.findRewritable();
@@ -973,6 +1043,12 @@ class App {
     if (!r) return;
     if (r.scrollTop !== undefined || r.scrollAnchor !== undefined) r.keepScroll = true;
     const searchable = !this.done && this.commits.length < (r.searchLimit ?? RESTORE_SEARCH_LIMIT);
+    // The uncommitted changes row may be gone or not reported yet: HEAD stands in for it.
+    if (this.indexOf(CHANGES_ROW) < 0) {
+      if (r.selectedHash === CHANGES_ROW) r.selectedHash = this.refs.head;
+      if (r.scrollAnchor?.hash === CHANGES_ROW)
+        r.scrollAnchor = this.refs.head === undefined ? undefined : { ...r.scrollAnchor, hash: this.refs.head };
+    }
     if (r.scrollAnchor !== undefined) {
       const anchor = r.scrollAnchor;
       const index = this.indexOf(anchor.hash);
@@ -1067,7 +1143,7 @@ class App {
   private successor(index: number, stashes: readonly StashEntry[]): string | undefined {
     for (let i = index; i >= 0 && i < this.list.length; i++) {
       const row = this.list[i]!;
-      if (row.kind === 'commit' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
+      if (row.kind !== 'stash' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
     }
     return undefined;
   }
@@ -1158,13 +1234,19 @@ class App {
     if (!shown) this.closeFind();
   }
 
+  /** With uncommitted changes whose row is not in the graph (nor HEAD), the button carries a dot. */
   private updateHeadButton(): void {
     const head = this.refs.head;
     this.headButton.disabled = head === undefined;
-    this.headButton.title =
+    const unseen = this.changes !== undefined && this.commits.length > 0 && this.indexOf(CHANGES_ROW) < 0;
+    this.headButton.classList.toggle('dotted', unseen);
+    const title =
       head === undefined
         ? 'Go to HEAD: nothing is checked out yet'
         : `Go to HEAD (${this.refs.headBranch ?? `detached at ${shortHash(head)}`})`;
+    this.headButton.title = unseen
+      ? `${title}. ${describeChanges(this.changes!, this.refs.headBranch, this.options.path?.paths[0])}`
+      : title;
     this.headButton.setAttribute('aria-label', this.headButton.title);
   }
 
@@ -1675,7 +1757,9 @@ class App {
     const was = this.selectedHash();
     this.list = [];
     this.geometry.clear();
-    this.appendRows(interleave(this.commits, 0, this.anchors));
+    // Before the first page there are no rows: that page brings any row that goes first.
+    if (this.commits.length > 0 || this.done)
+      this.appendRows(interleave(this.commits, 0, this.anchors, this.changesAt()));
     const survivor = (i: number) => {
       for (let j = i; j < old.length; j++) {
         const k = this.indexOf(rowHash(old[j]!));
@@ -1685,7 +1769,9 @@ class App {
     };
     if (this.selected >= 0) this.selected = survivor(this.selected);
     this.syncSizer();
-    if (anchor >= 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
+    this.updateHeadButton();
+    // At the very top, a row added above the first one is shown rather than scrolled past.
+    if (anchor >= 0 && top > 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
     this.updateStashButton();
     if (this.selected >= 0 && this.selectedHash() !== was && this.expanded)
       this.select(this.selected, { reveal: false });
@@ -1729,6 +1815,11 @@ class App {
     this.restore = undefined;
     this.select(this.indexOf(oldest), { expand: true });
     return true;
+  }
+
+  /** Where the uncommitted changes row goes, if there is one. */
+  private changesAt(): ChangesAt | undefined {
+    return this.changes && { head: this.refs.head, summary: this.changes };
   }
 
   private appendRows(rows: readonly ListRow[]): void {
@@ -2086,6 +2177,7 @@ class App {
     this.selected = index;
     this.expanded = opts.expand ?? this.expanded;
     this.details = undefined;
+    this.working = undefined;
     this.openedFile = undefined;
     this.foldedFolders = new Set();
     this.bodyExpanded = false;
@@ -2094,7 +2186,8 @@ class App {
     if (this.expanded) {
       this.pendingDetails = hash;
       this.showLoading();
-      vscode.postMessage({ type: 'select', generation: this.generation, hash });
+      if (row.kind === 'changes') vscode.postMessage({ type: 'selectChanges', generation: this.generation });
+      else vscode.postMessage({ type: 'select', generation: this.generation, hash });
     }
     this.syncSizer();
     this.scroller.scrollTop = this.rowTop(index) - screenTop;
@@ -2138,6 +2231,7 @@ class App {
     this.expanded = false;
     this.revealExpansion = false;
     this.details = undefined;
+    this.working = undefined;
     this.pendingDetails = undefined;
     this.gap = 0;
     this.keepFocusInList(() => {
@@ -2206,7 +2300,7 @@ class App {
     }
     // Also when the new details are as tall as the previous ones (no resize): reveal them once,
     // now, rather than at some later unrelated resize.
-    if (this.revealExpansion && this.details) {
+    if (this.revealExpansion && (this.details || this.working)) {
       this.revealExpansion = false;
       this.ensureVisible(this.selected, true);
       this.queueRender();
@@ -2291,7 +2385,13 @@ class App {
    */
   private copyKey(e: KeyboardEvent): boolean {
     const row = this.list[this.selected];
-    if (!(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'c' || !row) return false;
+    if (
+      !(isMac ? e.metaKey : e.ctrlKey) ||
+      e.altKey ||
+      e.key.toLowerCase() !== 'c' ||
+      (row?.kind !== 'commit' && row?.kind !== 'stash')
+    )
+      return false;
     if ((getSelection()?.toString() ?? '') !== '') return false;
     // Kept from VS Code too, whose Ctrl+Shift+C opens an external terminal.
     e.preventDefault();
@@ -2399,7 +2499,7 @@ class App {
   /** A message in place of the list when there is nothing to show. */
   private renderEmpty(): void {
     let text: string | undefined;
-    if (this.commits.length === 0) {
+    if (this.list.length === 0) {
       if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
       else if (this.done && this.options.path) text = `${PATH_HISTORY.found(this.options.path.paths[0], 0)}.`;
       else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
@@ -2430,8 +2530,14 @@ class App {
     }
     // While several commits are selected, what Shift-click cannot add steps back.
     if (selection.length > 0 && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
+    if (r.kind === 'changes') {
+      this.fillChangesRow(row, r.changes);
+      this.markMenuTarget(row, i);
+      return row;
+    }
     if (r.kind === 'stash') {
       this.fillStashRow(row, r.stash);
+      if (this.belowChanges(i)) row.classList.add('head-chain');
       if (this.landing?.stash === r.stash.hash) this.markLanded(row);
       this.markMenuTarget(row, i);
       return row;
@@ -2545,6 +2651,36 @@ class App {
       vscode.postMessage({ type: 'openPathDiff', generation: this.generation, hash, beside: e.altKey });
     });
     return b;
+  }
+
+  /** Whether list row `i` is between the uncommitted changes row and HEAD (the stashes on HEAD). */
+  private belowChanges(i: number): boolean {
+    let j = i - 1;
+    while (this.list[j]?.kind === 'stash') j--;
+    return this.list[j]?.kind === 'changes';
+  }
+
+  /** "Uncommitted changes", then the counts: conflicts first, each with its icon, none of them zero. */
+  private fillChangesRow(row: HTMLElement, s: ChangesSummary): void {
+    row.classList.add('changes');
+    const subject = el('span', 'subject');
+    subject.append(el('span', 'text', 'Uncommitted changes'));
+    const counts = el('span', 'change-counts');
+    for (const c of changeCounts(s)) {
+      const count = el('span', `change-count change-${c.kind}`);
+      count.append(
+        codicon(CHANGE_ICON[c.kind]),
+        el('span', 'change-n', String(c.n)),
+        el('span', 'change-word', c.text.replace(/^\d+ /, '')),
+      );
+      counts.append(count);
+    }
+    subject.append(counts);
+    row.append(el('span', 'graph-spacer'), subject);
+    row.setAttribute('data-vscode-context', JSON.stringify(CHANGES_CONTEXT));
+    const label = describeChanges(s, this.refs.headBranch, this.options.path?.paths[0]);
+    row.title = label;
+    row.setAttribute('aria-label', label);
   }
 
   /**
@@ -2827,21 +2963,32 @@ class App {
     if (stash && d.stash) {
       const summary = el('div', 'section-title files-summary', `Changes (${d.files.length})`);
       if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
-      files.append(summary, this.fileTree(changes, d.files, 'Changes', new Set(d.stash.staged)));
+      const staged = new Set(d.stash.staged);
+      files.append(
+        summary,
+        this.fileTree(d.files, 'Changes', (f, name, depth) =>
+          this.fileItem(changes, f, name, depth, staged.has(f.path)),
+        ),
+      );
       const untracked = d.stash.untracked;
       if (untracked)
         files.append(
           el('div', 'section-title files-summary', `Untracked (${untracked.files.length})`),
-          this.fileTree({ hash: untracked.hash, base: undefined }, untracked.files, 'Untracked files'),
+          this.fileTree(untracked.files, 'Untracked files', (f, name, depth) =>
+            this.fileItem({ hash: untracked.hash, base: undefined }, f, name, depth, false),
+          ),
         );
     } else {
-      files.append(this.filesSummaryLine(d), this.fileTree(changes, d.files, 'Changed files'));
+      files.append(
+        this.filesSummaryLine(d),
+        this.fileTree(d.files, 'Changed files', (f, name, depth) => this.fileItem(changes, f, name, depth, false)),
+      );
     }
     this.showDetails(main, files);
   }
 
   /** Puts the message column and the files column (or what stands in for it) in the details pane. */
-  private showDetails(main: HTMLElement, files: HTMLElement): void {
+  private showDetails(main: HTMLElement, files: HTMLElement, keepScroll = false): void {
     const pane = this.expansion;
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
@@ -2855,11 +3002,14 @@ class App {
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
+    const scrolled = pane.scrollTop;
     // The fold button is positioned top right; after the content, it comes last in tab order.
-    pane.replaceChildren(layout, close);
+    this.keepFocusInList(() => {
+      pane.replaceChildren(layout, close);
+    });
     this.applyMetaOpen();
     this.measureTree();
-    pane.scrollTop = 0;
+    pane.scrollTop = keepScroll ? scrolled : 0;
     this.placeExpansion();
     this.layoutDetails();
     this.onExpansionResize();
@@ -3055,7 +3205,12 @@ class App {
         ),
       );
     } else
-      side.append(this.filesSummaryLine(d), this.fileTree({ hash: d.hash, base: d.base }, d.files, 'Changed files'));
+      side.append(
+        this.filesSummaryLine(d),
+        this.fileTree(d.files, 'Changed files', (f, name, depth) =>
+          this.fileItem({ hash: d.hash, base: d.base }, f, name, depth, false),
+        ),
+      );
     this.showDetails(main, side);
     if (!ed.saving) {
       field.focus({ preventScroll: true });
@@ -3081,6 +3236,65 @@ class App {
     else this.selectHash(first.hash, true);
     this.saveState();
     this.queueRender();
+  }
+
+  /**
+   * The unfolded uncommitted changes row: where the work tree is, buttons that hand the changes on
+   * (Source Control commits them; Strata does not), and the paths by group.
+   */
+  private renderChangesDetails(keepScroll: boolean): void {
+    const w = this.working;
+    if (!w) return;
+    const head = this.refs.head;
+    const on = this.refs.headBranch ?? (head === undefined ? undefined : `detached at ${shortHash(head)}`);
+    const byline = el('div', 'byline');
+    byline.append(el('span', 'byline-stash', 'Working tree'));
+    if (on !== undefined) byline.append(el('span', 'byline-sep', '·'), el('span', 'byline-branch', `on ${on}`));
+    const actions = el('div', 'details-actions');
+    const untracked = w.files.some((f) => f.group === 'untracked') || this.changes?.untracked === undefined;
+    // Strata does not commit: Commit... hands the changes to Source Control, where the message is written.
+    for (const [command, label] of [
+      ['strata.openScm', 'Commit...'],
+      ['strata.stash.push', COMMANDS['strata.stash.push'].title],
+      ...(untracked ? [['strata.stash.pushUntracked', COMMANDS['strata.stash.pushUntracked'].title] as const] : []),
+    ] as const) {
+      const b = el('button', command === 'strata.openScm' ? 'button primary' : 'button', label);
+      if (command === 'strata.openScm') b.title = 'Open Source Control to commit them';
+      b.dataset['command'] = command;
+      b.addEventListener('click', () => {
+        this.menuCommand(command, CHANGES_CONTEXT);
+      });
+      actions.append(b);
+    }
+    const main = el('div', 'details-main');
+    main.append(el('span', 'column-ruler'), byline, el('h2', 'details-subject', 'Uncommitted changes'), actions);
+    const files = el('div', 'details-files');
+    for (const g of CHANGE_GROUPS) {
+      const list = w.files.filter((f) => f.group === g.group);
+      if (list.length === 0) continue;
+      const summary = el('div', 'section-title files-summary', `${g.title} (${list.length})`);
+      if (g.compares !== undefined) summary.append(` · ${g.compares}`);
+      files.append(
+        summary,
+        this.fileTree(list, g.title, (f, name, depth) => this.changeItem(f, name, depth)),
+      );
+    }
+    if (w.truncated > 0)
+      files.append(el('div', 'details-note', `${w.truncated} more not listed: Source Control lists them all.`));
+    const path = this.options.path?.paths[0];
+    if (w.files.length === 0)
+      files.append(el('div', 'details-note', `No uncommitted changes${path === undefined ? '' : ` to ${path}`}.`));
+    else if (path !== undefined) files.append(el('div', 'details-note', `Only changes to ${path} are listed.`));
+    this.showDetails(main, files, keepScroll);
+    this.holdChangesActions();
+  }
+
+  /** The unfolded changes row's Stash buttons wait while an operation runs or is stopped, as their commands do. */
+  private holdChangesActions(): void {
+    for (const b of this.expansion.querySelectorAll<HTMLButtonElement>('.details-actions [data-command]')) {
+      const spec: CommandSpec = COMMANDS[b.dataset['command'] as CommandId];
+      b.disabled = spec.writes !== undefined && (this.busyLabel !== undefined || this.operation !== undefined);
+    }
   }
 
   /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
@@ -3283,7 +3497,7 @@ class App {
    * the details change size.
    */
   private layoutDetails(): void {
-    if (!this.details || !this.expanded || this.expansion.hidden) return;
+    if ((!this.details && !this.working) || !this.expanded || this.expansion.hidden) return;
     const layout = this.expansion.querySelector<HTMLElement>('.details-layout');
     const main = this.expansion.querySelector<HTMLElement>('.details-main');
     const files = this.expansion.querySelector<HTMLElement>('.details-files');
@@ -3378,21 +3592,20 @@ class App {
    * The changed files as a tree (role=tree): folders fold with a click, Left/Right or Enter;
    * Up/Down move between visible entries. Folded folders are remembered per commit.
    */
-  private fileTree(
-    source: FileSource,
-    files: readonly FileChange[],
+  private fileTree<F extends FileChange>(
+    files: readonly F[],
     label: string,
-    staged: ReadonlySet<string> = new Set(),
+    item: (f: F, name: string, depth: number) => HTMLElement,
   ): HTMLElement {
     const list = el('ul', 'files');
     list.setAttribute('role', 'tree');
     list.setAttribute('aria-label', label);
     // Folds are remembered per tree: a stash's changes and its untracked files can share folders.
     list.dataset['folds'] = `${label}:`;
-    const add = (nodes: FileTreeNode[], depth: number) => {
+    const add = (nodes: FileTreeNode<F>[], depth: number) => {
       for (const n of nodes) {
         if (n.kind === 'file') {
-          list.append(this.fileItem(source, n.change, n.name, depth, staged.has(n.change.path)));
+          list.append(item(n.change, n.name, depth));
           continue;
         }
         const li = el('li', depth > 0 ? 'list-row clickable folder nested' : 'list-row clickable folder');
@@ -3410,7 +3623,7 @@ class App {
         add(n.children, depth + 1);
       }
     };
-    add(buildFileTree([...files]), 0);
+    add(buildFileTree<F>([...files]), 0);
     // Folders holding a file of the path filter are open.
     const path = this.options.path;
     if (path)
@@ -3482,25 +3695,49 @@ class App {
     next?.focus();
   }
 
-  private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
-    const views = fileViews(f, source.base);
+  /** A file entry of a tree: its status letter and name, and where a rename came from. */
+  private fileEntry(f: FileChange, name: string, depth: number, status: string = f.status): HTMLElement {
     const li = el('li', `list-row clickable file status-${f.status}${depth > 0 ? ' nested' : ''}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'treeitem');
     li.setAttribute('aria-level', String(depth + 1));
     li.style.setProperty('--depth', String(depth));
     li.dataset['path'] = f.path;
-    li.dataset['views'] = views.join(' ');
-    const menu = fileMenuContext(source, f, views);
-    li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
-    if (this.options.path && inFilter(f.path, this.options.path)) li.classList.add('in-filter');
-    li.append(el('span', 'file-status', f.status));
+    li.append(el('span', 'file-status', status));
     const label = el('span', 'file-path');
     // The folder is the tree around it; a rename also shows where the file came from.
     label.append(el('span', 'file-name', name));
     if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
     li.append(label);
+    return li;
+  }
+
+  /** An uncommitted change: click or Enter opens it as Source Control does (openChange), Alt to the side. */
+  private changeItem(f: ChangedPath, name: string, depth: number): HTMLElement {
+    const li = this.fileEntry(f, name, depth, CHANGE_LETTER[f.group] ?? f.status);
+    const open = (beside: boolean) => {
+      vscode.postMessage({ type: 'openChange', generation: this.generation, file: f, beside });
+    };
+    li.title = `${f.path}\nClick: ${CHANGE_OPEN[f.group](f)} · Alt+Click: to the side`;
+    li.addEventListener('click', (e) => {
+      open(e.altKey);
+    });
+    li.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open(e.altKey);
+    });
+    return li;
+  }
+
+  private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
+    const views = fileViews(f, source.base);
+    const li = this.fileEntry(f, name, depth);
+    if (this.options.path && inFilter(f.path, this.options.path)) li.classList.add('in-filter');
+    li.dataset['views'] = views.join(' ');
+    const menu = fileMenuContext(source, f, views);
+    li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (staged) {
       const tag = el('span', 'chip chip-outline file-staged', 'staged');
       tag.title = 'Staged when it was stashed';
@@ -3590,7 +3827,8 @@ class App {
       done: this.done,
       restoring: this.restore !== undefined || this.headQuery !== undefined,
       selected: this.selectedHash(),
-      detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
+      detailsShown:
+        this.expanded && !this.expansion.hidden ? (this.details?.hash ?? (this.working && CHANGES_ROW)) : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       rowHashes: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
@@ -3802,12 +4040,15 @@ class App {
           : undefined,
       },
       badgeRules: this.badgeRules,
-      idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
-        (f) =>
+      idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some((f) => {
+        const actions = f.querySelector('.file-actions');
+        return (
+          actions !== null &&
           !f.matches(':hover') &&
           !f.matches(':has(:focus-visible), :focus-visible') &&
-          getComputedStyle(f.querySelector('.file-actions')!).visibility === 'visible',
-      ),
+          getComputedStyle(actions).visibility === 'visible'
+        );
+      }),
       selectionOutline: (() => {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
         if (!row) return 'none';
@@ -3824,7 +4065,7 @@ class App {
 
   private probeDetails(): ProbeState['details'] {
     const e = this.expansion;
-    if (!this.expanded || !this.details || e.hidden) return undefined;
+    if (!this.expanded || (!this.details && !this.working) || e.hidden) return undefined;
     const main = e.querySelector<HTMLElement>('.details-main');
     const files = e.querySelector<HTMLElement>('.details-files');
     const table = e.querySelector<HTMLElement>('.meta-table');

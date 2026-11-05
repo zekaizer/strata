@@ -112,6 +112,7 @@ export class GraphPanel implements vscode.Disposable {
       }),
       panel.onDidChangeViewState(() => {
         if (!panel.visible) this.post({ type: 'hidden' });
+        else this.controller?.shown?.shown();
       }),
       vscode.window.onDidChangeActiveColorTheme(() => {
         this.post({ type: 'init', theme: themeKind() });
@@ -323,6 +324,7 @@ export class GraphPanel implements vscode.Disposable {
         (title) => {
           this.panel.title = title;
         },
+        () => this.panel.visible,
       );
       const chosen = this.chosen;
       const path = this.chosenPath;

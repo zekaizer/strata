@@ -1,11 +1,12 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { readConflictResolution, readDiscardedByAbort } from '../../src/git/facts.ts';
-import { readAbortTarget, readOperationState, readWorktree } from '../../src/git/state.ts';
+import { readAbortTarget, readGraphStatus, readOperationState, readWorkingChanges } from '../../src/git/state.ts';
 import { createStash } from '../../src/git/stash.ts';
+import { parseStatus } from '../../src/core/repo-state.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -75,7 +76,15 @@ describe('repository state', () => {
   it('is idle in a clean repository', async () => {
     const d = repo();
     assert.equal(await readOperationState('git', d), undefined);
-    assert.deepEqual(await readWorktree('git', d), { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 });
+    assert.deepEqual(await readWorkingChanges('git', d), {
+      paths: [],
+      deleted: [],
+      staged: 0,
+      unstaged: 0,
+      submodules: 0,
+      conflicted: 0,
+      untracked: undefined,
+    });
   });
 
   it('counts staged and unstaged changes but not untracked files', async () => {
@@ -84,19 +93,59 @@ describe('repository state', () => {
     writeFileSync(join(d, 'other.txt'), 'staged\n');
     run(d, 'add', 'other.txt');
     writeFileSync(join(d, 'untracked.txt'), 'u\n');
-    const w = await readWorktree('git', d);
+    const w = await readWorkingChanges('git', d);
     assert.deepEqual([...w.paths].sort(), ['f.txt', 'other.txt']);
     assert.equal(w.staged, 1);
     assert.equal(w.unstaged, 1);
+    assert.equal(w.untracked, undefined);
+  });
+
+  it("counts the graph's untracked entries, a new folder as one, and conflicts apart", async () => {
+    const d = repo();
+    mkdirSync(join(d, 'notes'));
+    writeFileSync(join(d, 'notes', 'a.txt'), 'a\n');
+    writeFileSync(join(d, 'notes', 'b.txt'), 'b\n');
+    writeFileSync(join(d, 'u.txt'), 'u\n');
+    stop(d, 'merge', 'topic');
+    const w = parseStatus(await readGraphStatus('git', d, { untracked: true }), true);
+    assert.deepEqual(
+      { staged: w.staged, unstaged: w.unstaged, conflicted: w.conflicted, untracked: w.untracked },
+      { staged: 1, unstaged: 0, conflicted: 1, untracked: 2 },
+    );
+  });
+
+  it("reads only a path history's paths, and never writes the index", async () => {
+    const d = repo();
+    mkdirSync(join(d, 'notes'));
+    writeFileSync(join(d, 'notes', 'a:b.txt'), 'a\n');
+    writeFileSync(join(d, 'f.txt'), 'edited\n');
+    writeFileSync(join(d, 'other.txt'), 'edited\n');
+    // A file touched but not changed makes a plain git status refresh the index.
+    const g = join(d, 'g.txt');
+    writeFileSync(g, 'g\n');
+    run(d, 'add', 'g.txt');
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(g, later, later);
+    const index = join(d, '.git', 'index');
+    const before = readFileSync(index);
+    const out = await readGraphStatus('git', d, { untracked: true, paths: ['notes/', 'f.txt', 'g.txt'] });
+    assert.deepEqual(readFileSync(index), before);
+    run(d, 'status');
+    assert.notDeepEqual(readFileSync(index), before, 'a plain status refreshes it');
+    const w = parseStatus(out, true);
+    assert.deepEqual(
+      { paths: w.paths, unstaged: w.unstaged, untracked: w.untracked },
+      { paths: ['f.txt', 'g.txt'], unstaged: 1, untracked: 1 },
+    );
   });
 
   it('tells deletions from the index (git rm) from deleted files git still tracks', async () => {
     const d = repo();
     run(d, 'rm', '--quiet', 'f.txt');
-    const w = await readWorktree('git', d);
+    const w = await readWorkingChanges('git', d);
     assert.deepEqual(w.deleted, ['f.txt']);
     run(d, 'reset', '--quiet', '--', 'f.txt');
-    assert.deepEqual((await readWorktree('git', d)).deleted, []);
+    assert.deepEqual((await readWorkingChanges('git', d)).deleted, []);
   });
 
   it('reads a rebase stopped at a conflict, with its step, target and autostash', async () => {

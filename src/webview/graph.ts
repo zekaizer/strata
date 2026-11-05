@@ -32,9 +32,15 @@ const DANGLING = ROW_HEIGHT / 4;
 const stashX = (anchor: Row) => laneX(anchor.lane) - LANE_WIDTH / 2;
 
 type StashRow = Extract<ListRow, { kind: 'stash' }>;
+type ChangesRow = Extract<ListRow, { kind: 'changes' }>;
+/** A row whose dashed spine leaves its node in the gap left of the column below it. */
+type SpineRow = StashRow | ChangesRow;
 
-/** A stash row whose dashed spine runs down into its base, the commit it is drawn above. */
-const joined = (r: ListRow | undefined): r is StashRow => r?.kind === 'stash' && r.stash.anchor.kind !== 'tip';
+/**
+ * The uncommitted changes sit in HEAD's column when no line enters HEAD there from above, and
+ * otherwise in the gap left of it, like a stash: `head` is HEAD's layout row.
+ */
+const inHeadColumn = (head: Row) => !head.incoming.some((e) => e.lane === head.lane);
 
 /**
  * Draws list rows [first, last) into a canvas that covers the visible graph column.
@@ -62,7 +68,20 @@ export function drawGraph(
   gap: Gap | undefined,
 ): void {
   const color = (c: number) => theme.lanes[c % theme.lanes.length]!;
-  const stashColor = (r: StashRow) => (r.stash.autostash ? theme.stashWarning : theme.stash);
+  const spineColor = (r: SpineRow) =>
+    r.kind === 'changes' ? color(rows[r.row]?.color ?? 0) : r.stash.autostash ? theme.stashWarning : theme.stash;
+  /** A row whose spine runs down the gap into the node of the commit below (a stash's base, or HEAD). */
+  const joined = (r: ListRow | undefined): r is SpineRow =>
+    r?.kind === 'stash'
+      ? r.stash.anchor.kind !== 'tip'
+      : r?.kind === 'changes' && rows[r.row] !== undefined && !inHeadColumn(rows[r.row]!);
+  /** The uncommitted changes row in HEAD's column that list row `i` is below, past stash rows only. */
+  const changesAbove = (i: number): ChangesRow | undefined => {
+    let j = i - 1;
+    while (list[j]?.kind === 'stash') j--;
+    const r = list[j];
+    return r?.kind === 'changes' && rows[r.row] !== undefined && inHeadColumn(rows[r.row]!) ? r : undefined;
+  };
   const end = Math.min(last, list.length);
   ctx.lineWidth = theme.lineWidth;
   ctx.lineCap = 'round';
@@ -73,12 +92,23 @@ export function drawGraph(
     });
   };
   /** Dashed, with the dashes fixed to the list so they do not crawl while scrolling. */
-  const spine = (r: StashRow, path: (c: CanvasRenderingContext2D) => void, from: number) => {
+  const spine = (r: SpineRow, path: (c: CanvasRenderingContext2D) => void, from: number) => {
     ctx.save();
     ctx.setLineDash([2, 3]);
     ctx.lineDashOffset = from + scrollTop;
-    stroke(ctx, stashColor(r), path);
+    stroke(ctx, spineColor(r), path);
     ctx.restore();
+  };
+  /** The uncommitted changes' spine straight down HEAD's column from `from` to `to`. */
+  const headSpine = (r: ChangesRow, x: number, from: number, to: number) => {
+    spine(
+      r,
+      (c) => {
+        c.moveTo(x, from);
+        c.lineTo(x, to);
+      },
+      from,
+    );
   };
 
   for (let i = first; i < end; i++) {
@@ -94,8 +124,25 @@ export function drawGraph(
     const above = i > 0 ? list[i - 1] : undefined;
 
     for (const e of spans.passesAt(item.row)) vertical(e, top, bottom);
+    const chain = changesAbove(i);
+    if (item.kind === 'changes') {
+      for (const e of row.incoming) vertical(e, top, bottom);
+      const below = mid + theme.nodeRadius + 1;
+      if (inHeadColumn(row)) headSpine(item, x, below, bottom);
+      else
+        spine(
+          item,
+          (c) => {
+            c.moveTo(sx, below);
+            c.lineTo(sx, bottom);
+          },
+          below,
+        );
+      continue;
+    }
     if (item.kind === 'stash') {
       for (const e of row.incoming) vertical(e, top, bottom);
+      if (chain) headSpine(chain, x, top, bottom);
       const half = STASH_NODE / 2;
       if (joined(above))
         spine(
@@ -135,6 +182,7 @@ export function drawGraph(
         else c.bezierCurveTo(x, bottom, xo, mid, xo, bottom);
       });
     }
+    if (chain) headSpine(chain, x, top, mid - theme.nodeRadius - 3);
     // The spine of the stash above hooks into the node from the upper left, where no line enters.
     if (joined(above))
       spine(
@@ -164,17 +212,30 @@ export function drawGraph(
         },
         top,
       );
+    const chain = above.kind === 'changes' ? changesAbove(gap.after + 1) : changesAbove(gap.after);
+    if (chain && above.kind !== 'commit') headSpine(chain, laneX(aboveRow.lane), top, top + gap.height);
   }
 
   // Nodes last so lines never cover them.
   for (let i = first; i < end; i++) {
     const item = list[i]!;
     const row = rows[item.row];
+    const y = rowTop(i) + rowHeight(i) - ROW_HEIGHT / 2 - scrollTop;
+    // Before the first commit there is no HEAD to sit above: the first column.
+    if (item.kind === 'changes') {
+      changesNode(
+        ctx,
+        row ? (inHeadColumn(row) ? laneX(row.lane) : stashX(row)) : laneX(0),
+        y,
+        spineColor(item),
+        theme,
+      );
+      continue;
+    }
     if (!row) continue;
     const x = laneX(row.lane);
-    const y = rowTop(i) + rowHeight(i) - ROW_HEIGHT / 2 - scrollTop;
     if (item.kind === 'stash') {
-      ctx.strokeStyle = stashColor(item);
+      ctx.strokeStyle = spineColor(item);
       ctx.strokeRect(stashX(row) - STASH_NODE / 2, y - STASH_NODE / 2, STASH_NODE, STASH_NODE);
       continue;
     }
@@ -201,6 +262,21 @@ export function drawGraph(
       ctx.stroke();
     }
   }
+}
+
+/** A dashed ring: changes not committed yet, on top of HEAD. Hollow, so the row background shows through. */
+function changesNode(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, theme: GraphTheme): void {
+  const r = theme.nodeRadius + 0.5;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fill();
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.setLineDash([2, 2]);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function stroke(ctx: CanvasRenderingContext2D, color: string, path: (c: CanvasRenderingContext2D) => void): void {

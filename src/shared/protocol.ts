@@ -9,10 +9,16 @@ export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { PathFilter, PathOrigin } from '../core/path-filter.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { Leftover, OperationState } from '../core/repo-state.ts';
+import type { ChangedPath, ChangesSummary, Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry, StashShown } from '../core/stash.ts';
 import type { Where } from '../core/where.ts';
 import type { CommandId } from './commands.ts';
+
+/** The uncommitted changes as the unfolded row lists them; `truncated`: paths past the limit per group. */
+export interface WorkingDetails {
+  files: ChangedPath[];
+  truncated: number;
+}
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
 
@@ -85,6 +91,12 @@ export type HostToWebview =
   | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
+  /**
+   * The uncommitted changes in the work tree, sent after every reset and when any changed path or
+   * its state changes, even with the same counts; undefined when there are none (or the
+   * repository has no work tree).
+   */
+  | { type: 'changes'; generation: number; changes: ChangesSummary | undefined }
   /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */
   | { type: 'openBadgeFilter'; pattern: string }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
@@ -152,6 +164,8 @@ export type HostToWebview =
   /** How the path history, read to its end, starts. */
   | { type: 'pathOrigin'; generation: number; origin: PathOrigin }
   | { type: 'details'; generation: number; details: CommitDetails }
+  /** The answer to selectChanges. */
+  | { type: 'changesDetails'; generation: number; details: WorkingDetails }
   | { type: 'noRepository' }
   /** The panel was hidden behind another editor (VS Code knows; the webview's own events may not tell). */
   | { type: 'hidden' }
@@ -179,6 +193,13 @@ export type WebviewToHost =
     }
   | { type: 'loadMore'; generation: number; count: number }
   | { type: 'select'; generation: number; hash: string }
+  /** The uncommitted changes row unfolded or its changes moved: answered with changesDetails. */
+  | { type: 'selectChanges'; generation: number }
+  /**
+   * Opens an uncommitted change: a staged one as HEAD ↔ index, a changed one as index ↔ file, an
+   * untracked file itself, a conflicted one as Resolve Conflicts does.
+   */
+  | { type: 'openChange'; generation: number; file: ChangedPath; beside: boolean }
   | {
       type: 'openFile';
       generation: number;

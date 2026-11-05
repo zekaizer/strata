@@ -180,6 +180,14 @@ describe('graph title bar', () => {
   });
 });
 
+describe('uncommitted changes row menu', () => {
+  it('stashes the changes or hands them to Source Control; the HEAD row no longer stashes', () => {
+    assert.deepEqual(refActions('changes', {}), ['strata.stash.push', 'strata.stash.pushUntracked', 'strata.openScm']);
+    const head = refActions('commit', { strataIsHead: true });
+    assert.ok(!head.includes('strata.stash.push') && !head.includes('strata.stash.pushUntracked'));
+  });
+});
+
 describe('worktree menu', () => {
   it('opens, copies and removes a worktree; prunes one whose folder is gone', () => {
     assert.deepEqual(refActions('worktree', {}), [

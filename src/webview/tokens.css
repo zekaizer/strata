@@ -86,6 +86,15 @@
   --color-success: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
   --color-progress: var(--vscode-progressBar-background, var(--color-focus));
 
+  /* What git says of a file, as Source Control and the Explorer color it. */
+  --color-git-added: var(--vscode-gitDecoration-addedResourceForeground);
+  --color-git-modified: var(--vscode-gitDecoration-modifiedResourceForeground);
+  --color-git-deleted: var(--vscode-gitDecoration-deletedResourceForeground);
+  --color-git-renamed: var(--vscode-gitDecoration-renamedResourceForeground, var(--color-git-modified));
+  --color-git-staged: var(--vscode-gitDecoration-stageModifiedResourceForeground, var(--color-git-modified));
+  --color-git-untracked: var(--vscode-gitDecoration-untrackedResourceForeground);
+  --color-git-conflict: var(--vscode-gitDecoration-conflictingResourceForeground, var(--color-warning));
+
   /* Ref kinds: chips, the ref card and the head row. */
   --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
   --badge-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));

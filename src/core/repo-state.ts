@@ -1,3 +1,5 @@
+import type { FileChange, FileStatus } from './details.ts';
+
 /** Operations git can stop in the middle of, waiting for the user (conflicts, or `edit` in a rebase). */
 export type OperationKind = 'rebase' | 'merge' | 'cherryPick' | 'revert';
 
@@ -32,38 +34,164 @@ export const CONFLICTS_SHOWN = 50;
 /** Whether `text` still has git's conflict markers, or is binary (git writes no markers into it). */
 export const hasConflictMarkers = (text: string): boolean => text.includes('\0') || /^(?:<{7}|>{7})(?: |$)/m.test(text);
 
-/** Uncommitted changes to tracked files (untracked files are not counted: autostash leaves them alone). */
-export interface Worktree {
+/** Uncommitted changes. `paths` and the counts other than `untracked` cover tracked files only: autostash leaves untracked files alone. */
+export interface WorkingChanges {
   /** Paths with staged or unstaged changes, conflicts included. */
   paths: string[];
   /** Of `paths`, those deleted from the index (`git rm`): no file is left there for a path to match. */
   deleted: string[];
   staged: number;
+  /** Paths changed between the index and the work tree, conflicted ones not included. */
   unstaged: number;
   /** Submodules with changes inside them, which git stash never records. */
   submodules: number;
+  /** Unmerged paths. */
+  conflicted: number;
+  /** Untracked files; undefined when git was told not to look for them. */
+  untracked: number | undefined;
 }
 
-/** Parses `git status --porcelain=v2 -z --untracked-files=no`. */
-export function parseStatus(out: string): Worktree {
-  const w: Worktree = { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 };
+/** What the uncommitted changes row shows. */
+export type ChangesSummary = Pick<WorkingChanges, 'staged' | 'unstaged' | 'conflicted' | 'untracked' | 'submodules'>;
+
+/** One record of `git status --porcelain=v2 -z`. */
+type StatusRecord =
+  /** Ordinary ('1') or renamed/copied ('2'): XY are the index and work tree states, '.' for unchanged. */
+  | { kind: 'changed'; xy: string; sub: string; path: string; oldPath: string | undefined }
+  | { kind: 'unmerged'; path: string }
+  | { kind: 'untracked'; path: string };
+
+function* statusRecords(out: string): Generator<StatusRecord> {
   const records = out.split('\0');
   for (let i = 0; i < records.length; i++) {
     const r = records[i]!;
+    if (r.startsWith('? ')) {
+      yield { kind: 'untracked', path: r.slice(2) };
+      continue;
+    }
     // Fields before the path: ordinary 8, renamed/copied 9 (its original path is the next record), unmerged 10.
     const fields = { '1': 8, '2': 9, u: 10 }[r[0] ?? ''];
     if (fields === undefined) continue;
     const parts = r.split(' ');
-    const [, xy = '..', sub = 'N...'] = parts;
     const path = parts.slice(fields).join(' ');
-    w.paths.push(path);
-    if (r[0] === '1' && xy[0] === 'D') w.deleted.push(path);
-    if (r[0] === '2') i++;
-    if (r[0] !== 'u' && xy[0] !== '.') w.staged++;
-    if (r[0] === 'u' || xy[1] !== '.') w.unstaged++;
-    if (sub[0] === 'S' && (sub[2] === 'M' || sub[3] === 'U')) w.submodules++;
+    if (r[0] === 'u') yield { kind: 'unmerged', path };
+    else
+      yield {
+        kind: 'changed',
+        xy: parts[1] ?? '..',
+        sub: parts[2] ?? 'N...',
+        path,
+        oldPath: r[0] === '2' ? records[++i] : undefined,
+      };
+  }
+}
+
+/** What the uncommitted changes row shows; undefined when there is nothing to show. */
+export function changesSummary(w: WorkingChanges): ChangesSummary | undefined {
+  const { staged, unstaged, conflicted, untracked, submodules } = w;
+  if (staged + unstaged + conflicted + (untracked ?? 0) === 0) return undefined;
+  return { staged, unstaged, conflicted, untracked, submodules };
+}
+
+export interface ChangeCount {
+  kind: 'conflicted' | 'staged' | 'unstaged' | 'untracked';
+  n: number;
+  /** "4 conflicts", "2 staged", "3 changed", "1 untracked". */
+  text: string;
+}
+
+/** The counts the uncommitted changes row shows, conflicts first, none of them zero. */
+export function changeCounts(s: ChangesSummary): ChangeCount[] {
+  const counts: ChangeCount[] = [
+    { kind: 'conflicted', n: s.conflicted, text: `${s.conflicted} ${s.conflicted === 1 ? 'conflict' : 'conflicts'}` },
+    { kind: 'staged', n: s.staged, text: `${s.staged} staged` },
+    { kind: 'unstaged', n: s.unstaged, text: `${s.unstaged} changed` },
+    { kind: 'untracked', n: s.untracked ?? 0, text: `${s.untracked ?? 0} untracked` },
+  ];
+  return counts.filter((c) => c.n > 0);
+}
+
+/**
+ * What the uncommitted changes row says to a tooltip and a screen reader; `path`: the path history
+ * they were counted in.
+ */
+export function describeChanges(s: ChangesSummary, branch: string | undefined, path?: string): string {
+  const on = `${path === undefined ? '' : ` to ${path}`}${branch === undefined ? '' : ` on ${branch}`}`;
+  const notes = [
+    s.untracked === undefined ? 'Untracked files are not counted.' : '',
+    s.submodules > 0 ? 'git stash never records changes inside submodules.' : '',
+  ];
+  return [
+    `Uncommitted changes${on}: ${changeCounts(s)
+      .map((c) => c.text)
+      .join(', ')}.`,
+    ...notes,
+  ]
+    .filter((t) => t)
+    .join(' ');
+}
+
+/** Parses `git status --porcelain=v2 -z`; `untracked`: whether git was asked to list untracked files. */
+export function parseStatus(out: string, untracked = false): WorkingChanges {
+  const w: WorkingChanges = {
+    paths: [],
+    deleted: [],
+    staged: 0,
+    unstaged: 0,
+    submodules: 0,
+    conflicted: 0,
+    untracked: untracked ? 0 : undefined,
+  };
+  for (const r of statusRecords(out)) {
+    if (r.kind === 'untracked') {
+      if (w.untracked !== undefined) w.untracked++;
+      continue;
+    }
+    w.paths.push(r.path);
+    if (r.kind === 'unmerged') {
+      w.conflicted++;
+      continue;
+    }
+    if (r.xy[0] === 'D' && r.oldPath === undefined) w.deleted.push(r.path);
+    if (r.xy[0] !== '.') w.staged++;
+    if (r.xy[1] !== '.') w.unstaged++;
+    if (r.sub[0] === 'S' && (r.sub[2] === 'M' || r.sub[3] === 'U')) w.submodules++;
   }
   return w;
+}
+
+export type ChangeGroup = 'staged' | 'unstaged' | 'conflicted' | 'untracked';
+
+/** A path as the uncommitted changes row lists it; a path both staged and changed again is in two groups. */
+export interface ChangedPath extends FileChange {
+  group: ChangeGroup;
+}
+
+const STATUSES: ReadonlySet<string> = new Set<FileStatus>(['A', 'M', 'D', 'R', 'C', 'T']);
+const fileStatus = (c: string | undefined): FileStatus => (STATUSES.has(c ?? '') ? (c as FileStatus) : 'M');
+
+/**
+ * The changed paths of `git status --porcelain=v2 -z`, at most `limit` per group; `truncated`: how
+ * many more. A conflicted path is 'M' and an untracked one 'A' (as committing it would add it).
+ */
+export function listChanges(out: string, limit: number): { files: ChangedPath[]; truncated: number } {
+  const files: ChangedPath[] = [];
+  const counts: Record<ChangeGroup, number> = { staged: 0, unstaged: 0, conflicted: 0, untracked: 0 };
+  let truncated = 0;
+  const add = (group: ChangeGroup, status: FileStatus, path: string, oldPath?: string) => {
+    if (counts[group]++ >= limit) truncated++;
+    else files.push({ group, status, path, ...(oldPath === undefined ? {} : { oldPath }) });
+  };
+  for (const r of statusRecords(out)) {
+    if (r.kind === 'untracked') add('untracked', 'A', r.path);
+    else if (r.kind === 'unmerged') add('conflicted', 'M', r.path);
+    else {
+      if (r.xy[0] !== '.') add('staged', fileStatus(r.xy[0]), r.path, r.oldPath);
+      // The work tree side of a rename is a change to the new path.
+      if (r.xy[1] !== '.') add('unstaged', fileStatus(r.xy[1]), r.path);
+    }
+  }
+  return { files, truncated };
 }
 
 /** A stash by its commit (stable) and its current stash@{n} number. */

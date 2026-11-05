@@ -310,3 +310,38 @@ const menuDir = process.env['STRATA_MENU_SHOT_DIR'];
     });
   }
 });
+
+(shotDir ? describe : describe.skip)('tool: uncommitted changes screenshots', () => {
+  const file = (name: string) => join(workspaceRoot(), name);
+  before(() => {
+    writeFileSync(file('NOTES.md'), 'staged\n');
+    git('add', 'NOTES.md');
+    writeFileSync(file('main.txt'), 'edited\n');
+    writeFileSync(file('scratch.txt'), 'new\n');
+  });
+  after(() => {
+    git('reset', '--quiet');
+    git('checkout', '--', '.');
+    rmSync(file('NOTES.md'), { force: true });
+    rmSync(file('scratch.txt'), { force: true });
+  });
+
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      // The row above HEAD, unfolded into its groups.
+      await waitFor('changes row', async () => {
+        const s = await panel.probe();
+        return s.done && Object.values(s.rowHashes).includes('changes');
+      });
+      await panel.simulate({ kind: 'clickRow', index: 0 });
+      await waitFor('changes unfolded', async () => (await panel.probe()).detailsShown === 'changes');
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await mkdir(shotDir!, { recursive: true });
+      await screenshot(join(shotDir!, `changes-${id}.png`));
+      panel.dispose();
+    });
+  }
+});

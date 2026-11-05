@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { resolveStashChoices, type DirtyFacts, type StashChoices, type StashOp } from '../../core/autostash.ts';
 import { untrackedInTheWay } from '../../core/git-error.ts';
 import type { Operation } from '../../core/operations.ts';
-import { parseStatus, type Worktree } from '../../core/repo-state.ts';
+import { parseStatus, type WorkingChanges } from '../../core/repo-state.ts';
 import {
   autostashRefused,
   dirtySection,
@@ -21,13 +21,13 @@ import {
 import { readOverlap, readStash, readStashTop, readUnmerged, readUntrackedIn } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readOperationState, readWorktree } from '../../git/state.ts';
+import { readOperationState, readWorkingChanges } from '../../git/state.ts';
 import { finish, run, warnWithUndo, type Expect, type FlowHost, type Next, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 
 /** Uncommitted changes as an operation meets them, read right before it confirms. */
 export interface Changes {
-  worktree: Worktree;
+  working: WorkingChanges;
   /** Dirty paths the operation changes too. */
   overlap: string[];
   dirty: DirtyFacts;
@@ -40,16 +40,16 @@ export interface Changes {
 
 /** `touches`: the two commits whose difference is what the operation changes in the work tree. */
 export async function changes(host: FlowHost, op: StashOp, touches?: readonly [string, string]): Promise<Changes> {
-  const worktree = await readWorktree(host.git, host.cwd);
-  const overlap = touches === undefined ? [] : await readOverlap(host.git, host.cwd, touches, worktree.paths);
+  const working = await readWorkingChanges(host.git, host.cwd);
+  const overlap = touches === undefined ? [] : await readOverlap(host.git, host.cwd, touches, working.paths);
   // Changes inside submodules cannot be stashed and never block: they alone ask nothing.
-  const files = Math.max(0, worktree.paths.length - worktree.submodules);
-  const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0, fastForward: false };
+  const files = Math.max(0, working.paths.length - working.submodules);
+  const dirty = { files, staged: working.staged, overlap: overlap.length > 0, fastForward: false };
   const setting = host.settings().autoStash;
   const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting);
   const choices = resolve(dirty);
-  const section = choices.choices.length > 0 ? dirtySection(dirty, op, worktree.submodules) : '';
-  return { worktree, overlap, dirty, choices, section, resolve };
+  const section = choices.choices.length > 0 ? dirtySection(dirty, op, working.submodules) : '';
+  return { working, overlap, dirty, choices, section, resolve };
 }
 
 /** A stash as Strata names it. */
@@ -247,10 +247,10 @@ export async function execAutostash(host: FlowHost, exec: Exec, op: Operation): 
   if (!stash) return { kind: 'none' };
   if ((await readUnmerged(host.git, host.cwd)).length > 0) return { kind: 'conflicted', stash };
   // git applies a stash whole or not at all: it refused over local changes to files the stash changes.
-  const [changed, worktree] = await Promise.all([
+  const [changed, working] = await Promise.all([
     runGit(host.git, host.cwd, ['diff', '--name-only', '-z', '--no-renames', `${stash.hash}^1`, stash.hash, '--']),
-    readWorktree(host.git, host.cwd),
+    readWorkingChanges(host.git, host.cwd),
   ]);
-  const inTheWay = changed.split('\0').filter((p) => worktree.paths.includes(p));
+  const inTheWay = changed.split('\0').filter((p) => working.paths.includes(p));
   return { kind: 'refused', stash, reason: autostashRefused(inTheWay) };
 }

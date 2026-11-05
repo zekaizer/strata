@@ -29,13 +29,21 @@ export class GraphController implements vscode.Disposable {
   private readonly suggested = new Set<string>();
   private readonly disposables: vscode.Disposable[] = [];
   private readonly setTitle: (title: string) => void;
+  private readonly visible: () => boolean;
 
-  /** `title` names the panel. */
-  constructor(repos: RepoList, post: (m: HostToWebview) => void, env: FlowEnv, title: (title: string) => void) {
+  /** `title` names the panel; `visible` tells whether it is on screen. */
+  constructor(
+    repos: RepoList,
+    post: (m: HostToWebview) => void,
+    env: FlowEnv,
+    title: (title: string) => void,
+    visible: () => boolean,
+  ) {
     this.repos = repos;
     this.send = post;
     this.env = env;
     this.setTitle = title;
+    this.visible = visible;
     this.disposables.push(
       repos.onDidChange(() => {
         void this.follow();
@@ -164,6 +172,7 @@ export class GraphController implements vscode.Disposable {
       reveal: (key, hash) => {
         void this.reveal(key, hash);
       },
+      visible: this.visible,
     });
     this.unkeyed = undefined;
     return session;

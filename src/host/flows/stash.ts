@@ -24,7 +24,7 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readWorktree } from '../../git/state.ts';
+import { readWorkingChanges } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
 import { Outdated } from '../target.ts';
 import { finishRestoring, restore, runMovingUntracked } from './changes.ts';
@@ -49,7 +49,7 @@ const hasUntracked = async (host: FlowHost) =>
 
 export async function stashPush(host: FlowHost, includeUntracked: boolean): Promise<void> {
   const [wt, untracked] = await Promise.all([
-    readWorktree(host.git, host.cwd),
+    readWorkingChanges(host.git, host.cwd),
     includeUntracked ? hasUntracked(host) : Promise.resolve(false),
   ]);
   if (wt.paths.length === 0 && !untracked) {
@@ -132,7 +132,10 @@ export async function dropStash(host: FlowHost, hash: string): Promise<void> {
 
 export async function stashBranch(host: FlowHost, hash: string): Promise<void> {
   const s = await current(host, hash);
-  const [base, wt] = await Promise.all([readCommit(host.git, host.cwd, `${hash}^1`), readWorktree(host.git, host.cwd)]);
+  const [base, wt] = await Promise.all([
+    readCommit(host.git, host.cwd, `${hash}^1`),
+    readWorkingChanges(host.git, host.cwd),
+  ]);
   if (wt.paths.length > 0) {
     void host.ui.notify('info', stashBranchDirty(base.short));
     return;

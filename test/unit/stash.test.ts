@@ -145,13 +145,37 @@ describe('stash rows', () => {
     assert.deepEqual(shape(interleave([commit('A')], 0, anchoredAt([stash('s0', 0, 'Z')]))), ['A@0']);
   });
 
+  const summary = { staged: 1, unstaged: 2, conflicted: 0, untracked: 1, submodules: 0 };
+
+  it('draws the uncommitted changes above HEAD and the stashes on it', () => {
+    const rows = interleave([commit('A'), commit('B')], 5, anchoredAt([stash('s0', 0, 'B')]), { head: 'B', summary });
+    assert.deepEqual(shape(rows), ['A@5', 'changes@6', 's0@6', 'B@6']);
+    assert.deepEqual(rows[1], { kind: 'changes', changes: summary, row: 6 });
+  });
+
+  it('leaves out the uncommitted changes when HEAD is not in the page', () => {
+    assert.deepEqual(shape(interleave([commit('A')], 0, new Map(), { head: 'Z', summary })), ['A@0']);
+  });
+
+  it('draws the uncommitted changes first, with no layout row, before the first commit on the branch', () => {
+    const changes = { head: undefined, summary };
+    assert.deepEqual(shape(interleave([], 0, new Map(), changes)), ['changes@-1']);
+    assert.deepEqual(shape(interleave([commit('A')], 0, new Map(), changes)), ['changes@-1', 'A@0']);
+    assert.deepEqual(shape(interleave([commit('B')], 1, new Map(), changes)), ['B@1']);
+  });
+
   it('gives the same rows whether a history is interleaved whole or page by page', () => {
     const commits = Array.from({ length: 40 }, (_, i) => commit(`c${i}`));
     const stashes = [0, 0, 7, 19, 39].map((at, i) => stash(`s${i}`, i, `c${at}`));
     const anchors = anchoredAt(stashes);
-    const whole = interleave(commits, 0, anchors);
+    const changes = { head: 'c7', summary };
+    const whole = interleave(commits, 0, anchors, changes);
+    assert.ok(whole.some((r) => r.kind === 'changes'));
     for (let i = 0; i <= commits.length; i++) {
-      const split = [...interleave(commits.slice(0, i), 0, anchors), ...interleave(commits.slice(i), i, anchors)];
+      const split = [
+        ...interleave(commits.slice(0, i), 0, anchors, changes),
+        ...interleave(commits.slice(i), i, anchors, changes),
+      ];
       assert.deepEqual(split, whole, `split at ${i}`);
     }
   });
