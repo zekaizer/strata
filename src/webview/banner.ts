@@ -36,7 +36,10 @@ export interface Banner {
   warning: boolean;
   /** Names the region for screen readers, e.g. "Rebase in progress". */
   label: string;
+  /** The sentence that says what happened: the step and the conflicts come first. */
   parts: BannerPart[];
+  /** What else to know before acting, on a line of its own. */
+  more: string;
   actions: BannerAction[];
 }
 
@@ -81,6 +84,7 @@ export function bannerOf(
             parts: [
               `Restoring your stashed changes conflicted in ${fileList(leftover.files)}. They're safe in ${stash}.`,
             ],
+            more: '',
             actions: [RESOLVE, on('Show Stash', 'strata.showStash', leftover.stash.hash)],
           }
         : {
@@ -88,6 +92,7 @@ export function bannerOf(
             warning: false,
             label: 'Stashed changes',
             parts: [`Conflicts resolved. If all your changes are back, drop ${stash}.`],
+            more: '',
             actions: [
               on('Drop Stash...', 'strata.stash.drop', leftover.stash.hash),
               on('Keep It', 'strata.keepStash', leftover.stash.hash),
@@ -101,6 +106,7 @@ export function bannerOf(
         parts: [
           `Strata stashed your changes before ${/^[aeiou]/.test(leftover.operation) ? 'an' : 'a'} ${leftover.operation} and hasn't restored them: ${stash}.`,
         ],
+        more: '',
         actions: [
           on('Pop Stash', 'strata.stash.pop', leftover.stash.hash),
           on('Keep in Stash', 'strata.keepStash', leftover.stash.hash),
@@ -112,10 +118,8 @@ export function bannerOf(
         state: 'conflicts',
         warning: true,
         label: 'Conflicts',
-        parts: [
-          `${plural(leftover.count, 'file')} ${leftover.count === 1 ? 'has' : 'have'} conflicts.`,
-          ...(kept ? [` git kept stashed changes in ${stash} (autostash).`] : []),
-        ],
+        parts: [`${plural(leftover.count, 'file')} ${leftover.count === 1 ? 'has' : 'have'} conflicts.`],
+        more: kept ? `git kept stashed changes in ${stash} (autostash).` : '',
         actions: [RESOLVE, ...(kept ? [on('Show Stash', 'strata.showStash', kept.hash)] : [])],
       };
     }
@@ -144,11 +148,12 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
     const name = hash === undefined ? undefined : facts.name(hash);
     return name !== undefined ? [`'${name}'`] : hash !== undefined ? [short(hash)] : ['HEAD'];
   };
-  const banner = (state: BannerState, parts: BannerPart[], actions: BannerAction[]): Banner => ({
+  const banner = (state: BannerState, parts: BannerPart[], actions: BannerAction[], more = ''): Banner => ({
     state,
     warning: kind === 'stop',
     label,
     parts,
+    more,
     actions,
   });
 
@@ -164,20 +169,16 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
             : [...(subject === undefined ? [' ('] : [`, "${subject}" (`]), short(op.applying), ')'];
         return banner(
           'rebase',
+          [`Rebasing ${quote(op.branch)} onto `, ...named(op.onto), ` stopped${at}`, ...what, conflicts],
+          [RESOLVE, CONTINUE, SKIP, ABORT],
           [
-            `Rebasing ${quote(op.branch)} onto `,
-            ...named(op.onto),
-            ` stopped${at}`,
-            ...what,
-            conflicts,
             ...(op.branch === undefined
               ? []
-              : [` ${quote(op.branch)} keeps its old commits until the rebase finishes.`]),
+              : [`${quote(op.branch)} keeps its old commits until the rebase finishes.`]),
             ...(op.autostash
-              ? [' Your uncommitted changes are held by git and come back when the rebase finishes or is aborted.']
+              ? ['Your uncommitted changes are held by git and come back when the rebase finishes or is aborted.']
               : []),
-          ],
-          [RESOLVE, CONTINUE, SKIP, ABORT],
+          ].join(' '),
         );
       }
       const finishes: BannerPart[] =
@@ -201,14 +202,11 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
         return banner('mergeStopped', [...merging, '. Commit Merge records the merge.'], [COMMIT_MERGE, ABORT]);
       return banner(
         'merge',
-        [
-          ...merging,
-          conflicts,
-          ...(op.autostash
-            ? [' Your uncommitted changes are held by git and come back when the merge is committed or aborted.']
-            : []),
-        ],
+        [...merging, conflicts],
         [RESOLVE, COMMIT_MERGE, ABORT],
+        op.autostash
+          ? 'Your uncommitted changes are held by git and come back when the merge is committed or aborted.'
+          : '',
       );
     }
     case 'cherryPick':
@@ -253,11 +251,9 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
         );
       const held =
         leftover?.kind === 'pendingStash'
-          ? [
-              ` Your uncommitted changes are in stash@{${leftover.stash.index}} (Strata autostash); Strata restores them when you continue or abort here.`,
-            ]
-          : [];
-      return banner('sequencer', [...doing, conflicts, ...held], [RESOLVE, CONTINUE, SKIP, ABORT]);
+          ? `Your uncommitted changes are in stash@{${leftover.stash.index}} (Strata autostash); Strata restores them when you continue or abort here.`
+          : '';
+      return banner('sequencer', [...doing, conflicts], [RESOLVE, CONTINUE, SKIP, ABORT], held);
     }
   }
 }

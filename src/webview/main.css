@@ -396,18 +396,15 @@ body.vscode-high-contrast .banner {
   color: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground));
 }
 
-/*
- * The icon and the sentence share the first line; the buttons take the rest of it or wrap below.
- * At most two lines of the sentence show; its tooltip and screen readers have all of it.
- */
+/* The icon and the sentences share the first line; the buttons take the rest of it or wrap below. */
 .banner-text {
   flex: 1 1 260px;
   min-width: 0;
   margin-left: -6px;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
+}
+
+.banner-more {
+  display: block;
 }
 
 .banner-link {

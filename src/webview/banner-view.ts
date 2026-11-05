@@ -2,8 +2,8 @@ import type { Banner, BannerAction } from './banner.ts';
 import { el } from './format.ts';
 
 /**
- * The banner between the toolbar and the list (design §7.2): one sentence with commit links, then
- * buttons that run the graph's commands. It is a region before the list, so Shift+Tab reaches it.
+ * The banner between the toolbar and the list (design §7.2): a sentence with commit links, what
+ * else to know on a line of its own, then buttons that run the graph's commands. It is a region before the list, so Shift+Tab reaches it.
  */
 export class BannerView {
   readonly element = el('section', 'banner');
@@ -43,10 +43,10 @@ export class BannerView {
     this.element.setAttribute('aria-label', banner.label);
     const icon = el('span', `codicon codicon-${banner.warning ? 'warning' : 'info'} banner-icon`);
     icon.setAttribute('aria-hidden', 'true');
-    const text = el('span', 'banner-text');
+    const lead = el('span', 'banner-lead');
     for (const part of banner.parts) {
       if (typeof part === 'string') {
-        text.append(part);
+        lead.append(part);
         continue;
       }
       const link = el('button', 'link-button banner-link', part.short);
@@ -55,8 +55,11 @@ export class BannerView {
       link.addEventListener('click', () => {
         this.select(part.hash);
       });
-      text.append(link);
+      lead.append(link);
     }
+    const text = el('span', 'banner-text');
+    text.append(lead);
+    if (banner.more) text.append(el('span', 'banner-more', banner.more));
     const actions = el('span', 'banner-actions');
     banner.actions.forEach((action, i) => {
       const button = el('button', i === 0 ? 'banner-button primary' : 'banner-button', action.label);
@@ -65,7 +68,6 @@ export class BannerView {
       });
       actions.append(button);
     });
-    text.title = text.textContent;
     this.element.replaceChildren(icon, text, actions);
     this.holdActions();
     if (!focused) return;
@@ -91,8 +93,8 @@ export class BannerView {
     if (this.busy !== undefined) actions.prepend(el('span', 'banner-busy', `${this.busy}…`));
   }
 
-  /** The banner's sentence as read: links by their text. */
+  /** The banner's sentences as read: links by their text. */
   get text(): string {
-    return this.element.querySelector('.banner-text')?.textContent ?? '';
+    return [...this.element.querySelectorAll('.banner-lead, .banner-more')].map((e) => e.textContent).join(' ');
   }
 }
