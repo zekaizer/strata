@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { untrackedInTheWay, untrackedNotRestored } from '../../src/core/git-error.ts';
@@ -487,6 +487,37 @@ describe('operations refused by untracked files in the way', () => {
     await blocks(d, { kind: 'merge', ref: 'side', mode: 'noFastForward', autostash: true }, both);
     await blocks(d, { kind: 'rebase', onto: side(d), from: undefined, autostash: true }, both);
     assert.equal(run(d, 'diff', '--name-only'), 'f.txt', 'git put its autostash back');
+  });
+
+  /** What git 2.27 to 2.37 leave when they refuse a `merge --autostash`: the autostash, unapplied. */
+  const leaveMergeAutostash = (d: string) => {
+    writeFileSync(join(d, 'f.txt'), 'stashed\n');
+    const stash = run(d, 'stash', 'create');
+    run(d, 'reset', '--quiet', '--hard');
+    const file = join(d, run(d, 'rev-parse', '--git-path', 'MERGE_AUTOSTASH'));
+    writeFileSync(file, `${stash}\n`);
+    return { stash, file };
+  };
+  const refusedMerge: Operation = { kind: 'merge', ref: 'no-such-branch', mode: 'ff', autostash: true };
+
+  it('puts back the autostash a refused merge left unapplied', async () => {
+    const d = repo();
+    const { file } = leaveMergeAutostash(d);
+    await refused(d, refusedMerge);
+    assert.equal(readFileSync(join(d, 'f.txt'), 'utf8'), 'stashed\n', 'the changes are back');
+    assert.equal(existsSync(file), false, 'nothing is left for a later merge to apply');
+    assert.equal(run(d, 'stash', 'list'), '');
+  });
+
+  it('keeps in the stash list a left autostash that local changes keep from applying', async () => {
+    const d = repo();
+    const { stash, file } = leaveMergeAutostash(d);
+    writeFileSync(join(d, 'f.txt'), 'mine\n');
+    await refused(d, refusedMerge);
+    assert.equal(readFileSync(join(d, 'f.txt'), 'utf8'), 'mine\n', 'local changes stay');
+    assert.equal(run(d, 'rev-parse', 'refs/stash'), stash);
+    assert.equal(run(d, 'log', '-g', '--format=%gs', 'refs/stash'), 'autostash');
+    assert.equal(existsSync(file), false);
   });
 
   it('lists them for a cherry pick and a revert', async () => {
