@@ -1,11 +1,12 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { readConflictResolution, readDiscardedByAbort } from '../../src/git/facts.ts';
-import { readAbortTarget, readOperationState, readWorkingChanges } from '../../src/git/state.ts';
+import { readAbortTarget, readGraphStatus, readOperationState, readWorkingChanges } from '../../src/git/state.ts';
 import { createStash } from '../../src/git/stash.ts';
+import { parseStatus } from '../../src/core/repo-state.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -99,18 +100,34 @@ describe('repository state', () => {
     assert.equal(w.untracked, undefined);
   });
 
-  it('counts untracked files on request, each file of a new folder, and conflicts apart', async () => {
+  it("counts the graph's untracked entries, a new folder as one, and conflicts apart", async () => {
     const d = repo();
     mkdirSync(join(d, 'notes'));
     writeFileSync(join(d, 'notes', 'a.txt'), 'a\n');
     writeFileSync(join(d, 'notes', 'b.txt'), 'b\n');
     writeFileSync(join(d, 'u.txt'), 'u\n');
     stop(d, 'merge', 'topic');
-    const w = await readWorkingChanges('git', d, { untracked: true });
+    const w = parseStatus(await readGraphStatus('git', d, { untracked: true }), true);
     assert.deepEqual(
       { staged: w.staged, unstaged: w.unstaged, conflicted: w.conflicted, untracked: w.untracked },
-      { staged: 1, unstaged: 0, conflicted: 1, untracked: 3 },
+      { staged: 1, unstaged: 0, conflicted: 1, untracked: 2 },
     );
+  });
+
+  it('never writes the index', async () => {
+    const d = repo();
+    // A file touched but not changed makes a plain git status refresh the index.
+    const g = join(d, 'g.txt');
+    writeFileSync(g, 'g\n');
+    run(d, 'add', 'g.txt');
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(g, later, later);
+    const index = join(d, '.git', 'index');
+    const before = readFileSync(index);
+    await readGraphStatus('git', d, { untracked: true });
+    assert.deepEqual(readFileSync(index), before);
+    run(d, 'status');
+    assert.notDeepEqual(readFileSync(index), before, 'a plain status refreshes it');
   });
 
   it('tells deletions from the index (git rm) from deleted files git still tracks', async () => {

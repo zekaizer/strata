@@ -140,30 +140,31 @@ export async function readMessageEdits(git: string, cwd: string): Promise<string
   return messageEdits(done ?? '', todo ?? '');
 }
 
-/**
- * Uncommitted changes. Untracked files are scanned only with `untracked` (each file, as Source
- * Control lists them): slow on huge trees, and autostash ignores them.
- */
-export async function readWorkingChanges(
-  git: string,
-  cwd: string,
-  opts: { untracked?: boolean; limits?: GitLimits } = {},
-): Promise<WorkingChanges> {
-  return parseStatus(await readStatus(git, cwd, opts.untracked ?? false, opts.limits), opts.untracked ?? false);
+/** Uncommitted changes to tracked files, as an operation meets them: autostash leaves untracked files alone. */
+export async function readWorkingChanges(git: string, cwd: string): Promise<WorkingChanges> {
+  return parseStatus(
+    await runGit(git, cwd, ['status', '--porcelain=v2', '-z', '--untracked-files=no', '--ignore-submodules=none']),
+  );
 }
 
 /**
- * `git status --porcelain=v2 -z` output. `--no-optional-locks` when scanning untracked files: only
- * the graph asks for them, on its own schedule, and must not take index.lock from git commands
- * the user runs meanwhile.
+ * `git status --porcelain=v2 -z` as the graph reads it, on its own schedule. `--no-optional-locks`:
+ * it never takes index.lock from git commands the user runs meanwhile. `untracked`: also untracked
+ * files, a folder git does not ignore as one entry ("dir/"), so a huge one costs no more than a
+ * small one.
  */
-export function readStatus(git: string, cwd: string, untracked: boolean, limits?: GitLimits): Promise<string> {
+export function readGraphStatus(
+  git: string,
+  cwd: string,
+  opts: { untracked: boolean; limits?: GitLimits },
+): Promise<string> {
   const args = [
+    '--no-optional-locks',
     'status',
     '--porcelain=v2',
     '-z',
-    `--untracked-files=${untracked ? 'all' : 'no'}`,
+    `--untracked-files=${opts.untracked ? 'normal' : 'no'}`,
     '--ignore-submodules=none',
   ];
-  return runGit(git, cwd, untracked ? ['--no-optional-locks', ...args] : args, {}, limits);
+  return runGit(git, cwd, args, {}, opts.limits);
 }

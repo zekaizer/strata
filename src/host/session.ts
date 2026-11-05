@@ -8,6 +8,7 @@ import type { Ref, RefSnapshot } from '../core/refs.ts';
 import {
   changesSummary,
   listChanges,
+  parseStatus,
   type ChangedPath,
   type ChangesSummary,
   type Leftover,
@@ -30,7 +31,7 @@ import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
-import { readOperationState, readStatus, readWorkingChanges } from '../git/state.ts';
+import { readGraphStatus, readOperationState } from '../git/state.ts';
 import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost, WorkingDetails } from '../shared/protocol.ts';
 import { resolveConflicts } from './flows/changes.ts';
 import { setContext, type ContextKey } from './context.ts';
@@ -585,13 +586,13 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.changesDetailsQuery?.abort();
     const query = new AbortController();
     this.changesDetailsQuery = query;
-    const untracked = vscode.workspace.getConfiguration('git').get<string>('untrackedChanges') !== 'hidden';
     let details: WorkingDetails;
     try {
-      details = listChanges(
-        await readStatus(this.api.git.path, this.cwd, untracked, { signal: query.signal }),
-        CHANGES_LISTED,
-      );
+      const status = await readGraphStatus(this.api.git.path, this.cwd, {
+        untracked: this.scansUntracked(),
+        limits: { signal: query.signal },
+      });
+      details = listChanges(status, CHANGES_LISTED);
     } catch (e) {
       if (query.signal.aborted) return;
       throw e;
@@ -651,15 +652,25 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.syncShownFile();
   }
 
+  /** Whether the graph counts and lists untracked files: as Source Control does, unless they were too slow to count. */
+  private scansUntracked(): boolean {
+    return !this.untrackedSlow && vscode.workspace.getConfiguration('git').get<string>('untrackedChanges') !== 'hidden';
+  }
+
   /** The uncommitted changes; undefined without a work tree, null when the read was stopped. */
   private async readChanges(signal: AbortSignal): Promise<ChangesSummary | undefined | null> {
     const git = this.api.git.path;
     const cwd = this.cwd;
-    const hidden = vscode.workspace.getConfiguration('git').get<string>('untrackedChanges') === 'hidden';
-    const read = (untracked: boolean, timeoutMs?: number) =>
-      readWorkingChanges(git, cwd, { untracked, limits: { signal, ...(timeoutMs ? { timeoutMs } : {}) } });
+    const read = async (untracked: boolean, timeoutMs?: number) =>
+      parseStatus(
+        await readGraphStatus(git, cwd, {
+          untracked,
+          limits: { signal, ...(timeoutMs ? { timeoutMs } : {}) },
+        }),
+        untracked,
+      );
     try {
-      if (hidden || this.untrackedSlow) return changesSummary(await read(false));
+      if (!this.scansUntracked()) return changesSummary(await read(false));
       const started = performance.now();
       try {
         return changesSummary(await read(true, UNTRACKED_BUDGET_MS));
