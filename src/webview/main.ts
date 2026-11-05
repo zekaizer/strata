@@ -75,6 +75,7 @@ import { codicon, el, formatDate, formatShortDate, shortHash } from './format.ts
 import { drawGraph, graphWidth, laneX, LANE_WIDTH, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
 import { BadgeFilter } from './badge-filter.ts';
+import { keepToolbarFitting } from './toolbar-fit.ts';
 import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
 import { FindWidget, type FindCount } from './find.ts';
@@ -449,6 +450,7 @@ class App {
     ({ state: this.saved, unkeyed: this.unkeyed } = parseSaved(savedState()));
     this.metaOpen = this.saved.metaOpen ?? false;
     const refresh = el('button', 'icon-button codicon codicon-refresh');
+    const spacer = el('span', 'spacer');
     refresh.title = 'Refresh';
     refresh.setAttribute('aria-label', refresh.title);
     refresh.addEventListener('click', () => {
@@ -538,7 +540,7 @@ class App {
       this.switcher.label,
       this.switcher.button,
       this.status,
-      el('span', 'spacer'),
+      spacer,
       this.findButton,
       this.headButton,
       this.stashButton,
@@ -548,6 +550,7 @@ class App {
       this.firstParentButton,
       refresh,
     );
+    keepToolbarFitting(this.toolbar, { status: this.status, spacer });
 
     this.scroller.tabIndex = 0;
     this.scroller.setAttribute('role', 'listbox');

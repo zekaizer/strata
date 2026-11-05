@@ -28,7 +28,6 @@ body {
 }
 
 .toolbar {
-  container: toolbar / inline-size;
   position: relative;
   display: flex;
   align-items: center;
@@ -54,22 +53,37 @@ body {
   display: inline;
 }
 
-/* Narrow toolbars keep the icons and drop the labels. */
-@container toolbar (max-width: 420px) {
-  .first-parent-button .tool-label,
-  .stash-button .tool-label,
-  .badge-filter-button .tool-label,
-  .head-button .tool-label {
-    display: none;
-  }
-  .stash-count-narrow,
-  .badge-count-narrow:not(:empty) {
-    display: inline;
-  }
-  /* The commit count goes; a running operation and an error stay. */
-  .toolbar-status:not(.busy, .error) {
-    display: none;
-  }
+/* A toolbar too narrow for its contents shortens them step by step (toolbar-fit.ts). */
+.toolbar.fit-stash .stash-button .tool-label,
+.toolbar.fit-toggles :is(.first-parent-button, .badge-filter-button, .head-button) .tool-label,
+.toolbar.fit-filter .ref-filter-button .tool-label {
+  display: none;
+}
+
+.toolbar.fit-stash .stash-count-narrow,
+.toolbar.fit-toggles .badge-count-narrow:not(:empty) {
+  display: inline;
+}
+
+.toolbar.fit-path .path-chip,
+.toolbar.fit-filter .repo-button {
+  max-width: 120px;
+}
+
+.toolbar.fit-tight {
+  gap: var(--space-4);
+}
+
+.toolbar.fit-tight .path-chip .tool-label {
+  display: none;
+}
+
+.toolbar.fit-tight .repo-button {
+  max-width: 80px;
+}
+
+.toolbar.fit-status .toolbar-status:not(.busy, .error) {
+  display: none;
 }
 
 .toolbar .repo {
@@ -1387,12 +1401,6 @@ body:not(.hover-off) .file:hover .file-actions,
 .path-chip-clear.inline-button.codicon {
   height: 100%;
   color: inherit;
-}
-
-@container toolbar (max-width: 420px) {
-  .path-chip {
-    max-width: 120px;
-  }
 }
 
 /* Its lines start where the rows' text does. */

@@ -274,10 +274,29 @@ icon, `.banner-text` (`.banner-lead` with `.link-button.banner-link` commits, `.
 `.banner-actions` of `.button`s, which wrap under the text when narrow. While an operation runs the
 buttons are held (`aria-disabled`) and `.banner-busy` shows a spinner and the operation.
 
+### Toolbar
+
+The toolbar holds the repository, the status, then `.tool-button`s and `.icon-button`s. Its
+contents fit its width, down to 420px with every filter on: when they do not, `toolbar-fit.ts`
+shortens them in a fixed order until they do, each step a class on the toolbar that the later ones
+keep:
+
+| Step          | Drops                                                                         |
+| ------------- | ----------------------------------------------------------------------------- |
+| `fit-status`  | The status text, unless busy or failed (which then shrinks with an ellipsis)  |
+| `fit-stash`   | The stash label, for its count                                                |
+| `fit-toggles` | The labels of HEAD, Badges (for its count) and First parent                   |
+| `fit-path`    | Path chip text past 120px                                                     |
+| `fit-filter`  | The ref filter's label; repository name past 120px                            |
+| `fit-tight`   | Half the space between items; the path chip's text; repository name past 80px |
+
+A control whose label can go keeps its name in its tooltip and accessible name. Find and Refresh are
+icons at every width.
+
 ### Toolbar status
 
 `.toolbar-status`: muted text; `.busy` (foreground, spinner before it) and `.error`
-(`--color-danger`). Narrow toolbars hide it unless busy or failed.
+(`--color-danger`). The first toolbar step hides it unless busy or failed.
 
 ## Verifying
 
