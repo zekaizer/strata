@@ -15,6 +15,11 @@
     "url": "https://github.com/zekaizer/strata/issues"
   },
   "homepage": "https://github.com/zekaizer/strata#readme",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1b2230",
+    "theme": "dark"
+  },
   "engines": {
     "vscode": "^1.90.0",
     "node": ">=22.18"
@@ -24,6 +29,21 @@
   ],
   "categories": [
     "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "graph",
+    "git graph",
+    "git history",
+    "history",
+    "log",
+    "commit",
+    "branch",
+    "merge",
+    "rebase",
+    "cherry-pick",
+    "stash",
+    "tag"
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [

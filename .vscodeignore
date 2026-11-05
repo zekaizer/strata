@@ -6,3 +6,4 @@
 !dist/webview/*.js
 !dist/webview/*.css
 !dist/webview/codicons/**
+!media/icon.png
