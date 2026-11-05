@@ -9,6 +9,7 @@ import {
   outOfView,
   parseFindQuery,
 } from '../../src/core/find.ts';
+import type { PathFilter } from '../../src/core/path-filter.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
 import type { WorktreeInfo } from '../../src/core/worktrees.ts';
 
@@ -204,6 +205,15 @@ describe('outOfView', () => {
       action: { label: 'Show All Parents', firstParent: false },
     });
     assert.equal(outOfView(['refs/heads/main'], { ...picked, firstParent: true }).action?.label, 'Show All Parents');
+  });
+
+  it('offers every file again when a path history leaves the commit out', () => {
+    const path = { paths: ['src/a.ts'] } as unknown as PathFilter;
+    assert.deepEqual(outOfView(['refs/heads/main'], { ...all, path }), {
+      text: 'it does not change src/a.ts.',
+      action: { label: 'Show All Files', path: null },
+    });
+    assert.equal(outOfView(['refs/tags/v1'], { ...all, path }).action, undefined);
   });
 
   it('only says why when every branch is shown', () => {

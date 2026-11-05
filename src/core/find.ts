@@ -1,4 +1,5 @@
 import type { Commit } from './commit.ts';
+import type { PathFilter } from './path-filter.ts';
 import type { Ref, RefSnapshot } from './refs.ts';
 import type { WorktreeInfo } from './worktrees.ts';
 
@@ -99,7 +100,7 @@ export function matchCount(total: number, ordinal: number | undefined, more: boo
 export interface OutOfView {
   /** Completes "… is not in the graph: ", e.g. "the branch filter leaves it out." */
   text: string;
-  action?: { label: string; refs?: string[]; firstParent?: false };
+  action?: { label: string; refs?: string[]; firstParent?: false; path?: null };
 }
 
 /**
@@ -108,11 +109,17 @@ export interface OutOfView {
  */
 export function outOfView(
   reachedBy: readonly string[],
-  view: { refs: string[] | null; firstParent: boolean },
+  view: { refs: string[] | null; firstParent: boolean; path?: PathFilter | null },
 ): OutOfView {
   const short = (name: string) => name.replace(/^refs\/(heads|remotes|tags)\//, '');
   const shown = (name: string) =>
     view.refs === null ? /^refs\/(heads|remotes)\//.test(name) : view.refs.includes(name);
+  // A path history leaves out what does not change its paths, whatever else would show it.
+  if (view.path && reachedBy.some(shown))
+    return {
+      text: `it does not change ${view.path.paths[0]}.`,
+      action: { label: 'Show All Files', path: null },
+    };
   if (view.firstParent && reachedBy.some(shown))
     return {
       text: 'it is not on the first-parent line.',

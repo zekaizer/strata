@@ -1329,7 +1329,7 @@ class App {
     const offer = this.notShown;
     if (offer?.hash !== hash || offer.generation !== this.generation || !offer.action) return;
     this.notShown = undefined;
-    const { refs, firstParent } = offer.action;
+    const { refs, firstParent, path } = offer.action;
     this.selections++;
     this.restore = {
       selectedHash: hash,
@@ -1338,7 +1338,12 @@ class App {
       searchLimit: Infinity,
       page: FIND_PAGE,
     };
-    this.setOptions({ ...this.options, ...(refs ? { refs } : {}), ...(firstParent === false ? { firstParent } : {}) });
+    this.setOptions({
+      ...this.options,
+      ...(refs ? { refs } : {}),
+      ...(firstParent === false ? { firstParent } : {}),
+      ...(path === null ? { path } : {}),
+    });
   }
 
   /** Ends the jump once its restore found the match, gave up or was replaced (a click, a reload). */
