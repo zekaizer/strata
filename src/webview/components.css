@@ -1,0 +1,627 @@
+/*
+ * Shared components (docs/design-system.md). Values come from tokens.css; layouts specific to one
+ * view stay in main.css. Hover rules apply only without body.hover-off: when a click opens a diff
+ * the pointer can leave the iframe without a pointerleave, which would leave a highlight stuck.
+ */
+
+/*
+ * Buttons. Every button is --control-height tall. .tool-button (icon and label) and .icon-button
+ * (icon only) draw nothing until hovered; .inline-button sits in a line of text; .button is a
+ * push button; .link-button is a link.
+ */
+.tool-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  height: var(--control-height);
+  max-width: 200px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tool-button[hidden] {
+  display: none;
+}
+
+.tool-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-icon);
+  cursor: pointer;
+}
+
+.inline-button {
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* An icon in a line of secondary text. */
+.inline-button.codicon {
+  padding: 0 var(--space-2);
+  color: var(--color-icon);
+  font-size: var(--icon-size-sm);
+}
+
+body:not(.hover-off) :is(.tool-button, .icon-button, .inline-button):not(:disabled):hover {
+  background: var(--color-toolbar-hover);
+  outline: var(--toolbar-hover-outline);
+  outline-offset: -1px;
+}
+
+body:not(.hover-off) :is(.tool-button:not(.active), .icon-button, .inline-button):not(:disabled):active,
+.tool-button[aria-expanded='true']:not(.active) {
+  background: var(--color-toolbar-active);
+}
+
+:is(.tool-button, .icon-button):disabled {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+:is(.tool-button, .icon-button, .inline-button):focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -1px;
+}
+
+/* A toggle that is on. */
+.tool-button.active,
+body:not(.hover-off) .tool-button.active:hover {
+  background: var(--vscode-inputOption-activeBackground);
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+  color: var(--vscode-inputOption-activeForeground, var(--color-fg));
+}
+
+/* The focus ring would land on the 1px active border, which is nearly the same color. */
+.tool-button.active:focus-visible {
+  outline-offset: 1px;
+}
+
+/* Secondary by default; .primary for the one action a group leads with. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  box-sizing: border-box;
+  height: var(--control-height);
+  padding: 0 var(--space-8);
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  border-radius: var(--radius-sm);
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--color-fg));
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.button.primary {
+  border-color: var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+body:not(.hover-off) .button:not(:disabled, [aria-disabled='true']):hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--color-toolbar-hover));
+}
+
+body:not(.hover-off) .button.primary:not(:disabled, [aria-disabled='true']):hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* aria-disabled holds a button that keeps the focus it has. */
+.button:is(:disabled, [aria-disabled='true']) {
+  opacity: var(--opacity-disabled);
+  cursor: default;
+}
+
+/* A disabled primary button keeps no fill: faded, it would still stand out. */
+.button.primary:is(:disabled, [aria-disabled='true']) {
+  border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--color-fg));
+}
+
+.button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--space-2);
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-link);
+  font: inherit;
+  cursor: pointer;
+}
+
+body:not(.hover-off) .link-button:hover {
+  color: var(--color-link-active);
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  color: var(--color-disabled);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* High contrast themes mark links by more than their color. */
+body.vscode-high-contrast .link-button {
+  text-decoration: underline;
+}
+
+.link-button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* Text input. */
+.field {
+  box-sizing: border-box;
+  height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+  outline: none;
+}
+
+.field::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--color-muted));
+}
+
+.field:focus {
+  border-color: var(--color-focus);
+}
+
+.checkbox {
+  appearance: none;
+  display: inline-grid;
+  place-content: center;
+  flex: none;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  margin: 0;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-widget-border, currentColor));
+  border-radius: var(--radius-md);
+  background: var(--vscode-checkbox-background, transparent);
+  color: var(--vscode-checkbox-foreground, var(--color-fg));
+  cursor: pointer;
+}
+
+.checkbox:checked::after {
+  content: '';
+  width: 9px;
+  height: 5px;
+  margin-top: calc(-1 * var(--space-2));
+  border: solid currentColor;
+  border-width: 0 0 2px 2px;
+  transform: rotate(-45deg);
+}
+
+.checkbox:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 1px;
+}
+
+/* The title of a group of rows. */
+.section-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-strong);
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/*
+ * A row of a list: an icon, .list-row-text, an optional .list-row-note and trailing icon buttons.
+ * .clickable rows are the control themselves (a <label> around a checkbox, or a <button>).
+ */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--control-height);
+  padding: 0 var(--space-8);
+  border-radius: var(--radius-md);
+}
+
+.list-row.clickable {
+  cursor: pointer;
+}
+
+button.list-row {
+  width: 100%;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+/* background-color: the file tree draws its indent guides as a background image. */
+body:not(.hover-off) .list-row.clickable:hover {
+  background-color: var(--color-hover);
+  outline: var(--hover-outline);
+  outline-offset: -1px;
+}
+
+.list-row:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.list-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-row-note {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+/*
+ * A dialog under a toolbar button (popover.ts). Top to bottom: a .popover-header, .popover-actions,
+ * a scrolling .popover-list of .section-title, .list-row and .popover-note, then .popover-section
+ * blocks that stay in view. Text lines up at --space-4 + --space-8 from the edges.
+ */
+.popover {
+  position: absolute;
+  top: calc(var(--toolbar-height) - var(--space-2));
+  right: var(--space-8);
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  width: min(320px, calc(100vw - 2 * var(--space-8)));
+  max-height: min(420px, 70vh);
+  padding: var(--space-4);
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
+  border-radius: var(--radius-lg);
+  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-quickInput-foreground, var(--color-fg));
+  box-shadow: var(--shadow);
+}
+
+.popover.wide {
+  width: min(420px, calc(100vw - 2 * var(--space-8)));
+}
+
+.popover[hidden],
+.popover-section[hidden],
+.popover-actions[hidden] {
+  display: none;
+}
+
+/* A field, with a label above and a summary and buttons below when it needs them. */
+.popover-header {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+}
+
+/* Nothing in it shown: it takes no room. */
+.popover-header:not(:has(> :not([hidden]))) {
+  display: none;
+}
+
+.popover-label {
+  font-weight: var(--font-weight-strong);
+}
+
+.popover-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.popover-summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-muted);
+}
+
+/* Link buttons. */
+.popover-actions {
+  display: flex;
+  gap: var(--space-12);
+  padding: var(--space-4) var(--space-8);
+}
+
+.popover-list {
+  overflow: auto;
+}
+
+.popover .section-title {
+  padding: var(--space-8) var(--space-8) var(--space-2);
+}
+
+/* "N more" under a capped list, or what an empty list says. */
+.popover-note {
+  padding: var(--space-4) var(--space-8);
+  color: var(--color-muted);
+}
+
+/* Below the list, which scrolls: a section stays in view, ruled off across the whole popover. */
+.popover-section {
+  flex: none;
+  margin: var(--space-4) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-2) var(--space-4) 0;
+  border-top: var(--divider);
+}
+
+/*
+ * A ref, a stash or a short label. Kinds set --chip-color; a chip is tinted with it unless
+ * .chip-outline. --chip-edge, --chip-tint and --chip-icon (percentages of --chip-color) let a
+ * context quiet a chip without knowing its kind. In a row's ref band a chip is a .badge.
+ */
+.chip {
+  --chip-color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  box-sizing: border-box;
+  max-width: 100%;
+  height: var(--chip-height);
+  overflow: hidden;
+  padding: 0 var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--chip-color) var(--chip-edge, 100%), transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--chip-color) var(--chip-tint, 16%), transparent);
+  font-size: var(--font-size-xs);
+  line-height: calc(var(--chip-height) - 2px);
+  white-space: nowrap;
+}
+
+.chip .codicon {
+  flex: none;
+  font-size: inherit;
+  color: color-mix(in srgb, var(--chip-color) var(--chip-icon, 100%), transparent);
+}
+
+.chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-branch {
+  --chip-color: var(--badge-branch);
+}
+
+.chip-remote {
+  --chip-color: var(--badge-remote);
+}
+
+.chip-tag {
+  --chip-color: var(--badge-tag);
+}
+
+.chip-stash {
+  --chip-color: var(--badge-stash);
+}
+
+.chip-head {
+  --chip-color: var(--badge-head);
+  --chip-tint: 30%;
+  font-weight: var(--font-weight-strong);
+}
+
+.chip-warning {
+  --chip-color: var(--color-warning);
+}
+
+/* A label rather than a ref: an outline in the text color, no tint. */
+.chip-outline {
+  border-color: currentColor;
+  background: none;
+  color: var(--color-muted);
+}
+
+.chip-outline.chip-warning {
+  color: var(--chip-color);
+}
+
+.chip-outline .codicon {
+  color: inherit;
+}
+
+/* In a ref band: may shrink to its icon, and its square corner points down at the subject. */
+.chip.badge {
+  flex: 0 1 auto;
+  min-width: calc(var(--font-size-xs) + 2 * var(--space-4) + 2px);
+  max-width: 200px;
+  border-bottom-left-radius: 0;
+}
+
+/* A hover card: shown on pointer rest, takes no pointer events (ref-card.ts). */
+.card {
+  position: fixed;
+  z-index: var(--z-card);
+  display: flex;
+  flex-direction: column;
+  max-width: min(360px, calc(100vw - 2 * var(--space-4)));
+  padding: var(--space-4) var(--space-8);
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent));
+  border-radius: var(--radius-md);
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--color-fg));
+  line-height: var(--line-height);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.card[hidden] {
+  display: none;
+}
+
+/* A rule across the whole card, through its padding. */
+.card-divider {
+  height: 1px;
+  margin: var(--space-4) calc(-1 * var(--space-8));
+  background: var(--vscode-editorHoverWidget-border, var(--color-border));
+}
+
+/*
+ * The operation in progress, or what one left behind, between the toolbar and the list: the
+ * sentence first, the buttons at the end of the line, or on a line of their own when narrow.
+ */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+  flex: none;
+  padding: var(--space-4) var(--space-8) var(--space-4) var(--space-16);
+  border-bottom: 1px solid var(--vscode-inputValidation-infoBorder, var(--color-focus));
+  background: var(--vscode-inputValidation-infoBackground, transparent);
+  color: var(--vscode-inputValidation-infoForeground, var(--color-fg));
+  line-height: var(--line-height);
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner.warning {
+  border-bottom-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+  color: var(--vscode-inputValidation-warningForeground, var(--color-fg));
+}
+
+body.vscode-high-contrast .banner {
+  border-top: 1px solid var(--vscode-contrastBorder);
+  border-bottom-color: var(--vscode-contrastBorder);
+}
+
+.banner-icon.codicon {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 1px;
+  font-size: var(--icon-size);
+  color: var(--vscode-notificationsInfoIcon-foreground, var(--color-fg));
+}
+
+.banner.warning .banner-icon.codicon {
+  color: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground));
+}
+
+/* The icon and the sentences share the first line; the buttons take the rest of it or wrap below. */
+.banner-text {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin-left: calc(-1 * var(--space-4));
+}
+
+.banner-more {
+  display: block;
+}
+
+.banner-link {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
+/* Held while an operation runs (banner-view.ts), which the action area says. */
+.banner-busy {
+  white-space: nowrap;
+}
+
+/* What the view shows (commit count), a Strata operation running, or an error. */
+.toolbar-status {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-muted);
+}
+
+.toolbar-status.error {
+  color: var(--color-danger);
+}
+
+.toolbar-status.busy {
+  color: var(--color-fg);
+}
+
+/* A running operation: its label after a spinner (codicon-loading). */
+.toolbar-status.busy::before,
+.banner-busy::before {
+  display: inline-block;
+  margin-right: var(--space-4);
+  vertical-align: -3px;
+  font: normal normal normal var(--icon-size) / 1 codicon;
+  content: '\eb19';
+  animation: codicon-spin var(--duration-spin) steps(30) infinite;
+}
+
+body.vscode-reduce-motion :is(.toolbar-status.busy, .banner-busy)::before {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(.toolbar-status.busy, .banner-busy)::before {
+    animation: none;
+  }
+}
+
+/* Visually hidden, still read by screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

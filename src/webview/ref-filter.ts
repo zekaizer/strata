@@ -21,13 +21,13 @@ export class RefFilter {
   readonly button = el('button', 'tool-button ref-filter-button');
   private readonly label = el('span', 'tool-label');
   private readonly popover = el('div', 'popover');
-  private readonly search = el('input', 'popover-search');
+  private readonly search = el('input', 'field popover-search');
   private readonly list = el('div', 'popover-list');
   private readonly currentButton = el('button', 'link-button popover-current', 'Current branch');
   /** Shown when there are stashes: whether they are drawn as rows. */
   private readonly stashes = el('div', 'popover-section popover-stashes');
-  private readonly stashBox = el('input');
-  private readonly stashLabel = el('span', 'popover-item-text');
+  private readonly stashBox = el('input', 'checkbox');
+  private readonly stashLabel = el('span', 'list-row-text');
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private selected: Set<string> | null = null;
   private readonly events: RefFilterEvents;
@@ -66,11 +66,13 @@ export class RefFilter {
     this.stashBox.addEventListener('change', () => {
       events.onShowStashes(this.stashBox.checked);
     });
-    const stashItem = el('label', 'popover-item');
+    const stashItem = el('label', 'list-row clickable');
     stashItem.append(this.stashBox, codicon('git-stash'), this.stashLabel);
-    this.stashes.append(el('div', 'popover-group', 'Stashes'), stashItem);
+    this.stashes.append(el('div', 'section-title', 'Stashes'), stashItem);
     this.stashes.hidden = true;
-    this.popover.append(this.search, actions, this.list, this.stashes);
+    const header = el('div', 'popover-header');
+    header.append(this.search);
+    this.popover.append(header, actions, this.list, this.stashes);
     host.append(this.popover);
     dismissable(this.popover, this.button, () => {
       this.close();
@@ -157,19 +159,19 @@ export class RefFilter {
             a.short.localeCompare(b.short),
         );
       if (refs.length === 0) continue;
-      items.push(el('div', 'popover-group', g.label));
+      items.push(el('div', 'section-title', g.label));
       for (const r of refs.slice(0, MAX_PER_GROUP)) items.push(this.item(r, g.icon));
       if (refs.length > MAX_PER_GROUP)
-        items.push(el('div', 'popover-more', `${refs.length - MAX_PER_GROUP} more; type to narrow`));
+        items.push(el('div', 'popover-note', `${refs.length - MAX_PER_GROUP} more; type to narrow`));
     }
-    if (items.length === 0) items.push(el('div', 'popover-more', 'No refs match'));
+    if (items.length === 0) items.push(el('div', 'popover-note', 'No refs match'));
     this.list.replaceChildren(...items);
   }
 
   private item(r: Ref, icon: string): HTMLElement {
-    const label = el('label', 'popover-item');
+    const label = el('label', 'list-row clickable');
     label.title = r.name;
-    const box = el('input');
+    const box = el('input', 'checkbox');
     box.type = 'checkbox';
     box.checked = this.selected?.has(r.name) ?? false;
     box.dataset['ref'] = r.name;
@@ -180,7 +182,7 @@ export class RefFilter {
       else next.delete(r.name);
       this.commit(next);
     });
-    label.append(box, codicon(icon), el('span', 'popover-item-text', r.short));
+    label.append(box, codicon(icon), el('span', 'list-row-text', r.short));
     return label;
   }
 }

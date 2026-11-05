@@ -20,8 +20,8 @@ export class RepoSwitcher {
   readonly label = el('span', 'repo');
   readonly button = el('button', 'tool-button repo-button');
   private readonly buttonText = el('span', 'tool-label repo');
-  private readonly popover = el('div', 'popover repo-popover');
-  private readonly search = el('input', 'popover-search');
+  private readonly popover = el('div', 'popover wide repo-popover');
+  private readonly search = el('input', 'field popover-search');
   private readonly list = el('div', 'popover-list');
   private repos: RepoItem[] = [];
   private shown: string | undefined;
@@ -59,7 +59,9 @@ export class RepoSwitcher {
     this.popover.hidden = true;
     this.popover.setAttribute('role', 'dialog');
     this.popover.setAttribute('aria-label', 'Show repository');
-    this.popover.append(this.search, this.list);
+    const header = el('div', 'popover-header');
+    header.append(this.search);
+    this.popover.append(header, this.list);
     host.append(this.popover);
     dismissable(this.popover, this.button, () => {
       this.close();
@@ -134,7 +136,7 @@ export class RepoSwitcher {
     );
     this.list.replaceChildren(
       ...matching.map((r) => {
-        const row = el('button', 'popover-item repo-row');
+        const row = el('button', 'list-row clickable repo-row');
         row.dataset['root'] = r.root;
         row.setAttribute('role', 'option');
         const shown = r.root === this.shown;
@@ -155,7 +157,7 @@ export class RepoSwitcher {
         return row;
       }),
     );
-    if (matching.length === 0) this.list.append(el('div', 'popover-more', 'No repository matches'));
+    if (matching.length === 0) this.list.append(el('div', 'popover-note', 'No repository matches'));
     if (focused !== undefined)
       this.rows()
         .find((r) => r.dataset['root'] === focused)

@@ -92,7 +92,7 @@ export class BannerView {
     actions.setAttribute('role', 'toolbar');
     actions.setAttribute('aria-label', 'Actions');
     banner.actions.forEach((action, i) => {
-      const button = el('button', i === 0 ? 'banner-button primary' : 'banner-button', action.label);
+      const button = el('button', i === 0 ? 'button primary banner-button' : 'button banner-button', action.label);
       button.tabIndex = i === 0 ? 0 : -1;
       button.addEventListener('click', () => {
         if (this.busy === undefined) this.run(action);
