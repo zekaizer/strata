@@ -222,6 +222,8 @@ export interface ProbeState {
   detailsSubject: string | undefined;
   /** Whether hover highlights are off because the pointer left the webview (or it was hidden). */
   hoverSuppressed: boolean;
+  /** Computed background and box-shadow of each rendered commit row, by row index. */
+  rowPaint: Record<number, { background: string; boxShadow: string }>;
   /** Width of the commit list in CSS px. */
   listWidth: number;
   /** Height of the commit list's visible part in CSS px. */

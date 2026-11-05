@@ -2444,6 +2444,12 @@ class App {
         ? (this.expansion.querySelector('.details-subject')?.textContent ?? undefined)
         : undefined,
       hoverSuppressed: document.body.classList.contains('hover-off'),
+      rowPaint: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row:not(.stash)')].map((r) => {
+          const style = getComputedStyle(r);
+          return [Number(r.dataset['index']), { background: style.backgroundColor, boxShadow: style.boxShadow }];
+        }),
+      ),
       listWidth: this.scroller.clientWidth,
       listHeight: this.scroller.clientHeight,
       menuContexts: {
