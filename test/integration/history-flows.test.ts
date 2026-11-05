@@ -264,6 +264,50 @@ describe('history operations', () => {
     await waitFor('no banner', async () => (await panel().probe()).banner === undefined);
   });
 
+  it('undoes a rebase that stopped and then finished with Continue, back to where it started', async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    const tip = git('rev-parse', 'HEAD');
+    ui.press('Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.deepEqual(ui.of('notify').at(-1), {
+      kind: 'notify',
+      level: 'info',
+      message: 'Finished the rebase',
+      actions: ['Undo'],
+    });
+    assert.equal(api().contextValue('strata.canUndo'), true);
+    await run('strata.undo');
+    assert.equal(git('branch', '--show-current'), 'strata-topic');
+    assert.equal(git('rev-parse', 'HEAD'), tip);
+  });
+
+  it('undoes a merge and a cherry pick that stopped and then finished with Continue', async () => {
+    const before = git('rev-parse', 'HEAD');
+    const picked = await conflicting();
+    await run('strata.cherryPick', commitMenu(picked));
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    await run('strata.operation.continue');
+    assert.equal(git('log', '-1', '--format=%s'), 'main.txt: picked');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'HEAD'), before);
+
+    ui.press('Merge');
+    await run('strata.merge', branchMenu('strata-pick', picked));
+    assert.equal(api().contextValue('strata.operation'), 'merge');
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    await run('strata.operation.continue');
+    assert.equal(git('rev-parse', 'HEAD^2'), picked);
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'HEAD'), before);
+    assert.equal(git('status', '--porcelain', '--untracked-files=no'), '');
+  });
+
   it('aborts a rebase that stopped, and git gives back the changes it stashed', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');

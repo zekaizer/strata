@@ -115,7 +115,13 @@ async function head(host: FlowHost): Promise<Head> {
 }
 
 /** Undo of a move of HEAD's branch: back where it was, keeping uncommitted changes. */
-const moveUndo = (host: FlowHost, label: string, h: Head, after: string, mode: ResetMode = 'keep'): Undo => ({
+const moveUndo = (
+  host: FlowHost,
+  label: string,
+  h: Pick<Head, 'branch' | 'hash'>,
+  after: string,
+  mode: ResetMode = 'keep',
+): Undo => ({
   label,
   repo: host.cwd,
   guard: { kind: 'head', ref: headRef(h.branch), before: h.hash, after },
@@ -482,7 +488,8 @@ async function restoreHeld(host: FlowHost, exec: Exec, state: OperationState): P
 /**
  * Continue, Abort or Skip, and what follows: stopping again, or restoring stashed changes. `keep`:
  * first stash the uncommitted changes the Abort or Skip would discard, in a stash of that message
- * that Strata never pops.
+ * that Strata never pops. `started`: where the operation started, which Undo goes back to once it
+ * has finished.
  */
 async function settle(
   host: FlowHost,
@@ -490,7 +497,7 @@ async function settle(
   label: string,
   op: Operation,
   done: (kept: string | undefined) => string,
-  keep?: string,
+  { keep, started }: { keep?: string | undefined; started?: string } = {},
 ): Promise<void> {
   let kept: string | undefined;
   const r = await runStoppable(host, () =>
@@ -501,13 +508,20 @@ async function settle(
     }),
   );
   if (!r) return;
-  const [after, stash] = await Promise.all([
+  const [after, stash, still] = await Promise.all([
     readHead(host.git, host.cwd),
     kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
+    // A rebase's Continue exits 0 when it stops at its next edit.
+    started === undefined ? undefined : readOperationState(host.git, host.cwd),
   ]);
+  const undo =
+    started === undefined || still !== undefined
+      ? undefined
+      : moveUndo(host, opName(state.kind), { branch: state.branch, hash: started }, after.hash);
   await finishWithRestore(host, r, {
     message: done(stash && stashLabel(stash.index, stash.message)),
     focus: after.hash,
+    ...(undo ? { undo } : {}),
   });
 }
 
@@ -530,7 +544,10 @@ export async function continueOperation(host: FlowHost): Promise<void> {
     return;
   }
   const op: Operation = { kind: 'continue', operation: state.kind };
-  await settle(host, state, HISTORY_DOING.continuing(state.kind), op, () => HISTORY_DONE.continued(state.kind));
+  const started = await readAbortTarget(host.git, host.cwd, state.kind);
+  await settle(host, state, HISTORY_DOING.continuing(state.kind), op, () => HISTORY_DONE.continued(state.kind), {
+    started,
+  });
 }
 
 export async function abortOperation(host: FlowHost): Promise<void> {
@@ -552,7 +569,9 @@ export async function abortOperation(host: FlowHost): Promise<void> {
   if (answer === undefined) return;
   const op: Operation = { kind: 'abort', operation: state.kind };
   const keep = answer === 'stash' ? `Strata: before abort of the ${opName(state.kind)}` : undefined;
-  await settle(host, state, HISTORY_DOING.aborting(state.kind), op, (k) => HISTORY_DONE.aborted(state.kind, k), keep);
+  await settle(host, state, HISTORY_DOING.aborting(state.kind), op, (k) => HISTORY_DONE.aborted(state.kind, k), {
+    keep,
+  });
 }
 
 export async function skipCommit(host: FlowHost): Promise<void> {
@@ -567,5 +586,5 @@ export async function skipCommit(host: FlowHost): Promise<void> {
   if (answer === undefined) return;
   const op: Operation = { kind: 'skip', operation: state.kind };
   const keep = answer === 'stash' ? `Strata: before skip of ${c.short}` : undefined;
-  await settle(host, state, HISTORY_DOING.skipping(c.short), op, (k) => HISTORY_DONE.skipped(c.short, k), keep);
+  await settle(host, state, HISTORY_DOING.skipping(c.short), op, (k) => HISTORY_DONE.skipped(c.short, k), { keep });
 }

@@ -129,8 +129,9 @@ operation is stopped, Continue, Abort and Skip.
   files) offer the same for the clone's oldest commits, whose parents are not
   there to tell their changes from the whole tree. Run the operation again once the history is there.
 - **Undo Last Operation** puts back what the last operation changed: a reset,
-  merge, rebase, cherry pick or revert, a created, renamed or deleted branch
-  or tag, or a dropped stash. It only moves the branch the operation moved,
+  merge, rebase, cherry pick or revert (also one that stopped and that
+  Continue finished), a created, renamed or deleted branch or tag, or a
+  dropped stash. It only moves the branch the operation moved,
   and asks first if that branch moved since.
 - When an operation stops at conflicts, Strata says where and in which files;
   **Resolve...** opens them, and other changes wait until you continue or
