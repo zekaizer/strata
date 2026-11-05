@@ -1,5 +1,6 @@
 import type { Ref, RefKind, RefSnapshot } from '../core/refs.ts';
-import { staleTarget } from '../core/wording.ts';
+import { staleTarget, staleWorktree } from '../core/wording.ts';
+import type { WorktreeInfo } from '../core/worktrees.ts';
 import { isCommitId } from '../git/details.ts';
 
 /**
@@ -14,7 +15,9 @@ export type Target =
   | { kind: 'head'; hash: string }
   | { kind: 'branch'; ref: Ref }
   | { kind: 'remoteBranch'; ref: Ref }
-  | { kind: 'tag'; ref: Ref };
+  | { kind: 'tag'; ref: Ref }
+  /** Another worktree, as the graph's refs list it. */
+  | { kind: 'worktree'; worktree: WorktreeInfo };
 
 export type TargetKind = Target['kind'];
 export type TargetOf<K extends TargetKind> = Extract<Target, { kind: K }>;
@@ -43,6 +46,13 @@ export function parseTarget<K extends TargetKind>(ctx: unknown, kinds: readonly 
     const hash = str(c['strataHash']);
     if (!hash || !isCommitId(hash)) throw new Error('invalid commit id');
     return { kind, hash } as TargetOf<K>;
+  }
+  if (kind === 'worktree') {
+    const path = str(c['strataWorktree']);
+    if (!path) throw new Error('invalid worktree');
+    const worktree = refs.worktrees.find((w) => w.path === path);
+    if (!worktree) throw new Outdated(staleWorktree(path));
+    return { kind, worktree } as TargetOf<K>;
   }
   const name = str(c['strataRef']);
   const expected = REFS[kind];

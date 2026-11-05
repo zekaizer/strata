@@ -180,6 +180,24 @@ describe('graph title bar', () => {
   });
 });
 
+describe('worktree menu', () => {
+  it('opens and copies a worktree, or only copies the path of one whose folder is gone', () => {
+    assert.deepEqual(refActions('worktree', {}), [
+      'strata.worktree.openNewWindow',
+      'strata.worktree.openCurrentWindow',
+      'strata.worktree.reveal',
+      'strata.worktree.copyPath',
+    ]);
+    assert.deepEqual(refActions('worktree', { strataShown: true, strataMain: true })[0], 'strata.worktree.show');
+    assert.deepEqual(refActions('worktree', { strataPrunable: true }), ['strata.worktree.copyPath']);
+  });
+
+  it('hides Reveal in a remote window, whose files are on another machine', () => {
+    const reveal = webview.find((m) => m.command === 'strata.worktree.reveal');
+    assert.match(reveal?.when ?? '', /!remoteName/);
+  });
+});
+
 describe('package.json activation', () => {
   it('activates after startup too, to replace a graph an extension host restart left behind', () => {
     // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.

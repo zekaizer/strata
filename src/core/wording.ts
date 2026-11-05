@@ -313,6 +313,9 @@ export const refAppeared = (kind: 'branch' | 'tag', name: string): string =>
 /** A menu opened on a ref that is gone. */
 export const staleTarget = (name: string): string => `${refName(name)} no longer exists; the graph has been refreshed.`;
 
+export const staleWorktree = (path: string): string =>
+  `The worktree at ${path} is no longer there; the graph has been refreshed.`;
+
 const VERB: Record<StashOp, string> = {
   rebase: 'Rebase',
   merge: 'Merge',

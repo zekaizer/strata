@@ -8,7 +8,7 @@
  * Elements that carry a data-vscode-context (src/shared/menu-context.ts): the `webviewSection` VS
  * Code matches menus against. `refs` is a "+N" badge.
  */
-export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'file';
+export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'worktree' | 'file';
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
@@ -19,6 +19,7 @@ export const SECTION_KEYS: Record<Section, readonly string[]> = {
   tag: [],
   head: [],
   refs: [],
+  worktree: ['strataLocked', 'strataPrunable', 'strataMain', 'strataShown'],
   file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed'],
 };
 
@@ -217,6 +218,26 @@ export const COMMANDS = {
     menus: [{ section: 'remoteBranch', group: '9_delete@1' }],
     writes: true,
   },
+
+  /** Another worktree (its part in a branch's badge, or its badge on a detached HEAD). */
+  'strata.worktree.show': {
+    title: 'Show Worktree in Graph',
+    menus: [{ section: 'worktree', group: '1_open@1', when: 'strataShown' }],
+  },
+  'strata.worktree.openNewWindow': {
+    title: 'Open Worktree in New Window',
+    menus: [{ section: 'worktree', group: '1_open@2', when: '!strataPrunable' }],
+  },
+  'strata.worktree.openCurrentWindow': {
+    title: 'Open Worktree in Current Window',
+    menus: [{ section: 'worktree', group: '1_open@3', when: '!strataPrunable' }],
+  },
+  // A remote window's file explorer is on another machine.
+  'strata.worktree.reveal': {
+    title: 'Reveal Worktree in File Explorer',
+    menus: [{ section: 'worktree', group: '2_copy@1', when: '!strataPrunable && !remoteName' }],
+  },
+  'strata.worktree.copyPath': { title: 'Copy Worktree Path', menus: [{ section: 'worktree', group: '2_copy@2' }] },
 
   'strata.operation.continue': {
     title: 'Continue Operation',

@@ -730,6 +730,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     });
   }
 
+  /** A folder on the machine the repository is on (a remote one too), by the path git prints. */
+  folderUri(path: string): vscode.Uri {
+    return this.repo.rootUri.with({ path: vscode.Uri.file(path).path });
+  }
+
   /** Absolute file system path of a repository-relative path. */
   absolutePath(path: string): string {
     return vscode.Uri.joinPath(this.repo.rootUri, ...path.split('/')).fsPath;

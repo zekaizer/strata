@@ -101,6 +101,8 @@ export interface FlowHost extends RunnerHost {
   readonly leftovers: Leftovers;
   /** Selects and opens a stash (or commit) row, loading history to find it. */
   reveal(hash: string): void;
+  /** A folder on the machine the repository is on, by the path git prints. */
+  folderUri(path: string): vscode.Uri;
 }
 
 /** What a confirmation described: `rev` still points at `hash` (undefined: does not exist) when the operation starts. */

@@ -5,7 +5,8 @@ export type Question =
   | { kind: 'confirm'; message: string; detail: string; buttons: string[] }
   | { kind: 'input'; title: string; prompt: string; value: string | undefined; problem: string | undefined }
   | { kind: 'pick'; title: string; items: string[] }
-  | { kind: 'notify'; level: 'info' | 'warning' | 'error'; message: string; actions: string[] };
+  | { kind: 'notify'; level: 'info' | 'warning' | 'error'; message: string; actions: string[] }
+  | { kind: 'openFolder'; path: string; how: 'newWindow' | 'thisWindow' | 'reveal' };
 
 /**
  * Answers the questions flows ask from queues, and records every question. An empty queue
@@ -110,6 +111,11 @@ export class ScriptedUi implements Ui {
     const item = items.find((i) => (typeof label === 'string' ? i.label === label : label.test(i.label)));
     if (!item) throw new Error(`no item "${String(label)}" in "${o.title}"`);
     return Promise.resolve(item.value);
+  }
+
+  openFolder(folder: { fsPath: string }, how: 'newWindow' | 'thisWindow' | 'reveal'): Promise<void> {
+    this.asked.push({ kind: 'openFolder', path: folder.fsPath, how });
+    return Promise.resolve();
   }
 
   notify(level: 'info' | 'warning' | 'error', message: string, ...actions: string[]): Promise<string | undefined> {

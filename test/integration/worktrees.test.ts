@@ -4,7 +4,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WorktreeInfo } from '../../src/core/worktrees.ts';
-import { flowSuite } from './flow-helpers.ts';
+import * as vscode from 'vscode';
+import { flowSuite, menu, run } from './flow-helpers.ts';
 import { git, waitFor } from './helpers.ts';
 
 const IDENTITY = {
@@ -19,7 +20,7 @@ const gitIn = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...IDENTITY } }).trim();
 
 describe('other worktrees', () => {
-  const { panel } = flowSuite();
+  const { panel, ui } = flowSuite();
   let root: string;
   let made: string[] = [];
 
@@ -98,5 +99,20 @@ describe('other worktrees', () => {
       /Branch feature\/login, in worktree strata-login\./,
     );
     assert.match(p.rowLabels[git('rev-parse', 'cross/x')] ?? '', /Worktree bisect, detached; branch cross\/x\./);
+  });
+
+  const worktreeMenu = (path: string) => menu({ webviewSection: 'worktree', strataWorktree: path, strataHash: '' });
+
+  it('opens a worktree in a window, and copies its path', async () => {
+    const login = add('strata-login', 'feature/login');
+    await listed('the added worktree', login, () => true);
+    await run('strata.worktree.openNewWindow', worktreeMenu(login));
+    await run('strata.worktree.openCurrentWindow', worktreeMenu(login));
+    await run('strata.worktree.copyPath', worktreeMenu(login));
+    assert.deepEqual(ui.of('openFolder'), [
+      { kind: 'openFolder', path: login, how: 'newWindow' },
+      { kind: 'openFolder', path: login, how: 'thisWindow' },
+    ]);
+    assert.equal(await vscode.env.clipboard.readText(), login);
   });
 });
