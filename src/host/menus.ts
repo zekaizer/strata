@@ -90,7 +90,7 @@ const shortOf = (ctx: MenuArg) => panel().shortHash(commitArg(ctx).hash);
 
 let toldGitTooOld = false;
 
-/** Write operations need git 2.27; an older one is named once per session, then in the status bar. */
+/** Write operations need git 2.34; an older one is named once per session, then in the status bar. */
 async function gitCanWrite(host: FlowHost): Promise<boolean> {
   const v = await readGitVersion(host.git, host.cwd);
   // An unparsable version is left for git itself to judge.

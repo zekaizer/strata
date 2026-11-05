@@ -92,7 +92,7 @@ const merge = (migrate: boolean) => (migrate ? ['--merge'] : []);
 const mainline = (parent: number | undefined) => (parent === undefined ? [] : ['--mainline', String(parent)]);
 const autostash = (on: boolean) => [on ? '--autostash' : '--no-autostash'];
 
-/** The git arguments of an operation (git >= 2.27). */
+/** The git arguments of an operation (git >= 2.34). */
 export function argv(op: Operation): string[] {
   switch (op.kind) {
     case 'switch':
