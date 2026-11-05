@@ -9,6 +9,7 @@ import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry, StashShown } from '../core/stash.ts';
+import type { Where } from '../core/where.ts';
 import type { CommandId } from './commands.ts';
 
 export type ThemeKind = 'light' | 'dark' | 'high-contrast' | 'high-contrast-light';
@@ -78,6 +79,8 @@ export type HostToWebview =
   | { type: 'goToHead'; include?: true }
   /** Whether the branch filter's refs reach HEAD, commit `hash`; true when git could not tell. */
   | { type: 'headReached'; generation: number; hash: string; reached: boolean }
+  /** The answer to whereIs. */
+  | { type: 'where'; generation: number; hash: string; where: Where }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -137,6 +140,11 @@ export type WebviewToHost =
    * answered with headReached.
    */
   | { type: 'reachesHead'; generation: number; hash: string }
+  /**
+   * The ref card is about to show commit `hash`: answered with where. A newer whereIs stops the
+   * query in flight, unanswered; `hash` undefined (the card closed) only stops it.
+   */
+  | { type: 'whereIs'; generation: number; hash: string | undefined }
   /** Go to HEAD found HEAD outside the branch filter: answered with goToHead (include) on request. */
   | { type: 'headNotShown'; branch: string | undefined; hash: string }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */

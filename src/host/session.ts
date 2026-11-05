@@ -1,6 +1,6 @@
 import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
-import { addRule, parseRules, type BadgeRule } from '../core/badge-rules.ts';
+import { addRule, hiddenRefs, parseRules, type BadgeRule } from '../core/badge-rules.ts';
 import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
@@ -13,6 +13,7 @@ import { LogReader } from '../git/log-reader.ts';
 import { readCommitPatch, readFilePatch, readStashPatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
+import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
@@ -30,6 +31,8 @@ const SLOW_FIRST_PAGE_MS = 2000;
 const GRAPH_UPDATE_DELAY_MS = 3000;
 /** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
 const LARGE_PATCH_BYTES = 4 << 20;
+/** Each git query behind the ref card's On, First in and After lines is stopped after this; its line is left out. */
+export const WHERE_BUDGET_MS = 300;
 
 /** workspaceState key of Strata's stash marks, by the git dir of the worktree they belong to. */
 const STASH_MARKS = 'strata.stashMarks';
@@ -93,6 +96,10 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** An update is running; `graphAgain` asks for another one when it ends. */
   private graphUpdating = false;
   private graphAgain = false;
+  /** Stops the ref card's where-is query in flight. */
+  private whereQuery: AbortController | undefined;
+  /** WHERE_BUDGET_MS; integration tests shorten it to see lines left out. */
+  static whereBudgetMs = WHERE_BUDGET_MS;
 
   constructor(repo: GitRepository, deps: SessionDeps) {
     this.repo = repo;
@@ -229,6 +236,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
               this.post({ type: 'headReached', generation: m.generation, hash: m.hash, reached });
           }
           break;
+        case 'whereIs':
+          await this.whereIs(m.generation, m.hash);
+          break;
         case 'headNotShown': {
           const at = m.branch ?? `detached at ${m.hash.slice(0, 7)}`;
           const action = m.branch === undefined ? 'Show All Branches' : `Show ${m.branch} Too`;
@@ -256,6 +266,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (this.disposed) return;
     this.reader?.dispose();
     this.reader = undefined;
+    this.stopWhere();
     const generation = ++this.generation;
     const cwd = this.cwd;
     const [refs, stashes, badgeRules] = await Promise.all([
@@ -367,7 +378,32 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private async setBadgeRules(rules: BadgeRule[]): Promise<void> {
     const dir = await this.commonDir();
     await this.env.badgeRules.set(dir, rules);
+    // An answer under the old rules could name a tag the new ones hide.
+    this.stopWhere();
     this.post({ type: 'badgeRules', rules });
+  }
+
+  /** Answers whereIs: where commit `hash` is, for the ref card. */
+  private async whereIs(generation: number, hash: string | undefined): Promise<void> {
+    this.stopWhere();
+    const snapshot = this.snapshot;
+    if (hash === undefined || generation !== this.generation || !snapshot) return;
+    if (!isCommitId(hash)) throw new Error('invalid commit id');
+    const query = new AbortController();
+    this.whereQuery = query;
+    const hidden = hiddenRefs(await this.badgeRules(), snapshot);
+    const where = await readWhere(this.api.git.path, this.cwd, hash, snapshot, hidden, {
+      timeoutMs: RepoSession.whereBudgetMs,
+      signal: query.signal,
+    });
+    if (query.signal.aborted || generation !== this.generation) return;
+    this.whereQuery = undefined;
+    this.post({ type: 'where', generation, hash, where });
+  }
+
+  private stopWhere(): void {
+    this.whereQuery?.abort();
+    this.whereQuery = undefined;
   }
 
   private marksOf(dir: string): StashMark[] {
@@ -732,6 +768,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
 
   dispose(): void {
     this.disposed = true;
+    this.stopWhere();
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);
     this.reader?.dispose();

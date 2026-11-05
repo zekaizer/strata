@@ -4,6 +4,7 @@ import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
+import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import {
@@ -156,8 +157,10 @@ class App {
   private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly badgeFilter: BadgeFilter;
-  /** The refs of the commit whose graph node the pointer rests on. */
-  private readonly refCard = new RefCard();
+  /** The refs of the commit whose graph node the pointer rests on, and where it is. */
+  private readonly refCard = new RefCard((hash) => {
+    vscode.postMessage({ type: 'whereIs', generation: this.generation, hash });
+  });
   /** A pointer press on a node closes its card until the pointer leaves that node. */
   private cardDismissed: string | undefined;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
@@ -475,7 +478,11 @@ class App {
       case 'badgeRules':
         this.badgeRules = m.rules;
         this.applyBadgeRules();
+        this.refCard.forget();
         this.relist();
+        break;
+      case 'where':
+        if (m.generation === this.generation) this.refCard.answer(m.hash, m.where);
         break;
       case 'stashes':
         if (m.generation !== this.generation) return;
@@ -694,6 +701,7 @@ class App {
     for (const [hash, list] of this.refsByHash)
       this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, options.refs));
     this.applyBadgeRules();
+    this.refCard.forget();
     this.setStashes(stashes);
     this.updateBanner();
     this.commits = [];
@@ -1172,7 +1180,12 @@ class App {
     };
     if (Math.abs(clientX - centre.x) > NODE_REACH || Math.abs(clientY - centre.y) > NODE_REACH) return undefined;
     const hash = item.commit.hash;
-    return { hash, refs: cardRefs(hash, this.refsByHash.get(hash) ?? [], this.refs, this.hiddenBadges), ...centre };
+    return {
+      hash,
+      refs: cardRefs(hash, this.refsByHash.get(hash) ?? [], this.refs, this.hiddenBadges),
+      tags: whereAsk(this.refs, this.hiddenBadges, hash),
+      ...centre,
+    };
   }
 
   /**
