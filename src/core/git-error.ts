@@ -14,6 +14,8 @@ export type GitErrorKind =
   | 'checkedOutElsewhere'
   | 'notMerged'
   | 'noUpstream'
+  /** A cherry pick or revert left nothing to commit (git prints this on stdout). */
+  | 'nothingToCommit'
   | 'other';
 
 /** Classifies a failed git command by its stderr; the command must run with English messages (see runGitOp). */
@@ -46,6 +48,7 @@ const PATTERNS: readonly [RegExp, GitErrorKind][] = [
   [/refusing to merge unrelated histories/, 'unrelated'],
   [/is not fully merged/, 'notMerged'],
   [/has no upstream branch|no tracking information/, 'noUpstream'],
+  [/^(?:nothing(?: added)? to commit|no changes added to commit)\b/m, 'nothingToCommit'],
 ];
 
 /** The last progress line of a chunk of `--progress` stderr, e.g. "Receiving objects:  45% (450/1000)". */

@@ -12,7 +12,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataMerge', 'strataHasRefs'],
+  commit: ['strataIsHead', 'strataHasRefs'],
   stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],
@@ -93,10 +93,10 @@ export const COMMANDS = {
   'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
   'strata.cherryPick': {
     title: 'Cherry Pick',
-    menus: [commit('3_apply@1', '!strataIsHead && !strataMerge')],
+    menus: [commit('3_apply@1', '!strataIsHead')],
     writes: true,
   },
-  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2', '!strataMerge')], writes: true },
+  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2')], writes: true },
   'strata.merge': {
     title: 'Merge into Current Branch...',
     menus: [

@@ -13,6 +13,7 @@ import {
   readConfigBool,
   readHead,
   readMergeBase,
+  readMergeParents,
   readRebaseCounts,
   readOverlap,
   readResetFacts,
@@ -125,6 +126,15 @@ describe('confirmation facts', () => {
       short: run(dir, 'rev-parse', '--short', 'topic'),
       subject: 'topic two',
     });
+  });
+
+  it("reads a merge's parents with the commits merged in relative to each, and none for other commits", async () => {
+    const merge = run(dir, 'commit-tree', 'main^{tree}', '-p', 'main', '-p', 'topic', '-m', 'merged');
+    assert.deepEqual(await readMergeParents('git', dir, merge), [
+      { ...(await readCommit('git', dir, 'main')), mergedIn: 2 },
+      { ...(await readCommit('git', dir, 'topic')), mergedIn: 3 },
+    ]);
+    assert.equal(await readMergeParents('git', dir, 'main'), undefined);
   });
 
   it("reads a branch's upstream, and none for a branch without one", async () => {

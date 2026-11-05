@@ -402,12 +402,12 @@
         },
         {
           "command": "strata.cherryPick",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead && !strataMerge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
           "group": "3_apply@1"
         },
         {
           "command": "strata.revert",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataMerge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
           "group": "3_apply@2"
         },
         {

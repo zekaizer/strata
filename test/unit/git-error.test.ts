@@ -47,6 +47,15 @@ describe('classifyGitError', () => {
       'There is no tracking information for the current branch.\nPlease specify which branch you want to merge with.',
       'noUpstream',
     ],
+    ['On branch main\nnothing to commit, working tree clean', 'nothingToCommit'],
+    [
+      'On branch main\nUntracked files:\n\tu.txt\n\nnothing added to commit but untracked files present (use "git add" to track)',
+      'nothingToCommit',
+    ],
+    [
+      'On branch main\nChanges not staged for commit:\n\tmodified:   b.txt\n\nno changes added to commit (use "git add" and/or "git commit -a")',
+      'nothingToCommit',
+    ],
     ['fatal: something else', 'other'],
   ];
   for (const [stderr, kind] of cases) {

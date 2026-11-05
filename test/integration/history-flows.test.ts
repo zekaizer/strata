@@ -812,6 +812,134 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'main'), before);
   });
 
+  /** strata-side from main: side.txt in two commits, merged into main after a commit of main's own. HEAD on main. */
+  const mergedSide = async () => {
+    const fork = git('rev-parse', 'main');
+    branchWith('strata-side', 'main', 'side.txt', 'side 1\n');
+    write('side.txt', 'side 2\n');
+    git('commit', '--quiet', '-am', 'side.txt: side 2');
+    git('switch', '--quiet', 'main');
+    write('mainline.txt', 'mainline\n');
+    git('add', 'mainline.txt');
+    git('commit', '--quiet', '-m', 'Mainline');
+    git('merge', '--quiet', '--no-ff', '--no-edit', 'strata-side');
+    await reload(panel());
+    return { merge: git('rev-parse', 'HEAD'), fork };
+  };
+  const short = (rev: string) => git('rev-parse', '--short', rev);
+
+  it('reverts a merge, naming the commits it undoes, and undoes that', async () => {
+    const { merge } = await mergedSide();
+    ui.press('Revert');
+    await run('strata.revert', commitMenu(merge));
+    assert.deepEqual(
+      ui.of('confirm').map((q) => [q.message, q.detail, q.buttons]),
+      [
+        [
+          `Revert ${short(merge)} "Merge branch 'strata-side'" on 'main'?`,
+          `Undoes the changes of the 2 commits it merged into ${short(`${merge}^1`)} "Mainline" from ${short(`${merge}^2`)} "side.txt: side 2". Merging those commits again later won't bring them back.`,
+          ['Revert'],
+        ],
+      ],
+    );
+    assert.equal(git('log', '-1', '--format=%s'), `Revert "Merge branch 'strata-side'"`);
+    assert.equal(git('rev-parse', 'HEAD^{tree}'), git('rev-parse', `${merge}^1^{tree}`));
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'main'), merge);
+  });
+
+  it('cherry picks a merge relative to the parent chosen, through its own stash', async () => {
+    const { merge, fork } = await mergedSide();
+    git('switch', '--quiet', '--create', 'strata-target', fork);
+    write('NOTES.md', 'mine\n');
+    await reload(panel());
+    ui.choose(/^Parent 2:/).press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(merge));
+    assert.deepEqual(ui.first('pick'), {
+      kind: 'pick',
+      title: `Cherry Pick ${short(merge)} "Merge branch 'strata-side'"`,
+      items: [`Parent 1: ${short(`${merge}^1`)}`, `Parent 2: ${short(`${merge}^2`)}`],
+    });
+    assert.match(
+      ui.first('confirm').detail,
+      new RegExp(
+        `^Applies the changes of the 1 commit it merged into ${short(`${merge}^2`)} "side\\.txt: side 2" from ${short(`${merge}^1`)} "Mainline"\\. `,
+      ),
+    );
+    assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-side'");
+    assert.equal(git('diff', '--name-only', 'HEAD~1', 'HEAD'), 'mainline.txt');
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
+  it('stops a cherry pick of a merge at its conflict, and Continue finishes it', async () => {
+    const { merge, fork } = await mergedSide();
+    branchWith('strata-target', fork, 'side.txt', 'target\n');
+    await reload(panel());
+    ui.choose(/^Parent 1:/);
+    await run('strata.cherryPick', commitMenu(merge));
+    assert.equal(ui.of('confirm').length, 0, 'the parent was the question');
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      `Cherry pick stopped ("Merge branch 'strata-side'") with conflicts in 1 file (side.txt).`,
+    );
+    write('side.txt', 'resolved\n');
+    git('add', 'side.txt');
+    await run('strata.operation.continue');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-side'");
+    assert.equal(git('rev-list', '--parents', '-n1', 'HEAD').split(' ').length, 2, 'one parent');
+    assert.equal(read('side.txt'), 'resolved\n');
+  });
+
+  it("says a branch already has a merge, and refuses one at a shallow clone's edge", async () => {
+    const { merge } = await mergedSide();
+    git('switch', '--quiet', '--create', 'strata-later', 'main');
+    await run('strata.cherryPick', commitMenu(merge));
+    assert.equal(ui.of('pick').length, 0);
+    assert.equal(ui.of('notify').at(-1)?.message, `'strata-later' already contains ${short(merge)}.`);
+
+    shallow(merge);
+    await reload(panel());
+    await run('strata.revert', commitMenu(merge));
+    assert.match(
+      ui.first('confirm').message,
+      new RegExp(`^${short(merge)} is the oldest commit this shallow clone has`),
+    );
+    assert.equal(git('rev-parse', 'HEAD'), merge, 'nothing reverted');
+  });
+
+  it('says a commit or a merge is already reverted, and gives back the changes stashed for it', async () => {
+    const main = git('rev-parse', 'main');
+    git('revert', '--no-edit', main);
+    const reverted = git('rev-parse', 'HEAD');
+    await reload(panel());
+    await run('strata.revert', commitMenu(main));
+    assert.deepEqual(ui.of('notify').at(-1), {
+      kind: 'notify',
+      level: 'info',
+      message: `${short(main)} is already reverted on 'main': there is nothing to undo.`,
+      actions: [],
+    });
+    assert.equal(git('rev-parse', 'HEAD'), reverted);
+
+    ui.clear();
+    const { merge } = await mergedSide();
+    git('revert', '--no-edit', '-m', '1', merge);
+    const again = git('rev-parse', 'HEAD');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Revert');
+    await run('strata.revert', commitMenu(merge));
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      `${short(merge)} is already reverted on 'main': there is nothing to undo.`,
+    );
+    assert.equal(git('rev-parse', 'HEAD'), again);
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+    assert.equal(api().contextValue('strata.operation'), '');
+  });
+
   it('keeps uncommitted changes of a hard reset in a stash it never pops, and undoes the reset', async () => {
     const before = git('rev-parse', 'main');
     const target = git('rev-parse', 'main~2');

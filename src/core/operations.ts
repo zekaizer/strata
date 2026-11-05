@@ -30,8 +30,8 @@ export type Operation =
    * the branch forked from a rewritten upstream), not every commit `onto` lacks.
    */
   | { kind: 'rebase'; onto: string; from: string | undefined; autostash: boolean }
-  | { kind: 'cherryPick'; commit: string }
-  | { kind: 'revert'; commit: string }
+  /** `mainline`: for a merge commit, the parent (1-based) its changes are taken relative to. */
+  | { kind: 'cherryPick' | 'revert'; commit: string; mainline?: number }
   | { kind: 'reset'; commit: string; mode: ResetMode }
   | { kind: 'continue' | 'abort' | 'skip'; operation: OperationKind }
   /**
@@ -77,6 +77,7 @@ const GIT_COMMAND: Record<OperationKind, string> = {
 
 const stash = (index: number) => `stash@{${index}}`;
 const merge = (migrate: boolean) => (migrate ? ['--merge'] : []);
+const mainline = (parent: number | undefined) => (parent === undefined ? [] : ['--mainline', String(parent)]);
 const autostash = (on: boolean) => [on ? '--autostash' : '--no-autostash'];
 
 /** The git arguments of an operation (git >= 2.27). */
@@ -126,9 +127,9 @@ export function argv(op: Operation): string[] {
         ...(op.from === undefined ? [op.onto] : ['--onto', op.onto, op.from]),
       ];
     case 'cherryPick':
-      return ['cherry-pick', op.commit];
+      return ['cherry-pick', ...mainline(op.mainline), op.commit];
     case 'revert':
-      return ['revert', '--no-edit', op.commit];
+      return ['revert', '--no-edit', ...mainline(op.mainline), op.commit];
     case 'reset':
       return ['reset', `--${op.mode}`, op.commit];
     case 'continue':
