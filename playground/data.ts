@@ -4,10 +4,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Commit } from '../src/core/commit.ts';
 import type { CommitDetails } from '../src/core/details.ts';
+import type { Where } from '../src/core/where.ts';
 import { readCommitDetails } from '../src/git/details.ts';
 import { LogReader } from '../src/git/log-reader.ts';
 import { readRefs } from '../src/git/refs.ts';
 import { readStashDetails, readStashes } from '../src/git/stash.ts';
+import { readWhere } from '../src/git/where.ts';
 import { scenarios, type ScenarioName } from '../test/fixtures/scenarios.ts';
 import type { PlaygroundData } from './types.ts';
 
@@ -23,15 +25,14 @@ for (const name of NAMES) {
   const commits: Commit[] = (await reader.next(1_000_000)).commits;
   reader.dispose();
   const stashes = await readStashes('git', dir);
+  const refs = await readRefs('git', dir);
   const details: Record<string, CommitDetails> = {};
-  for (const c of commits.slice(0, DETAILS)) details[c.hash] = await readCommitDetails('git', dir, c.hash);
+  const where: Record<string, Where> = {};
+  for (const c of commits.slice(0, DETAILS)) {
+    details[c.hash] = await readCommitDetails('git', dir, c.hash);
+    where[c.hash] = await readWhere('git', dir, c.hash, refs, new Set(), {});
+  }
   for (const s of stashes) details[s.hash] = await readStashDetails('git', dir, s.hash);
-  const data: PlaygroundData = {
-    repo: { name, root: dir },
-    refs: await readRefs('git', dir),
-    stashes,
-    commits,
-    details,
-  };
+  const data: PlaygroundData = { repo: { name, root: dir }, refs, stashes, commits, details, where };
   writeFileSync(join(out, `${name}.json`), JSON.stringify(data));
 }

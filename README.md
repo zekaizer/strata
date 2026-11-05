@@ -36,8 +36,9 @@
 - Hide noisy badges, such as CI tags, with patterns per repository.
 - Filter the graph to some branches, remotes or tags, or follow first-parent
   history.
-- **HEAD** in the toolbar jumps to the checked-out commit; when a commit has
-  more refs than its badges show, rest the pointer on its node to see them all.
+- **HEAD** in the toolbar jumps to the checked-out commit; rest the pointer on
+  a commit's node for a card with all of its refs, the branches holding it, the
+  first tag that has it and the tag it comes after.
 - Several repositories in one workspace, and the graph comes back where you
   left it after a restart.
 - Works locally, in WSL, over SSH and in other remote workspaces, in every

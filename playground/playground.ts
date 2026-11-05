@@ -5,6 +5,7 @@
 //   &busy=<label>: a Strata operation running
 //   &badgeRules=*-rc*,!v2*-rc*: the repository's badge rules (! keeps); &search=<text> typed into the open popover
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
+//   &where=pending: the ref card's where-is question is never answered (its loading state)
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
@@ -236,6 +237,13 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         reached: data !== undefined && select(data, { ...options, firstParent: false }).some((c) => c.hash === m.hash),
       });
       break;
+    case 'whereIs': {
+      // Answers computed without badge rules.
+      const { hash } = m;
+      const where = hash === undefined || params.get('where') === 'pending' ? undefined : data?.where[hash];
+      if (hash !== undefined && where) toWebview({ type: 'where', generation, hash, where });
+      break;
+    }
     case 'setBadgeRules':
       badgeRules = m.rules;
       toWebview({ type: 'badgeRules', rules: badgeRules });

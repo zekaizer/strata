@@ -7,6 +7,7 @@ import { registerCommands } from './host/menus.ts';
 import { GraphPanel } from './host/panel.ts';
 import { disposeRepoList } from './host/repositories.ts';
 import { OpRunner } from './host/runner.ts';
+import { RepoSession, WHERE_BUDGET_MS } from './host/session.ts';
 import { vscodeUi, type Ui } from './host/ui.ts';
 
 /** Returned from `activate`; consumed only by integration tests. */
@@ -21,6 +22,8 @@ export interface StrataTestApi {
   contextValue(key: ContextKey): unknown;
   /** The status bar item that opens the graph, once the git extension is ready. */
   statusBarItem(): vscode.StatusBarItem | undefined;
+  /** Sets the time each ref card query gets; undefined restores WHERE_BUDGET_MS. */
+  setWhereBudget(ms: number | undefined): void;
 }
 
 /** Time for VS Code to revive the graph through the serializer before a tab without it counts as orphaned. */
@@ -71,6 +74,9 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
     },
     contextValue,
     statusBarItem: graphStatusBarItem,
+    setWhereBudget: (ms) => {
+      RepoSession.whereBudgetMs = ms ?? WHERE_BUDGET_MS;
+    },
   };
 }
 
