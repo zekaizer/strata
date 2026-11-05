@@ -96,7 +96,8 @@ operation is stopped, Continue, Abort and Skip.
   Delete and Copy Name. Deleting a branch says which commits no other branch
   or tag has. Push Tag pushes a tag to a remote (you pick one when there are
   several), and says so when the remote already has a different tag of that
-  name.
+  name. Delete Tag from Remote deletes it there and keeps your local tag;
+  that can't be undone.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
   Branch to Here in any of git's modes. Each confirmation says what happens to

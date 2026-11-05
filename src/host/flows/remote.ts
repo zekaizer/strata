@@ -3,6 +3,8 @@ import type { Ref } from '../../core/refs.ts';
 import { remoteBranch } from '../../core/remote-branch.ts';
 import {
   deleteRemoteBranchConfirmation,
+  deleteRemoteTagConfirmation,
+  deleteRemoteTagPick,
   detachedNoBranch,
   divergedConfirmation,
   forcePushConfirmation,
@@ -240,6 +242,18 @@ export async function pushTag(host: FlowHost, tag: string): Promise<void> {
     return;
   }
   await finish(host, { message: REMOTE_DONE.tagPushed(tag, remote) });
+}
+
+/** Deletes tag `ref` from a remote of the user's choice; the local tag stays. */
+export async function deleteRemoteTag(host: FlowHost, ref: Ref): Promise<void> {
+  const tag = ref.short;
+  const remote = await pickRemote(host, deleteRemoteTagPick(tag));
+  if (remote === undefined) return;
+  const at = await readCommit(host.git, host.cwd, ref.name);
+  if (!(await host.ui.confirm(deleteRemoteTagConfirmation(tag, remote, at)))) return;
+  const op: Operation = { kind: 'deleteRemoteRef', remote, ref: ref.name, lease: undefined };
+  if (await remoteRun(host, REMOTE_DOING.deletingTag(tag, remote), remote, op))
+    await finish(host, { message: REMOTE_DONE.remoteTagDeleted(tag, remote) });
 }
 
 /**

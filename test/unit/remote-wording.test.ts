@@ -2,6 +2,8 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   deleteRemoteBranchConfirmation,
+  deleteRemoteTagConfirmation,
+  deleteRemoteTagPick,
   divergedConfirmation,
   forcePushConfirmation,
   NO_REMOTE,
@@ -85,6 +87,16 @@ describe('wording of remote operations', () => {
     );
   });
 
+  it('confirms deleting a tag from a remote, keeping the local one', () => {
+    assert.equal(deleteRemoteTagPick('v1'), "Delete tag 'v1' from…");
+    assert.deepEqual(deleteRemoteTagConfirmation('v1', 'origin', { short: 'abc1234', subject: 'Release' }), {
+      message: "Delete tag 'v1' from 'origin'?",
+      detail:
+        "The local tag 'v1' stays, at abc1234 \"Release\", and Push Tag can push it again. Strata can't undo this.",
+      buttons: [{ id: 'delete', label: 'Delete Tag from Remote' }],
+    });
+  });
+
   it('says what was done', () => {
     assert.equal(REMOTE_DONE.fetched(undefined), 'Fetched all remotes');
     assert.equal(REMOTE_DONE.fetched('origin'), 'Fetched origin');
@@ -94,6 +106,7 @@ describe('wording of remote operations', () => {
     assert.equal(pushTagPick('v1'), "Push tag 'v1' to…");
     assert.equal(REMOTE_DONE.tagPushed('v1', 'origin'), "Pushed tag 'v1' to origin");
     assert.equal(tagExistsOnRemote('v1', 'origin'), "'origin' already has a different tag 'v1'; nothing was pushed.");
+    assert.equal(REMOTE_DONE.remoteTagDeleted('v1', 'origin'), "Deleted tag 'v1' from origin");
     assert.equal(REMOTE_DONE.remoteBranchDeleted('x', 'origin'), "Deleted branch 'x' from origin");
     assert.equal(REMOTE_DONE.remoteBranchGone('origin/x', 'origin'), "'origin/x' was already gone from origin");
   });

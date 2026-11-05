@@ -300,6 +300,9 @@ describe('operations', () => {
     await op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' });
     run(c, 'tag', '--force', 'v1', 'main');
     await assert.rejects(op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' }), { kind: 'tagExists' });
+    await op(c, { kind: 'deleteRemoteRef', remote: 'origin', ref: 'refs/tags/v1', lease: undefined });
+    assert.equal(run(origin, 'tag', '--list', 'v1'), '');
+    assert.equal(run(c, 'tag', '--list', 'v1'), 'v1', 'the local tag stays');
   });
 
   it('pushes to an upstream branch of another name', async () => {

@@ -171,6 +171,11 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
+  'strata.deleteRemoteTag': {
+    title: 'Delete Tag from Remote...',
+    menus: [{ section: 'tag', group: '9_delete@2' }],
+    writes: true,
+  },
   'strata.deleteRemoteBranch': {
     title: 'Delete Remote Branch...',
     menus: [{ section: 'remoteBranch', group: '9_delete@1' }],

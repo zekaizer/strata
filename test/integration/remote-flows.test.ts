@@ -298,6 +298,27 @@ describe('remote operations', () => {
     assert.equal(remote('rev-parse', 'refs/tags/strata-v1'), git('rev-parse', 'main~1'));
   });
 
+  it('deletes a tag from the remote picked, keeping the local tag', async () => {
+    const mirror = join(root, 'mirror.git');
+    execFileSync('git', ['init', '--quiet', '--bare', mirror]);
+    git('remote', 'add', 'mirror', mirror);
+    git('tag', 'strata-v1', 'main~1');
+    git('push', '--quiet', 'origin', 'refs/tags/strata-v1');
+    git('push', '--quiet', 'mirror', 'refs/tags/strata-v1');
+    await reload(panel());
+    ui.choose('origin').press('Delete Tag from Remote');
+    await run('strata.deleteRemoteTag', tagMenu('strata-v1'));
+    assert.deepEqual(ui.first('pick').items, ['origin', 'mirror']);
+    assert.equal(ui.first('confirm').message, "Delete tag 'strata-v1' from 'origin'?");
+    assert.deepEqual(errors(), []);
+    assert.equal(remote('tag', '--list', 'strata-v1'), '');
+    assert.equal(
+      execFileSync('git', ['-C', mirror, 'tag', '--list', 'strata-v1'], { encoding: 'utf8' }).trim(),
+      'strata-v1',
+    );
+    assert.equal(git('tag', '--list', 'strata-v1'), 'strata-v1');
+  });
+
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {
     git('push', '--quiet', '--set-upstream', 'origin', 'main');
     git('update-ref', 'refs/heads/main', 'main~1');

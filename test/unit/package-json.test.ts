@@ -116,6 +116,7 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.pushTag',
       'strata.copyRefName',
       'strata.deleteTag',
+      'strata.deleteRemoteTag',
     ]);
   });
 });

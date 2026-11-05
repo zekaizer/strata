@@ -33,7 +33,7 @@ import {
   skipCommit,
   sourceOf,
 } from './flows/history.ts';
-import { deleteRemoteBranch, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
+import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
@@ -204,6 +204,7 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
   'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),
+  'strata.deleteRemoteTag': on(['tag'], (host, t) => deleteRemoteTag(host, t.ref)),
   'strata.deleteRemoteBranch': on(['remoteBranch'], (host, t) => deleteRemoteBranch(host, t.ref)),
   'strata.refActions': (ctx) => {
     const host = panel().flowHost();

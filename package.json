@@ -232,6 +232,12 @@
         "enablement": "!strata.busy"
       },
       {
+        "command": "strata.deleteRemoteTag",
+        "title": "Delete Tag from Remote...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.deleteRemoteBranch",
         "title": "Delete Remote Branch...",
         "category": "Strata",
@@ -543,6 +549,11 @@
           "group": "9_delete@1"
         },
         {
+          "command": "strata.deleteRemoteTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "9_delete@2"
+        },
+        {
           "command": "strata.deleteRemoteBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
           "group": "9_delete@1"
@@ -704,6 +715,10 @@
         },
         {
           "command": "strata.deleteTag",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteRemoteTag",
           "when": "false"
         },
         {
