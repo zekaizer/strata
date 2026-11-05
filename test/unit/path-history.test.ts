@@ -1,8 +1,11 @@
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Commit } from '../../src/core/commit.ts';
 import { initialLaneState, layoutPage } from '../../src/core/layout.ts';
+import { LOG_FORMAT } from '../../src/core/log-parser.ts';
 import { parsePathFilter, type PathFilter } from '../../src/core/path-filter.ts';
 import type { FindQuery } from '../../src/core/find.ts';
 import { findCommits, locateCommit } from '../../src/git/find.ts';
@@ -216,5 +219,33 @@ describe('path history', () => {
   it('tells a path the index has from one it does not', async () => {
     assert.equal(await isTracked('git', dir, filter(SESSION)), true);
     assert.equal(await isTracked('git', dir, filter('nowhere.txt')), false);
+  });
+});
+
+describe('partial pages', () => {
+  const root = tempDir('partial-pages');
+
+  it('returns what has arrived once the flush time passes', async () => {
+    const dir = join(root, 'repo');
+    scenarios.linear().write(dir);
+    const log = (...args: string[]) =>
+      execFileSync('git', ['log', '-z', `--format=${LOG_FORMAT}`, ...args], { cwd: dir });
+    writeFileSync(join(root, 'first'), log('-1'));
+    writeFileSync(join(root, 'rest'), log('--skip=1', '-2'));
+    // A git that prints one record, then the next two a second later.
+    const fake = join(root, 'slow-git');
+    writeFileSync(fake, `#!/bin/sh\ncat "${join(root, 'first')}"\nsleep 1\ncat "${join(root, 'rest')}"\n`);
+    chmodSync(fake, 0o755);
+    const r = new LogReader({ git: fake, cwd: dir, refs: ['refs/heads/main'] });
+    const started = performance.now();
+    const first = await r.next(10, { flushAfterMs: 100 });
+    const waited = performance.now() - started;
+    assert.equal(first.commits.length, 1);
+    assert.equal(first.done, false);
+    assert.ok(waited < 900, `served after ${Math.round(waited)} ms`);
+    const rest = await r.next(10);
+    assert.equal(rest.commits.length, 2);
+    assert.equal(rest.done, true);
+    r.dispose();
   });
 });

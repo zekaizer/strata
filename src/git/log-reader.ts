@@ -79,7 +79,13 @@ export async function viewArgs(opts: LogOptions): Promise<string[]> {
   ];
 }
 
+export interface PageOptions {
+  /** After this long, a page holding at least one commit is returned with fewer than asked for. */
+  flushAfterMs?: number;
+}
+
 export interface Page {
+  /** As many as asked for, unless history ended or PageOptions.flushAfterMs passed. */
   commits: Commit[];
   /**
    * True when history is exhausted; later calls return no commits. A page that
@@ -91,6 +97,9 @@ export interface Page {
 
 interface Request {
   count: number;
+  /** The flush time passed: a partial page is served. */
+  due: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
   resolve: (p: Page) => void;
   reject: (e: Error) => void;
 }
@@ -115,12 +124,20 @@ export class LogReader {
     this.opts = opts;
   }
 
-  next(count: number): Promise<Page> {
+  next(count: number, opts: PageOptions = {}): Promise<Page> {
     if (!Number.isSafeInteger(count) || count < 0) return Promise.reject(new RangeError(`invalid page size ${count}`));
     if (this.error) return Promise.reject(this.error);
     this.prefetch = Math.max(this.prefetch, count);
+    const flush = opts.flushAfterMs;
     const page = new Promise<Page>((resolve, reject) => {
-      this.queue.push({ count, resolve, reject });
+      const req: Request = { count, due: false, timer: undefined, resolve, reject };
+      if (flush !== undefined) {
+        req.timer = setTimeout(() => {
+          req.due = true;
+          this.pump();
+        }, flush);
+      }
+      this.queue.push(req);
     });
     this.starting ??= this.start().catch((e: unknown) => {
       this.fail(e instanceof Error ? e : new Error(String(e)));
@@ -196,8 +213,9 @@ export class LogReader {
   private pump(): void {
     while (this.queue.length > 0) {
       const req = this.queue[0]!;
-      if (this.buffer.length < req.count && !this.ended) break;
+      if (this.buffer.length < req.count && !this.ended && !(req.due && this.buffer.length > 0)) break;
       this.queue.shift();
+      clearTimeout(req.timer);
       const commits = this.buffer.splice(0, req.count);
       req.resolve({ commits, done: this.ended && this.buffer.length === 0 });
     }
@@ -213,6 +231,9 @@ export class LogReader {
     this.error = e;
     this.proc?.kill();
     this.buffer = [];
-    for (const r of this.queue.splice(0)) r.reject(e);
+    for (const r of this.queue.splice(0)) {
+      clearTimeout(r.timer);
+      r.reject(e);
+    }
   }
 }
