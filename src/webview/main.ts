@@ -723,10 +723,15 @@ class App {
         ? 'hidden'
         : this.indexOf(s.hash) >= 0
           ? 'drawn'
-          : this.done
+          : this.done || this.unreachable(s)
             ? 'notInView'
             : 'notLoaded';
     return Object.fromEntries(this.stashes.map((s) => [s.hash, shown(s)]));
+  }
+
+  /** A stash no page of this history reaches: the host found no start point of the default view holding its base. */
+  private unreachable(s: StashEntry): boolean {
+    return s.anchor.kind === 'unreachable' && this.options.refs === null;
   }
 
   private updateStashButton(): void {
@@ -749,7 +754,12 @@ class App {
 
   /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */
   private reveal(hash: string): void {
-    if (this.stashes.some((s) => s.hash === hash)) this.setShowStashes(true);
+    const stash = this.stashes.find((s) => s.hash === hash);
+    if (stash && this.indexOf(hash) < 0 && this.unreachable(stash)) {
+      this.announce(`stash@{${stash.index}} is not in this view`);
+      return;
+    }
+    if (stash) this.setShowStashes(true);
     this.selectHash(hash, true);
   }
 
