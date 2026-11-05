@@ -45,6 +45,12 @@ export interface StashContext {
   strataLeftover: boolean;
 }
 
+/** The uncommitted changes row. */
+export interface ChangesContext {
+  webviewSection: 'changes';
+  preventDefaultContextMenuItems: true;
+}
+
 /** A badge, or a remote name inside a branch's badge; `strataHash` is the commit it is on. */
 export type BadgeContext =
   | {

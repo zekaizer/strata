@@ -113,8 +113,9 @@ describe('uncommitted changes row', () => {
       return s.detailsShown === 'changes' && s.fileTree.length > 0 && s;
     });
     assert.deepEqual(p.fileTree, ['NOTES.md', 'main.txt', 'scratch.txt']);
+    assert.deepEqual(p.menuContexts.selectedRow, { webviewSection: 'changes', preventDefaultContextMenuItems: true });
     assert.deepEqual(p.buttonNames.details.slice(0, 3), [
-      'Open Source Control',
+      'Commit...',
       'Stash Changes...',
       'Stash Changes (Include Untracked)...',
     ]);

@@ -9,13 +9,24 @@
  * Code matches menus against. `refs` is a "+N" badge; `selection` a row of several selected commits.
  */
 export type Section =
-  'commit' | 'selection' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'worktree' | 'file';
+  | 'commit'
+  | 'selection'
+  | 'stash'
+  | 'changes'
+  | 'branch'
+  | 'remoteBranch'
+  | 'tag'
+  | 'head'
+  | 'refs'
+  | 'worktree'
+  | 'file';
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
   commit: ['strataIsHead', 'strataHasRefs', 'strataBranch', 'strataRewritable', 'strataParentRewritable'],
   selection: [],
   stash: ['strataLeftover'],
+  changes: [],
   branch: ['strataIsCurrent', 'strataUpstream', 'strataInWorktree'],
   remoteBranch: [],
   tag: [],
@@ -74,14 +85,14 @@ export const COMMANDS = {
 
   'strata.stash.push': {
     title: 'Stash Changes...',
-    menus: [commit('1_worktree@1', 'strataIsHead')],
+    menus: [{ section: 'changes', group: '1_stash@1' }],
     palette: true,
     titleBar: { group: '1_stash@1' },
     writes: true,
   },
   'strata.stash.pushUntracked': {
     title: 'Stash Changes (Include Untracked)...',
-    menus: [commit('1_worktree@2', 'strataIsHead')],
+    menus: [{ section: 'changes', group: '1_stash@2' }],
     palette: true,
     titleBar: { group: '1_stash@2' },
     writes: true,
@@ -315,7 +326,7 @@ export const COMMANDS = {
   },
   'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
   'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
-  'strata.openScm': { title: 'Open Source Control' },
+  'strata.openScm': { title: 'Open Source Control', menus: [{ section: 'changes', group: '2_scm@1' }] },
   'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '1_stash@3' } },
   'strata.goToHead': { title: 'Go to HEAD', palette: true },
   /** The graph handles Ctrl+F itself while it has focus; the key binding covers the rest of its tab. */

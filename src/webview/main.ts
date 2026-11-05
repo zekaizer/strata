@@ -45,7 +45,7 @@ import {
   type StashShown,
 } from '../core/stash.ts';
 import { COMMANDS, MENU_SECTIONS, type CommandId, type CommandSpec } from '../shared/commands.ts';
-import type { CommitContext, SelectionContext, StashContext } from '../shared/menu-context.ts';
+import type { ChangesContext, CommitContext, SelectionContext, StashContext } from '../shared/menu-context.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -251,6 +251,8 @@ const CHANGE_GROUPS: readonly { group: ChangeGroup; title: string; compares: str
   { group: 'unstaged', title: 'Changes', compares: 'index ↔ working tree' },
   { group: 'untracked', title: 'Untracked', compares: undefined },
 ];
+
+const CHANGES_CONTEXT: ChangesContext = { webviewSection: 'changes', preventDefaultContextMenuItems: true };
 
 const CHANGE_ICON: Record<ChangeCount['kind'], string> = {
   conflicted: 'warning',
@@ -2673,6 +2675,7 @@ class App {
     }
     subject.append(counts);
     row.append(el('span', 'graph-spacer'), subject);
+    row.setAttribute('data-vscode-context', JSON.stringify(CHANGES_CONTEXT));
     const label = describeChanges(s, this.refs.headBranch, this.options.path?.paths[0]);
     row.title = label;
     row.setAttribute('aria-label', label);
@@ -3247,15 +3250,17 @@ class App {
     if (on !== undefined) byline.append(el('span', 'byline-sep', '·'), el('span', 'byline-branch', `on ${on}`));
     const actions = el('div', 'details-actions');
     const untracked = w.files.some((f) => f.group === 'untracked') || this.changes?.untracked === undefined;
-    for (const [command, primary] of [
-      ['strata.openScm', true],
-      ['strata.stash.push', false],
-      ...(untracked ? [['strata.stash.pushUntracked', false] as const] : []),
+    // Strata does not commit: Commit... hands the changes to Source Control, where the message is written.
+    for (const [command, label] of [
+      ['strata.openScm', 'Commit...'],
+      ['strata.stash.push', COMMANDS['strata.stash.push'].title],
+      ...(untracked ? [['strata.stash.pushUntracked', COMMANDS['strata.stash.pushUntracked'].title] as const] : []),
     ] as const) {
-      const b = el('button', primary ? 'button primary' : 'button', COMMANDS[command].title);
+      const b = el('button', command === 'strata.openScm' ? 'button primary' : 'button', label);
+      if (command === 'strata.openScm') b.title = 'Open Source Control to commit them';
       b.dataset['command'] = command;
       b.addEventListener('click', () => {
-        vscode.postMessage({ type: 'menuCommand', command, context: {} });
+        this.menuCommand(command, CHANGES_CONTEXT);
       });
       actions.append(b);
     }

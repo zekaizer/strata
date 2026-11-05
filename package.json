@@ -572,13 +572,13 @@
         },
         {
           "command": "strata.stash.push",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataIsHead",
-          "group": "1_worktree@1"
+          "when": "webviewId == 'strata.graph' && webviewSection == 'changes'",
+          "group": "1_stash@1"
         },
         {
           "command": "strata.stash.pushUntracked",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataIsHead",
-          "group": "1_worktree@2"
+          "when": "webviewId == 'strata.graph' && webviewSection == 'changes'",
+          "group": "1_stash@2"
         },
         {
           "command": "strata.checkout",
@@ -884,6 +884,11 @@
           "command": "strata.stash.drop",
           "when": "webviewId == 'strata.graph' && webviewSection == 'stash'",
           "group": "9_delete@1"
+        },
+        {
+          "command": "strata.openScm",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'changes'",
+          "group": "2_scm@1"
         }
       ],
       "commandPalette": [
