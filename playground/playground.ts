@@ -6,6 +6,7 @@
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
+import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import {
@@ -65,6 +66,7 @@ const queried: Partial<ViewOptions> = {
 };
 let options: ViewOptions = { ...DEFAULT_OPTIONS, ...queried };
 let visible: Commit[] = [];
+let badgeRules: BadgeRule[] = [];
 
 /** Commits reachable from the selected refs (in the original order), like git log <refs> [--first-parent]. */
 function select(d: PlaygroundData, o: ViewOptions): Commit[] {
@@ -91,7 +93,15 @@ function reset(): void {
   generation++;
   offset = 0;
   visible = select(data, options);
-  toWebview({ type: 'reset', generation, repo: data.repo, refs: data.refs, options, stashes: data.stashes });
+  toWebview({
+    type: 'reset',
+    generation,
+    repo: data.repo,
+    refs: data.refs,
+    options,
+    stashes: data.stashes,
+    badgeRules,
+  });
 }
 
 async function onMessage(m: WebviewToHost): Promise<void> {
@@ -138,7 +148,15 @@ async function onMessage(m: WebviewToHost): Promise<void> {
           };
           generation++;
           offset = 0;
-          toWebview({ type: 'reset', generation, repo: data.repo, refs: before, options, stashes: data.stashes });
+          toWebview({
+            type: 'reset',
+            generation,
+            repo: data.repo,
+            refs: before,
+            options,
+            stashes: data.stashes,
+            badgeRules,
+          });
           generation++;
           toWebview({
             type: 'reset',
@@ -147,6 +165,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
             refs: data.refs,
             options,
             stashes: data.stashes,
+            badgeRules,
             result: { focus: moved.hash },
           });
         }
@@ -162,6 +181,10 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       }
       break;
     }
+    case 'setBadgeRules':
+      badgeRules = m.rules;
+      toWebview({ type: 'badgeRules', rules: badgeRules });
+      break;
     case 'select': {
       const details = data?.details[m.hash];
       if (details) toWebview({ type: 'details', generation, details });

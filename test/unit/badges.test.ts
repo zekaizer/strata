@@ -1,7 +1,8 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { hiddenRefs } from '../../src/core/badge-rules.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
-import { fitBadges, landedRefs, refsLabel, rowBadges } from '../../src/webview/badges.ts';
+import { fitBadges, landedRefs, refsLabel, rowBadges, shownRefs } from '../../src/webview/badges.ts';
 
 const h = (c: string) => c.repeat(40);
 const at = h('c');
@@ -262,5 +263,38 @@ describe('refsLabel', () => {
       ),
       'branch topic; upstream origin/main',
     );
+  });
+});
+
+describe('shownRefs', () => {
+  const texts = (refs: Ref[], hidden: string[]) => {
+    const shown = shownRefs(new Map([[at, refs]]), new Set(hidden)).get(at) ?? [];
+    return badgesOf(shown).map((b) => [b.text, ...b.also].join(' + '));
+  };
+
+  it('drops hidden refs before badges are made, so only shown ones take room', () => {
+    const refs = [ref('refs/heads/dev'), ref('refs/tags/IR-1'), ref('refs/tags/IR-2'), ref('refs/tags/v1')];
+    assert.deepEqual(texts(refs, ['refs/tags/IR-1', 'refs/tags/IR-2']), ['dev', 'v1']);
+  });
+  it('takes only the remote part out of a merged branch badge', () => {
+    const refs = [ref('refs/heads/dev'), ref('refs/remotes/origin/dev'), ref('refs/remotes/upstream/dev')];
+    assert.deepEqual(texts(refs, ['refs/remotes/origin/dev']), ['dev + upstream/dev']);
+  });
+  it('leaves the remote-tracking branch its own badge when the local one is hidden', () => {
+    const refs = [ref('refs/heads/dev'), ref('refs/remotes/origin/dev')];
+    assert.deepEqual(texts(refs, ['refs/heads/dev']), ['origin/dev']);
+  });
+  it('keeps the current branch badge under a rule hiding everything', () => {
+    const refs = [ref('refs/heads/main'), ref('refs/remotes/origin/main'), ref('refs/tags/IR-1')];
+    const hidden = hiddenRefs([{ pattern: '*', keep: false }], snapshot(refs, 'main'));
+    const shown = shownRefs(new Map([[at, refs]]), hidden).get(at) ?? [];
+    assert.deepEqual(
+      badgesOf(shown).map((b) => [b.look, b.text, ...b.also].join(' ')),
+      ['head main'],
+    );
+  });
+  it('drops a commit whose refs are all hidden', () => {
+    const shown = shownRefs(new Map([[at, [ref('refs/tags/IR-1')]]]), new Set(['refs/tags/IR-1']));
+    assert.equal(shown.has(at), false);
   });
 });

@@ -1,5 +1,6 @@
 // Message contract between the extension host, the webview and the layout worker.
 // Every side imports this file; it must stay free of host- and DOM-only types.
+import type { BadgeRule } from '../core/badge-rules.ts';
 import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 
@@ -46,8 +47,12 @@ export type HostToWebview =
       refs: RefSnapshot;
       options: ViewOptions;
       stashes: StashEntry[];
+      /** The repository's badge rules (BadgeRule), in order. */
+      badgeRules: BadgeRule[];
       result?: { focus?: string; notified?: true };
     }
+  /** The repository's badge rules changed; the history is not reloaded. */
+  | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
@@ -90,6 +95,8 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
+  /** Replaces the repository's badge rules. */
+  | { type: 'setBadgeRules'; rules: BadgeRule[] }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
   | { type: 'pickStash'; shown: Record<string, StashShown> }
   /** Runs a command of the table from a keyboard shortcut or a button, with the element's menu context. */

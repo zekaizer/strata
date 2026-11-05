@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
 import { argv, type Operation } from '../core/operations.ts';
 import type { RefSnapshot } from '../core/refs.ts';
+import type { BadgeRuleStore } from './badge-store.ts';
 import type { OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { shellCommand, shellKind } from '../core/shell.ts';
@@ -62,6 +63,7 @@ export interface FlowEnv {
   readonly runner: OpRunner;
   ui: Ui;
   readonly state: vscode.Memento;
+  readonly badgeRules: BadgeRuleStore;
 }
 
 /** What Strata remembers about the stashes it pushed or restored in the graph's worktree (StashMark). */
