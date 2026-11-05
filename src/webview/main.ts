@@ -21,14 +21,16 @@ import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
-import type { Leftover, OperationState } from '../core/repo-state.ts';
+import type { ChangesSummary, Leftover, OperationState } from '../core/repo-state.ts';
 import { samePath } from '../core/worktrees.ts';
 import {
   anchoredAt,
+  CHANGES_ROW,
   describeStash,
   interleave,
   rowHash,
   stashLabel,
+  type ChangesAt,
   type ListRow,
   type StashEntry,
   type StashShown,
@@ -292,6 +294,8 @@ class App {
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
   private stashes: StashEntry[] = [];
+  /** The uncommitted changes, as the host last reported them; kept across reloads until it reports again. */
+  private changes: ChangesSummary | undefined;
   /** Stashes by the commit their rows are drawn above. */
   private anchors: ReadonlyMap<string, readonly StashEntry[]> = new Map();
   private readonly spans = new SpanIndex();
@@ -660,6 +664,12 @@ class App {
         this.setStashes(m.stashes);
         this.relist();
         break;
+      case 'changes':
+        if (m.generation !== this.generation) return;
+        if (JSON.stringify(m.changes) === JSON.stringify(this.changes)) return;
+        this.changes = m.changes;
+        this.relist();
+        break;
       case 'busy':
         this.busyLabel = m.label;
         this.banner.setBusy(m.label);
@@ -687,7 +697,7 @@ class App {
         this.loading = false;
         this.done = m.done;
         for (const h of m.unchanged ?? []) this.unchanged.add(h);
-        this.appendRows(interleave(m.commits, this.commits.length, this.anchors));
+        this.appendRows(interleave(m.commits, this.commits.length, this.anchors, this.changesAt()));
         if (this.commitIndex)
           for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
         this.commits.push(...m.commits);
@@ -823,6 +833,7 @@ class App {
         this.leftover = undefined;
         this.updateBanner();
         this.setStashes([]);
+        this.changes = undefined;
         this.commits = [];
         this.parentsOf.clear();
         this.findRewritable();
@@ -973,6 +984,12 @@ class App {
     if (!r) return;
     if (r.scrollTop !== undefined || r.scrollAnchor !== undefined) r.keepScroll = true;
     const searchable = !this.done && this.commits.length < (r.searchLimit ?? RESTORE_SEARCH_LIMIT);
+    // The uncommitted changes row may be gone or not reported yet: HEAD stands in for it.
+    if (this.indexOf(CHANGES_ROW) < 0) {
+      if (r.selectedHash === CHANGES_ROW) r.selectedHash = this.refs.head;
+      if (r.scrollAnchor?.hash === CHANGES_ROW)
+        r.scrollAnchor = this.refs.head === undefined ? undefined : { ...r.scrollAnchor, hash: this.refs.head };
+    }
     if (r.scrollAnchor !== undefined) {
       const anchor = r.scrollAnchor;
       const index = this.indexOf(anchor.hash);
@@ -1675,7 +1692,7 @@ class App {
     const was = this.selectedHash();
     this.list = [];
     this.geometry.clear();
-    this.appendRows(interleave(this.commits, 0, this.anchors));
+    this.appendRows(interleave(this.commits, 0, this.anchors, this.changesAt()));
     const survivor = (i: number) => {
       for (let j = i; j < old.length; j++) {
         const k = this.indexOf(rowHash(old[j]!));
@@ -1685,7 +1702,8 @@ class App {
     };
     if (this.selected >= 0) this.selected = survivor(this.selected);
     this.syncSizer();
-    if (anchor >= 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
+    // At the very top, a row added above the first one is shown rather than scrolled past.
+    if (anchor >= 0 && top > 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
     this.updateStashButton();
     if (this.selected >= 0 && this.selectedHash() !== was && this.expanded)
       this.select(this.selected, { reveal: false });
@@ -1729,6 +1747,11 @@ class App {
     this.restore = undefined;
     this.select(this.indexOf(oldest), { expand: true });
     return true;
+  }
+
+  /** Where the uncommitted changes row goes, if there is one. */
+  private changesAt(): ChangesAt | undefined {
+    return this.changes && { head: this.refs.head, summary: this.changes };
   }
 
   private appendRows(rows: readonly ListRow[]): void {
@@ -2405,7 +2428,7 @@ class App {
   /** A message in place of the list when there is nothing to show. */
   private renderEmpty(): void {
     let text: string | undefined;
-    if (this.commits.length === 0) {
+    if (this.list.length === 0) {
       if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
       else if (this.done && this.options.path) text = `${PATH_HISTORY.found(this.options.path.paths[0], 0)}.`;
       else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
@@ -2436,7 +2459,12 @@ class App {
     }
     // While several commits are selected, what Shift-click cannot add steps back.
     if (selection.length > 0 && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
-    if (r.kind === 'changes') return row;
+    if (r.kind === 'changes') {
+      const subject = el('span', 'subject');
+      subject.append(el('span', 'text', 'Uncommitted changes'));
+      row.append(el('span', 'graph-spacer'), subject);
+      return row;
+    }
     if (r.kind === 'stash') {
       this.fillStashRow(row, r.stash);
       if (this.landing?.stash === r.stash.hash) this.markLanded(row);

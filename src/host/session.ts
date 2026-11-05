@@ -5,7 +5,7 @@ import * as vscode from 'vscode';
 import { addRule, hiddenRefs, parseRules, type BadgeRule } from '../core/badge-rules.ts';
 import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
-import type { Leftover, OperationState } from '../core/repo-state.ts';
+import { changesSummary, type ChangesSummary, type Leftover, type OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { hasChangedPaths, hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { changingCommits, isPartialClone, isTracked, readPathOrigin } from '../git/path-history.ts';
@@ -23,7 +23,7 @@ import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
-import { readOperationState } from '../git/state.ts';
+import { readOperationState, readWorkingChanges } from '../git/state.ts';
 import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
 import { setContext, type ContextKey } from './context.ts';
 import { readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
@@ -47,6 +47,11 @@ export const WHERE_BUDGET_MS = 300;
 
 /** Commits a search hands out at most; the find widget then says "10,000+". */
 export const FIND_CAP = 10_000;
+/**
+ * Counting untracked files for the uncommitted changes row stops after this; the row then leaves
+ * them out for the rest of the session (a huge folder git does not ignore).
+ */
+export const UNTRACKED_BUDGET_MS = 1000;
 
 /** workspaceState key of Strata's stash marks, by the git dir of the worktree they belong to. */
 const STASH_MARKS = 'strata.stashMarks';
@@ -112,6 +117,12 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** An update is running; `graphAgain` asks for another one when it ends. */
   private graphUpdating = false;
   private graphAgain = false;
+  /** What the graph was last told about the uncommitted changes; null before the first time. */
+  private changes: ChangesSummary | undefined | null = null;
+  /** Stops the status read in flight when a newer one starts. */
+  private changesQuery: AbortController | undefined;
+  /** Untracked files took longer than UNTRACKED_BUDGET_MS to count once. */
+  private untrackedSlow = false;
   /** Stops the ref card's where-is query in flight. */
   private whereQuery: AbortController | undefined;
   /** Stops the find widget's search, and its locate query, in flight. */
@@ -413,7 +424,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       ...(result === undefined ? {} : { result }),
     });
     this.scheduleGraphUpdate();
-    await Promise.all([this.syncRepoState(true), this.syncHead(generation, cwd, refs.headBranch)]);
+    await Promise.all([
+      this.syncRepoState(true),
+      this.syncHead(generation, cwd, refs.headBranch),
+      this.syncChanges(true),
+    ]);
   }
 
   /** Shows the history of `path` (null: of the whole repository), keeping the other options. */
@@ -530,6 +545,43 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.repoState = state;
     this.post({ type: 'repoState', ...state });
     await this.context('strata.operation', state.operation?.kind ?? '');
+  }
+
+  /** Tells the graph about the uncommitted changes; `force` even if unchanged (after a reset). */
+  private async syncChanges(force: boolean): Promise<void> {
+    this.changesQuery?.abort();
+    const query = new AbortController();
+    this.changesQuery = query;
+    const generation = this.generation;
+    const changes = await this.readChanges(query.signal);
+    if (query.signal.aborted || this.disposed || generation !== this.generation) return;
+    this.changesQuery = undefined;
+    if (changes === null) return;
+    if (!force && JSON.stringify(changes) === JSON.stringify(this.changes)) return;
+    this.changes = changes;
+    this.post({ type: 'changes', generation, changes });
+  }
+
+  /** The uncommitted changes; undefined without a work tree, null when the read was stopped. */
+  private async readChanges(signal: AbortSignal): Promise<ChangesSummary | undefined | null> {
+    const git = this.api.git.path;
+    const cwd = this.cwd;
+    const hidden = vscode.workspace.getConfiguration('git').get<string>('untrackedChanges') === 'hidden';
+    const read = (untracked: boolean, timeoutMs?: number) =>
+      readWorkingChanges(git, cwd, { untracked, limits: { signal, ...(timeoutMs ? { timeoutMs } : {}) } });
+    try {
+      if (hidden || this.untrackedSlow) return changesSummary(await read(false));
+      const started = performance.now();
+      try {
+        return changesSummary(await read(true, UNTRACKED_BUDGET_MS));
+      } catch (e) {
+        if (signal.aborted || performance.now() - started < UNTRACKED_BUDGET_MS) throw e;
+        this.untrackedSlow = true;
+        return changesSummary(await read(false));
+      }
+    } catch {
+      return signal.aborted ? null : undefined;
+    }
   }
 
   /**
@@ -752,7 +804,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         this.stashList = stashes;
         this.post({ type: 'stashes', generation, stashes });
       }
-      await this.syncRepoState(false);
+      await Promise.all([this.syncRepoState(false), this.syncChanges(false)]);
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }
@@ -1049,6 +1101,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.disposed = true;
     this.stopWhere();
     this.stopFind();
+    this.changesQuery?.abort();
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);
     clearTimeout(this.pathRead?.slow);

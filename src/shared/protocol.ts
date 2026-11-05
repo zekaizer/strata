@@ -9,7 +9,7 @@ export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
 import type { PathFilter, PathOrigin } from '../core/path-filter.ts';
 import type { RefSnapshot } from '../core/refs.ts';
-import type { Leftover, OperationState } from '../core/repo-state.ts';
+import type { ChangesSummary, Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry, StashShown } from '../core/stash.ts';
 import type { Where } from '../core/where.ts';
 import type { CommandId } from './commands.ts';
@@ -85,6 +85,11 @@ export type HostToWebview =
   | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
+  /**
+   * The uncommitted changes in the work tree, sent after every reset and when they change;
+   * undefined when there are none (or the repository has no work tree).
+   */
+  | { type: 'changes'; generation: number; changes: ChangesSummary | undefined }
   /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */
   | { type: 'openBadgeFilter'; pattern: string }
   /** Select and open a stash (or commit), loading further history to find it if needed. */

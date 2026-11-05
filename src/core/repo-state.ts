@@ -86,6 +86,13 @@ function* statusRecords(out: string): Generator<StatusRecord> {
   }
 }
 
+/** What the uncommitted changes row shows; undefined when there is nothing to show. */
+export function changesSummary(w: WorkingChanges): ChangesSummary | undefined {
+  const { staged, unstaged, conflicted, untracked, submodules } = w;
+  if (staged + unstaged + conflicted + (untracked ?? 0) === 0) return undefined;
+  return { staged, unstaged, conflicted, untracked, submodules };
+}
+
 /** Parses `git status --porcelain=v2 -z`; `untracked`: whether git was asked to list untracked files. */
 export function parseStatus(out: string, untracked = false): WorkingChanges {
   const w: WorkingChanges = {
