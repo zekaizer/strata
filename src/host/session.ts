@@ -18,7 +18,7 @@ import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
 import type { HostToWebview, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
 import { setContext, type ContextKey } from './context.ts';
-import { readUnmerged, readUpstream } from '../git/facts.ts';
+import { readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { RepoKey } from '../core/repos.ts';
 import { repoKey, type GitApi, type GitRepository } from './git-api.ts';
@@ -219,6 +219,15 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         }
         case 'setBadgeRules':
           await this.setBadgeRules(parseRules(m.rules));
+          break;
+        case 'reachesHead':
+          if (m.generation === this.generation) {
+            const refs = this.options.refs;
+            const reached =
+              refs === null || (await refsReach(this.api.git.path, this.cwd, refs, m.hash).catch(() => true));
+            if (m.generation === this.generation)
+              this.post({ type: 'headReached', generation: m.generation, hash: m.hash, reached });
+          }
           break;
         case 'headNotShown': {
           const at = m.branch ?? `detached at ${m.hash.slice(0, 7)}`;

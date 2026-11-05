@@ -181,6 +181,14 @@ export const isAncestor = (git: string, cwd: string, a: string, b: string): Prom
     () => false,
   );
 
+/** Whether any of `refs` (full names) reaches `commit`. */
+export async function refsReach(git: string, cwd: string, refs: readonly string[], commit: string): Promise<boolean> {
+  if (refs.length === 0) return false;
+  // A full name as a pattern matches that ref only: git keeps no refs under another ref's name.
+  const out = await runGit(git, cwd, ['for-each-ref', `--contains=${commit}`, '--count=1', '--format=x', ...refs]);
+  return out.trim() !== '';
+}
+
 /** A boolean git config value as git reads it ("yes", "on", "1"...); undefined when unset. */
 export const readConfigBool = (git: string, cwd: string, key: string): Promise<boolean | undefined> =>
   optional(runGit(git, cwd, ['config', '--type=bool', '--get', key])).then((v) =>

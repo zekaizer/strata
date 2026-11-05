@@ -151,6 +151,8 @@ class App {
   /** A view saved before views were kept per repository: the first repository shown restores it. */
   private unkeyed: RepoView | undefined;
   private restore: Restore | undefined;
+  /** Go to HEAD under a branch filter, until the host says whether the filter's refs reach HEAD. */
+  private headQuery: { generation: number; restore: Restore } | undefined;
   private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly badgeFilter: BadgeFilter;
@@ -546,6 +548,21 @@ class App {
       case 'goToHead':
         this.goToHead(m.include === true);
         break;
+      case 'headReached': {
+        const q = this.headQuery;
+        const asked = q?.generation === m.generation && q.restore.selectedHash === m.hash;
+        // A user's selection drops the query; a restore started since then takes over.
+        if (!q || !asked || m.generation !== this.generation || this.restore) return;
+        this.headQuery = undefined;
+        if (m.reached) {
+          this.restore = q.restore;
+          this.applyRestore();
+        } else {
+          this.updateStatus();
+          this.headNotShown(m.hash);
+        }
+        break;
+      }
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
         this.markOpenedFile(m.path);
@@ -748,8 +765,7 @@ class App {
         this.updateStatus();
         if (r.head === true && this.options.refs !== null) {
           this.restore = undefined;
-          this.announce('HEAD is not in the graph: the branch filter leaves it out');
-          vscode.postMessage({ type: 'headNotShown', branch: this.refs.headBranch, hash: missing });
+          this.headNotShown(missing);
           return;
         }
         const stash = this.stashes.find((s) => s.hash === missing);
@@ -907,9 +923,22 @@ class App {
       this.revealCentred(index);
       return;
     }
-    this.restore = restore;
     this.status.textContent = 'Looking for HEAD…';
+    if (this.options.refs !== null && !this.done) {
+      // The host tells at once whether the filter leaves HEAD out; paging could read thousands of commits first.
+      this.restore = undefined;
+      this.headQuery = { generation: this.generation, restore };
+      vscode.postMessage({ type: 'reachesHead', generation: this.generation, hash: head });
+      return;
+    }
+    this.restore = restore;
     this.applyRestore();
+  }
+
+  /** Says that the branch filter leaves HEAD, commit `hash`, out; the host offers to add its branch. */
+  private headNotShown(hash: string): void {
+    this.announce('HEAD is not in the graph: the branch filter leaves it out');
+    vscode.postMessage({ type: 'headNotShown', branch: this.refs.headBranch, hash });
   }
 
   /** Scrolls row `index` to the middle of the list unless it is in view already. */
@@ -1324,6 +1353,7 @@ class App {
     this.selections++;
     this.clearActionError();
     this.restore = undefined;
+    this.headQuery = undefined;
     this.select(index, opts);
   }
 
@@ -2414,7 +2444,7 @@ class App {
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,
-      restoring: this.restore !== undefined,
+      restoring: this.restore !== undefined || this.headQuery !== undefined,
       selected: this.selectedHash(),
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),

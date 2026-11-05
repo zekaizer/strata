@@ -24,12 +24,25 @@ describe('go to HEAD', () => {
   };
   const goToHead = () => panel().simulate({ kind: 'click', selector: '.head-button' });
   /** Ticks or unticks a ref in the branch filter (null: Show all) and waits for the history it shows. */
-  const filter = async (ref: string | null) => {
+  const filter = async (ref: string | null, whole = true) => {
     const before = (await panel().probe()).generation;
     await panel().simulate({ kind: 'click', selector: '.ref-filter-button' });
     await panel().simulate({ kind: 'click', selector: ref === null ? '.popover-all' : `input[data-ref="${ref}"]` });
     await panel().simulate({ kind: 'key', key: 'Escape' });
-    return until('filtered history', (s) => s.generation > before && s.done);
+    return until(
+      whole ? 'filtered history' : 'its first page',
+      (s) => s.generation > before && (whole ? s.done : s.commits > 0),
+    );
+  };
+  /** Writes `count` commits on `branch`, newer than the rest: on top of `from`, or a history of their own. */
+  const longBranch = (branch: string, count: number, from?: string) => {
+    const start = Math.floor(Date.now() / 1000) + 1000;
+    const stream = Array.from(
+      { length: count },
+      (_, i) =>
+        `commit refs/heads/${branch}\ncommitter Ada Lovelace <ada@example.com> ${start + i} +0000\ndata 6\nlong ${i % 10}\n${i === 0 && from ? `from ${from}\n` : ''}\n`,
+    ).join('');
+    execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
   };
 
   afterEach(async () => {
@@ -50,13 +63,7 @@ describe('go to HEAD', () => {
   it('loads further history until HEAD shows up', async () => {
     // Newer commits on another branch push HEAD past the first page.
     const main = git('rev-parse', 'main');
-    const start = Math.floor(Date.now() / 1000) + 1000;
-    const stream = Array.from(
-      { length: FIRST_PAGE + 100 },
-      (_, i) =>
-        `commit refs/heads/strata-long\ncommitter Ada Lovelace <ada@example.com> ${start + i} +0000\ndata 6\nlong ${i % 10}\n${i === 0 ? `from ${main}\n` : ''}\n`,
-    ).join('');
-    execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
+    longBranch('strata-long', FIRST_PAGE + 100, main);
     await reload(panel());
     // The reload looks for the selection kept from before; a new one near the top is found at once.
     await panel().simulate({ kind: 'scrollToRow', index: 0 });
@@ -77,6 +84,38 @@ describe('go to HEAD', () => {
     const s = await until('HEAD selected', (p) => p.selected === git('rev-parse', 'main'));
     assert.match(ui.first('notify').message, /HEAD \(main\) is not in the graph/);
     assert.deepEqual(s.options.refs, ['refs/heads/feature/login', 'refs/heads/main']);
+  });
+
+  it('loads further history under a branch filter when the filter reaches HEAD', async () => {
+    const main = git('rev-parse', 'main');
+    longBranch('strata-long', FIRST_PAGE + 100, main);
+    await reload(panel());
+    // A selection the filtered history has near its top, which the reload finds at once.
+    await panel().simulate({ kind: 'scrollToRow', index: 0 });
+    await panel().simulate({ kind: 'clickRow', index: 0 });
+    let s = await filter('refs/heads/strata-long', false);
+    assert.ok(s.commits <= FIRST_PAGE && !s.done, 'HEAD is not loaded yet');
+    await goToHead();
+    s = await until('HEAD selected', (p) => p.selected === main);
+    assert.ok(s.commits > FIRST_PAGE, 'more history loaded');
+    assert.equal(ui.of('notify').length, 0);
+  });
+
+  it('says at once when the filter leaves HEAD out, loading no history to look for it', async () => {
+    longBranch('strata-lone', FIRST_PAGE + 100);
+    await reload(panel());
+    // A selection the filtered history has near its top, which the reload finds at once.
+    await panel().simulate({ kind: 'scrollToRow', index: 0 });
+    await panel().simulate({ kind: 'clickRow', index: 0 });
+    let s = await filter('refs/heads/strata-lone', false);
+    const loaded = s.commits;
+    assert.ok(!s.done, 'more history to load');
+    await goToHead();
+    await waitFor('told', () => ui.of('notify').length > 0);
+    assert.match(ui.first('notify').message, /HEAD \(main\) is not in the graph/);
+    s = await panel().probe();
+    assert.equal(s.commits, loaded, 'no history loaded to look for HEAD');
+    assert.equal(s.announced, 'HEAD is not in the graph: the branch filter leaves it out');
   });
 
   it('goes to a detached HEAD, also from the command palette', async () => {

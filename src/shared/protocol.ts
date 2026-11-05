@@ -76,6 +76,8 @@ export type HostToWebview =
    * branch to the branch filter, or shows every branch with HEAD detached.
    */
   | { type: 'goToHead'; include?: true }
+  /** Whether the branch filter's refs reach HEAD, commit `hash`; true when git could not tell. */
+  | { type: 'headReached'; generation: number; hash: string; reached: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -130,6 +132,11 @@ export type WebviewToHost =
   | { type: 'switchRepository'; root: string }
   /** Replaces the repository's badge rules. */
   | { type: 'setBadgeRules'; rules: BadgeRule[] }
+  /**
+   * Go to HEAD under a branch filter, before loading further history to find HEAD, commit `hash`:
+   * answered with headReached.
+   */
+  | { type: 'reachesHead'; generation: number; hash: string }
   /** Go to HEAD found HEAD outside the branch filter: answered with goToHead (include) on request. */
   | { type: 'headNotShown'; branch: string | undefined; hash: string }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */

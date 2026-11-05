@@ -228,6 +228,14 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       }
       break;
     }
+    case 'reachesHead':
+      toWebview({
+        type: 'headReached',
+        generation,
+        hash: m.hash,
+        reached: data !== undefined && select(data, { ...options, firstParent: false }).some((c) => c.hash === m.hash),
+      });
+      break;
     case 'setBadgeRules':
       badgeRules = m.rules;
       toWebview({ type: 'badgeRules', rules: badgeRules });
