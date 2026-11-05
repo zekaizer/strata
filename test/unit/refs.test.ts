@@ -31,6 +31,14 @@ describe('readRefs', () => {
     assert.equal(byName.get('refs/tags/lightweight-tag')?.hash, git(dir, 'rev-parse', 'lightweight-tag'));
   });
 
+  it("reads a branch's upstream, and none for a branch without one", async () => {
+    git(dir, 'branch', '--quiet', '--set-upstream-to=origin/release/0.2', 'release/0.2');
+    const byName = new Map((await readRefs('git', dir)).refs.map((r) => [r.name, r]));
+    assert.equal(byName.get('refs/heads/release/0.2')?.upstream, 'refs/remotes/origin/release/0.2');
+    assert.equal(byName.get('refs/heads/develop')?.upstream, undefined);
+    assert.equal(byName.get('refs/remotes/origin/main')?.upstream, undefined);
+  });
+
   it('lists the configured remotes', async () => {
     assert.deepEqual((await readRefs('git', dir)).remotes.sort(), ['origin', 'upstream']);
   });
@@ -63,17 +71,15 @@ describe('readRefs', () => {
     assert.deepEqual(await readRefs('git', d), { head: undefined, headBranch: 'trunk', refs: [], remotes: [] });
   });
 
-  it('includes the stash', async () => {
+  it('leaves the stash out: it is read with the stash list', async () => {
     const d = join(root, 'stash');
     scenarios.linear().write(d);
     writeFileSync(join(d, 'untracked.txt'), 'x');
     git(d, '-c', 'user.name=a', '-c', 'user.email=a@b', 'stash', 'push', '--quiet', '--include-untracked');
-    const stash = (await readRefs('git', d)).refs.find((r) => r.kind === 'stash');
-    assert.deepEqual(stash, {
-      name: 'refs/stash',
-      short: 'stash',
-      kind: 'stash',
-      hash: git(d, 'rev-parse', 'refs/stash'),
-    });
+    const snap = await readRefs('git', d);
+    assert.deepEqual(
+      snap.refs.map((r) => r.name),
+      ['refs/heads/main'],
+    );
   });
 });

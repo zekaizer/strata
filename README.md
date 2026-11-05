@@ -6,9 +6,14 @@ page, so it opens quickly even on very large repositories.
 ## Features
 
 - Commit graph of all local branches, remote-tracking branches, tags and HEAD,
-  with branch, remote, tag and stash badges above their commits. A branch and
+  with branch, remote and tag badges above their commits. A branch and
   its same-named remote-tracking branches on the same commit share one badge
   (`main │ origin`); when they differ, both show, so unpushed work stands out.
+- Stashes are rows of their own, directly above the commit each was made on,
+  newest on top, with a square node beside that commit's line. A stash whose
+  commit is no longer on its branch (after a rebase or amend) sits above the
+  branch's tip and says so; an autostash git left behind shows in the warning
+  color. Stashing or dropping updates the rows without reloading the history.
 - Commit details: author, committer, full message, parents and changed files.
 - Click a changed file to open its diff in the VS Code diff editor; browse
   file after file without losing your place in the graph.
@@ -48,7 +53,13 @@ page, so it opens quickly even on very large repositories.
   (relative to the repository root), **Copy Path**, and for renamed files
   **Copy Old Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd>
   (<kbd>⌥⇧⌘C</kbd> on macOS) copies the relative path of the focused file.
-  Right-click a commit to copy its hash, short hash or subject.
+  Right-click a commit to copy its hash, short hash, subject or patch.
+- With the list focused, <kbd>Shift</kbd>+<kbd>F10</kbd> or the Menu key opens
+  the selected commit's or stash's menu, <kbd>Ctrl</kbd>+<kbd>C</kbd> copies
+  its full hash and <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> its patch
+  (<kbd>Cmd</kbd> on macOS); a stash's patch includes its untracked files.
+  With text selected in the details, <kbd>Ctrl</kbd>+<kbd>C</kbd> copies that
+  text.
 - The details start with who and when: author, date and the short hash. Click
   the hash to copy the full hash; the arrow after it shows the full hash,
   author, committer and parents (with their subjects) and stays open for other
@@ -62,7 +73,72 @@ page, so it opens quickly even on very large repositories.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
+- With stashes in the repository, the toolbar counts them and how many are not
+  in the graph (their commit is not loaded yet, filtered out, or on no branch).
+  Click it for **Show Stashes**: pick one to select it and open its details,
+  loading more history if needed. Click a stash row to see its message, the
+  commit it was made on, how many files were staged, its changes (click a file
+  for its diff) and its untracked files. **Show stash rows** in the branch
+  button's menu hides or shows the rows.
 - Use the refresh button after changing the repository outside VS Code.
+
+## Changing the repository
+
+Right-click a commit, a branch, remote branch or tag badge, or a stash row for
+what you can do with it; **Branch and Tag Actions...** in a commit's menu
+offers the same for its badges from the keyboard. The graph tab's title bar
+and the Command Palette have Fetch, Pull, Push, the stash commands, **Show
+Stashes...**, **Undo Last Operation** and **Show Git Output**, and, while an
+operation is stopped, Continue, Abort and Skip.
+
+- **Branches and tags:** Checkout (a remote branch checks out its local
+  branch, or creates one that tracks it), Create Branch, Create Tag, Rename,
+  Delete and Copy Name. Deleting a branch says which commits no other branch
+  or tag has.
+- **History:** Merge into Current Branch (fast-forward or a merge commit),
+  Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
+  Branch to Here in any of git's modes. Each confirmation says what happens to
+  which commits.
+- **Stashes:** Stash Changes (optionally with untracked files), Apply, Pop,
+  Drop, Create Branch from Stash and Copy Patch. Apply, Pop and Create Branch
+  from Stash change nothing when files the stash's untracked part adds already
+  exist in your work tree, and name those files so you can move them away
+  first.
+- **Remotes:** Fetch, Pull (fast-forward, merge or rebase, following
+  `pull.rebase`), Push and Publish Branch. A rejected push says how many
+  commits the remote has that your branch doesn't, and offers a force push
+  with lease when `git.allowForcePush` is on.
+- **Uncommitted changes** are named in the confirmation, with the choice to
+  stash them around the operation (and bring them back after it) or keep them
+  in place. `strata.autoStash` decides which comes first: `gitConfig` (the
+  default) follows `merge.autoStash` for merge and pull with merge (stashing
+  first while it is not set) and keeps changes in place first for cherry pick
+  and revert; `always` puts stashing first, `never` keeping them in place. A
+  rebase always needs the stash. A hard reset keeps your changes in a stash it
+  never pops, unless you discard them.
+- **Untracked files** in the way stop a checkout, merge, rebase, pull, cherry
+  pick, revert or Create Branch from Stash that would put files of its own
+  there. Strata names them and offers **Stash Them & Retry**, which moves just
+  those files into a stash and runs the operation again. That stash stays in the
+  list. Strata does not bring your files back, because the operation puts its
+  own versions in their place.
+- Merge says so when the two lines have no commit in common. In a **shallow
+  clone**, which may only lack that commit, Merge and Rebase offer **Fetch
+  More History** (100 commits further back) or **Fetch Full History**
+  instead. Cherry Pick, Revert and Copy Patch (of a commit or of one of its
+  files) offer the same for the clone's oldest commits, whose parents are not
+  there to tell their changes from the whole tree. Run the operation again once the history is there.
+- **Undo Last Operation** puts back what the last operation changed: a reset,
+  merge, rebase, cherry pick or revert, a created, renamed or deleted branch
+  or tag, or a dropped stash. It only moves the branch the operation moved,
+  and asks first if that branch moved since.
+- When an operation stops at conflicts, Strata says where and in which files;
+  **Resolve...** opens them, and other changes wait until you continue or
+  abort. If bringing back stashed changes conflicts, the stash is kept and
+  Strata says where it is.
+- Every git command Strata runs is logged in the **Strata** output channel
+  (**Show Git Output**). Sign-in problems offer to type the same command into
+  a terminal for you to run there.
 
 ## Large repositories
 
@@ -88,7 +164,7 @@ Linux kernel. It only updates repositories that already have a commit-graph.
 
 - VS Code 1.90 or later.
 - git installed where the repository is (the built-in Git extension must be
-  enabled).
+  enabled). Changing the repository needs git 2.27 or later.
 
 ## Feedback
 

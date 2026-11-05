@@ -2,7 +2,8 @@ import * as assert from 'node:assert/strict';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { ScriptedUi } from './scripted-ui.ts';
 
 /** What VS Code passes to a webview/context command: the element's data-vscode-context plus the webview id. */
 const menuArg = (ctx: Record<string, unknown>) => ({ webview: 'strata.graph', ...ctx });
@@ -74,12 +75,32 @@ describe('context menus', () => {
     const row = (await panel.probe()).menuContexts.selectedRow;
     assert.ok(row);
     assert.equal(row['webviewSection'], 'commit');
+    const short = git('rev-parse', '--short', hash);
+    const announced = (text: string) => waitFor(text, async () => (await panel.probe()).announced === text);
     await vscode.commands.executeCommand('strata.commit.copyHash', menuArg(row));
     assert.equal(await vscode.env.clipboard.readText(), hash);
+    await announced(`Copied the commit hash of ${short}`);
     await vscode.commands.executeCommand('strata.commit.copyShortHash', menuArg(row));
-    assert.equal(await vscode.env.clipboard.readText(), git('rev-parse', '--short', hash));
+    assert.equal(await vscode.env.clipboard.readText(), short);
+    await announced(`Copied ${short}`);
     await vscode.commands.executeCommand('strata.commit.copySubject', menuArg(row));
     assert.equal(await vscode.env.clipboard.readText(), 'Search ranking');
+    await announced(`Copied the subject of ${short}`);
+  });
+
+  it('copies the patch of a commit row and of one of its files, and announces it', async () => {
+    const row = (await panel.probe()).menuContexts.selectedRow;
+    assert.ok(row);
+    await vscode.commands.executeCommand('strata.commit.copyPatch', menuArg(row));
+    const patch = await vscode.env.clipboard.readText();
+    assert.match(patch, new RegExp(`^From ${hash} `));
+    assert.match(patch, /^Subject: \[PATCH\] Search ranking$/m);
+    await waitFor('announcement', async () => (await panel.probe()).announced.startsWith('Copied patch of '));
+
+    await vscode.commands.executeCommand('strata.file.copyPatch', menuArg(await fileContext()));
+    const filePatch = await vscode.env.clipboard.readText();
+    assert.match(filePatch, new RegExp(`^diff --git a/${file} b/${file}$`, 'm'));
+    assert.doesNotMatch(filePatch, /^From /m);
   });
 
   it('copies the relative path with Shift+Alt+C on a focused file', async () => {
@@ -88,10 +109,37 @@ describe('context menus', () => {
     await waitFor('clipboard', async () => (await vscode.env.clipboard.readText()) === file);
   });
 
-  it('rejects menu arguments that are not a commit id and repository path', async () => {
+  const mod = process.platform === 'darwin' ? { metaKey: true } : { ctrlKey: true };
+
+  it("copies the selected row's hash with Ctrl+C and its patch with Ctrl+Shift+C", async () => {
+    await vscode.env.clipboard.writeText('');
+    await panel.simulate({ kind: 'key', key: 'c', ...mod });
+    await waitFor('hash copied', async () => (await vscode.env.clipboard.readText()) === hash);
+    await panel.simulate({ kind: 'key', key: 'C', shiftKey: true, ...mod });
+    await waitFor('patch copied', async () => (await vscode.env.clipboard.readText()).startsWith(`From ${hash} `));
+  });
+
+  it('leaves Ctrl+C to VS Code while text is selected in the details', async () => {
     await vscode.env.clipboard.writeText('unchanged');
-    const ctx = { ...(await fileContext()), strataPath: '../outside.txt' };
-    await assert.rejects(Promise.resolve(vscode.commands.executeCommand('strata.file.copyPath', menuArg(ctx))));
-    assert.equal(await vscode.env.clipboard.readText(), 'unchanged');
+    await panel.simulate({ kind: 'selectText', selector: '.details-subject' });
+    await panel.simulate({ kind: 'key', key: 'c', ...mod });
+    await delay(500);
+    assert.notEqual(await vscode.env.clipboard.readText(), hash);
+    await panel.simulate({ kind: 'selectText', selector: '.no-such-element' });
+  });
+
+  it('refuses menu arguments that are not a commit id and repository path, and says why', async () => {
+    const api = await strata();
+    const ui = new ScriptedUi();
+    api.setUi(ui);
+    try {
+      await vscode.env.clipboard.writeText('unchanged');
+      const ctx = { ...(await fileContext()), strataPath: '../outside.txt' };
+      await vscode.commands.executeCommand('strata.file.copyPath', menuArg(ctx));
+      assert.equal(await vscode.env.clipboard.readText(), 'unchanged');
+      assert.deepEqual(ui.asked, [{ kind: 'notify', level: 'error', message: 'invalid path', actions: [] }]);
+    } finally {
+      api.setUi(undefined);
+    }
   });
 });

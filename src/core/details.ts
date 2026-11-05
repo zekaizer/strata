@@ -23,6 +23,16 @@ export interface CommitDetails {
   /** Parent the file list is relative to; undefined for a root commit (compared with the empty tree). */
   base: string | undefined;
   files: FileChange[];
+  /** Set for a stash commit, whose files are its changes to the base. */
+  stash?: StashDetails;
+}
+
+/** What a stash holds besides its changes: which of them are staged, and its untracked files. */
+export interface StashDetails {
+  /** Paths whose staged content differs from the base. */
+  staged: string[];
+  /** The commit holding the untracked files, which are all added in it. */
+  untracked: { hash: string; files: FileChange[] } | undefined;
 }
 
 /** How a changed file can be opened. */

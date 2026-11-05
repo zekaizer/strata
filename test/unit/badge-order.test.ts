@@ -6,14 +6,7 @@ const ref = (kind: Ref['kind'], short: string): Ref => ({
   kind,
   short,
   hash: 'a'.repeat(40),
-  name:
-    kind === 'branch'
-      ? `refs/heads/${short}`
-      : kind === 'remote'
-        ? `refs/remotes/${short}`
-        : kind === 'tag'
-          ? `refs/tags/${short}`
-          : 'refs/stash',
+  name: kind === 'branch' ? `refs/heads/${short}` : kind === 'remote' ? `refs/remotes/${short}` : `refs/tags/${short}`,
 });
 const names = (refs: Ref[]) => refs.map((r) => r.short);
 

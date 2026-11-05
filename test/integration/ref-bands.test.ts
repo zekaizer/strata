@@ -112,8 +112,9 @@ describe('ref badges', () => {
     };
     try {
       await panel.simulate({ kind: 'key', key: 'Escape' });
-      await panel.simulate({ kind: 'scrollToRow', index: 8 });
       const scrolled = await waitFor('scrolled to row 8', async () => {
+        // Again until the two-row layout has made the list short enough to scroll.
+        await panel.simulate({ kind: 'scrollToRow', index: 8 });
         const s = await panel.probe();
         return s.scrollTop > 0 && s.rowTops[8] === s.scrollTop && s;
       });

@@ -1,4 +1,4 @@
-export type RefKind = 'branch' | 'remote' | 'tag' | 'stash';
+export type RefKind = 'branch' | 'remote' | 'tag';
 
 export interface Ref {
   /** Full name, e.g. refs/heads/main. */
@@ -8,6 +8,8 @@ export interface Ref {
   kind: RefKind;
   /** Commit the ref points at (annotated tags are peeled). */
   hash: string;
+  /** A local branch's upstream, full name (refs/remotes/origin/main); absent without one. */
+  upstream?: string;
 }
 
 export interface RefSnapshot {
@@ -20,12 +22,12 @@ export interface RefSnapshot {
   remotes: string[];
 }
 
-const KIND_ORDER: Record<RefKind, number> = { branch: 0, remote: 1, tag: 2, stash: 3 };
+const KIND_ORDER: Record<RefKind, number> = { branch: 0, remote: 1, tag: 2 };
 
 /**
  * Order of the badges on one commit: the current branch, then refs picked in the ref filter
  * (`picked`: full names, null for all), then the rest; within each group branches, remotes,
- * tags, stashes, and by name.
+ * tags, and by name.
  */
 export function badgeOrder(
   refs: readonly Ref[],

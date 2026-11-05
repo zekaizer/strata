@@ -255,10 +255,34 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-descriptionForeground);
 }
 
+.stash-button[hidden] {
+  display: none;
+}
+
+.stash-count-narrow {
+  display: none;
+}
+
+/* Below the refs, which scroll: the stash option stays in view. */
+.popover-stashes {
+  flex: none;
+  margin-top: 4px;
+  padding-top: 2px;
+  border-top: 1px solid var(--separator);
+}
+
+.popover-stashes[hidden] {
+  display: none;
+}
+
 /* Narrow toolbars keep the icons and drop the labels. */
 @container toolbar (max-width: 420px) {
-  .first-parent-button .tool-label {
+  .first-parent-button .tool-label,
+  .stash-button .tool-label {
     display: none;
+  }
+  .stash-count-narrow {
+    display: inline;
   }
   .toolbar .status {
     display: none;
@@ -275,6 +299,30 @@ body:not(.hover-off) .popover-item:hover {
 
 .toolbar .status.error {
   color: var(--vscode-errorForeground);
+}
+
+/* A Strata operation is running: its label, after a spinner (codicon-loading). */
+.toolbar .status.busy {
+  color: var(--vscode-foreground);
+}
+
+.toolbar .status.busy::before {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+  font: normal normal normal 14px/1 codicon;
+  content: '\eb19';
+  animation: codicon-spin 1.5s steps(30) infinite;
+}
+
+body.vscode-reduce-motion .toolbar .status.busy::before {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolbar .status.busy::before {
+    animation: none;
+  }
 }
 
 .icon-button {
@@ -294,6 +342,107 @@ body:not(.hover-off) .popover-item:hover {
 .icon-button:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
+}
+
+/*
+ * The operation in progress, or what one left behind, between the toolbar and the list: the
+ * sentence first, the buttons at the end of the line, or on a line of their own when narrow.
+ */
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  flex: none;
+  padding: 5px 8px 5px 16px;
+  border-bottom: 1px solid var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
+  background: var(--vscode-inputValidation-infoBackground, transparent);
+  color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground));
+  line-height: 18px;
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner.warning {
+  border-bottom-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
+  background: var(--vscode-inputValidation-warningBackground, transparent);
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+}
+
+body.vscode-high-contrast .banner {
+  border-top: 1px solid var(--vscode-contrastBorder);
+  border-bottom-color: var(--vscode-contrastBorder);
+}
+
+.banner-icon.codicon {
+  flex: none;
+  align-self: flex-start;
+  margin-top: 1px;
+  font-size: 16px;
+  color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-foreground));
+}
+
+.banner.warning .banner-icon.codicon {
+  color: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground));
+}
+
+/*
+ * The icon and the sentence share the first line; the buttons take the rest of it or wrap below.
+ * At most two lines of the sentence show; its tooltip and screen readers have all of it.
+ */
+.banner-text {
+  flex: 1 1 260px;
+  min-width: 0;
+  margin-left: -6px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.banner-link {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.92em;
+}
+
+.banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.banner-button {
+  padding: 1px 8px;
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font: inherit;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.banner-button.primary {
+  border-color: var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+body:not(.hover-off) .banner-button:hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+body:not(.hover-off) .banner-button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.banner-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
 }
 
 .viewport {
@@ -362,7 +511,9 @@ canvas.graph {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  overflow: hidden;
+  /* Clipped like hidden, but a badge's menu outline (offset outside it) still shows. */
+  overflow: clip;
+  overflow-clip-margin: 2px;
 }
 
 /* Like VS Code lists: hover never paints over the selection. */
@@ -530,12 +681,145 @@ body.vscode-high-contrast .badge-remotes {
   border-left-color: var(--vscode-contrastBorder);
 }
 
+/*
+ * What an operation moved: a badge or a stash row pulses twice; under reduced motion it is
+ * outlined as long as it is marked (LANDING_MS).
+ */
+.badge.landed {
+  animation: landed-badge 1.2s ease-in-out;
+}
+
+.row.landed {
+  animation: landed-row 1.2s ease-in-out;
+}
+
+@keyframes landed-badge {
+  25%,
+  75% {
+    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
+    background: color-mix(in srgb, var(--badge-color) 45%, transparent);
+  }
+}
+
+@keyframes landed-row {
+  25%,
+  75% {
+    box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent);
+  }
+}
+
+body.vscode-reduce-motion .landed {
+  animation: none;
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+body.vscode-reduce-motion .badge.landed {
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landed {
+    animation: none;
+    outline: 2px solid var(--vscode-focusBorder);
+    outline-offset: -2px;
+  }
+
+  .badge.landed {
+    outline-offset: 0;
+  }
+}
+
+/* Each remote name is a menu target of its own. */
+.badge-remote-name {
+  padding: 0 1px;
+}
+
+/* The element a context menu is open on, while the menu is open, as in VS Code's own lists. */
+body.vscode-context-menu-visible .menu-target {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+/* Apart from the badge's own border, which may have the same color. */
+body.vscode-context-menu-visible .badge.menu-target {
+  outline-offset: 1px;
+}
+
 .badge-tag {
   --badge-color: var(--badge-tag);
 }
 
 .badge-stash {
   --badge-color: var(--badge-stash);
+}
+
+/* An autostash left behind needs the user: its badge keeps the warning tone, like the current branch's. */
+.badge-stash.autostash {
+  --badge-color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash {
+  border-color: var(--badge-color);
+  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+  color: var(--badge-color);
+}
+
+body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codicon {
+  color: var(--badge-color);
+}
+
+.badge-autostash {
+  font-weight: 600;
+}
+
+/*
+ * Stash rows: always one line, the badge inline before the message rather than in a band, so they
+ * never read as commits with refs. The message is git's reflog subject, muted; what was typed
+ * after "On <branch>:" is slanted.
+ */
+.row.stash .badge {
+  flex: none;
+  height: 16px;
+  max-width: none;
+  gap: 3px;
+  padding: 0 5px 0 4px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.row.stash .badge .codicon {
+  font-size: 11px;
+}
+
+.row.stash .subject {
+  gap: 6px;
+}
+
+.row.stash .hash {
+  visibility: hidden;
+}
+
+.row.stash .text,
+.stash-note {
+  color: var(--vscode-descriptionForeground);
+}
+
+.stash-message {
+  font-style: italic;
+}
+
+.stash-note {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row.stash.selected .text,
+.row.stash.selected .stash-note {
+  color: inherit;
 }
 
 .badge-more {
@@ -686,11 +970,22 @@ body.vscode-high-contrast .expansion.more-below {
   text-overflow: ellipsis;
 }
 
+.byline-stash,
 .byline-date,
 .byline-sep,
 .byline-hash,
 .byline-toggle {
   flex: none;
+}
+
+.byline-stash {
+  color: var(--vscode-foreground);
+}
+
+.byline-branch {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .byline-sep {
@@ -880,6 +1175,11 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 .files-summary {
   margin: 0 0 4px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* A stash's untracked files follow its changes. */
+.files + .files-summary {
+  margin-top: 10px;
 }
 
 .files-base {
@@ -1203,4 +1503,14 @@ body:not(.hover-off) .file:hover .file-actions,
     right: 4px;
     background: var(--details-bg);
   }
+}
+
+.file-staged {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid var(--separator);
+  border-radius: 3px;
+  font-size: 0.85em;
+  line-height: 14px;
+  color: var(--vscode-descriptionForeground);
 }

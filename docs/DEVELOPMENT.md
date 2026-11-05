@@ -25,6 +25,7 @@ npm ci
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
 | Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
 | Fixture repos → `out/fixtures/<name>`  | `npm run fixtures [name ...]`                       |
+| Command contributions from the table   | `npm run manifest` (after editing `commands.ts`)    |
 | Performance (git + layout)             | `npm run perf -- <repo>`                            |
 | Performance in VS Code                 | `STRATA_PERF_REPO=<repo> npm run perf:e2e`          |
 | Package                                | `npm run package` → `artifacts/strata.vsix`         |
@@ -37,9 +38,12 @@ Host.
 
 `test/fixtures/` builds repositories with `git fast-import` from fixed dates
 and identities, so object ids are identical on every machine. Scenarios:
-`linear`, `branchy` (criss-cross, unmerged branch), `octopus`, `multi-root`,
-`refs` (annotated/lightweight tags, remotes, ahead/behind), `clock-skew`,
-`large` (5000 seeded random commits).
+`linear`, `branchy` (criss-cross, unmerged branch), `stashes` (branchy with
+two stashes on one base, one on HEAD, a displaced autostash and one on a commit
+no ref reaches), `octopus`, `multi-root`, `refs` (annotated/lightweight tags,
+remotes, ahead/behind), `clock-skew`, `large` (5000 seeded random commits).
+`test/fixtures/stashes.ts` writes stashes with git plumbing, so integration
+tests add the same ones to the `branchy` workspace and drop them afterwards.
 
 ## Headless environments
 

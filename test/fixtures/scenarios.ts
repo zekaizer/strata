@@ -1,4 +1,5 @@
 import { RepoBuilder, type Mark } from './builder.ts';
+import { addBranchyStashes } from './stashes.ts';
 
 /** 30 commits on main. */
 export function linear(): RepoBuilder {
@@ -48,6 +49,11 @@ export function branchy(): RepoBuilder {
   });
   b.commit('main', 'Release prep');
   return b;
+}
+
+/** branchy with five stashes; see addBranchyStashes. */
+export function stashes(): RepoBuilder {
+  return branchy().afterWrite(addBranchyStashes);
 }
 
 /** Octopus merges with 4 and 5 parents (main tip + topics); one topic tip is itself a merge. */
@@ -259,6 +265,7 @@ export function large(count = 5000, seed = 1): RepoBuilder {
 export const scenarios = {
   linear,
   branchy,
+  stashes,
   octopus,
   'multi-root': multiRoot,
   refs,

@@ -53,6 +53,24 @@ describe('fixture repositories', () => {
     assert.equal(git(repos.branchy, 'merge-base', '--all', x, y).split('\n').length, 2);
   });
 
+  it('stashes: two on one base, one on HEAD, a displaced autostash, one off every branch', () => {
+    const d = repos.stashes;
+    assert.deepEqual(git(d, 'stash', 'list', '--format=%gs').split('\n'), [
+      'autostash',
+      `WIP on main: ${git(d, 'log', '-1', '--format=%h %s', 'main')}`,
+      'On feature/search: half-done ranking UI',
+      'On feature/search: try a regex ranking',
+      'On old-topic: abandoned spike',
+    ]);
+    assert.equal(git(d, 'rev-parse', 'stash@{2}^'), git(d, 'rev-parse', 'feature/search'));
+    assert.equal(git(d, 'rev-parse', 'stash@{3}^'), git(d, 'rev-parse', 'feature/search'));
+    assert.equal(git(d, 'rev-parse', 'stash@{1}^'), git(d, 'rev-parse', 'HEAD'));
+    assert.equal(git(d, 'log', '-1', '--format=%s', 'stash@{0}'), 'On wip/experiment: autostash');
+    assert.equal(git(d, 'branch', '--all', '--contains', 'stash@{0}^'), '');
+    assert.equal(git(d, 'branch', '--all', '--contains', 'stash@{4}^'), '');
+    assert.equal(git(d, 'ls-tree', '-r', '--name-only', 'stash@{2}^3'), 'notes/ranking-ideas.md');
+  });
+
   it('octopus: a 4-parent and a 5-parent merge', () => {
     const parents = git(repos.octopus, 'rev-list', '--all', '--min-parents=3', '--parents')
       .split('\n')

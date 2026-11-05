@@ -1,0 +1,221 @@
+import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import * as vscode from 'vscode';
+import { branchMenu, flowSuite, reload, run } from './flow-helpers.ts';
+import { git, waitFor, workspaceRoot } from './helpers.ts';
+
+const IDENTITY = ['-c', 'user.name=Other Person', '-c', 'user.email=other@example.com'];
+
+describe('remote operations', () => {
+  const { api, panel, ui } = flowSuite();
+  let root: string;
+  let bare: string;
+  const remote = (...args: string[]) => execFileSync('git', args, { cwd: bare, encoding: 'utf8' }).trim();
+  const errors = () => ui.of('notify').filter((n) => n.level === 'error');
+  const commit = (file: string, content: string, subject: string) => {
+    writeFileSync(join(workspaceRoot(), file), content);
+    git('add', file);
+    git('commit', '--quiet', '-m', subject);
+  };
+
+  beforeEach(async () => {
+    root = mkdtempSync(join(tmpdir(), 'strata-remote-'));
+    bare = join(root, 'origin.git');
+    execFileSync('git', ['init', '--quiet', '--bare', bare]);
+    git('remote', 'add', 'origin', bare);
+    git('branch', 'strata-pub', 'main~1');
+    await reload(panel());
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const publish = async () => {
+    await run('strata.publish', branchMenu('strata-pub', git('rev-parse', 'strata-pub')));
+    assert.equal(git('rev-parse', '--abbrev-ref', 'strata-pub@{upstream}'), 'origin/strata-pub');
+    await reload(panel());
+  };
+
+  it('publishes a branch to the only remote and makes it the upstream', async () => {
+    await publish();
+    assert.equal(remote('rev-parse', 'strata-pub'), git('rev-parse', 'strata-pub'));
+    assert.equal(ui.of('pick').length, 0, 'one remote: nothing to choose');
+  });
+
+  it('fetches what others pushed before saying what a force push would overwrite, and leases on it', async () => {
+    await publish();
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    writeFileSync(join(other, 'theirs.txt'), 'theirs\n');
+    execFileSync('git', [...IDENTITY, '-C', other, 'add', '.']);
+    execFileSync('git', [...IDENTITY, '-C', other, 'commit', '--quiet', '-m', 'Their fix']);
+    execFileSync('git', ['-C', other, 'push', '--quiet', 'origin', 'strata-pub']);
+    const mine = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Mine');
+    git('update-ref', 'refs/heads/strata-pub', mine);
+    await reload(panel());
+
+    const config = vscode.workspace.getConfiguration('git');
+    await config.update('allowForcePush', true, vscode.ConfigurationTarget.Global);
+    try {
+      ui.press('Force Push (With Lease)...', 'Force Push');
+      await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+      const asked = ui.of('confirm');
+      assert.equal(asked.length, 2);
+      assert.equal(asked[0]!.message, "'origin/strata-pub' has 1 commit that 'strata-pub' doesn't have.");
+      assert.deepEqual(asked[0]!.buttons, ['Force Push (With Lease)...'], 'not the current branch: no Pull');
+      assert.match(asked[1]!.detail, /\(newest "Their fix"\)/);
+      assert.equal(remote('rev-parse', 'strata-pub'), mine);
+    } finally {
+      await config.update('allowForcePush', undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  it('refuses the force push when the remote moved after the confirmation read it', async () => {
+    await publish();
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    const theirs = (subject: string) => {
+      writeFileSync(join(other, 'theirs.txt'), `${subject}\n`);
+      execFileSync('git', [...IDENTITY, '-C', other, 'add', '.']);
+      execFileSync('git', [...IDENTITY, '-C', other, 'commit', '--quiet', '-m', subject]);
+      execFileSync('git', ['-C', other, 'push', '--quiet', 'origin', 'strata-pub']);
+      return execFileSync('git', ['-C', other, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    };
+    theirs('Their fix');
+    const mine = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Mine');
+    git('update-ref', 'refs/heads/strata-pub', mine);
+    await reload(panel());
+
+    const config = vscode.workspace.getConfiguration('git');
+    await config.update('allowForcePush', true, vscode.ConfigurationTarget.Global);
+    try {
+      let newest = '';
+      ui.press('Force Push (With Lease)...', 'Force Push').meanwhile(() => {
+        newest = theirs('Their second fix');
+      });
+      await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+      assert.match(ui.of('confirm')[1]?.detail ?? '', /\(newest "Their fix"\)/);
+      assert.match(errors()[0]?.message ?? '', /\[rejected\].*\(stale info\)/);
+      assert.equal(remote('rev-parse', 'strata-pub'), newest);
+    } finally {
+      await config.update('allowForcePush', undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  it('asks before pushing to an upstream of another name, offering a branch of its own first', async () => {
+    await publish();
+    git('branch', '--track', 'strata-fix', 'origin/strata-pub');
+    const fix = git('commit-tree', 'strata-fix^{tree}', '-p', 'strata-fix', '-m', 'Fix');
+    git('update-ref', 'refs/heads/strata-fix', fix);
+    await reload(panel());
+    ui.press("Push to new 'origin/strata-fix'");
+    await run('strata.push', { ...branchMenu('strata-fix', fix), strataUpstream: true });
+    assert.equal(ui.first('confirm').message, "'strata-fix' tracks origin/strata-pub, which has another name.");
+    assert.equal(remote('rev-parse', 'strata-fix'), fix);
+    assert.notEqual(remote('rev-parse', 'strata-pub'), fix, 'the upstream of another name is untouched');
+  });
+
+  it('pulls from an upstream that is a local branch', async () => {
+    git('branch', 'strata-feat', 'main');
+    git('branch', '--track', 'strata-loc', 'strata-feat');
+    git('update-ref', 'refs/heads/strata-loc', 'main~1');
+    git('switch', '--quiet', 'strata-loc');
+    await reload(panel());
+    await run('strata.pull');
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'strata-loc'), git('rev-parse', 'strata-feat'));
+  });
+
+  it('pulls from an upstream whose short name a local branch shadows', async () => {
+    await publish();
+    const theirs = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Theirs');
+    git('push', '--quiet', 'origin', `${theirs}:refs/heads/strata-pub`);
+    git('update-ref', 'refs/remotes/origin/strata-pub', 'strata-pub');
+    git('branch', 'origin/strata-pub', 'main');
+    git('switch', '--quiet', 'strata-pub');
+    await reload(panel());
+    await run('strata.pull');
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'refs/heads/strata-pub'), theirs);
+  });
+
+  it('pulls with rebase from where the branch forked, past upstream commits rewritten since', async () => {
+    await publish();
+    git('switch', '--quiet', 'strata-pub');
+    commit('up.txt', 'up\n', 'Upstream one');
+    git('push', '--quiet', 'origin', 'strata-pub');
+    commit('mine.txt', 'mine\n', 'Mine');
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    writeFileSync(join(other, 'up.txt'), 'up, amended\n');
+    execFileSync('git', [
+      ...IDENTITY,
+      '-C',
+      other,
+      'commit',
+      '--quiet',
+      '--all',
+      '--amend',
+      '-m',
+      'Upstream one, amended',
+    ]);
+    execFileSync('git', ['-C', other, 'push', '--quiet', '--force', 'origin', 'strata-pub']);
+    git('config', 'pull.rebase', 'true');
+    writeFileSync(join(workspaceRoot(), 'mine.txt'), 'mine, uncommitted\n');
+    await reload(panel());
+
+    ui.press('Stash & Rebase');
+    await run('strata.pull');
+    assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-pub' on top of 'origin\/strata-pub'/);
+    assert.deepEqual(errors(), []);
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('log', '--format=%s', '-2', 'strata-pub'), 'Mine\nUpstream one, amended');
+    assert.equal(readFileSync(join(workspaceRoot(), 'mine.txt'), 'utf8'), 'mine, uncommitted\n');
+  });
+
+  it("neither types nor copies a sign-in command it can't quote for the terminal's shell", async () => {
+    // A terminal running cmd.exe, which no quoting stops from splitting at '&'.
+    const shell = join(root, 'bin', 'cmd');
+    mkdirSync(join(root, 'bin'));
+    writeFileSync(shell, '#!/bin/sh\nexec /bin/sh "$@"\n', { mode: 0o755 });
+    const terminal = vscode.workspace.getConfiguration('terminal.integrated');
+    await terminal.update('profiles.linux', { 'strata-cmd': { path: shell } }, vscode.ConfigurationTarget.Global);
+    await terminal.update('defaultProfile.linux', 'strata-cmd', vscode.ConfigurationTarget.Global);
+    const hook = join(workspaceRoot(), '.git', 'hooks', 'pre-push');
+    writeFileSync(hook, "#!/bin/sh\necho 'Permission denied (publickey).' >&2\nexit 1\n", { mode: 0o755 });
+    try {
+      await waitFor('the cmd terminal profile', () => vscode.env.shell === shell);
+      git('branch', 'strata-fix&docs', 'main');
+      await reload(panel());
+      await vscode.env.clipboard.writeText('untouched');
+      const terminals = vscode.window.terminals.length;
+      ui.press('Run in Terminal');
+      await run('strata.publish', branchMenu('strata-fix&docs'));
+      assert.equal(ui.first('confirm').message, "Strata couldn't sign in to 'origin'.");
+      assert.equal(await vscode.env.clipboard.readText(), 'untouched');
+      assert.equal(vscode.window.terminals.length, terminals);
+      assert.match(
+        ui.of('notify').at(-1)?.message ?? '',
+        /^Strata can't quote this command safely for your terminal's shell\. Run it there yourself, quoted for that shell: git push --progress --set-upstream origin 'refs\/heads\/strata-fix&docs:refs\/heads\/strata-fix&docs'$/,
+      );
+    } finally {
+      rmSync(hook, { force: true });
+      await terminal.update('defaultProfile.linux', undefined, vscode.ConfigurationTarget.Global);
+      await terminal.update('profiles.linux', undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
+  it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {
+    git('push', '--quiet', '--set-upstream', 'origin', 'main');
+    git('update-ref', 'refs/heads/main', 'main~1');
+    git('reset', '--hard', '--quiet');
+    await reload(panel());
+    await run('strata.fetch');
+    assert.equal(ui.of('notify').length, 0);
+    await run('strata.pull');
+    assert.equal(git('rev-parse', 'main'), remote('rev-parse', 'main'));
+  });
+});

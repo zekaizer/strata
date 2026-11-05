@@ -82,6 +82,71 @@
         "category": "Strata"
       },
       {
+        "command": "strata.file.copyPatch",
+        "title": "Copy Patch",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.stash.push",
+        "title": "Stash Changes...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.stash.pushUntracked",
+        "title": "Stash Changes (Include Untracked)...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.checkout",
+        "title": "Checkout",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.checkoutDetached",
+        "title": "Checkout (Detached)",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.createBranch",
+        "title": "Create Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.createTag",
+        "title": "Create Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.cherryPick",
+        "title": "Cherry Pick",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.revert",
+        "title": "Revert",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.merge",
+        "title": "Merge into Current Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.rebase",
+        "title": "Rebase Current Branch onto This...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.commit.copyHash",
         "title": "Copy Commit Hash",
         "category": "Strata"
@@ -94,6 +159,150 @@
       {
         "command": "strata.commit.copySubject",
         "title": "Copy Commit Subject",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.commit.copyPatch",
+        "title": "Copy Patch",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.refActions",
+        "title": "Branch and Tag Actions...",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.reset",
+        "title": "Reset Current Branch to Here...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.push",
+        "title": "Push",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.publish",
+        "title": "Publish Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.pull",
+        "title": "Pull",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.fetch",
+        "title": "Fetch",
+        "category": "Strata",
+        "icon": "$(repo-fetch)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.renameBranch",
+        "title": "Rename Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.copyRefName",
+        "title": "Copy Name",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.deleteBranch",
+        "title": "Delete Branch...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.deleteTag",
+        "title": "Delete Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.continue",
+        "title": "Continue Operation",
+        "category": "Strata",
+        "icon": "$(check)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.abort",
+        "title": "Abort Operation...",
+        "category": "Strata",
+        "icon": "$(discard)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.operation.skip",
+        "title": "Skip Commit...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.stash.apply",
+        "title": "Apply Stash",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.stash.pop",
+        "title": "Pop Stash",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.stash.branch",
+        "title": "Create Branch from Stash...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.stash.copyPatch",
+        "title": "Copy Patch",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.stash.drop",
+        "title": "Drop Stash...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.showStashes",
+        "title": "Show Stashes...",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.resolveConflicts",
+        "title": "Resolve Conflicts...",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.showStash",
+        "title": "Show Stash",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.keepStash",
+        "title": "Keep Stash",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.undo",
+        "title": "Undo Last Operation",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.showOutput",
+        "title": "Show Git Output",
         "category": "Strata"
       }
     ],
@@ -142,19 +351,204 @@
           "group": "2_copy@3"
         },
         {
+          "command": "strata.file.copyPatch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
+          "group": "2_copy@4"
+        },
+        {
+          "command": "strata.stash.push",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataIsHead",
+          "group": "1_worktree@1"
+        },
+        {
+          "command": "strata.stash.pushUntracked",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataIsHead",
+          "group": "1_worktree@2"
+        },
+        {
+          "command": "strata.checkout",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.checkout",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.checkoutDetached",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "2_checkout@1"
+        },
+        {
+          "command": "strata.checkoutDetached",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.createBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "2_checkout@2"
+        },
+        {
+          "command": "strata.createBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'head'",
+          "group": "1_checkout@1"
+        },
+        {
+          "command": "strata.createTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "2_checkout@3"
+        },
+        {
+          "command": "strata.cherryPick",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead && !strataMerge",
+          "group": "3_apply@1"
+        },
+        {
+          "command": "strata.revert",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataMerge",
+          "group": "3_apply@2"
+        },
+        {
+          "command": "strata.merge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "3_apply@3"
+        },
+        {
+          "command": "strata.merge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "2_apply@1"
+        },
+        {
+          "command": "strata.merge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "2_apply@1"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "3_apply@4"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "2_apply@2"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "2_apply@2"
+        },
+        {
           "command": "strata.commit.copyHash",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@1"
+          "group": "5_copy@1"
         },
         {
           "command": "strata.commit.copyShortHash",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@2"
+          "group": "5_copy@2"
         },
         {
           "command": "strata.commit.copySubject",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "1_copy@3"
+          "group": "5_copy@3"
+        },
+        {
+          "command": "strata.commit.copyPatch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "5_copy@4"
+        },
+        {
+          "command": "strata.refActions",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataHasRefs",
+          "group": "7_refs@1"
+        },
+        {
+          "command": "strata.refActions",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'refs'",
+          "group": "1_refs@1"
+        },
+        {
+          "command": "strata.reset",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
+          "group": "6_reset@1"
+        },
+        {
+          "command": "strata.push",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataUpstream",
+          "group": "3_remote@1"
+        },
+        {
+          "command": "strata.publish",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataUpstream",
+          "group": "3_remote@1"
+        },
+        {
+          "command": "strata.pull",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent && strataUpstream",
+          "group": "3_remote@2"
+        },
+        {
+          "command": "strata.fetch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "3_remote@1"
+        },
+        {
+          "command": "strata.renameBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "group": "4_edit@1"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.deleteBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "strata.deleteTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "strata.stash.apply",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'stash' && !strataLeftover",
+          "group": "1_apply@1"
+        },
+        {
+          "command": "strata.stash.pop",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'stash' && !strataLeftover",
+          "group": "1_apply@2"
+        },
+        {
+          "command": "strata.stash.branch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'stash'",
+          "group": "1_apply@3"
+        },
+        {
+          "command": "strata.stash.copyPatch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'stash'",
+          "group": "5_copy@1"
+        },
+        {
+          "command": "strata.stash.drop",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'stash'",
+          "group": "9_delete@1"
         }
       ],
       "commandPalette": [
@@ -187,6 +581,50 @@
           "when": "false"
         },
         {
+          "command": "strata.file.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.push",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.stash.pushUntracked",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.checkout",
+          "when": "false"
+        },
+        {
+          "command": "strata.checkoutDetached",
+          "when": "false"
+        },
+        {
+          "command": "strata.createBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.createTag",
+          "when": "false"
+        },
+        {
+          "command": "strata.cherryPick",
+          "when": "false"
+        },
+        {
+          "command": "strata.revert",
+          "when": "false"
+        },
+        {
+          "command": "strata.merge",
+          "when": "false"
+        },
+        {
+          "command": "strata.rebase",
+          "when": "false"
+        },
+        {
           "command": "strata.commit.copyHash",
           "when": "false"
         },
@@ -197,6 +635,163 @@
         {
           "command": "strata.commit.copySubject",
           "when": "false"
+        },
+        {
+          "command": "strata.commit.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.refActions",
+          "when": "false"
+        },
+        {
+          "command": "strata.reset",
+          "when": "false"
+        },
+        {
+          "command": "strata.push",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.publish",
+          "when": "false"
+        },
+        {
+          "command": "strata.pull",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.fetch",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.renameBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.copyRefName",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteTag",
+          "when": "false"
+        },
+        {
+          "command": "strata.operation.continue",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation"
+        },
+        {
+          "command": "strata.operation.abort",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation"
+        },
+        {
+          "command": "strata.operation.skip",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation && strata.operation != 'merge'"
+        },
+        {
+          "command": "strata.stash.apply",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.pop",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.branch",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.stash.drop",
+          "when": "false"
+        },
+        {
+          "command": "strata.showStashes",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.resolveConflicts",
+          "when": "false"
+        },
+        {
+          "command": "strata.showStash",
+          "when": "false"
+        },
+        {
+          "command": "strata.keepStash",
+          "when": "false"
+        },
+        {
+          "command": "strata.undo",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo"
+        },
+        {
+          "command": "strata.showOutput",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "strata.stash.push",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "3_stash@1"
+        },
+        {
+          "command": "strata.stash.pushUntracked",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "3_stash@2"
+        },
+        {
+          "command": "strata.push",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "1_sync@2"
+        },
+        {
+          "command": "strata.pull",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "1_sync@1"
+        },
+        {
+          "command": "strata.fetch",
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation",
+          "group": "navigation@1"
+        },
+        {
+          "command": "strata.operation.continue",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation",
+          "group": "navigation@1"
+        },
+        {
+          "command": "strata.operation.abort",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation",
+          "group": "navigation@2"
+        },
+        {
+          "command": "strata.operation.skip",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.operation && strata.operation != 'merge'",
+          "group": "2_operation@1"
+        },
+        {
+          "command": "strata.showStashes",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "3_stash@3"
+        },
+        {
+          "command": "strata.undo",
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo",
+          "group": "4_undo@1"
+        },
+        {
+          "command": "strata.showOutput",
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "9_output@1"
         }
       ]
     },
@@ -207,6 +802,16 @@
           "type": "boolean",
           "default": true,
           "description": "Offer to write a commit-graph file when a repository without one takes long to show its first page of history."
+        },
+        "strata.autoStash": {
+          "type": "string",
+          "enum": [
+            "gitConfig",
+            "always",
+            "never"
+          ],
+          "default": "gitConfig",
+          "description": "Which choice comes first when an operation finds uncommitted changes. gitConfig follows merge.autoStash for merge and pull with merge (stashing first while it is not set) and keeps changes in place first for cherry pick and revert. always puts stashing first, never keeping the changes in place. A rebase always needs the stash, and a switch asks only when the changes overlap what it changes."
         },
         "strata.keepCommitGraphUpdated": {
           "type": "boolean",
@@ -220,6 +825,7 @@
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "fixtures": "node test/fixtures/cli.ts",
+    "manifest": "node scripts/manifest.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json && tsc -p src/worker/tsconfig.json && tsc -p playground/tsconfig.json",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit",

@@ -9,7 +9,8 @@ import type {
 } from '../shared/protocol.ts';
 import type { FileChange, FileView } from '../core/details.ts';
 import { GraphController } from './controller.ts';
-import { isMenuCommand } from '../shared/menu-commands.ts';
+import type { FlowEnv, FlowHost } from './flow.ts';
+import { isCommandId } from '../shared/commands.ts';
 import { getGitApi } from './git-api.ts';
 
 export type ReadyInfo = Extract<WebviewToHost, { type: 'ready' }>;
@@ -28,6 +29,8 @@ export class GraphPanel implements vscode.Disposable {
 
   /** Where the webview's state is mirrored (workspace storage); set on activation. */
   static memento: vscode.Memento | undefined;
+  /** The runner and Ui flows use; set on activation. */
+  static env: FlowEnv | undefined;
   private static readonly stateKey = 'strata.graphState';
 
   static show(extensionUri: vscode.Uri, at: { column?: vscode.ViewColumn; initialState?: unknown } = {}): GraphPanel {
@@ -130,6 +133,27 @@ export class GraphPanel implements vscode.Disposable {
     return this.requireController().shortHash(hash);
   }
 
+  copyCommitPatch(hash: string): Promise<void> {
+    return this.requireController().copyCommitPatch(hash);
+  }
+
+  copyStashPatch(hash: string): Promise<void> {
+    return this.requireController().copyStashPatch(hash);
+  }
+
+  showStashes(): void {
+    this.requireController().showStashes();
+  }
+
+  copyFilePatch(hash: string, base: string | undefined, file: FileChange): Promise<void> {
+    return this.requireController().copyFilePatch(hash, base, file);
+  }
+
+  /** The graph flows change the repository through. */
+  flowHost(): FlowHost {
+    return this.requireController();
+  }
+
   private requireController(): GraphController {
     if (!this.controller) throw new Error('the commit graph has not loaded a repository');
     return this.controller;
@@ -198,8 +222,8 @@ export class GraphPanel implements vscode.Disposable {
       case 'probe':
         break;
       case 'menuCommand':
-        // Only the graph's own menu commands, with the same validation as a menu click.
-        if (isMenuCommand(m.command)) {
+        // Only the graph's own commands, with the same validation as a menu click.
+        if (isCommandId(m.command)) {
           void Promise.resolve(
             vscode.commands.executeCommand(m.command, { webview: GraphPanel.viewType, ...m.context }),
           ).then(undefined, (e: unknown) => {
@@ -221,9 +245,15 @@ export class GraphPanel implements vscode.Disposable {
   /** A reloaded webview (e.g. after being hidden) sends `ready` again and gets a fresh history. */
   private async startController(options: ViewOptions | undefined): Promise<void> {
     try {
-      this.controller ??= new GraphController(await getGitApi(), (m) => {
-        this.post(m);
-      });
+      const env = GraphPanel.env;
+      if (!env) throw new Error('Strata is not activated');
+      this.controller ??= new GraphController(
+        await getGitApi(),
+        (m) => {
+          this.post(m);
+        },
+        env,
+      );
       await this.controller.start(options);
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
