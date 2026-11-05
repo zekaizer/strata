@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as vscode from 'vscode';
 import { commitMenu, flowSuite, menu, reload, run } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
@@ -305,5 +306,26 @@ describe('tidying recent commits', () => {
     assert.equal(p.outOfReach.length, 0);
     assert.equal(p.selectionPanel, false);
     await panel().simulate({ kind: 'key', key: 'Escape', target: 'focused' });
+  });
+
+  it('offers no rewriting in a file history, whose rows are not the commit history, and says why', async () => {
+    const [a, , c] = await three();
+    const gen = (await panel().probe()).generation;
+    await run('strata.showHistory', vscode.Uri.file(join(workspaceRoot(), 'a.txt')));
+    await waitFor('the file history', async () => {
+      const p = await panel().probe();
+      return p.generation > gen && p.done && p.options.path !== null;
+    });
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(c) });
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(a), shiftKey: true });
+    const p = await waitFor('the selection of one row', async () => {
+      const probe = await panel().probe();
+      return probe.selected === a && probe;
+    });
+    assert.deepEqual(p.selection, []);
+    assert.match(p.status, /needs the whole history: clear the path filter first/);
+    assert.equal(p.menuContexts.selectedRow?.['strataRewritable'], false);
+    await panel().simulate({ kind: 'click', selector: '.path-chip-clear' });
+    await waitFor('the whole history again', async () => (await panel().probe()).options.path === null);
   });
 });

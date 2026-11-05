@@ -16,7 +16,7 @@ import {
   type OutOfView,
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
-import { PATH_HISTORY } from '../core/wording.ts';
+import { PATH_HISTORY, TIDY_WHOLE_HISTORY } from '../core/wording.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
@@ -582,6 +582,7 @@ class App {
       // Clicking the expanded row folds it; any other row opens its details.
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
+      if (e.shiftKey && this.options.path) this.tellAction(TIDY_WHOLE_HISTORY);
     });
     // List keys only when the list itself has focus: keys typed in the details (file tree, links)
     // bubble up through the scroller and must not move the commit selection.
@@ -1694,8 +1695,12 @@ class App {
     this.queueRender();
   }
 
+  /**
+   * A file or folder history rewrites parents to the commits that change the path, so its rows
+   * are not HEAD's line: nothing is offered for rewriting there.
+   */
   private findRewritable(): void {
-    const line = rewritableLine(this.refs.head, (h) => this.parentsOf.get(h));
+    const line = this.options.path ? [] : rewritableLine(this.refs.head, (h) => this.parentsOf.get(h));
     this.rewritableLine = line;
     this.rewritable = new Map(line.map((h, i) => [h, i]));
   }
@@ -1954,6 +1959,15 @@ class App {
     this.loading = true;
     vscode.postMessage({ type: 'loadMore', generation: this.generation, count });
     this.updateStatus();
+  }
+
+  /** Says why an action did nothing, in the toolbar status until the next action, and to screen readers. */
+  private tellAction(message: string): void {
+    this.status.textContent = message;
+    this.status.title = message;
+    this.status.classList.add('error');
+    this.status.classList.remove('busy');
+    this.announce(message);
   }
 
   /** An error from an action (opening a file, a menu command) lasts until the next action. */

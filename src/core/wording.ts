@@ -1456,3 +1456,7 @@ export const rewriteInTheWay = (kind: EditKind, what: string): string => `${REWR
 /** Undo of a rewrite found `name` (refName or HEAD) moved since. */
 export const undoRewriteOutdated = (label: string, name: string): string =>
   `${name} has moved since the ${label}, so Undo would lose what came after; nothing was done.`;
+
+/** Shift-click in a file or folder history, whose rows skip the commits that leave the path alone. */
+export const TIDY_WHOLE_HISTORY =
+  'Selecting commits to squash or drop needs the whole history: clear the path filter first.';

@@ -264,7 +264,8 @@ wait for it.
   parents.
 - **Tidying recent commits:** commits of the current branch's first-parent
   line, from HEAD down to the first merge, can be rewritten before you push
-  them.
+  them. A file or folder history shows only the commits that change it, so it
+  offers none of this; clear the path filter first.
   - **Edit Message...** (also the pencil beside the subject in the details)
     turns the subject and body into a fixed-width field with a guide at column
     72 and the subject's length. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> (<kbd>⌘</kbd>
