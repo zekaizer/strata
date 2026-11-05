@@ -1,7 +1,8 @@
 import * as assert from 'node:assert/strict';
 import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { delay, git, strata, waitFor } from './helpers.ts';
+import { join } from 'node:path';
+import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('commit list polish', () => {
   let panel: GraphPanel;
@@ -50,6 +51,30 @@ describe('commit list polish', () => {
     const n = await panel.probe();
     assert.ok(small < 600, `list still ${small}px wide`);
     assert.ok(n.columns.includes('hash'), `${small}px: ${n.columns.join(' ')}`);
+  });
+
+  it('keeps every toolbar control on screen in a narrow editor with the filters on', async () => {
+    for (let i = 0; i < 3 && (await panel.probe()).listWidth >= 600; i++) await narrow(1);
+    await vscode.commands.executeCommand(
+      'strata.showHistory',
+      vscode.Uri.file(join(workspaceRoot(), 'feature_search.txt')),
+    );
+    await waitFor('path history', async () => (await panel.probe()).options.path !== null);
+    await panel.simulate({ kind: 'click', selector: '.first-parent-button' });
+    const s = await waitFor('first parent', async () => {
+      const p = await panel.probe();
+      return p.options.firstParent && p.done && p;
+    });
+    await delay(100);
+    const fitted = await panel.probe();
+    assert.ok(s.listWidth < 600, `list still ${s.listWidth}px wide`);
+    assert.deepEqual(fitted.toolbarClipped, [], `${fitted.listWidth}px: ${fitted.buttonNames.toolbar.join(' | ')}`);
+    await panel.simulate({ kind: 'click', selector: '.first-parent-button' });
+    await panel.simulate({ kind: 'click', selector: '.path-chip-clear' });
+    await waitFor('whole history', async () => {
+      const p = await panel.probe();
+      return p.options.path === null && !p.options.firstParent;
+    });
   });
 
   it('drops a stuck hover once the graph comes back after opening a file', async () => {

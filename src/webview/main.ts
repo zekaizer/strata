@@ -4008,6 +4008,12 @@ class App {
         toolbar: [...this.toolbar.querySelectorAll<HTMLElement>(':scope > button:not([hidden])')].map(accessibleName),
         details: [...this.expansion.querySelectorAll<HTMLElement>('button')].map(accessibleName),
       },
+      toolbarClipped: ((bar) => {
+        const edge = bar.getBoundingClientRect().right;
+        return [...bar.querySelectorAll<HTMLElement>(':scope > :is(button, .path-chip):not([hidden])')]
+          .filter((e) => e.getBoundingClientRect().right > edge + 0.5)
+          .map(accessibleName);
+      })(this.toolbar),
       badgeFilter: this.badgeFilter.probe(),
       refCard: this.refCard.probe(),
       find: {

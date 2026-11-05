@@ -331,6 +331,8 @@ export interface ProbeState {
    * aria-hidden, else the title.
    */
   buttonNames: { toolbar: string[]; details: string[] };
+  /** Toolbar controls that end past the toolbar's right edge (accessible names): cut off. */
+  toolbarClipped: string[];
   badgeFilter: BadgeFilterProbe;
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;
