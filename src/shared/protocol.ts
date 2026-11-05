@@ -112,6 +112,8 @@ export interface ProbeState {
   visibleSubjects: string[];
   /** The commit or stash commit of each rendered row, by row index. */
   rowHashes: Record<number, string>;
+  /** Accessible names of the rendered rows, by commit or stash commit. */
+  rowLabels: Record<string, string>;
   /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
   operationNotes: Record<string, string>;
   /** Label of the toolbar's stash count button; empty while it is hidden. */

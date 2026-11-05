@@ -26,7 +26,7 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { fitBadges, landedRefs, rowBadges, type Badge } from './badges.ts';
+import { fitBadges, landedRefs, refsLabel, rowBadges, type Badge } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
@@ -1426,6 +1426,15 @@ class App {
       el('span', 'hash', shortHash(c.hash)),
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
+    const refsRead = refsLabel(rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs, (all) => all.length));
+    const said = [
+      c.subject,
+      refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
+      note?.text,
+      `${c.author}, ${formatDate(c.authorTime)}, ${shortHash(c.hash)}`,
+    ];
+    row.setAttribute('aria-label', said.filter((t) => t).join('. '));
     this.markMenuTarget(row, i);
     return row;
   }
@@ -2165,6 +2174,12 @@ class App {
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
           const i = Number(r.dataset['index']);
           return [i, this.list[i] ? rowHash(this.list[i]) : ''];
+        }),
+      ),
+      rowLabels: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
+          const row = this.list[Number(r.dataset['index'])];
+          return [row ? rowHash(row) : '', r.getAttribute('aria-label') ?? ''];
         }),
       ),
       operationNotes: Object.fromEntries(

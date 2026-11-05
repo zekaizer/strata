@@ -37,6 +37,17 @@ describe('ref badges', () => {
     for (const i of plain) assert.equal(s.rowHeights[i], ROW_HEIGHT, `row ${i}: plain rows keep their height`);
   });
 
+  it('names a row with its refs by kind, so the current branch is found by ear', async () => {
+    const s = await panel.probe();
+    const head = git('rev-parse', 'HEAD');
+    const short = git('rev-parse', '--short=7', 'HEAD');
+    assert.match(
+      s.rowLabels[head] ?? '',
+      new RegExp(`^${git('log', '-1', '--format=%s')}\\. Current branch main\\. Ada Lovelace, .+, ${short}$`),
+    );
+    assert.match(s.rowLabels[git('rev-parse', 'cross/y')] ?? '', /\. Branch cross\/y\. /);
+  });
+
   it('keeps a banded row compact', async () => {
     const s = await panel.probe();
     for (const i of Object.keys(s.refBands).map(Number)) assert.equal(s.rowHeights[i], ROW_HEIGHT + 14, `row ${i}`);
