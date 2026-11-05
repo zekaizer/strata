@@ -94,6 +94,10 @@ export function drawGraph(
     const above = i > 0 ? list[i - 1] : undefined;
 
     for (const e of spans.passesAt(item.row)) vertical(e, top, bottom);
+    if (item.kind === 'changes') {
+      for (const e of row.incoming) vertical(e, top, bottom);
+      continue;
+    }
     if (item.kind === 'stash') {
       for (const e of row.incoming) vertical(e, top, bottom);
       const half = STASH_NODE / 2;
@@ -173,6 +177,7 @@ export function drawGraph(
     if (!row) continue;
     const x = laneX(row.lane);
     const y = rowTop(i) + rowHeight(i) - ROW_HEIGHT / 2 - scrollTop;
+    if (item.kind === 'changes') continue;
     if (item.kind === 'stash') {
       ctx.strokeStyle = stashColor(item);
       ctx.strokeRect(stashX(row) - STASH_NODE / 2, y - STASH_NODE / 2, STASH_NODE, STASH_NODE);

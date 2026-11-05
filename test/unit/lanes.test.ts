@@ -74,5 +74,17 @@ describe('stash rows and the graph width', () => {
         );
       });
     });
+
+    it(`${n}: the uncommitted changes row needs no more columns than HEAD, on any commit`, () => {
+      const { commits, rows, spans } = histories.get(n)!;
+      const summary = { staged: 1, unstaged: 0, conflicted: 0, untracked: undefined, submodules: 0 };
+      for (const head of commits.slice(0, 60)) {
+        const list = interleave(commits, 0, anchoredAt(stashesOn(commits)), { head: head.hash, summary });
+        const i = list.findIndex((r) => r.kind === 'changes');
+        const at = list.findIndex((r) => r.kind === 'commit' && r.commit.hash === head.hash);
+        assert.ok(i >= 0 && i < at, `changes row above ${head.hash}`);
+        assert.ok(lanesUsed(list, rows, spans, i, i + 1) <= lanesUsed(list, rows, spans, at, at + 1));
+      }
+    });
   }
 });

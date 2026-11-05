@@ -1067,7 +1067,7 @@ class App {
   private successor(index: number, stashes: readonly StashEntry[]): string | undefined {
     for (let i = index; i >= 0 && i < this.list.length; i++) {
       const row = this.list[i]!;
-      if (row.kind === 'commit' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
+      if (row.kind !== 'stash' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
     }
     return undefined;
   }
@@ -2291,7 +2291,13 @@ class App {
    */
   private copyKey(e: KeyboardEvent): boolean {
     const row = this.list[this.selected];
-    if (!(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.key.toLowerCase() !== 'c' || !row) return false;
+    if (
+      !(isMac ? e.metaKey : e.ctrlKey) ||
+      e.altKey ||
+      e.key.toLowerCase() !== 'c' ||
+      (row?.kind !== 'commit' && row?.kind !== 'stash')
+    )
+      return false;
     if ((getSelection()?.toString() ?? '') !== '') return false;
     // Kept from VS Code too, whose Ctrl+Shift+C opens an external terminal.
     e.preventDefault();
@@ -2430,6 +2436,7 @@ class App {
     }
     // While several commits are selected, what Shift-click cannot add steps back.
     if (selection.length > 0 && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
+    if (r.kind === 'changes') return row;
     if (r.kind === 'stash') {
       this.fillStashRow(row, r.stash);
       if (this.landing?.stash === r.stash.hash) this.markLanded(row);
