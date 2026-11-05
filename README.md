@@ -36,6 +36,8 @@
 - Hide noisy badges, such as CI tags, with patterns per repository.
 - Filter the graph to some branches, remotes or tags, or follow first-parent
   history.
+- Find commits by message, hash, branch name or author (<kbd>Ctrl</kbd>+<kbd>F</kbd>)
+  and step through them in the graph.
 - **HEAD** in the toolbar jumps to the checked-out commit; rest the pointer on
   a commit's node for a card with all of its refs, the branches holding it, the
   first tag that has it and the tag it comes after.

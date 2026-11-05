@@ -90,6 +90,36 @@ average. Storing each lane's vertical run once (a span) instead of in every
 row made layout output proportional to commits, which is what lets the
 webview keep hundreds of thousands of rows.
 
+## Find
+
+Measured on zephyr (156,302 commits in the default view, 231 refs) in a
+`git clone --shared` with its commit-graph removed, git 2.56, 28 cores shared
+with other work (load average about 5). VS Code end to end with
+`STRATA_PERF_REPO=<repo> npm run perf:e2e` (`test/perf/find.test.ts`); git and
+the host side alone with `findCommits`/`locateCommit` from a script (3 runs
+each).
+
+| What                                            |                            Host side (git) |                                           VS Code, from typing / Enter |
+| ----------------------------------------------- | -----------------------------------------: | ---------------------------------------------------------------------: |
+| Text no commit has: whole history scanned       |                                0.80-0.86 s |                                                              1.2-1.9 s |
+| Common text (`bluetooth`): first hit, 10,000th  |                             0.74 s, 0.81 s |                                               1.73-1.84 s, 1.81-1.91 s |
+| `author:"Johan Hedberg"` (2,337 hits): done     |                                0.88-0.92 s |                                                            1.87-1.96 s |
+| Same three with a commit-graph: first hit       |                       0.80 s, 25 ms, 40 ms |                                                                        |
+| Go to the oldest commit (locate, then load all) | locate 0.76 s (0.14 s with a commit-graph) |                                                              2.1-3.0 s |
+| Go to commit #100,000 by hash                   |                                            |                                                              1.0-1.2 s |
+| Escape while loading down to a match            |                                            | 16 ms to stop; the page in flight (up to 10,000 commits) still arrives |
+
+The VS Code times include the widget's 200 ms typing debounce. Without a
+commit-graph, git's topological walk reads all history before it prints the
+first commit, as for the first page, so the first hit costs the same as a full
+scan; with one, common text shows its first hits in tens of milliseconds and
+only text few commits match pays for the whole scan, which reads every commit
+message. The rest of the VS Code time is the extension host competing with VS
+Code's own git extension, which scans the 70,000-file checkout when the window
+opens (the spread between runs follows it). Going far down costs the same
+loading and layout as scrolling there: pages of 10,000 commits, with progress
+in the toolbar and the widget.
+
 ## Known limits
 
 - Chromium caps element height at about 33.5M px; at 24 px per row the list
