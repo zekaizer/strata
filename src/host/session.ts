@@ -83,6 +83,8 @@ export interface SessionDeps {
   readonly busy: (label: string | undefined) => void;
   /** Shows the stash or commit `hash` of the repository `key`, showing that repository first if needed. */
   readonly reveal: (key: RepoKey, hash: string) => void;
+  /** Whether the graph is on screen. */
+  readonly visible: () => boolean;
 }
 
 /**
@@ -136,6 +138,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private changesDetailsQuery: AbortController | undefined;
   /** Untracked files took longer than UNTRACKED_BUDGET_MS to count once. */
   private untrackedSlow = false;
+  /** The uncommitted changes may have changed while the graph was hidden. */
+  private changesStale = false;
+  private readonly visible: () => boolean;
   /** Stops the ref card's where-is query in flight. */
   private whereQuery: AbortController | undefined;
   /** Stops the find widget's search, and its locate query, in flight. */
@@ -165,6 +170,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.suggested = deps.suggested;
     this.onBusy = deps.busy;
     this.revealIn = deps.reveal;
+    this.visible = deps.visible;
     void this.context('strata.canUndo', this.lastUndo !== undefined);
     this.disposables.push(
       vscode.window.tabGroups.onDidChangeTabs(() => {
@@ -566,8 +572,16 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     await this.context('strata.operation', state.operation?.kind ?? '');
   }
 
-  /** Tells the graph about the uncommitted changes; `force` even if unchanged (after a reset). */
+  /**
+   * Tells the graph about the uncommitted changes; `force` even if unchanged (after a reset).
+   * Unforced, a hidden graph is not told: it reads them once it is shown again (shown()).
+   */
   private async syncChanges(force: boolean): Promise<void> {
+    if (!force && !this.visible()) {
+      this.changesStale = true;
+      return;
+    }
+    this.changesStale = false;
     this.changesQuery?.abort();
     const query = new AbortController();
     this.changesQuery = query;
@@ -1195,6 +1209,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** The path whose history is shown, as offers name it. */
   private pathName(): string {
     return this.options.path?.paths[0] ?? basename(this.cwd);
+  }
+
+  /** The graph came back on screen: what changed meanwhile reaches it now. */
+  shown(): void {
+    if (this.changesStale) void this.syncChanges(false);
   }
 
   dispose(): void {

@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 import { join } from 'node:path';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
-import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
+import { getGitApi } from '../../src/host/git-api.ts';
+import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('uncommitted changes row', () => {
   let panel: GraphPanel;
@@ -40,6 +41,31 @@ describe('uncommitted changes row', () => {
     assert.equal(rowOf(p, git('rev-parse', 'HEAD')), 1);
     assert.equal(p.scrollTop, 0, 'a row added at the top is shown, not scrolled past');
     assert.equal(p.rowLabels['changes'], 'Uncommitted changes on main: 1 changed.');
+    git('checkout', '--', 'main.txt');
+    await waitFor('no changes row', async () => rowOf(await panel.probe(), 'changes') < 0);
+  });
+
+  it('leaves a hidden graph alone and reads the changes once it is shown again', async () => {
+    const api = await strata();
+    const doc = await vscode.workspace.openTextDocument(file('main.txt'));
+    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Active, preview: false });
+    const graphShown = () => vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputWebview;
+    assert.ok(!graphShown());
+    const repo = (await getGitApi()).repositories[0]!;
+    const seen = new Promise<void>((resolve) => {
+      const sub = repo.state.onDidChange(() => {
+        sub.dispose();
+        resolve();
+      });
+    });
+    writeFileSync(file('main.txt'), 'edited while hidden\n');
+    await seen;
+    // Past the graph's refresh debounce: a visible graph would have its row by now.
+    await delay(1500);
+    assert.equal(rowOf(await panel.probe(), 'changes'), -1);
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    api.show();
+    await waitFor('changes row', async () => rowOf(await panel.probe(), 'changes') === 0);
     git('checkout', '--', 'main.txt');
     await waitFor('no changes row', async () => rowOf(await panel.probe(), 'changes') < 0);
   });
