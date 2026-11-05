@@ -195,7 +195,7 @@ describe('wording of history operations', () => {
   });
 
   it('names the untracked files a hard reset would overwrite instead of claiming they stay', () => {
-    const dirty = { files: 1, staged: 0, overlap: false };
+    const dirty = { files: 1, staged: 0, overlap: false, fastForward: false };
     const choices = resolveStashChoices('resetHard', dirty, 'gitConfig', undefined);
     assert.equal(
       dirtySection(dirty, choices, 0, ['parser.ts']),

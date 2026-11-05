@@ -125,7 +125,8 @@ operation is stopped, Continue, Abort and Skip.
   default) follows `merge.autoStash` for merge and pull with merge (stashing
   first while it is not set) and keeps changes in place first for cherry pick
   and revert; `always` puts stashing first, `never` keeping them in place. A
-  rebase always needs the stash. A hard reset keeps your changes in a stash it
+  rebase always needs the stash, and so does a merge commit over staged
+  changes. A hard reset keeps your changes in a stash it
   never pops, unless you discard them.
 - **Untracked files** in the way stop a checkout, merge, rebase, pull, cherry
   pick, revert or Create Branch from Stash that would put files of its own

@@ -279,10 +279,15 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
     // A pull merges as git pull would, without asking how.
     const modes: MergeMode[] =
       ask === 'always' && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
+    const options = modes.map((m) => ({
+      mode: m,
+      choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
+    }));
+    const explain = [...new Set(options.map((o) => o.choices.explain))].join(' ');
     const answer = await host.ui.confirm(
       mergeConfirmation(facts, mergeFf, {
-        section: c.section,
-        modes: modes.map((m) => ({ mode: m, choices: c.choices.choices })),
+        section: dirtySection(c.dirty, { ...options[0]!.choices, explain }, c.worktree.submodules),
+        modes: options.map((o) => ({ mode: o.mode, choices: o.choices.choices })),
       }),
     );
     if (answer === undefined) return;

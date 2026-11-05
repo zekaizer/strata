@@ -39,6 +39,8 @@ export interface Changes {
   choices: StashChoices;
   /** The closing section of the confirmation; '' when nothing needs asking. */
   section: string;
+  /** The choices with other facts about the operation (a merge that fast-forwards). */
+  resolve: (dirty: DirtyFacts) => StashChoices;
 }
 
 /** `target`: the commit a switch or a reset --keep moves to, for the overlap. */
@@ -53,10 +55,12 @@ export async function changes(host: FlowHost, op: StashOp, target?: string): Pro
       : [];
   // Changes inside submodules cannot be stashed and never block: they alone ask nothing.
   const files = Math.max(0, worktree.paths.length - worktree.submodules);
-  const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0 };
-  const choices = resolveStashChoices(op, dirty, host.settings().autoStash, mergeAutoStash);
+  const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0, fastForward: false };
+  const setting = host.settings().autoStash;
+  const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting, mergeAutoStash);
+  const choices = resolve(dirty);
   const section = choices.choices.length > 0 ? dirtySection(dirty, choices, worktree.submodules) : '';
-  return { worktree, overlap, dirty, choices, section };
+  return { worktree, overlap, dirty, choices, section, resolve };
 }
 
 /** A stash as Strata names it. */

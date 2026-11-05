@@ -106,6 +106,38 @@ describe('history operations', () => {
     assert.equal(git('stash', 'list'), '');
   });
 
+  it('keeps staged changes in place for a merge that fast-forwards', async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Fast-Forward Keeping Changes');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    const asked = ui.first('confirm');
+    assert.deepEqual(asked.buttons, [
+      'Stash & Fast-Forward',
+      'Fast-Forward Keeping Changes',
+      'Stash & Create Merge Commit',
+    ]);
+    assert.match(asked.detail, /git can't create a merge commit with staged changes\./);
+    assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
+    assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'still staged');
+  });
+
+  it('offers only stashing for a merge commit over staged changes', async () => {
+    branchWith('strata-side', 'main~1', 'side.txt', 'side\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Stash & Merge');
+    await run('strata.merge', branchMenu('strata-side', git('rev-parse', 'strata-side')));
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Merge']);
+    assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-side'));
+    assert.equal(read('NOTES.md'), 'staged\n');
+  });
+
   it('merges the clicked branch when a tag has the same name', async () => {
     branchWith('strata-rel', 'main', 'tagged.txt', 'tagged\n');
     git('tag', 'strata-rel');
