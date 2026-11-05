@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { BadgeRuleStore } from './host/badge-store.ts';
 import { contextValue, type ContextKey } from './host/context.ts';
 import type { FlowEnv } from './host/flow.ts';
+import { registerEntryPoints } from './host/entry.ts';
 import { registerCommands } from './host/menus.ts';
 import { GraphPanel } from './host/panel.ts';
 import { disposeRepoList } from './host/repositories.ts';
@@ -39,6 +40,7 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
     runner,
     vscode.commands.registerCommand('strata.show', show),
     ...registerCommands(env),
+    ...registerEntryPoints(context.extensionUri, env),
     vscode.commands.registerCommand('strata.writeCommitGraph', async () => {
       const panel = GraphPanel.current ?? show();
       await panel.whenReady();

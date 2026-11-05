@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import * as vscode from 'vscode';
-import { pickRepo, type RepoKey, type RepoPreference } from '../core/repos.ts';
+import { parseRepoKey, pickRepo, type RepoKey, type RepoPreference } from '../core/repos.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import { setContext } from './context.ts';
 import type { FlowEnv } from './flow.ts';
@@ -27,11 +27,14 @@ export class GraphController implements vscode.Disposable {
   /** Repositories already offered a commit-graph in this session. */
   private readonly suggested = new Set<string>();
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly setTitle: (title: string) => void;
 
-  constructor(repos: RepoList, post: (m: HostToWebview) => void, env: FlowEnv) {
+  /** `title` names the panel. */
+  constructor(repos: RepoList, post: (m: HostToWebview) => void, env: FlowEnv, title: (title: string) => void) {
     this.repos = repos;
     this.send = post;
     this.env = env;
+    this.setTitle = title;
     this.disposables.push(
       repos.onDidChange(() => {
         void this.follow();
@@ -93,6 +96,7 @@ export class GraphController implements vscode.Disposable {
     const repo = key && this.repos.get(key);
     if (!repo) {
       this.replace(undefined);
+      this.listed();
       this.post({ type: 'noRepository' });
       await Promise.all([
         setContext('strata.operation', ''),
@@ -101,9 +105,22 @@ export class GraphController implements vscode.Disposable {
       ]);
       return;
     }
+    if (key === this.session?.key && !reloaded) {
+      this.listed();
+      return;
+    }
     if (key !== this.session?.key) this.replace(this.newSession(key, repo));
-    else if (reloaded) this.session.options = this.optionsOf(key);
+    else this.session.options = this.optionsOf(key);
+    this.listed();
     await this.session!.reset();
+  }
+
+  /** Tells the graph which repositories are open, and names the shown one in the title when there are several. */
+  private listed(): void {
+    const repos = this.repos.items();
+    this.post({ type: 'repositories', repos });
+    const shown = this.session && repos.length > 1 ? ` (${basename(this.session.key)})` : '';
+    this.setTitle(`Commit Graph${shown}`);
   }
 
   private replace(session: RepoSession | undefined): void {
@@ -149,7 +166,12 @@ export class GraphController implements vscode.Disposable {
   }
 
   async handle(m: WebviewToHost): Promise<void> {
-    if (this.session) await this.session.handle(m);
+    if (m.type === 'listRepositories') this.listed();
+    else if (m.type === 'switchRepository') {
+      // A root the webview names must be an open repository's.
+      const key = parseRepoKey(m.root, this.repos.keys());
+      if (key !== undefined) await this.choose(key);
+    } else if (this.session) await this.session.handle(m);
     else if (m.type === 'refresh') await this.start();
   }
 

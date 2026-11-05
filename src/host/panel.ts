@@ -168,6 +168,11 @@ export class GraphPanel implements vscode.Disposable {
     return s;
   }
 
+  /** Root of the repository shown. */
+  shownRepository(): string | undefined {
+    return this.controller?.shown?.key;
+  }
+
   /**
    * Shows the repository whose root is `root`, as the user's choice. Resolves false, showing
    * nothing else, when no open repository has that root.
@@ -274,6 +279,9 @@ export class GraphPanel implements vscode.Disposable {
           this.post(m);
         },
         env,
+        (title) => {
+          this.panel.title = title;
+        },
       );
       const chosen = this.chosen;
       this.chosen = undefined;

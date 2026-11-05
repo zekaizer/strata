@@ -37,6 +37,7 @@ import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
+import { RepoSwitcher } from './repo-switcher.ts';
 import { parseSaved, remember, savedOptions, viewOf, type RepoView, type SavedState } from './saved-state.ts';
 import { savedState, vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -245,7 +246,7 @@ class App {
   private loadingTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly toolbar = el('header', 'toolbar');
-  private readonly repoLabel = el('span', 'repo');
+  private readonly switcher: RepoSwitcher;
   private readonly status = el('span', 'status');
   private readonly viewport = el('div', 'viewport');
   private readonly scroller = el('div', 'scroller');
@@ -304,8 +305,17 @@ class App {
       this.setOptions({ ...this.options, firstParent: !this.options.firstParent });
     });
     this.updateOptionControls();
+    this.switcher = new RepoSwitcher(this.toolbar, {
+      onOpen: () => {
+        vscode.postMessage({ type: 'listRepositories' });
+      },
+      onChoose: (root) => {
+        vscode.postMessage({ type: 'switchRepository', root });
+      },
+    });
     this.toolbar.append(
-      this.repoLabel,
+      this.switcher.label,
+      this.switcher.button,
       this.status,
       el('span', 'spacer'),
       this.stashButton,
@@ -428,6 +438,9 @@ class App {
         this.badgeRules = m.badgeRules;
         this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result);
         break;
+      case 'repositories':
+        this.switcher.update(m.repos);
+        break;
       case 'badgeRules':
         this.badgeRules = m.rules;
         this.applyBadgeRules();
@@ -512,8 +525,7 @@ class App {
       case 'noRepository':
         this.generation = -1;
         this.noRepository = true;
-        this.repoLabel.textContent = 'No git repository';
-        this.repoLabel.title = '';
+        this.switcher.setShown(undefined, 'No git repository');
         this.status.classList.remove('error');
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.refFilter.close();
@@ -640,8 +652,7 @@ class App {
     this.done = false;
     this.selected = -1;
     this.updateOptionControls();
-    this.repoLabel.textContent = repo.name;
-    this.repoLabel.title = repo.root;
+    this.switcher.setShown(repo);
     this.status.classList.remove('error');
     // Replies to requests of the previous generation are dropped, so nothing is in flight any more.
     this.loading = false;
@@ -2225,6 +2236,7 @@ class App {
     return {
       generation: this.generation,
       repo: this.repo?.root,
+      repoSwitcher: this.switcher.probe(),
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,

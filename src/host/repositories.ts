@@ -1,6 +1,7 @@
-import { basename } from 'node:path';
+import { basename, relative, sep } from 'node:path';
 import * as vscode from 'vscode';
 import { sortRepos, type RepoKey, type RepoSortOrder } from '../core/repos.ts';
+import type { RepoItem } from '../shared/protocol.ts';
 import { getGitApi, repoKey, type GitApi, type GitRepository } from './git-api.ts';
 
 const SORT_ORDERS: readonly string[] = ['discoveryTime', 'name', 'path'] satisfies RepoSortOrder[];
@@ -52,6 +53,14 @@ export class RepoList implements vscode.Disposable {
     return sortRepos(open, order, this.seen);
   }
 
+  /** The open repositories as the repository switcher lists them. */
+  items(): RepoItem[] {
+    return this.list().map(({ key, name, repo }) => {
+      const { HEAD } = repo.state;
+      return { root: key, name, path: placeOf(repo.rootUri), head: HEAD?.name ?? HEAD?.commit?.slice(0, 8) };
+    });
+  }
+
   keys(): RepoKey[] {
     return this.list().map((r) => r.key);
   }
@@ -75,6 +84,15 @@ export class RepoList implements vscode.Disposable {
   dispose(): void {
     for (const d of this.disposables.splice(0)) d.dispose();
   }
+}
+
+/** Where a repository is: relative to its workspace folder (named when there are several), else its full path. */
+function placeOf(root: vscode.Uri): string {
+  const folder = vscode.workspace.getWorkspaceFolder(root);
+  if (!folder) return root.fsPath;
+  const inside = relative(folder.uri.fsPath, root.fsPath).split(sep).join('/');
+  if (inside === '') return folder.name;
+  return (vscode.workspace.workspaceFolders?.length ?? 0) > 1 ? `${folder.name}/${inside}` : inside;
 }
 
 let shared: Promise<RepoList> | undefined;

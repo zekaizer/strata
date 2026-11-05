@@ -13,6 +13,7 @@ import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import {
   DEFAULT_OPTIONS,
   type HostToWebview,
+  type RepoItem,
   type ThemeKind,
   type ViewOptions,
   type WebviewToHost,
@@ -72,6 +73,32 @@ let badgeRules: BadgeRule[] = (params.get('badgeRules') ?? '')
   .filter(Boolean)
   .map((p) => (p.startsWith('!') ? { pattern: p.slice(1), keep: true } : { pattern: p, keep: false }));
 const search = params.get('search');
+/** `repos=N`: N repositories are open (the switcher shows them; `open=repos` opens it). */
+const repoCount = Number(params.get('repos') ?? '1');
+
+function repositories(): RepoItem[] {
+  if (!data) return [];
+  const shown = { root: data.repo.root, name: data.repo.name, path: data.repo.name, head: data.refs.headBranch };
+  const others = [
+    'api-server',
+    'web-client',
+    'shared/protocol',
+    'tools/release-scripts',
+    'docs',
+    'infra/terraform',
+    'mobile',
+    'design-tokens',
+  ];
+  return [
+    shown,
+    ...others.slice(0, Math.max(0, repoCount - 1)).map((path, i) => ({
+      root: `/work/${path}`,
+      name: path.split('/').at(-1)!,
+      path,
+      head: i % 3 === 1 ? 'feature/long-running-branch-name' : 'main',
+    })),
+  ];
+}
 
 /** Commits reachable from the selected refs (in the original order), like git log <refs> [--first-parent]. */
 function select(d: PlaygroundData, o: ViewOptions): Commit[] {
@@ -107,6 +134,7 @@ function reset(): void {
     stashes: data.stashes,
     badgeRules,
   });
+  toWebview({ type: 'repositories', repos: repositories() });
 }
 
 async function onMessage(m: WebviewToHost): Promise<void> {
@@ -119,6 +147,9 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       reset();
       break;
     }
+    case 'listRepositories':
+      toWebview({ type: 'repositories', repos: repositories() });
+      break;
     case 'setOptions': {
       // Like the host: showing or hiding stash rows reloads nothing.
       const reload = m.options.firstParent !== options.firstParent || String(m.options.refs) !== String(options.refs);
@@ -136,6 +167,11 @@ async function onMessage(m: WebviewToHost): Promise<void> {
           toWebview({ type: 'simulate', action: { kind: 'click', selector: '.ref-filter-button' } });
           if (search !== null)
             toWebview({ type: 'simulate', action: { kind: 'type', selector: '.popover-search', text: search } });
+        }, 50);
+      }
+      if (openPopover === 'repos' && offset === commits.length) {
+        setTimeout(() => {
+          toWebview({ type: 'simulate', action: { kind: 'click', selector: '.repo-button' } });
         }, 50);
       }
       if (selectRow !== null && offset === commits.length) {

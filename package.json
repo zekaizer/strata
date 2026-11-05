@@ -47,6 +47,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.switchRepository",
+        "title": "Switch Repository...",
+        "category": "Strata"
+      },
+      {
         "command": "strata.file.openChanges",
         "title": "Open Changes",
         "category": "Strata"
@@ -639,6 +644,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "strata.switchRepository",
+          "when": "strata.repositories > 1"
+        },
         {
           "command": "strata.file.openChanges",
           "when": "false"

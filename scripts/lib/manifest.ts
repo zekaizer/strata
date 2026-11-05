@@ -8,7 +8,11 @@ interface Pkg {
 }
 
 /** Commands src/extension.ts registers itself, outside the table. */
-const HAND_WRITTEN: ReadonlySet<string> = new Set(['strata.show', 'strata.writeCommitGraph']);
+const HAND_WRITTEN: ReadonlySet<string> = new Set([
+  'strata.show',
+  'strata.writeCommitGraph',
+  'strata.switchRepository',
+]);
 
 /**
  * package.json text with the table's commands and menu items replaced; other entries keep their
