@@ -27,7 +27,7 @@ import type {
   ViewOptions,
 } from '../shared/protocol.ts';
 import { fitBadges, landedRefs, rowBadges, type Badge } from './badges.ts';
-import { bannerOf } from './banner.ts';
+import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
@@ -220,6 +220,8 @@ class App {
   /** Width of a row's ref band, in px, as of the last render. */
   private bandWidth = 0;
   private operation: OperationState | undefined;
+  /** What rows say about the operation in progress, by commit. */
+  private operationNotes = new Map<string, OperationNote>();
   private leftover: Leftover | undefined;
   /** The Strata operation running, by its progress label. */
   private busyLabel: string | undefined;
@@ -429,6 +431,7 @@ class App {
         break;
       case 'repoState':
         this.operation = m.operation;
+        this.operationNotes = operationNotes(m.operation);
         this.leftover = m.leftover;
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
@@ -493,6 +496,7 @@ class App {
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refFilter.update(this.refs, null);
         this.operation = undefined;
+        this.operationNotes.clear();
         this.leftover = undefined;
         this.updateBanner();
         this.setStashes([]);
@@ -1403,6 +1407,17 @@ class App {
 
     const subject = el('span', 'subject');
     subject.append(el('span', 'text', c.subject));
+    const note = this.operationNotes.get(c.hash);
+    if (note) {
+      const e = el('span', note.warning ? 'operation-note warning' : 'operation-note');
+      e.append(el('span', 'operation-note-text', note.text));
+      if (note.warning) {
+        const mark = el('span', 'codicon codicon-warning');
+        mark.setAttribute('aria-hidden', 'true');
+        e.prepend(mark);
+      }
+      subject.append(e);
+    }
     row.append(
       el('span', 'graph-spacer'),
       subject,
@@ -2150,6 +2165,12 @@ class App {
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
           const i = Number(r.dataset['index']);
           return [i, this.list[i] ? rowHash(this.list[i]) : ''];
+        }),
+      ),
+      operationNotes: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.operation-note')].map((e) => {
+          const row = this.list[Number(e.closest<HTMLElement>('.row')?.dataset['index'])];
+          return [row ? rowHash(row) : '', e.textContent];
         }),
       ),
       stashRows: Object.fromEntries(

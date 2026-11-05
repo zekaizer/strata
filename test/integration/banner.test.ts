@@ -65,6 +65,17 @@ describe('operation banner', () => {
     assert.equal(s.alerted, '', 'VS Code already says the toast the host shows for a stop');
   });
 
+  it('marks in the graph the commit the rebase stopped at, and where it goes', async () => {
+    const s = await waitFor('rows marked', async () => {
+      const p = await panel.probe();
+      return Object.keys(p.operationNotes).length === 2 && p;
+    });
+    assert.deepEqual(s.operationNotes, {
+      [git('rev-parse', 'strata-topic~1')]: 'Stopped here: 1 conflicted file',
+      [git('rev-parse', 'strata-onto')]: 'Rebasing onto',
+    });
+  });
+
   it('runs the command of a button, and selects the commit a link names', async () => {
     await panel.simulate({ kind: 'click', selector: '.banner-button.primary' });
     // Resolve... with one conflicted file opens it.

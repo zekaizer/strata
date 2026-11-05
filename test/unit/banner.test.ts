@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Leftover, OperationState } from '../../src/core/repo-state.ts';
-import { bannerOf, type Banner, type BannerFacts } from '../../src/webview/banner.ts';
+import { bannerOf, operationNotes, type Banner, type BannerFacts } from '../../src/webview/banner.ts';
 
 const h = (c: string) => c.repeat(40);
 const SUBJECTS: Record<string, string> = { [h('a')]: 'Add lexer', [h('c')]: 'Fix parser' };
@@ -236,5 +236,23 @@ describe('the banner of what an operation left behind', () => {
 
   it('is absent with nothing in progress or left behind', () => {
     assert.equal(bannerOf(undefined, undefined, facts()), undefined);
+  });
+});
+
+describe('the rows an operation marks', () => {
+  it("marks the commit a rebase stopped at with its conflicts, and the rebase's target", () => {
+    assert.deepEqual(
+      [...operationNotes(rebase)],
+      [
+        [h('b'), { text: 'Rebasing onto', warning: false }],
+        [h('a'), { text: 'Stopped here: 2 conflicted files', warning: true }],
+      ],
+    );
+  });
+
+  it('marks a stop without conflicts quietly, and nothing without an operation', () => {
+    const resolved = { ...merge, conflicts: [], conflictCount: 0 };
+    assert.deepEqual([...operationNotes(resolved)], [[h('d'), { text: 'Stopped here', warning: false }]]);
+    assert.equal(operationNotes(undefined).size, 0);
   });
 });

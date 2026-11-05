@@ -827,6 +827,37 @@ body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codi
   color: var(--vscode-descriptionForeground);
 }
 
+/* Where the operation in progress stopped, and a rebase's target (banner.ts operationNotes). */
+.operation-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.operation-note.warning {
+  color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+}
+
+.operation-note .codicon {
+  flex: none;
+  font-size: 12px;
+}
+
+.operation-note-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .stash-message {
   font-style: italic;
 }

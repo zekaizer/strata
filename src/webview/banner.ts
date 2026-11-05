@@ -126,6 +126,25 @@ export function bannerOf(
   }
 }
 
+export interface OperationNote {
+  text: string;
+  /** Conflicts wait there. */
+  warning: boolean;
+}
+
+/** What the rows of the commit an operation stopped at, and of a rebase's target, say, by commit. */
+export function operationNotes(op: OperationState | undefined): Map<string, OperationNote> {
+  const notes = new Map<string, OperationNote>();
+  if (!op) return notes;
+  if (op.kind === 'rebase' && op.onto !== undefined) notes.set(op.onto, { text: 'Rebasing onto', warning: false });
+  if (op.applying !== undefined)
+    notes.set(op.applying, {
+      text: `Stopped here${op.conflictCount > 0 ? `: ${plural(op.conflictCount, 'conflicted file')}` : ''}`,
+      warning: op.conflictCount > 0,
+    });
+  return notes;
+}
+
 const RESOLVE: BannerAction = { label: 'Resolve...', command: 'strata.resolveConflicts' };
 const CONTINUE: BannerAction = { label: 'Continue', command: 'strata.operation.continue' };
 const SKIP: BannerAction = { label: 'Skip...', command: 'strata.operation.skip' };

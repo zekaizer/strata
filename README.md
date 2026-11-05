@@ -156,7 +156,8 @@ toolbar and the banner say which, and the other commands wait for it.
   Continue or Skip finished), a created, renamed or deleted branch or tag, or a
   dropped stash. It only moves the branch the operation moved,
   and asks first if that branch moved since.
-- When an operation stops at conflicts, Strata says where and in which files;
+- When an operation stops at conflicts, Strata says where and in which files,
+  and marks the commit it stopped at (and a rebase's target) in the graph;
   **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
   leaves the stopped commit out, and other changes (except Fetch) wait until
   you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`
