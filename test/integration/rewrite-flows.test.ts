@@ -209,4 +209,64 @@ describe('tidying recent commits', () => {
     await run('strata.copySelectedHashes', selection([c, b]));
     assert.equal(ui.of('notify').length, 0);
   });
+
+  /** The row index of commit `hash` once the graph draws it. */
+  const rowOf = (hash: string) =>
+    waitFor(`the row of ${hash}`, async () => {
+      const p = await panel().probe();
+      const i = Object.entries(p.rowHashes).find(([, h]) => h === hash)?.[0];
+      return i === undefined ? undefined : Number(i);
+    });
+
+  it('edits a message in the inline editor and saves it', async () => {
+    const [a] = await three();
+    await run('strata.editMessage', commitMenu(a));
+    const opened = await waitFor('the editor', async () => {
+      const p = await panel().probe();
+      return p.editor?.shown && p;
+    });
+    assert.equal(opened.selected, a);
+    const ed = opened.editor;
+    assert.ok(ed);
+    assert.equal(ed.text, 'a.txt: a\n');
+    assert.match(ed.status, /^Subject 8\/72 · 2 newer commits are rewritten on top · Nothing was pushed/);
+    await panel().simulate({ kind: 'type', selector: '.message-editor', text: 'a.txt: written inline\n' });
+    await panel().simulate({ kind: 'click', selector: '.tidy-actions .button.primary' });
+    await waitFor('the new message', () => message('HEAD~2') === 'a.txt: written inline');
+    await waitFor('the editor to close', async () => (await panel().probe()).editor === undefined);
+  });
+
+  it('cancels the editor with Escape, leaving the history alone', async () => {
+    const [a] = await three();
+    await run('strata.editMessage', commitMenu(a));
+    await waitFor('the editor', async () => (await panel().probe()).editor?.shown);
+    await panel().simulate({ kind: 'key', key: 'Escape', target: 'focused' });
+    await waitFor('the editor to close', async () => (await panel().probe()).editor === undefined);
+    assert.equal(git('rev-parse', 'HEAD~2'), a);
+  });
+
+  it('selects a run with Shift-click and squashes it from its panel', async () => {
+    const [a, b, c] = await three();
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(c) });
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(a), shiftKey: true });
+    const p = await waitFor('the selection panel', async () => {
+      const probe = await panel().probe();
+      return probe.selectionPanel && probe;
+    });
+    assert.deepEqual(p.selection, [c, b, a]);
+    assert.equal(p.selected, a, 'the panel opens under the oldest');
+    assert.ok(p.outOfReach.length > 0, 'commits past the first merge step back');
+    assert.equal(p.menuContexts.selectedRow?.['webviewSection'], 'selection');
+    await panel().simulate({ kind: 'click', selector: '.tidy-actions .button.primary' });
+    const ed = await waitFor('the squash editor', async () => {
+      const probe = await panel().probe();
+      return probe.editor?.shown && probe.editor;
+    });
+    assert.deepEqual(ed.commits, [a, b, c]);
+    assert.equal(ed.save, 'Squash 3 Commits');
+    await panel().simulate({ kind: 'click', selector: '.tidy-commits .icon-button' });
+    await panel().simulate({ kind: 'click', selector: '.tidy-actions .button.primary' });
+    await waitFor('the squash', () => git('rev-parse', 'HEAD~1') === git('rev-parse', `${a}~1`));
+    assert.equal(message('HEAD'), 'a.txt: a\n\nb.txt: b');
+  });
 });

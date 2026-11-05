@@ -256,6 +256,24 @@ export interface ProbeState {
   generation: number;
   /** Root of the repository shown. */
   repo: string | undefined;
+  /** The commits of a multi-selection, newest first; empty without one. */
+  selection: string[];
+  /** Rendered rows (by index) that a multi-selection cannot take in. */
+  outOfReach: number[];
+  /** The message editor while open: its commits (oldest first), whether it is on screen, its text, status line and Save label. */
+  editor:
+    | {
+        kind: 'reword' | 'squash';
+        commits: string[];
+        shown: boolean;
+        text: string;
+        status: string;
+        save: string;
+        saving: boolean;
+      }
+    | undefined;
+  /** The multi-selection's panel is shown under its oldest commit. */
+  selectionPanel: boolean;
   /**
    * The toolbar's repository name: a label with one repository, else the switcher's button; and
    * while the switcher is open, its rows (name, path, branch), the shown one marked "shown".
@@ -468,8 +486,8 @@ export interface ProbeState {
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */
 export type SimulatedAction =
-  /** `y`: px below the row's top to click at (default: its middle). */
-  | { kind: 'clickRow'; index: number; y?: number }
+  /** `y`: px below the row's top to click at (default: its middle); `shiftKey`: Shift-click. */
+  | { kind: 'clickRow'; index: number; y?: number; shiftKey?: boolean }
   /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
   | { kind: 'scrollToRow'; index: number }
   /** Moves the pointer onto row `index`'s graph node, or `dx` px right of it. */

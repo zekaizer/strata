@@ -17,7 +17,7 @@ import {
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
 import { PATH_HISTORY } from '../core/wording.ts';
-import { rewritableLine } from '../core/rewrite.ts';
+import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
@@ -33,8 +33,8 @@ import {
   type StashEntry,
   type StashShown,
 } from '../core/stash.ts';
-import { MENU_SECTIONS } from '../shared/commands.ts';
-import type { CommitContext, StashContext } from '../shared/menu-context.ts';
+import { MENU_SECTIONS, type CommandId } from '../shared/commands.ts';
+import type { CommitContext, SelectionContext, StashContext } from '../shared/menu-context.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
@@ -43,6 +43,7 @@ import type {
   RepoInfo,
   SimulatedAction,
   ViewOptions,
+  MessageDraft,
 } from '../shared/protocol.ts';
 import {
   cardRefs,
@@ -70,7 +71,15 @@ import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { RepoSwitcher } from './repo-switcher.ts';
 import { PathChip } from './path-filter.ts';
-import { parseSaved, remember, savedOptions, viewOf, type RepoView, type SavedState } from './saved-state.ts';
+import {
+  parseSaved,
+  remember,
+  savedDraft,
+  savedOptions,
+  viewOf,
+  type RepoView,
+  type SavedState,
+} from './saved-state.ts';
 import { savedState, vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
 
@@ -274,6 +283,11 @@ class App {
   private parentsOf = new Map<string, readonly string[]>();
   /** Loaded commits Strata can rewrite (rewritableLine), newest first, by position. */
   private rewritable = new Map<string, number>();
+  private rewritableLine: string[] = [];
+  /** A multi-selection: the rewritable commits from where it started to where Shift-click took it. */
+  private range: { anchor: string; end: string } | undefined;
+  /** The inline message editor: what the host opened it with, its text, and whether Save is running. */
+  private editor: { draft: MessageDraft; text: string; saving: boolean } | undefined;
   private rows: Row[] = [];
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
@@ -552,6 +566,10 @@ class App {
       this.saveState();
     });
     this.trackNodeHover();
+    // Shift-click extends the selection: the browser would select text instead.
+    this.scroller.addEventListener('mousedown', (e) => {
+      if (e.shiftKey && !e.composedPath().includes(this.expansion)) e.preventDefault();
+    });
     // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
       // By the dispatch path: the target may already be detached (a fold or a parent link
@@ -560,6 +578,7 @@ class App {
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.list.length) return;
+      if (e.shiftKey && this.extendRange(index)) return;
       // Clicking the expanded row folds it; any other row opens its details.
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
@@ -713,6 +732,20 @@ class App {
       case 'reveal':
         this.reveal(m.hash);
         break;
+      case 'editMessage':
+        this.openEditor(m.draft);
+        break;
+      case 'editEnded':
+        if (!this.editor) break;
+        if (m.applied) {
+          this.editor = undefined;
+          this.range = undefined;
+          this.saveState();
+        } else {
+          this.editor.saving = false;
+          this.renderDetails();
+        }
+        break;
       case 'pickStash':
         this.pickStash();
         break;
@@ -850,10 +883,16 @@ class App {
         searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
       };
     } else if (this.repo?.root !== repo.root) {
-      // Another repository: keep this one's view, and restore what that one showed last.
+      // Another repository: keep this one's view, and restore what that one showed last. A
+      // message being edited is left behind; one saved by a previous session comes back while
+      // HEAD is where it was.
+      this.range = undefined;
+      this.editor = undefined;
       if (this.repo) this.saveState();
       const view = viewOf(this.saved, repo.root) ?? this.unkeyed;
       this.restore = view && { ...view };
+      const kept = this.repo ? undefined : savedDraft(view?.draft);
+      if (kept && kept.draft.head === refs.head) this.editor = { ...kept, saving: false };
     }
     this.unkeyed = undefined;
     const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
@@ -986,6 +1025,7 @@ class App {
         scrollTop: this.restore?.scrollTop ?? this.scroller.scrollTop,
         expanded: this.restore?.expanded ?? this.expanded,
         options: this.options,
+        draft: this.editor && { draft: this.editor.draft, text: this.editor.text },
       });
     this.saved = { ...this.saved, metaOpen: this.metaOpen };
     vscode.setState(this.saved);
@@ -1647,7 +1687,34 @@ class App {
 
   private findRewritable(): void {
     const line = rewritableLine(this.refs.head, (h) => this.parentsOf.get(h));
+    this.rewritableLine = line;
     this.rewritable = new Map(line.map((h, i) => [h, i]));
+  }
+
+  /** The selected commits, newest first, when two or more are selected. */
+  private rangeHashes(): string[] {
+    const r = this.range;
+    const a = r && this.rewritable.get(r.anchor);
+    const b = r && this.rewritable.get(r.end);
+    if (a === undefined || b === undefined || a === b) return [];
+    return this.rewritableLine.slice(Math.min(a, b), Math.max(a, b) + 1);
+  }
+
+  /**
+   * Shift-click on row `index`: selects the rewritable commits from the selected one to it and
+   * opens the selection's panel under the oldest. False when either end cannot be rewritten.
+   */
+  private extendRange(index: number): boolean {
+    const row = this.list[index];
+    const anchor = this.range?.anchor ?? this.selectedHash();
+    if (row?.kind !== 'commit' || anchor === undefined || anchor === row.commit.hash) return false;
+    if (!this.rewritable.has(anchor) || !this.rewritable.has(row.commit.hash)) return false;
+    this.range = { anchor, end: row.commit.hash };
+    const oldest = this.rangeHashes().at(-1)!;
+    this.selections++;
+    this.restore = undefined;
+    this.select(this.indexOf(oldest), { expand: true });
+    return true;
   }
 
   private appendRows(rows: readonly ListRow[]): void {
@@ -2025,6 +2092,7 @@ class App {
    */
   private userSelect(index: number, opts: { expand?: boolean } = {}): void {
     this.selections++;
+    this.range = undefined;
     this.clearActionError();
     this.restore = undefined;
     this.headQuery = undefined;
@@ -2041,6 +2109,7 @@ class App {
 
   /** Folds the details away; the selection stays. */
   private collapse(): void {
+    this.range = undefined;
     this.expanded = false;
     this.revealExpansion = false;
     this.details = undefined;
@@ -2324,11 +2393,18 @@ class App {
     row.setAttribute('aria-posinset', String(i + 1));
     row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
     row.style.top = `${this.rowTop(i)}px`;
+    const selection = this.rangeHashes();
+    const hashOf = rowHash(r);
     if (i === this.selected) {
       // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
       row.classList.add(this.expanded ? 'selected' : 'cursor');
       row.setAttribute('aria-expanded', String(this.expanded));
+    } else if (selection.includes(hashOf)) {
+      row.classList.add('selected');
+      row.setAttribute('aria-selected', 'true');
     }
+    // While several commits are selected, what Shift-click cannot add steps back.
+    if (selection.length > 0 && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
     if (r.kind === 'stash') {
       this.fillStashRow(row, r.stash);
       if (this.landing?.stash === r.stash.hash) this.markLanded(row);
@@ -2358,7 +2434,10 @@ class App {
       strataRewritable: this.rewritable.has(c.hash),
       strataParentRewritable: this.rewritable.has(c.parents[0] ?? ''),
     };
-    row.setAttribute('data-vscode-context', JSON.stringify(context));
+    const selected: SelectionContext | undefined = selection.includes(c.hash)
+      ? this.selectionContext(c.hash, selection)
+      : undefined;
+    row.setAttribute('data-vscode-context', JSON.stringify(selected ?? context));
     if (badges.length > 0) {
       // Refs get a band of their own above the commit line, so the subject keeps its column.
       row.classList.add('banded');
@@ -2672,24 +2751,29 @@ class App {
   private renderDetails(): void {
     const d = this.details;
     if (!d) return;
-    const pane = this.expansion;
     clearTimeout(this.copiedTimer);
     clearTimeout(this.metaCopiedTimer);
+    const selection = this.rangeHashes();
+    const ed = this.editor;
+    const opened = ed?.draft.commits[0];
+    const squashing =
+      ed?.draft.kind === 'squash' &&
+      selection.length === ed.draft.commits.length &&
+      ed.draft.commits.every((c) => selection.includes(c.hash));
+    if (ed && opened?.hash === d.hash && (ed.draft.kind === 'reword' || squashing)) {
+      this.renderEditor(d, ed);
+      return;
+    }
+    if (selection.length > 0 && selection.at(-1) === d.hash) {
+      this.renderSelection(selection);
+      return;
+    }
 
     const stash = d.stash && this.stashes.find((s) => s.hash === d.hash);
     // The row truncates long subjects, so the details repeat it in full.
     const [first = '', ...rest] = d.message.split('\n');
     const subject = stash ? stashLabel(stash).text : first;
     const body = rest.join('\n').trim();
-    const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
-    close.title = 'Fold (Esc)';
-    close.setAttribute('aria-label', 'Fold');
-    close.setAttribute('aria-keyshortcuts', 'Escape');
-    close.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.userCollapse();
-      this.scroller.focus();
-    });
 
     // The commit's text in one column, the change in the other (side by side on wide lists).
     const main = el('div', 'details-main');
@@ -2699,7 +2783,7 @@ class App {
       ruler,
       stash ? this.stashByline(d, stash) : this.byline(d),
       stash ? this.stashMeta(d, stash) : this.metaTable(d),
-      marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'),
+      this.withEdit(marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'), stash ? undefined : d.hash),
     );
     if (body) {
       const pre = marked('details-message', reflowBody(body), this.detailsNeedle(d.hash), 'pre');
@@ -2728,6 +2812,21 @@ class App {
     } else {
       files.append(this.filesSummaryLine(d), this.fileTree(changes, d.files, 'Changed files'));
     }
+    this.showDetails(main, files);
+  }
+
+  /** Puts the message column and the files column (or what stands in for it) in the details pane. */
+  private showDetails(main: HTMLElement, files: HTMLElement): void {
+    const pane = this.expansion;
+    const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
+    close.title = 'Fold (Esc)';
+    close.setAttribute('aria-label', 'Fold');
+    close.setAttribute('aria-keyshortcuts', 'Escape');
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.userCollapse();
+      this.scroller.focus();
+    });
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
@@ -2750,6 +2849,212 @@ class App {
     const pane = this.expansion.getBoundingClientRect();
     const box = hit.getBoundingClientRect();
     if (box.bottom > pane.bottom) this.expansion.scrollTop += box.bottom - pane.bottom + box.height;
+  }
+
+  /** The subject heading `h`; for a commit Strata can rewrite, with Edit Message beside it. */
+  private withEdit(h: HTMLElement, hash: string | undefined): HTMLElement {
+    if (hash === undefined || !this.rewritable.has(hash)) return h;
+    const edit = el('button', 'inline-button codicon codicon-edit details-edit');
+    edit.title = 'Edit Message...';
+    edit.setAttribute('aria-label', 'Edit message');
+    edit.addEventListener('click', () => {
+      this.menuCommand('strata.editMessage', { webviewSection: 'commit', strataHash: hash });
+    });
+    h.append(edit);
+    return h;
+  }
+
+  private menuCommand(command: CommandId, context: object): void {
+    vscode.postMessage({ type: 'menuCommand', command, context: { ...context } });
+  }
+
+  private selectionContext(hash: string, selection: readonly string[]): SelectionContext {
+    return {
+      webviewSection: 'selection',
+      preventDefaultContextMenuItems: true,
+      strataHash: hash,
+      strataSelection: selection.join(' '),
+    };
+  }
+
+  /** The commit of a loaded row, by hash. */
+  private commitOf(hash: string): Commit | undefined {
+    const row = this.list[this.indexOf(hash)];
+    return row?.kind === 'commit' ? row.commit : undefined;
+  }
+
+  /** Under the oldest of several selected commits: what can be done with them, and which they are. */
+  private renderSelection(selection: readonly string[]): void {
+    const newest = selection[0]!;
+    const oldest = selection.at(-1)!;
+    const context = this.selectionContext(oldest, selection);
+    const main = el('div', 'details-main');
+    const note = el(
+      'div',
+      'tidy-note',
+      `${shortHash(oldest)}..${shortHash(newest)} on ${this.refs.headBranch ?? 'HEAD'} · Shift-click another commit to change the selection`,
+    );
+    const actions = el('div', 'tidy-actions');
+    const button = (label: string, command: CommandId, primary = false) => {
+      const b = el('button', primary ? 'button primary' : 'button', label);
+      b.addEventListener('click', () => {
+        this.menuCommand(command, context);
+      });
+      return b;
+    };
+    actions.append(
+      button('Squash...', 'strata.squashSelected', true),
+      button('Drop...', 'strata.dropSelected'),
+      button('Copy Hashes', 'strata.copySelectedHashes'),
+    );
+    main.append(el('h2', 'details-subject', `${selection.length} commits selected`), note, actions);
+    const side = el('div', 'details-files');
+    side.append(el('div', 'section-title tidy-title', 'Selected commits'), this.commitRows(selection));
+    this.showDetails(main, side);
+  }
+
+  /** Commits as list rows: the short hash, then the subject. */
+  private commitRows(hashes: readonly string[], action?: (hash: string) => HTMLElement): HTMLElement {
+    const list = el('div', 'tidy-commits');
+    for (const h of hashes) {
+      const row = el('div', 'list-row');
+      row.append(el('span', 'tidy-hash', shortHash(h)), el('span', 'list-row-text', this.commitOf(h)?.subject ?? ''));
+      if (action) row.append(action(h));
+      list.append(row);
+    }
+    return list;
+  }
+
+  /**
+   * The inline message editor in place of the subject and body: a fixed-width field with a 72
+   * column guide, the subject's length and what saving rewrites. A squash lists the other
+   * commits' messages beside it, each to append.
+   */
+  private renderEditor(d: CommitDetails, ed: { draft: MessageDraft; text: string; saving: boolean }): void {
+    const { draft } = ed;
+    const first = draft.commits[0]!;
+    const last = draft.commits.at(-1)!;
+    const squash = draft.kind === 'squash';
+    const main = el('div', 'details-main');
+    const ruler = el('span', 'column-ruler');
+    main.append(ruler);
+    if (squash) {
+      main.append(
+        el('h2', 'details-subject', `Squash ${draft.commits.length} commits into one`),
+        el(
+          'div',
+          'tidy-note',
+          `${first.short}..${last.short} on ${this.refs.headBranch ?? 'HEAD'} · author and date of ${first.short} (the oldest)`,
+        ),
+      );
+    } else main.append(this.byline(d));
+    const field = el('textarea', 'field multiline message-editor');
+    field.value = ed.text;
+    field.spellcheck = true;
+    field.setAttribute('aria-label', squash ? 'Message of the squashed commit' : `Message of ${first.short}`);
+    field.rows = Math.min(12, Math.max(6, ed.text.split('\n').length + 1));
+    const count = el('span', 'tidy-count');
+    const status = el('div', 'tidy-note tidy-status');
+    status.append(count, el('span', 'tidy-effects', ` · ${draft.effects}`));
+    const save = el('button', 'button primary', squash ? `Squash ${draft.commits.length} Commits` : 'Save Message');
+    const cancel = el('button', 'button', 'Cancel');
+    const keys = el('span', 'tidy-keys', `${isMac ? '⌘' : 'Ctrl'}+Enter to save · Esc to cancel`);
+    const actions = el('div', 'tidy-actions');
+    actions.append(save, cancel, keys);
+    const update = () => {
+      ed.text = field.value;
+      const subject = (field.value.split('\n')[0] ?? '').length;
+      count.textContent = `Subject ${subject}/72`;
+      count.classList.toggle('over', subject > 72);
+      const empty = cleanMessage(field.value) === '';
+      save.setAttribute('aria-disabled', String(empty || ed.saving));
+      save.title = empty ? 'Enter a message' : '';
+      if (ed.saving) save.textContent = 'Saving…';
+    };
+    const submit = () => {
+      if (ed.saving || cleanMessage(field.value) === '') return;
+      ed.saving = true;
+      update();
+      this.menuCommand('strata.saveEdit', {
+        strataEdit: draft.kind,
+        strataHashes: draft.commits.map((c) => c.hash).join(' '),
+        strataHead: draft.head,
+        strataMessage: field.value,
+      });
+    };
+    field.addEventListener('input', () => {
+      update();
+      this.saveState();
+    });
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (isMac ? e.metaKey : e.ctrlKey)) {
+        e.preventDefault();
+        submit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        this.closeEditor();
+      }
+    });
+    save.addEventListener('click', submit);
+    cancel.addEventListener('click', () => {
+      this.closeEditor();
+    });
+    update();
+    main.append(field, status, actions);
+    const side = el('div', 'details-files');
+    if (squash) {
+      const others = draft.commits.slice(1);
+      side.append(
+        el(
+          'div',
+          'section-title tidy-title',
+          `Messages of the other ${others.length === 1 ? 'commit' : `${others.length} commits`}`,
+        ),
+        this.commitRows(
+          others.map((c) => c.hash),
+          (hash) => {
+            const add = el('button', 'icon-button codicon codicon-add');
+            add.title = 'Append its message';
+            add.setAttribute('aria-label', `Append the message of ${shortHash(hash)}`);
+            add.addEventListener('click', () => {
+              const message = draft.commits.find((c) => c.hash === hash)?.message.trim() ?? '';
+              field.value = `${field.value.trimEnd()}\n\n${message}\n`;
+              update();
+              this.saveState();
+              field.focus();
+            });
+            return add;
+          },
+        ),
+      );
+    } else
+      side.append(this.filesSummaryLine(d), this.fileTree({ hash: d.hash, base: d.base }, d.files, 'Changed files'));
+    this.showDetails(main, side);
+    if (!ed.saving) {
+      field.focus({ preventScroll: true });
+      const end = (field.value.split('\n')[0] ?? '').length;
+      field.setSelectionRange(end, end);
+    }
+  }
+
+  /** Cancel in the message editor: the draft goes, the details come back. */
+  private closeEditor(): void {
+    this.editor = undefined;
+    this.saveState();
+    this.renderDetails();
+    this.scroller.focus({ preventScroll: true });
+  }
+
+  /** The host opened the message editor (Edit Message..., Squash Selected Commits...). */
+  private openEditor(draft: MessageDraft): void {
+    const first = draft.commits[0]!;
+    this.editor = { draft, text: draft.message, saving: false };
+    if (draft.kind === 'squash') this.range = { anchor: draft.commits.at(-1)!.hash, end: first.hash };
+    if (this.selectedHash() === first.hash && this.expanded && this.details?.hash === first.hash) this.renderDetails();
+    else this.selectHash(first.hash, true);
+    this.saveState();
+    this.queueRender();
   }
 
   /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
@@ -3235,9 +3540,24 @@ class App {
     // Report the DOM as it will be drawn: state changes render on the next frame, which may not
     // have come yet when the probe arrives (it did not under load, giving stale row positions).
     this.flushRender();
+    const field = this.expansion.querySelector<HTMLTextAreaElement>('.message-editor');
     return {
       generation: this.generation,
       repo: this.repo?.root,
+      selection: this.rangeHashes(),
+      outOfReach: [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.out-of-reach')].map((r) =>
+        Number(r.dataset['index']),
+      ),
+      editor: this.editor && {
+        kind: this.editor.draft.kind,
+        commits: this.editor.draft.commits.map((c) => c.hash),
+        shown: field !== null,
+        text: field?.value ?? this.editor.text,
+        status: this.expansion.querySelector('.tidy-status')?.textContent ?? '',
+        save: this.expansion.querySelector('.tidy-actions .button.primary')?.textContent ?? '',
+        saving: this.editor.saving,
+      },
+      selectionPanel: this.expansion.querySelector('.tidy-commits') !== null && field === null,
       repoSwitcher: this.switcher.probe(),
       commits: this.commits.length,
       laidOut: this.rows.length,
@@ -3551,7 +3871,12 @@ class App {
           // Pressing on the list focuses it (tabIndex 0), as a real mousedown does.
           this.scroller.focus({ preventScroll: true });
           row.dispatchEvent(
-            new MouseEvent('click', { bubbles: true, clientX: r.left + 40, clientY: r.top + (a.y ?? r.height / 2) }),
+            new MouseEvent('click', {
+              bubbles: true,
+              clientX: r.left + 40,
+              clientY: r.top + (a.y ?? r.height / 2),
+              shiftKey: a.shiftKey ?? false,
+            }),
           );
         }
         break;
