@@ -1,3 +1,5 @@
+import { watch, type FSWatcher } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
 import { addRule, hiddenRefs, parseRules, type BadgeRule } from '../core/badge-rules.ts';
@@ -88,6 +90,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private commonDirOf: Promise<string> | undefined;
   private running: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
+  /** Watchers of the linked worktrees' folders under the common dir, by folder. */
+  private readonly linked = new Map<string, FSWatcher>();
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
   /** The file last opened from the graph and the URIs of its tab; `shown` is what the graph was told. */
   private opened: { path: string; uris: Set<string> } | undefined;
@@ -131,7 +135,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       repo.state.onDidChange(() => {
         this.scheduleRefresh();
       }),
-      this.watchStashes(),
+      this.watchCommonDir(),
     );
   }
 
@@ -155,30 +159,89 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   /**
-   * vscode.git reports no change for `git stash drop` or `clear`: they touch only refs/stash and its
-   * reflog, which it does not watch.
+   * What vscode.git does not report: `git stash drop` and `clear` touch only refs/stash and its
+   * reflog, and other worktrees switch, commit and lock in their own files under the common dir.
    */
-  private watchStashes(): vscode.Disposable {
-    let watcher: vscode.FileSystemWatcher | undefined;
+  private watchCommonDir(): vscode.Disposable {
+    const watchers: vscode.Disposable[] = [];
     let disposed = false;
     void this.commonDir().then(
       (dir) => {
         if (disposed) return;
-        const logs = vscode.Uri.file(resolve(dir, 'logs', 'refs'));
-        watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(logs, 'stash'));
-        const refresh = () => {
-          this.scheduleRefresh();
-        };
-        watcher.onDidChange(refresh);
-        watcher.onDidCreate(refresh);
-        watcher.onDidDelete(refresh);
+        watchers.push(
+          this.watchFiles(resolve(dir, 'logs', 'refs'), 'stash'),
+          // The main worktree's switches and commits.
+          this.watchFiles(resolve(dir, 'logs'), 'HEAD'),
+          // Made with the first linked worktree, removed with the last.
+          this.watchFiles(dir, 'worktrees', () => {
+            void this.watchLinked();
+          }),
+        );
+        void this.watchLinked();
       },
       () => undefined,
     );
     return new vscode.Disposable(() => {
       disposed = true;
-      watcher?.dispose();
+      for (const w of watchers.splice(0)) w.dispose();
     });
+  }
+
+  /** A watcher of the files `pattern` names in folder `base`, which refreshes the graph on any change. */
+  private watchFiles(base: string, pattern: string, also?: () => void): vscode.Disposable {
+    const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(base), pattern));
+    const changed = () => {
+      also?.();
+      this.scheduleRefresh();
+    };
+    w.onDidChange(changed);
+    w.onDidCreate(changed);
+    w.onDidDelete(changed);
+    return w;
+  }
+
+  /**
+   * Watches the folder of each linked worktree under the common dir, as they come and go. With
+   * Node's watcher: VS Code's (1.145) reports nothing from a folder of the workspace's .git made
+   * after the window opened.
+   */
+  private async watchLinked(): Promise<void> {
+    const dir = await this.commonDir().catch(() => undefined);
+    if (dir === undefined) return;
+    const base = resolve(dir, 'worktrees');
+    const ids = await readdir(base).catch(() => undefined);
+    if (this.disposed) return;
+    const wanted = new Map<string, readonly string[]>(
+      ids === undefined
+        ? []
+        : [
+            [base, []],
+            ...ids.flatMap((id) => [
+              [resolve(base, id), ['HEAD', 'locked', 'gitdir']] as const,
+              [resolve(base, id, 'logs'), ['HEAD']] as const,
+            ]),
+          ],
+    );
+    for (const [folder, w] of this.linked)
+      if (!wanted.has(folder)) {
+        w.close();
+        this.linked.delete(folder);
+      }
+    for (const [folder, names] of wanted) {
+      if (this.linked.has(folder)) continue;
+      try {
+        const w = watch(folder, (_, name) => {
+          if (folder === base) void this.watchLinked();
+          else if (name !== null && !names.includes(name)) return;
+          this.scheduleRefresh();
+        });
+        // The folder went: the next watchLinked() forgets it.
+        w.on('error', () => undefined);
+        this.linked.set(folder, w);
+      } catch {
+        // Gone before it could be watched (a worktree being removed).
+      }
+    }
   }
 
   /** Replies arrive after awaits; once the graph shows another repository or is gone, they are not its. */
@@ -861,6 +924,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     clearTimeout(this.graphTimer);
     this.reader?.dispose();
     for (const d of this.disposables.splice(0)) d.dispose();
+    for (const w of this.linked.values()) w.close();
+    this.linked.clear();
   }
 }
 
