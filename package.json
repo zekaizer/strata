@@ -59,7 +59,7 @@
         "command": "strata.show",
         "title": "Show Commit Graph",
         "category": "Strata",
-        "icon": "$(git-merge)"
+        "icon": "$(strata-graph)"
       },
       {
         "command": "strata.writeCommitGraph",
@@ -75,7 +75,7 @@
         "command": "strata.openInGraph",
         "title": "Open in Commit Graph",
         "category": "Strata",
-        "icon": "$(git-merge)"
+        "icon": "$(strata-graph)"
       },
       {
         "command": "strata.showActive",
@@ -979,6 +979,15 @@
           "group": "9_output@1"
         }
       ]
+    },
+    "icons": {
+      "strata-graph": {
+        "description": "Strata commit graph",
+        "default": {
+          "fontPath": "media/strata-icons.woff",
+          "fontCharacter": "\\f101"
+        }
+      }
     },
     "configuration": {
       "title": "Strata",

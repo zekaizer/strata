@@ -55,6 +55,7 @@ describe('ways into the graph', () => {
     const item = await waitFor('the status bar item', () => api.statusBarItem());
     assert.equal(item.name, 'Strata Commit Graph');
     assert.equal(item.tooltip, 'Show Commit Graph');
+    assert.equal(item.text, '$(strata-graph) Graph');
     api.current()?.dispose();
     await editIn(gamma);
     await run(item.command as string);

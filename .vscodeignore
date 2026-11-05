@@ -7,3 +7,4 @@
 !dist/webview/*.css
 !dist/webview/codicons/**
 !media/icon.png
+!media/strata-icons.woff

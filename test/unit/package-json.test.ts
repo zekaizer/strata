@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { syncManifest } from '../../scripts/lib/manifest.ts';
 import { COMMAND_IDS, COMMANDS, refActions, SECTION_KEYS, type CommandSpec } from '../../src/shared/commands.ts';
@@ -7,11 +7,16 @@ import { COMMAND_IDS, COMMANDS, refActions, SECTION_KEYS, type CommandSpec } fro
 interface Command {
   command: string;
   enablement?: string;
+  icon?: string;
 }
 const text = readFileSync(new URL('../../package.json', import.meta.url), 'utf8');
 const pkg = JSON.parse(text) as {
   activationEvents: string[];
-  contributes: { commands: Command[]; menus: Record<string, { command: string; when?: string }[]> };
+  contributes: {
+    commands: Command[];
+    menus: Record<string, { command: string; when?: string }[]>;
+    icons?: Record<string, { default: { fontPath: string; fontCharacter: string } }>;
+  };
 };
 const webview = pkg.contributes.menus['webview/context'] ?? [];
 
@@ -173,6 +178,18 @@ describe('package.json activation', () => {
     // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.
     assert.ok(pkg.activationEvents.includes('onStartupFinished'));
     assert.ok(pkg.activationEvents.includes('onWebviewPanel:strata.graph'));
+  });
+});
+
+describe('product icons', () => {
+  it("shows the ways into the graph with Strata's icon, from a font the package ships", () => {
+    const icon = pkg.contributes.icons?.['strata-graph']?.default;
+    assert.ok(icon, 'strata-graph is contributed');
+    assert.ok(existsSync(new URL(`../../${icon.fontPath}`, import.meta.url)), `${icon.fontPath} exists`);
+    const ignore = readFileSync(new URL('../../.vscodeignore', import.meta.url), 'utf8').split('\n');
+    assert.ok(ignore.includes(`!${icon.fontPath}`), `.vscodeignore ships ${icon.fontPath}`);
+    for (const id of ['strata.show', 'strata.openInGraph'])
+      assert.equal(pkg.contributes.commands.find((c) => c.command === id)?.icon, '$(strata-graph)', id);
   });
 });
 

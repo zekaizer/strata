@@ -86,6 +86,27 @@ scripts/             build, xvfb wrapper, screenshot tooling
 
 Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
 
+## Icons
+
+`media/icon.svg` is the source of the extension icon `media/icon.png`
+(256×256). `media/strata-mono.svg` is the monochrome design of the product
+icon; icon fonts cannot carry its translucent bars, so
+`media/product-icons/strata-graph.svg` is the font-safe version (one filled
+path: solid bars cut back from the lane). It is contributed as
+`$(strata-graph)` from `media/strata-icons.woff` at U+F101. After changing it,
+regenerate the font with a pinned one-off fantasticon (not a dependency):
+
+```bash
+mkdir -p artifacts/icon-font
+npx -y fantasticon@4.1.0 media/product-icons -o artifacts/icon-font \
+  -n strata-icons -t woff -g json --normalize -h 1000
+cp artifacts/icon-font/strata-icons.woff media/
+```
+
+`artifacts/icon-font/strata-icons.json` must still map `strata-graph` to
+`61697` (U+F101); a second SVG in `media/product-icons/` takes the next code
+point.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request: typecheck,
