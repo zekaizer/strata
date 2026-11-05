@@ -18,6 +18,7 @@ import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
+import { samePath } from '../core/worktrees.ts';
 import {
   anchoredAt,
   describeStash,
@@ -39,7 +40,18 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { cardRefs, fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
+import {
+  cardRefs,
+  fitBadges,
+  landedRefs,
+  refsLabel,
+  rowBadges,
+  shownRefs,
+  worktreesOf,
+  type Badge,
+  type WorktreeMark,
+  type Worktrees,
+} from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { codicon, el, formatDate, formatShortDate, shortHash } from './format.ts';
@@ -178,6 +190,8 @@ interface BadgeChrome {
   tracked: { chrome: number; font: string };
   /** A branch's remote section without its names, and the names' font. */
   remotes: { chrome: number; font: string };
+  /** A branch's worktree section without its name, the extra of a lock icon, and the name's font. */
+  worktree: { chrome: number; lock: number; font: string; max: number };
   max: number;
   gap: number;
 }
@@ -187,6 +201,7 @@ const BADGE_ICON: Record<Exclude<Badge['look'], 'more'>, string> = {
   branch: 'git-branch',
   remote: 'cloud',
   tag: 'tag',
+  worktree: 'worktree',
 };
 
 class App {
@@ -204,6 +219,10 @@ class App {
   private showHiddenBadges = false;
   /** `refsByHash` less the hidden badges' refs: what the ref bands show. */
   private badgeRefsByHash = new Map<string, Ref[]>();
+  /** The other worktrees as badges show them. */
+  private worktrees: Worktrees = worktreesOf(this.refs);
+  /** Roots of the repositories open in this window, as the switcher lists them. */
+  private openRoots: readonly string[] = [];
   private saved: SavedState;
   /** A view saved before views were kept per repository: the first repository shown restores it. */
   private unkeyed: RepoView | undefined;
@@ -570,6 +589,7 @@ class App {
         break;
       case 'repositories':
         this.switcher.update(m.repos);
+        this.setOpenRoots(m.repos.map((r) => r.root));
         break;
       case 'badgeRules':
         this.badgeRules = m.rules;
@@ -701,6 +721,7 @@ class App {
         this.refFilter.close();
         this.badgeFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
+        this.worktrees = this.worktreesShown();
         this.updateHeadButton();
         this.refsByHash = new Map();
         this.badgeRules = [];
@@ -801,6 +822,7 @@ class App {
     this.generation = generation;
     this.repo = repo;
     this.refs = refs;
+    this.worktrees = this.worktreesShown();
     this.updateHeadButton();
     this.options = options;
     this.refsByHash = new Map();
@@ -943,6 +965,20 @@ class App {
       if (row.kind === 'commit' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
     }
     return undefined;
+  }
+
+  /** The other worktrees, each marked whether this window has it open. */
+  private worktreesShown(): Worktrees {
+    const roots = this.openRoots;
+    return worktreesOf(this.refs, (path) => roots.some((root) => samePath(path, root)));
+  }
+
+  /** Worktree badges offer Show in Graph for the repositories open here. */
+  private setOpenRoots(roots: string[]): void {
+    if (JSON.stringify(roots) === JSON.stringify(this.openRoots)) return;
+    this.openRoots = roots;
+    this.worktrees = this.worktreesShown();
+    if (this.refs.worktrees.length > 0) this.queueRender();
   }
 
   /** Works out which badges the rules hide from the rules and the refs. */
@@ -1668,7 +1704,7 @@ class App {
     const hash = item.commit.hash;
     return {
       hash,
-      refs: cardRefs(hash, this.refsByHash.get(hash) ?? [], this.refs, this.hiddenBadges),
+      refs: cardRefs(hash, this.refsByHash.get(hash) ?? [], this.refs, this.hiddenBadges, this.worktrees),
       tags: whereAsk(this.refs, this.hiddenBadges, hash),
       ...centre,
     };
@@ -2148,13 +2184,15 @@ class App {
     }
     const c = r.commit;
     const badgeRefs = this.badgeRefsByHash.get(c.hash) ?? [];
-    const badges = rowBadges(c.hash, badgeRefs, this.refs, (all) => this.fitBand(all));
+    const badges = rowBadges(c.hash, badgeRefs, this.refs, (all) => this.fitBand(all), this.worktrees);
     const hidden = (this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r));
     // The row's menu still offers the refs whose badges are hidden.
     const refs = [...badges.flatMap((b) => b.refs), ...hidden.map((r) => r.name)];
     const branches = (this.refsByHash.get(c.hash) ?? []).filter(
       (r) => r.kind === 'branch' && r.short !== this.refs.headBranch,
     );
+    // Checkout of a branch checked out elsewhere would fail: the row's Checkout is not that branch's then.
+    const free = branches.filter((r) => !this.worktrees.byBranch.has(r.name));
     const context: CommitContext = {
       webviewSection: 'commit',
       preventDefaultContextMenuItems: true,
@@ -2163,7 +2201,7 @@ class App {
       strataIsHead: c.hash === this.refs.head,
       strataHasRefs: refs.length > 0,
       strataRefs: refs.join(' '),
-      strataBranch: branches.length === 1 ? branches[0]!.name : '',
+      strataBranch: branches.length === 1 && free.length === 1 ? free[0]!.name : '',
     };
     row.setAttribute('data-vscode-context', JSON.stringify(context));
     if (badges.length > 0) {
@@ -2212,7 +2250,7 @@ class App {
     // On the node the ref card stands in for the row's tooltip.
     if (this.refCard.hash !== c.hash) row.title = commitTitle(c);
     // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
-    const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length));
+    const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length, this.worktrees));
     const said = [
       c.subject,
       refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
@@ -2342,12 +2380,21 @@ class App {
 
   private badgeWidth(b: Badge, c: BadgeChrome): number {
     const names = remoteNames(b);
-    const key = `${b.look}\0${b.tracked}\0${b.text}\0${names}`;
+    const w = b.look === 'worktree' ? undefined : b.worktree;
+    const lock = (m: WorktreeMark | undefined) => (m?.state === 'locked' ? c.worktree.lock : 0);
+    const key = `${b.look}\0${b.tracked}\0${b.text}\0${names}\0${w?.text ?? ''}\0${b.worktree?.state ?? ''}`;
     let width = this.badgeWidths.get(key);
     if (width === undefined) {
       const look = b.tracked ? c.tracked : c.look[b.look];
       const remotes = b.remotes.length > 0 ? c.remotes.chrome + this.textWidth(names, c.remotes.font) : 0;
-      width = Math.ceil(Math.min(c.max, look.chrome + this.textWidth(b.text, look.font) + remotes));
+      const worktree = w ? c.worktree.chrome + this.textWidth(w.text, c.worktree.font) + lock(w) : 0;
+      const own = b.look === 'worktree' ? lock(b.worktree) : 0;
+      width = Math.ceil(
+        Math.min(
+          w ? c.worktree.max : c.max,
+          look.chrome + this.textWidth(b.text, look.font) + own + remotes + worktree,
+        ),
+      );
       this.badgeWidths.set(key, width);
     }
     return width;
@@ -2367,18 +2414,46 @@ class App {
         remotes,
         also: [],
         context: { webviewSection: 'refs', strataHash: '', strataRefs: '' },
+        worktree: undefined,
       });
-    const looks = (['head', 'branch', 'remote', 'tag', 'more'] as const).map((look) => [look, empty(look)] as const);
+    const looks = (['head', 'branch', 'remote', 'tag', 'worktree', 'more'] as const).map(
+      (look) => [look, empty(look)] as const,
+    );
     const withRemote = empty('branch', [
       { text: '', context: { webviewSection: 'refs', strataHash: '', strataRefs: '' } },
     ]);
     const tracked = empty('remote', [], true);
+    const held = (state: WorktreeMark['state']) => {
+      const e = empty('branch');
+      const part = worktreePart({
+        text: '',
+        title: '',
+        state,
+        context: {
+          webviewSection: 'worktree',
+          strataHash: '',
+          strataWorktree: '',
+          strataLocked: false,
+          strataPrunable: false,
+          strataMain: false,
+          strataShown: false,
+        },
+      });
+      e.append(part);
+      return [e, part] as const;
+    };
+    const [[withWorktree, active], [withLocked, locked]] = [held('active'), held('locked')];
     for (const e of [...looks.map(([, e]) => e), tracked]) e.style.minWidth = '0';
-    band.append(...looks.map(([, e]) => e), tracked, withRemote);
+    band.append(...looks.map(([, e]) => e), tracked, withRemote, withWorktree, withLocked);
     document.body.append(band);
     const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.chip-text, .badge-remote-names') ?? e).font;
     const segment = withRemote.querySelector<HTMLElement>('.badge-remotes')!;
     const style = getComputedStyle(segment);
+    // A part's margin and the badge's gap before it, as for the remote section.
+    const partChrome =
+      active.getBoundingClientRect().width +
+      parseFloat(getComputedStyle(active).marginLeft) +
+      parseFloat(getComputedStyle(withWorktree).columnGap);
     const chrome: BadgeChrome = {
       look: Object.fromEntries(
         looks.map(([look, e]) => [look, { chrome: e.getBoundingClientRect().width, font: text(e) }]),
@@ -2392,6 +2467,12 @@ class App {
           parseFloat(getComputedStyle(withRemote).columnGap),
         font: text(segment),
       },
+      worktree: {
+        chrome: partChrome,
+        lock: locked.getBoundingClientRect().width - active.getBoundingClientRect().width,
+        font: text(active),
+        max: parseFloat(getComputedStyle(withWorktree).maxWidth) || Infinity,
+      },
       max: parseFloat(getComputedStyle(withRemote).maxWidth) || Infinity,
       gap: parseFloat(getComputedStyle(band).columnGap) || 0,
     };
@@ -2401,7 +2482,11 @@ class App {
 
   /** Whether a commit shows ref badges; must agree with rowBadges(). */
   private hasBadges(hash: string): boolean {
-    return this.badgeRefsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
+    return (
+      this.badgeRefsByHash.has(hash) ||
+      (hash === this.refs.head && this.refs.headBranch === undefined) ||
+      this.worktrees.detachedAt.has(hash)
+    );
   }
 
   private renderDetails(): void {
@@ -3449,7 +3534,21 @@ function renderBadge(b: Badge): HTMLElement {
   e.dataset['refs'] = b.context.webviewSection === 'head' ? 'HEAD' : b.refs.join(' ');
   e.setAttribute('data-vscode-context', JSON.stringify(b.context));
   if (b.remotes.length > 0) e.append(remoteSegment(b));
+  if (b.look === 'worktree' && b.worktree) {
+    if (b.worktree.state === 'prunable') e.classList.add('chip-stale');
+    if (b.worktree.state === 'locked') e.append(codicon('lock'));
+  } else if (b.worktree) e.append(worktreePart(b.worktree));
   return e;
+}
+
+/** "strata-login" after a branch's name (and remote names): the other worktree it is checked out in. */
+function worktreePart(w: WorktreeMark): HTMLElement {
+  const part = el('span', `chip-part chip-worktree${w.state === 'prunable' ? ' chip-stale' : ''}`);
+  part.title = w.title;
+  part.setAttribute('data-vscode-context', JSON.stringify(w.context));
+  part.append(codicon('worktree'), el('span', 'chip-text', w.text));
+  if (w.state === 'locked') part.append(codicon('lock'));
+  return part;
 }
 
 /** "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. */

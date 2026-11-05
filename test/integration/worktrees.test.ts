@@ -75,4 +75,28 @@ describe('other worktrees', () => {
     });
     assert.equal(git('branch', '--contains', hash), '', 'no branch reaches it');
   });
+
+  it('names the worktree in the badge of the branch it has checked out, and badges a detached one', async () => {
+    const login = add('strata-login', 'feature/login');
+    const bisect = add('bisect', '--detach', 'cross/x');
+    const p = await waitFor('the worktree badges', async () => {
+      const probe = await panel().probe();
+      const parts = Object.values(probe.menuContexts.badges)
+        .flat()
+        .filter((c) => c['webviewSection'] === 'worktree');
+      return parts.length === 2 && probe;
+    });
+    const contexts = Object.values(p.menuContexts.badges).flat();
+    const branch = contexts.find((c) => c['strataRef'] === 'refs/heads/feature/login');
+    assert.equal(branch?.['strataInWorktree'], true);
+    assert.deepEqual(
+      contexts.filter((c) => c['webviewSection'] === 'worktree').map((c) => c['strataWorktree']),
+      [bisect, login],
+    );
+    assert.match(
+      p.rowLabels[git('rev-parse', 'feature/login')] ?? '',
+      /Branch feature\/login, in worktree strata-login\./,
+    );
+    assert.match(p.rowLabels[git('rev-parse', 'cross/x')] ?? '', /Worktree bisect, detached; branch cross\/x\./);
+  });
 });

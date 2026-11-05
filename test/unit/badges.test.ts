@@ -2,7 +2,16 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { hiddenRefs } from '../../src/core/badge-rules.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
-import { cardRefs, fitBadges, landedRefs, refsLabel, rowBadges, shownRefs } from '../../src/webview/badges.ts';
+import type { WorktreeInfo } from '../../src/core/worktrees.ts';
+import {
+  cardRefs,
+  fitBadges,
+  landedRefs,
+  refsLabel,
+  rowBadges,
+  shownRefs,
+  worktreesOf,
+} from '../../src/webview/badges.ts';
 
 const h = (c: string) => c.repeat(40);
 const at = h('c');
@@ -39,6 +48,7 @@ describe('rowBadges', () => {
       strataRef: 'refs/heads/main',
       strataIsCurrent: true,
       strataUpstream: true,
+      strataInWorktree: false,
     });
   });
 
@@ -50,6 +60,7 @@ describe('rowBadges', () => {
       strataRef: 'refs/heads/topic',
       strataIsCurrent: false,
       strataUpstream: false,
+      strataInWorktree: false,
     });
   });
 
@@ -171,6 +182,96 @@ describe('rowBadges', () => {
       refs.map((r) => r.name),
       'all refs of the row, collapsed ones included',
     );
+  });
+});
+
+describe('worktree badges', () => {
+  const wt = (name: string, branch: string | undefined, state: WorktreeInfo['state'] = { kind: 'active' }) => ({
+    path: `/w/${name}`,
+    name,
+    head: at,
+    branch,
+    state,
+    main: false,
+  });
+  const refs = [ref('refs/heads/main'), ref('refs/heads/review'), ref('refs/tags/v1')];
+  const list = [
+    wt('review-tree', 'refs/heads/review', { kind: 'locked', reason: 'on usb disk' }),
+    wt('bisect', undefined),
+    wt('gone', undefined, { kind: 'prunable', reason: 'gitdir file points to non-existent location' }),
+  ];
+  const snap = (headBranch: string | undefined): RefSnapshot => ({ ...snapshot(refs, headBranch), worktrees: list });
+  const shown = (path: string) => path === '/w/bisect';
+  const badges = (detachedHead = false) => {
+    const sn = snap(detachedHead ? undefined : 'main');
+    return rowBadges(at, refs, sn, all, worktreesOf(sn, shown));
+  };
+
+  it('names the worktree a branch is checked out in inside its badge, with a menu of its own', () => {
+    const review = badges().find((b) => b.text === 'review')!;
+    assert.equal((review.context as { strataInWorktree: boolean }).strataInWorktree, true);
+    const part = review.worktree!;
+    assert.equal(part.text, 'review-tree');
+    assert.equal(part.state, 'locked');
+    assert.deepEqual(part.context, {
+      webviewSection: 'worktree',
+      strataHash: at,
+      strataWorktree: '/w/review-tree',
+      strataLocked: true,
+      strataPrunable: false,
+      strataMain: false,
+      strataShown: false,
+    });
+    assert.match(
+      review.title,
+      /\nChecked out in another worktree\nWorktree review-tree: \/w\/review-tree\nLocked: on usb disk$/,
+    );
+    assert.equal(badges().find((b) => b.text === 'main')!.worktree, undefined);
+  });
+
+  it('gives a worktree detached on the commit a badge of its own, after a detached HEAD and before the refs', () => {
+    assert.deepEqual(
+      badges(true).map((b) => [b.look, b.text]),
+      [
+        ['head', 'HEAD'],
+        ['worktree', 'bisect'],
+        ['worktree', 'gone'],
+        ['branch', 'main'],
+        ['branch', 'review'],
+        ['tag', 'v1'],
+      ],
+    );
+    const [bisect, gone] = badges().filter((b) => b.look === 'worktree');
+    assert.equal(bisect!.context.webviewSection, 'worktree');
+    assert.equal((bisect!.context as { strataShown: boolean }).strataShown, true, 'open in this window');
+    assert.equal(gone!.worktree?.state, 'prunable');
+    assert.deepEqual(bisect!.refs, [], 'no ref to collapse or land');
+  });
+
+  it('reads the worktrees out with the refs', () => {
+    assert.equal(
+      refsLabel(badges()),
+      'worktree bisect, detached; worktree gone, detached, prunable; current branch main; ' +
+        'branch review, in worktree review-tree, locked; tag v1',
+    );
+  });
+
+  it('lists them on the ref card', () => {
+    const lines = cardRefs(at, refs, snap('main'), new Map(), worktreesOf(snap('main'))).map((r) =>
+      [r.look, r.text, r.note ?? '-', r.worktree ?? '-', r.state ?? '-'].join(' '),
+    );
+    assert.deepEqual(lines, [
+      'worktree bisect detached - -',
+      'worktree gone detached - prunable',
+      'head main current branch - -',
+      'branch review - review-tree locked',
+      'tag v1 - - -',
+    ]);
+  });
+
+  it('leaves out a worktree without a commit yet', () => {
+    const unborn: RefSnapshot = { ...snapshot([], 'main'), worktrees: [{ ...wt('new', undefined), head: undefined }] };
+    assert.equal(worktreesOf(unborn).detachedAt.size, 0);
   });
 });
 

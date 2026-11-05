@@ -40,9 +40,27 @@ export type BadgeContext =
       strataRef: string;
       strataIsCurrent: boolean;
       strataUpstream: boolean;
+      /** Checked out in another worktree: not to be checked out, renamed or deleted here. */
+      strataInWorktree: boolean;
     }
   | { webviewSection: 'remoteBranch' | 'tag'; strataHash: string; strataRef: string }
   /** A detached HEAD. */
   | { webviewSection: 'head'; strataHash: string }
   /** "+N", or "+k" remote names: the refs it stands for, space-separated. */
-  | { webviewSection: 'refs'; strataHash: string; strataRefs: string };
+  | { webviewSection: 'refs'; strataHash: string; strataRefs: string }
+  | WorktreeContext;
+
+/** Another worktree: inside the badge of the branch it has checked out, or alone on its detached HEAD. */
+export interface WorktreeContext {
+  webviewSection: 'worktree';
+  /** The commit its HEAD is on. */
+  strataHash: string;
+  /** Its path, as git lists it. */
+  strataWorktree: string;
+  strataLocked: boolean;
+  strataPrunable: boolean;
+  /** The main worktree, which cannot be removed. */
+  strataMain: boolean;
+  /** Open in this window: the graph can show it. */
+  strataShown: boolean;
+}

@@ -45,6 +45,7 @@ describe('context menu targets', () => {
         strataRef: 'refs/heads/main',
         strataIsCurrent: true,
         strataUpstream: true,
+        strataInWorktree: false,
       },
       { webviewSection: 'remoteBranch', strataHash: main, strataRef: 'refs/remotes/origin/main' },
     ]);
@@ -56,6 +57,7 @@ describe('context menu targets', () => {
         strataRef: 'refs/heads/feature/login',
         strataIsCurrent: false,
         strataUpstream: false,
+        strataInWorktree: false,
       },
       { webviewSection: 'tag', strataHash: login, strataRef: 'refs/tags/strata-menu-tag' },
     ]);
