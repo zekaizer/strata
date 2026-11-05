@@ -16,10 +16,10 @@ describe('git version', () => {
     assert.equal(parseGitVersion('not git'), undefined);
   });
 
-  it('writes with git 2.27 and newer only', () => {
-    assert.equal(canWrite([2, 27, 0]), true);
+  it('writes with git 2.34 and newer only', () => {
+    assert.equal(canWrite([2, 34, 0]), true);
     assert.equal(canWrite([3, 0, 0]), true);
-    assert.equal(canWrite([2, 26, 9]), false);
+    assert.equal(canWrite([2, 33, 8]), false);
     assert.equal(canWrite([1, 99, 0]), false);
   });
 });

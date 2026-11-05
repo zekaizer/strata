@@ -216,6 +216,6 @@ describe('wording of undo and failures', () => {
   });
 
   it('names the git that is too old to write', () => {
-    assert.equal(gitTooOld('2.25.1'), 'Strata needs git 2.27 or newer to change repositories (found 2.25.1).');
+    assert.equal(gitTooOld('2.33.8'), 'Strata needs git 2.34 or newer to change repositories (found 2.33.8).');
   });
 });

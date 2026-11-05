@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { argv, type Operation } from '../core/operations.ts';
 import { shellCommand } from '../core/shell.ts';
-import { GitOpError, runGitOp } from '../git/op.ts';
+import { GitOpError, runOperation } from '../git/op.ts';
 import { setContext } from './context.ts';
 
 /** What the runner needs from the graph it serves. */
@@ -90,7 +90,7 @@ export class OpRunner implements vscode.Disposable {
     for (let attempt = 0; ; attempt++) {
       this.output.info(`> ${commandLine(op)}`);
       try {
-        const { stdout, stderr } = await runGitOp(host.git, host.cwd, argv(op), { signal, onProgress });
+        const { stdout, stderr } = await runOperation(host.git, host.cwd, op, { signal, onProgress });
         if (stderr.trim()) this.output.info(stderr.trim());
         return { stdout, stderr };
       } catch (e) {

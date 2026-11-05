@@ -267,7 +267,7 @@ export function failedDuring(label: string, message: string): string {
 }
 
 export const gitTooOld = (found: string): string =>
-  `Strata needs git 2.27 or newer to change repositories (found ${found}).`;
+  `Strata needs git 2.34 or newer to change repositories (found ${found}).`;
 
 /**
  * A remote operation that git could not authenticate (auth) or whose host it does not know yet

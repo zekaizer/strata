@@ -217,7 +217,7 @@ Linux kernel. It only updates repositories that already have a commit-graph.
 
 - VS Code 1.90 or later.
 - git installed where the repository is (the built-in Git extension must be
-  enabled). Changing the repository needs git 2.27 or later.
+  enabled). Changing the repository needs git 2.34 or later.
 
 ## Feedback
 

@@ -4,7 +4,7 @@ Date: 2026-11-04
 
 ## Status
 
-Accepted
+Accepted. The minimum git version is superseded by [ADR 3](0003-minimum-git-version.md).
 
 ## Context
 

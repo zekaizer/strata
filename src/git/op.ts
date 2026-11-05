@@ -1,6 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { readFile, rm, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { classifyGitError, parseProgress, type GitErrorKind } from '../core/git-error.ts';
+import { argv, type Operation } from '../core/operations.ts';
 import { gitEnv } from './env.ts';
+import { runGit } from './run.ts';
 
 /** A git command that changes the repository failed. */
 export class GitOpError extends Error {
@@ -79,6 +83,48 @@ export function runGitOp(
       else reject(new GitOpError(classify(stdout, stderr), stdout, stderr));
     });
   });
+}
+
+/** Runs `op`; rejects like runGitOp. */
+export async function runOperation(
+  git: string,
+  cwd: string,
+  op: Operation,
+  opts: OpOptions = {},
+): Promise<{ stdout: string; stderr: string }> {
+  try {
+    return await runGitOp(git, cwd, argv(op), opts);
+  } catch (e) {
+    if (op.kind === 'merge' && op.autostash && e instanceof GitOpError)
+      await applyLeftMergeAutostash(git, cwd, opts.env === undefined ? {} : { env: opts.env });
+    throw e;
+  }
+}
+
+/**
+ * git 2.27 to 2.37 exit a `merge --autostash` that the merge strategy refuses (an untracked file in the
+ * way) without applying the autostash: it stays in MERGE_AUTOSTASH with no merge in progress, for the
+ * next merge to apply. Applies it as git 2.38 does: `stash apply`, else `stash store`.
+ */
+async function applyLeftMergeAutostash(git: string, cwd: string, opts: Pick<OpOptions, 'env'>) {
+  const [file, head] = (
+    await runGit(git, cwd, ['rev-parse', '--git-path', 'MERGE_AUTOSTASH', '--git-path', 'MERGE_HEAD'])
+  )
+    .split('\n')
+    .map((p) => resolve(cwd, p));
+  const stash = await readFile(file!, 'utf8').then(
+    (s) => s.trim(),
+    () => undefined,
+  );
+  const merging = await stat(head!).then(
+    () => true,
+    () => false,
+  );
+  if (stash === undefined || merging) return;
+  await runGitOp(git, cwd, ['stash', 'apply', '--quiet', stash], opts).catch(() =>
+    runGitOp(git, cwd, ['stash', 'store', '--quiet', '--message', 'autostash', stash], opts),
+  );
+  await rm(file!, { force: true });
 }
 
 /** Kills git and what it started (ssh, hooks): they share its process group. */

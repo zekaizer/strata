@@ -56,9 +56,53 @@ jobs:
       - run: npm ci
       - run: npm run ${{ matrix.script }}
 
+  min-git:
+    name: Unit and integration tests (minimum git)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Read the minimum git version
+        id: min
+        run: |
+          version=$(grep -oP 'WRITES_NEED: GitVersion = \[\K[0-9, ]+' src/core/git-version.ts | tr -d ' ' | tr , .)
+          test -n "$version"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Cache git ${{ steps.min.outputs.version }}
+        id: cache-git
+        uses: actions/cache@v6
+        with:
+          path: ~/git-min
+          key: git-${{ runner.os }}-${{ steps.min.outputs.version }}
+      - name: Build git ${{ steps.min.outputs.version }}
+        if: steps.cache-git.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq libcurl4-openssl-dev libexpat1-dev zlib1g-dev
+          curl -fsSL "https://mirrors.edge.kernel.org/pub/software/scm/git/git-${{ steps.min.outputs.version }}.tar.xz" | tar xJ
+          make -C "git-${{ steps.min.outputs.version }}" -j"$(nproc)" prefix="$HOME/git-min" NO_GETTEXT=1 NO_TCLTK=1 install
+      - name: Put git ${{ steps.min.outputs.version }} first on PATH
+        run: |
+          echo "$HOME/git-min/bin" >> "$GITHUB_PATH"
+          "$HOME/git-min/bin/git" --version | grep -qx "git version ${{ steps.min.outputs.version }}"
+      # Silences git's "default branch name" hint.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Xvfb
+        run: sudo apt-get update -q && sudo apt-get install -yq xvfb
+      - name: Cache VS Code downloads
+        uses: actions/cache@v6
+        with:
+          path: .vscode-test
+          key: vscode-${{ runner.os }}-stable-${{ hashFiles('.vscode-test.mjs') }}
+      - run: npm ci
+      - run: npm run test:unit
+      - run: npm run test:integration
+
   package:
     name: Package VSIX
-    needs: [check, integration]
+    needs: [check, integration, min-git]
     runs-on: ubuntu-24.04
     steps:
       # Silences git's "default branch name" hint from checkout's `git init`.
