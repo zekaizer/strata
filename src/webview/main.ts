@@ -3,7 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
-import { badgeOrder, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import {
   anchoredAt,
@@ -26,7 +26,7 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { landedRefs, rowBadges, type Badge } from './badges.ts';
+import { fitBadges, landedRefs, rowBadges, type Badge } from './badges.ts';
 import { bannerOf } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
@@ -114,6 +114,21 @@ const FILE_VIEW_TITLE: Record<FileView, string> = {
 };
 const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
 
+/** Right padding of a row (main.css .row). */
+const ROW_PADDING = 12;
+/** Text of the narrowest ellipsized badge kept before a "+N". */
+const BADGE_MIN_TEXT = 'abc…';
+
+/** The parts of a badge's width that do not depend on its text, read from the stylesheet. */
+interface BadgeChrome {
+  /** Border, padding and icon of each look, and the font of its text. */
+  look: Record<Badge['look'], { chrome: number; font: string }>;
+  /** A branch's remote section without its names, and the names' font. */
+  remotes: { chrome: number; font: string };
+  max: number;
+  gap: number;
+}
+
 const BADGE_ICON: Record<Exclude<Badge['look'], 'more'>, string> = {
   head: 'target',
   branch: 'git-branch',
@@ -198,6 +213,12 @@ class App {
   private landingTimer: ReturnType<typeof setTimeout> | undefined;
   /** Widest author name and dates of the loaded commits, in px (the row's own font). */
   private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
+  /** Reset when the theme or a font setting changes. */
+  private badgeChrome: BadgeChrome | undefined;
+  /** Natural badge widths in px, by look, text and remote names. */
+  private readonly badgeWidths = new Map<string, number>();
+  /** Width of a row's ref band, in px, as of the last render. */
+  private bandWidth = 0;
   private operation: OperationState | undefined;
   private leftover: Leftover | undefined;
   /** The Strata operation running, by its progress label. */
@@ -354,6 +375,8 @@ class App {
     // VS Code rewrites the theme and font variables on <html> when the theme or a font setting changes.
     new MutationObserver(() => {
       this.theme = resolveGraphTheme();
+      this.badgeChrome = undefined;
+      this.badgeWidths.clear();
       this.queueRender();
       this.layoutDetails();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
@@ -555,9 +578,10 @@ class App {
       list.push(r);
       this.refsByHash.set(r.hash, list);
     }
-    // Refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    // The upstream and refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    const upstream = headUpstream(refs);
     for (const [hash, list] of this.refsByHash)
-      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, options.refs));
+      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, options.refs));
     this.setStashes(stashes);
     this.updateBanner();
     this.commits = [];
@@ -1244,7 +1268,10 @@ class App {
     if (this.expanded) this.placeExpansion();
     // Not on <html>: VS Code owns its style attribute, which is observed for theme changes.
     this.root.style.setProperty('--graph-width', `${gw}px`);
-    this.chooseRowColumns(width, gw);
+    const gap = width <= 600 ? 8 : 12;
+    this.chooseRowColumns(width, gw, gap);
+    // The band spans every column after the graph (main.css .refs).
+    this.bandWidth = width - gw - gap - ROW_PADDING;
     // The details' width follows the graph column and the scrollbar, not only the viewport.
     const widths = `${gw}:${width}`;
     if (widths !== this.laidOutWidths) {
@@ -1328,7 +1355,7 @@ class App {
       return row;
     }
     const c = r.commit;
-    const badges = rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs);
+    const badges = rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs, (all) => this.fitBand(all));
     const refs = badges.flatMap((b) => b.refs);
     const context: CommitContext = {
       webviewSection: 'commit',
@@ -1438,14 +1465,13 @@ class App {
    * Author and date columns as wide as their widest text, shown while the subject keeps
    * SUBJECT_MIN: the full date gives way to the short one, then the date goes, then the author.
    */
-  private chooseRowColumns(width: number, graph: number): void {
-    const gap = width <= 600 ? 8 : 12;
+  private chooseRowColumns(width: number, graph: number, gap: number): void {
     const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX)) + 1;
     const dateFull = Math.ceil(this.textWidths.dateFull) + 1;
     const dateShort = Math.ceil(this.textWidths.dateShort) + 1;
     const hash = this.rowsLayer.querySelector<HTMLElement>('.row:not(.stash) .hash')?.offsetWidth ?? 60;
     const choice = chooseColumns(
-      { list: width, graph, author, dateFull, dateShort, hash, gap, padding: 12 },
+      { list: width, graph, author, dateFull, dateShort, hash, gap, padding: ROW_PADDING },
       SUBJECT_MIN,
     );
     const style = this.root.style;
@@ -1471,6 +1497,76 @@ class App {
     for (const e of this.expansion.querySelectorAll<HTMLElement>('.file')) {
       e.classList.toggle('opened', path !== undefined && e.dataset['path'] === path);
     }
+  }
+
+  /** How many of a row's badges its ref band shows before a "+N". */
+  private fitBand(all: readonly Badge[]): number {
+    const c = (this.badgeChrome ??= this.measureBadgeChrome());
+    const more = c.look.more;
+    return fitBadges({
+      widths: all.map((b) => this.badgeWidth(b, c)),
+      more: (hidden) => Math.ceil(more.chrome + this.textWidth(`+${hidden}`, more.font)),
+      minWidth: Math.ceil(c.look.branch.chrome + this.textWidth(BADGE_MIN_TEXT, c.look.branch.font)),
+      gap: c.gap,
+      available: this.bandWidth,
+    });
+  }
+
+  private badgeWidth(b: Badge, c: BadgeChrome): number {
+    const names = remoteNames(b);
+    const key = `${b.look}\0${b.text}\0${names}`;
+    let width = this.badgeWidths.get(key);
+    if (width === undefined) {
+      const look = c.look[b.look];
+      const remotes = b.remotes.length > 0 ? c.remotes.chrome + this.textWidth(names, c.remotes.font) : 0;
+      width = Math.ceil(Math.min(c.max, look.chrome + this.textWidth(b.text, look.font) + remotes));
+      this.badgeWidths.set(key, width);
+    }
+    return width;
+  }
+
+  /** Lays out an empty badge of each look once, off screen. */
+  private measureBadgeChrome(): BadgeChrome {
+    const band = el('div', 'refs');
+    band.style.cssText = 'position: absolute; visibility: hidden; top: 0; left: 0';
+    const empty = (look: Badge['look'], remotes: Badge['remotes'] = []) =>
+      renderBadge({
+        look,
+        text: '',
+        title: '',
+        tracked: false,
+        refs: [],
+        remotes,
+        also: [],
+        context: { webviewSection: 'refs', strataHash: '', strataRefs: '' },
+      });
+    const looks = (['head', 'branch', 'remote', 'tag', 'more'] as const).map((look) => [look, empty(look)] as const);
+    const withRemote = empty('branch', [
+      { text: '', context: { webviewSection: 'refs', strataHash: '', strataRefs: '' } },
+    ]);
+    for (const [, e] of looks) e.style.minWidth = '0';
+    band.append(...looks.map(([, e]) => e), withRemote);
+    document.body.append(band);
+    const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.badge-text, .badge-remote-names') ?? e).font;
+    const segment = withRemote.querySelector<HTMLElement>('.badge-remotes')!;
+    const style = getComputedStyle(segment);
+    const chrome: BadgeChrome = {
+      look: Object.fromEntries(
+        looks.map(([look, e]) => [look, { chrome: e.getBoundingClientRect().width, font: text(e) }]),
+      ) as BadgeChrome['look'],
+      remotes: {
+        // With the badge's own gap before it.
+        chrome:
+          segment.getBoundingClientRect().width +
+          parseFloat(style.marginLeft) +
+          parseFloat(getComputedStyle(withRemote).columnGap),
+        font: text(segment),
+      },
+      max: parseFloat(getComputedStyle(withRemote).maxWidth) || Infinity,
+      gap: parseFloat(getComputedStyle(band).columnGap) || 0,
+    };
+    band.remove();
+    return chrome;
   }
 
   /** Whether a commit shows ref badges; must agree with rowBadges(). */
@@ -2417,6 +2513,7 @@ function renderBadge(b: Badge): HTMLElement {
   const e =
     b.look === 'more' ? el('span', 'badge badge-more', b.text) : badge(b.look, BADGE_ICON[b.look], b.text, b.title);
   e.title = b.title;
+  if (b.tracked) e.classList.add('badge-tracked');
   e.dataset['refs'] = b.context.webviewSection === 'head' ? 'HEAD' : b.refs.join(' ');
   e.setAttribute('data-vscode-context', JSON.stringify(b.context));
   if (b.remotes.length > 0) e.append(remoteSegment(b));
@@ -2431,7 +2528,7 @@ function remoteSegment(b: Badge): HTMLElement {
   const names = el('span', 'badge-remote-names');
   names.setAttribute('aria-hidden', 'true');
   b.remotes.forEach((r, i) => {
-    if (i > 0) names.append(r.context.webviewSection === 'refs' ? ' ' : ', ');
+    if (i > 0) names.append(remoteSeparator(r));
     const name = el('span', 'badge-remote-name', r.text);
     name.setAttribute('data-vscode-context', JSON.stringify(r.context));
     names.append(name);
@@ -2439,6 +2536,12 @@ function remoteSegment(b: Badge): HTMLElement {
   seg.append(icon, names, el('span', 'sr-only', `, also ${b.also.join(', ')}`));
   return seg;
 }
+
+/** Before a remote name: a space before "+k", a comma otherwise. */
+const remoteSeparator = (r: Badge['remotes'][number]) => (r.context.webviewSection === 'refs' ? ' ' : ', ');
+
+/** The remote names a branch's badge shows, as laid out by remoteSegment(). */
+const remoteNames = (b: Badge) => b.remotes.map((r, i) => (i > 0 ? remoteSeparator(r) : '') + r.text).join('');
 
 /** A row and the elements in it a context menu can be opened on, in document order. */
 const menuTargets = (row: HTMLElement): HTMLElement[] => [

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { RepoBuilder, type Mark } from './builder.ts';
 import { addBranchyStashes } from './stashes.ts';
 
@@ -90,7 +91,10 @@ export function multiRoot(): RepoBuilder {
   return b;
 }
 
-/** Local branches with upstream ahead/behind, annotated and lightweight tags, several remotes, detached HEAD candidates. */
+/**
+ * Local branches with upstream ahead/behind (main tracks origin/main), annotated and lightweight
+ * tags, several remotes, detached HEAD candidates.
+ */
 export function refs(): RepoBuilder {
   const b = new RepoBuilder();
   const c1 = b.commit('main', 'C1');
@@ -111,6 +115,9 @@ export function refs(): RepoBuilder {
   // Pushed: the local branch and its remote-tracking branch on the same commit.
   b.ref('refs/remotes/origin/release/0.2', c3);
   b.remote('origin').remote('upstream');
+  b.afterWrite((dir) =>
+    execFileSync('git', ['branch', '--quiet', '--set-upstream-to=origin/main', 'main'], { cwd: dir }),
+  );
   return b;
 }
 

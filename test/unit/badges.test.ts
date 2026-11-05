@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
-import { landedRefs, MAX_BADGES, rowBadges } from '../../src/webview/badges.ts';
+import { fitBadges, landedRefs, rowBadges } from '../../src/webview/badges.ts';
 
 const h = (c: string) => c.repeat(40);
 const at = h('c');
@@ -21,9 +21,10 @@ const snapshot = (refs: Ref[], headBranch: string | undefined): RefSnapshot => (
   refs,
   remotes: ['origin', 'upstream', 'fork'],
 });
-const badgesOf = (refs: Ref[], headBranch: string | undefined = 'main') =>
-  rowBadges(at, refs, snapshot(refs, headBranch));
-const detached = (refs: Ref[]) => rowBadges(at, refs, snapshot(refs, undefined));
+const all = (badges: readonly unknown[]) => badges.length;
+const badgesOf = (refs: Ref[], headBranch: string | undefined = 'main', keep = all) =>
+  rowBadges(at, refs, snapshot(refs, headBranch), keep);
+const detached = (refs: Ref[]) => rowBadges(at, refs, snapshot(refs, undefined), all);
 
 describe('rowBadges', () => {
   it("gives the current branch's badge the branch's own menu context", () => {
@@ -79,11 +80,76 @@ describe('rowBadges', () => {
     assert.equal(tag!.text, 'v1.0');
   });
 
-  it('collapses badges past the limit into "+N", which stands for every ref it hides', () => {
-    const tags = Array.from({ length: MAX_BADGES - 1 }, (_, i) => ref(`refs/tags/t${i}`));
+  describe("the current branch's upstream", () => {
+    const elsewhere = h('d');
+    /** The badges of a row holding `row`, in a repository whose refs are `row` plus `others` on another commit. */
+    const tracked = (row: Ref[], others: Ref[], headBranch: string | undefined) =>
+      rowBadges(
+        at,
+        row,
+        {
+          head: headBranch === undefined ? at : elsewhere,
+          headBranch,
+          refs: [...others.map((r) => ({ ...r, hash: elsewhere })), ...row],
+          remotes: ['origin', 'upstream'],
+        },
+        all,
+      ).map((b) => [b.text, b.tracked]);
+
+    it('marks the upstream on another commit', () => {
+      assert.deepEqual(
+        tracked([ref('refs/remotes/origin/main')], [ref('refs/heads/main', 'refs/remotes/origin/main')], 'main'),
+        [['origin/main', true]],
+      );
+    });
+
+    it('marks an upstream of another name', () => {
+      assert.deepEqual(
+        tracked(
+          [ref('refs/remotes/origin/feature-x')],
+          [ref('refs/heads/feat', 'refs/remotes/origin/feature-x')],
+          'feat',
+        ),
+        [['origin/feature-x', true]],
+      );
+    });
+
+    it('leaves other remote-tracking branches unmarked', () => {
+      assert.deepEqual(
+        tracked(
+          [ref('refs/remotes/upstream/main'), ref('refs/remotes/origin/develop')],
+          [ref('refs/heads/main', 'refs/remotes/origin/main')],
+          'main',
+        ),
+        [
+          ['upstream/main', false],
+          ['origin/develop', false],
+        ],
+      );
+    });
+
+    it('marks nothing on a detached HEAD', () => {
+      assert.deepEqual(
+        tracked([ref('refs/remotes/origin/main')], [ref('refs/heads/main', 'refs/remotes/origin/main')], undefined),
+        [
+          ['HEAD', false],
+          ['origin/main', false],
+        ],
+      );
+    });
+
+    it('marks nothing when the current branch has no upstream', () => {
+      assert.deepEqual(tracked([ref('refs/remotes/origin/main')], [ref('refs/heads/main')], 'main'), [
+        ['origin/main', false],
+      ]);
+    });
+  });
+
+  it('collapses badges past the kept ones into "+N", which stands for every ref it hides', () => {
+    const tags = Array.from({ length: 5 }, (_, i) => ref(`refs/tags/t${i}`));
     const refs = [...tags, ref('refs/heads/y'), ref('refs/remotes/origin/y'), ref('refs/tags/z')];
-    const badges = badgesOf(refs);
-    assert.equal(badges.length, MAX_BADGES);
+    const badges = badgesOf(refs, 'main', () => 5);
+    assert.equal(badges.length, 6);
     const more = badges.at(-1)!;
     assert.equal(more.text, '+2');
     assert.deepEqual(more.context, {
@@ -125,5 +191,32 @@ describe('landedRefs', () => {
   it('names HEAD when a detached HEAD moved, and nothing when nothing changed', () => {
     assert.deepEqual(landedRefs(snap([main], h('1'), undefined), snap([main], h('4'), undefined)), ['HEAD']);
     assert.deepEqual(landedRefs(snap([main], h('1'), 'main'), snap([main], h('1'), 'main')), []);
+  });
+});
+
+describe('fitBadges', () => {
+  const fit = (widths: number[], available: number, more: (hidden: number) => number = () => 20) =>
+    fitBadges({ widths, more, minWidth: 30, gap: 4, available });
+
+  it('keeps every badge that fits at natural width, with no "+N"', () => {
+    assert.equal(fit([50, 50, 50], 158), 3);
+    assert.equal(fit([], 100), 0);
+  });
+  it('keeps badges from the front while they and the "+N" fit', () => {
+    assert.equal(fit([50, 50, 50, 50], 150), 2);
+  });
+  it('lets the last kept badge ellipsize rather than collapse it', () => {
+    assert.equal(fit([100, 80], 150), 2);
+    assert.equal(fit([100, 80, 80], 160), 2);
+    assert.equal(fit([100, 80, 80], 150), 1);
+  });
+  it('sizes the "+N" by how many badges it hides', () => {
+    assert.equal(
+      fit([40, 40, 40, 40, 40], 135, (n) => n * 10),
+      2,
+    );
+  });
+  it('keeps the first badge even when nothing fits', () => {
+    assert.equal(fit([100, 100], 10), 1);
   });
 });

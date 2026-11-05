@@ -22,20 +22,28 @@ export interface RefSnapshot {
   remotes: string[];
 }
 
+/** The current branch's upstream, full name; undefined when detached or without one. */
+export function headUpstream(snapshot: RefSnapshot): string | undefined {
+  if (snapshot.headBranch === undefined) return undefined;
+  return snapshot.refs.find((r) => r.kind === 'branch' && r.short === snapshot.headBranch)?.upstream;
+}
+
 const KIND_ORDER: Record<RefKind, number> = { branch: 0, remote: 1, tag: 2 };
 
 /**
- * Order of the badges on one commit: the current branch, then refs picked in the ref filter
- * (`picked`: full names, null for all), then the rest; within each group branches, remotes,
- * tags, and by name.
+ * Order of the badges on one commit: the current branch, then its upstream (`upstream`: full
+ * name), then refs picked in the ref filter (`picked`: full names, null for all), then the rest;
+ * within each group branches, remotes, tags, and by name.
  */
 export function badgeOrder(
   refs: readonly Ref[],
   headBranch: string | undefined,
+  upstream: string | undefined,
   picked: readonly string[] | null,
 ): Ref[] {
   const chosen = new Set(picked ?? []);
-  const group = (r: Ref) => (r.kind === 'branch' && r.short === headBranch ? 0 : chosen.has(r.name) ? 1 : 2);
+  const group = (r: Ref) =>
+    r.kind === 'branch' && r.short === headBranch ? 0 : r.name === upstream ? 1 : chosen.has(r.name) ? 2 : 3;
   return [...refs].sort(
     (a, b) => group(a) - group(b) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.short.localeCompare(b.short),
   );

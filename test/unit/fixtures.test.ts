@@ -96,6 +96,7 @@ describe('fixture repositories', () => {
       'refs/remotes/upstream/main',
     ]);
     assert.deepEqual(git(d, 'remote').split('\n').sort(), ['origin', 'upstream']);
+    assert.equal(git(d, 'rev-parse', '--symbolic-full-name', 'main@{upstream}'), 'refs/remotes/origin/main');
     assert.equal(git(d, 'rev-list', '--left-right', '--count', 'main...origin/main'), '2\t0');
     assert.equal(git(d, 'rev-list', '--left-right', '--count', 'develop...origin/develop'), '1\t0');
   });
