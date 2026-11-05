@@ -27,6 +27,8 @@ import {
   stashButtons,
   switchConfirmation,
   tagMessageInput,
+  trackingBranchInput,
+  tracksOtherConfirmation,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -146,23 +148,42 @@ export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
   });
 }
 
-/** Switches to the local branch of a remote-tracking branch, creating it when there is none. */
+/** Creates branch `name` tracking remote-tracking branch `ref`, and switches to it. */
+async function track(host: FlowHost, ref: Ref, name: string): Promise<void> {
+  const tip = await readCommit(host.git, host.cwd, ref.name);
+  await switchTo(host, {
+    to: quote(name),
+    commit: tip.hash,
+    expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }, absent('branch', name)],
+    op: (migrate) => ({ kind: 'trackRemote', name, remoteRef: ref.name, migrate }),
+    done: DONE.tracking(name, ref.short),
+  });
+}
+
+/**
+ * Switches to the local branch of a remote-tracking branch, creating it when there is none. A local
+ * branch of that name tracking another ref is switched to only when the user says so.
+ */
 export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
   const rb = remoteBranch(ref.name, host.refs.remotes);
   if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
   const local = host.refs.refs.find((r) => r.kind === 'branch' && r.short === rb.branch);
-  if (local && !(await notElsewhere(host, local))) return;
-  if (!local) {
-    const tip = await readCommit(host.git, host.cwd, ref.name);
-    await switchTo(host, {
-      to: quote(rb.branch),
-      commit: tip.hash,
-      expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }, absent('branch', rb.branch)],
-      op: (migrate) => ({ kind: 'trackRemote', name: rb.branch, remoteRef: ref.name, migrate }),
-      done: DONE.tracking(rb.branch, ref.short),
-    });
-    return;
+  if (!local) return track(host, ref, rb.branch);
+  if (local.upstream !== undefined && local.upstream !== ref.name) {
+    const upstream = local.upstream.replace(/^refs\/(?:remotes|heads)\//, '');
+    const choice = await host.ui.confirm(tracksOtherConfirmation(rb.branch, upstream, ref.short));
+    if (choice === undefined) return;
+    if (choice === 'new') {
+      const name = await host.ui.input({
+        ...trackingBranchInput(ref.short),
+        value: `${rb.remote}-${rb.branch}`,
+        validate: newName(host, 'branch'),
+      });
+      if (name !== undefined) await track(host, ref, name);
+      return;
+    }
   }
+  if (!(await notElsewhere(host, local))) return;
   const [tip, behind] = await Promise.all([
     readCommit(host.git, host.cwd, local.name),
     countCommits(host.git, host.cwd, [`${local.name}..${ref.name}`]),

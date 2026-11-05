@@ -143,6 +143,56 @@ describe('ref operations', () => {
     assert.ok((await panel().probe()).generation > before);
   });
 
+  describe('checkout of a remote branch whose local namesake tracks another', () => {
+    const setUp = async () => {
+      for (const remote of ['origin', 'upstream'])
+        git('remote', 'add', remote, join(tmpdir(), 'strata-no-such-remote'));
+      git('update-ref', 'refs/remotes/origin/strata-up', 'main~1');
+      git('update-ref', 'refs/remotes/upstream/strata-up', 'main~2');
+      git('branch', '--quiet', '--track', 'strata-up', 'upstream/strata-up');
+      await reload(panel());
+    };
+    const asked = {
+      kind: 'confirm',
+      message: "'strata-up' tracks 'upstream/strata-up', not 'origin/strata-up'.",
+      detail: "Switch to 'strata-up' anyway, or create a branch of another name that tracks 'origin/strata-up'.",
+      buttons: ['Create Tracking Branch...', "Switch to 'strata-up'"],
+    };
+
+    it('switches to the local branch when told to', async () => {
+      await setUp();
+      ui.press("Switch to 'strata-up'");
+      await run('strata.checkout', remoteMenu('origin/strata-up'));
+      assert.deepEqual(ui.of('confirm'), [asked]);
+      assert.equal(git('branch', '--show-current'), 'strata-up');
+      assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main~2'));
+    });
+
+    it('creates a branch of another name tracking the remote branch', async () => {
+      await setUp();
+      ui.press('Create Tracking Branch...').type('strata-up');
+      await run('strata.checkout', remoteMenu('origin/strata-up'));
+      assert.deepEqual(ui.of('input'), [
+        {
+          kind: 'input',
+          title: "Create Branch Tracking 'origin/strata-up'",
+          prompt: 'Creates the branch and switches to it.',
+          value: 'origin-strata-up',
+          problem: `A branch named 'strata-up' already exists (at ${git('rev-parse', '--short=7', 'main~2')}).`,
+        },
+      ]);
+      assert.equal(git('branch', '--show-current'), 'main', 'a name in use is refused');
+
+      ui.clear();
+      ui.press('Create Tracking Branch...').type('origin-strata-up');
+      await run('strata.checkout', remoteMenu('origin/strata-up'));
+      assert.equal(git('branch', '--show-current'), 'origin-strata-up');
+      assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main~1'));
+      assert.equal(git('rev-parse', '--abbrev-ref', 'origin-strata-up@{upstream}'), 'origin/strata-up');
+      assert.equal(git('rev-parse', '--abbrev-ref', 'strata-up@{upstream}'), 'upstream/strata-up');
+    });
+  });
+
   it('deletes a branch with commits no other ref has, after saying so, and undoes that', async () => {
     const tip = git('rev-parse', 'wip/experiment');
     git('config', 'branch.wip/experiment.description', 'Trying things');

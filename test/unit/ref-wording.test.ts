@@ -24,6 +24,8 @@ import {
   staleTarget,
   switchConfirmation,
   tagMessageInput,
+  trackingBranchInput,
+  tracksOtherConfirmation,
 } from '../../src/core/wording.ts';
 
 const tip = { short: 'abc1234', subject: 'Tip' };
@@ -91,6 +93,21 @@ describe('wording of ref operations', () => {
       "A branch can't be named 'feature/x' while the branch 'feature' exists.",
     );
     assert.equal(refPathConflict('tag', 'v1', 'v1/rc'), "A tag can't be named 'v1' while the tag 'v1/rc' exists.");
+  });
+
+  it('asks what to do when the local namesake of a remote branch tracks another', () => {
+    assert.deepEqual(tracksOtherConfirmation('main', 'upstream/main', 'origin/main'), {
+      message: "'main' tracks 'upstream/main', not 'origin/main'.",
+      detail: "Switch to 'main' anyway, or create a branch of another name that tracks 'origin/main'.",
+      buttons: [
+        { id: 'new', label: 'Create Tracking Branch...' },
+        { id: 'switch', label: "Switch to 'main'" },
+      ],
+    });
+    assert.deepEqual(trackingBranchInput('origin/main'), {
+      title: "Create Branch Tracking 'origin/main'",
+      prompt: 'Creates the branch and switches to it.',
+    });
   });
 
   it('says a renamed branch keeps its remote name', () => {

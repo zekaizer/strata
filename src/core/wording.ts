@@ -354,6 +354,28 @@ export const createBranchInput = (at: CommitRef): { title: string; prompt: strin
   prompt: 'Creates the branch and switches to it.',
 });
 
+/** Checkout of remote branch `remote` whose local namesake `branch` tracks `upstream` instead. */
+export function tracksOtherConfirmation(
+  branch: string,
+  upstream: string,
+  remote: string,
+): Confirmation<'switch' | 'new'> {
+  return {
+    message: `'${branch}' tracks '${upstream}', not '${remote}'.`,
+    detail: `Switch to '${branch}' anyway, or create a branch of another name that tracks '${remote}'.`,
+    buttons: [
+      { id: 'new', label: 'Create Tracking Branch...' },
+      { id: 'switch', label: `Switch to '${branch}'` },
+    ],
+  };
+}
+
+/** A new branch tracking remote branch `remote` (e.g. origin/main). */
+export const trackingBranchInput = (remote: string): { title: string; prompt: string } => ({
+  title: `Create Branch Tracking '${remote}'`,
+  prompt: 'Creates the branch and switches to it.',
+});
+
 export const createTagInput = (at: CommitRef): { title: string; prompt: string } => ({
   title: `Create Tag at ${at.short} "${at.subject}"`,
   prompt: 'Enter the tag name.',
