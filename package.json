@@ -181,18 +181,21 @@
         "command": "strata.push",
         "title": "Push",
         "category": "Strata",
+        "icon": "$(repo-push)",
         "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.publish",
         "title": "Publish Branch...",
         "category": "Strata",
+        "icon": "$(cloud-upload)",
         "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.pull",
         "title": "Pull",
         "category": "Strata",
+        "icon": "$(repo-pull)",
         "enablement": "!strata.busy && !strata.operation"
       },
       {
@@ -698,7 +701,7 @@
         },
         {
           "command": "strata.publish",
-          "when": "false"
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.head == 'branch'"
         },
         {
           "command": "strata.pull",
@@ -801,27 +804,32 @@
         {
           "command": "strata.stash.push",
           "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "3_stash@1"
+          "group": "1_stash@1"
         },
         {
           "command": "strata.stash.pushUntracked",
           "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "3_stash@2"
+          "group": "1_stash@2"
         },
         {
           "command": "strata.push",
-          "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "1_sync@2"
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation && strata.head == 'tracking'",
+          "group": "navigation@5"
+        },
+        {
+          "command": "strata.publish",
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation && strata.head == 'branch'",
+          "group": "navigation@5"
         },
         {
           "command": "strata.pull",
-          "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "1_sync@1"
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation && strata.head == 'tracking'",
+          "group": "navigation@4"
         },
         {
           "command": "strata.fetch",
-          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation",
-          "group": "navigation@1"
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "navigation@3"
         },
         {
           "command": "strata.operation.continue",
@@ -841,12 +849,12 @@
         {
           "command": "strata.showStashes",
           "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "3_stash@3"
+          "group": "1_stash@3"
         },
         {
           "command": "strata.undo",
           "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo",
-          "group": "4_undo@1"
+          "group": "3_undo@1"
         },
         {
           "command": "strata.showOutput",

@@ -52,6 +52,9 @@ const commit = (group: string, when?: string): MenuPlacement => ({
   ...(when ? { when } : {}),
 });
 
+/** Title-bar Pull and Push: on a branch with an upstream (`strata.head`), and no operation stopped. */
+const SYNC = "!strata.operation && strata.head == 'tracking'";
+
 export const COMMANDS = {
   'strata.file.openChanges': { title: 'Open Changes', menus: [file('1_open@1', 'strataHasDiff')] },
   'strata.file.openOld': { title: 'Open Old Version (Before This Commit)', menus: [file('1_open@2', 'strataHasOld')] },
@@ -66,14 +69,14 @@ export const COMMANDS = {
     title: 'Stash Changes...',
     menus: [commit('1_worktree@1', 'strataIsHead')],
     palette: true,
-    titleBar: { group: '3_stash@1' },
+    titleBar: { group: '1_stash@1' },
     writes: true,
   },
   'strata.stash.pushUntracked': {
     title: 'Stash Changes (Include Untracked)...',
     menus: [commit('1_worktree@2', 'strataIsHead')],
     palette: true,
-    titleBar: { group: '3_stash@2' },
+    titleBar: { group: '1_stash@2' },
     writes: true,
   },
   'strata.checkout': {
@@ -138,25 +141,27 @@ export const COMMANDS = {
     title: 'Push',
     menus: [{ section: 'branch', group: '3_remote@2', when: 'strataUpstream' }],
     palette: true,
-    titleBar: { group: '1_sync@2' },
+    titleBar: { group: 'navigation@5', when: SYNC, icon: '$(repo-push)' },
     writes: true,
   },
   'strata.publish': {
     title: 'Publish Branch...',
     menus: [{ section: 'branch', group: '3_remote@2', when: '!strataUpstream' }],
+    palette: "strata.head == 'branch'",
+    titleBar: { group: 'navigation@5', when: "!strata.operation && strata.head == 'branch'", icon: '$(cloud-upload)' },
     writes: true,
   },
   'strata.pull': {
     title: 'Pull',
     menus: [{ section: 'branch', group: '3_remote@1', when: 'strataIsCurrent && strataUpstream' }],
     palette: true,
-    titleBar: { group: '1_sync@1' },
+    titleBar: { group: 'navigation@4', when: SYNC, icon: '$(repo-pull)' },
     writes: true,
   },
   'strata.fetch': {
     title: 'Fetch From All Remotes',
     palette: true,
-    titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
+    titleBar: { group: 'navigation@3', icon: '$(repo-fetch)' },
     writes: 'whileStopped',
   },
   'strata.fetchRemote': {
@@ -226,7 +231,7 @@ export const COMMANDS = {
   },
   'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
   'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
-  'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '3_stash@3' } },
+  'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '1_stash@3' } },
 
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
@@ -235,7 +240,7 @@ export const COMMANDS = {
   'strata.undo': {
     title: 'Undo Last Operation',
     palette: 'strata.canUndo',
-    titleBar: { group: '4_undo@1', when: 'strata.canUndo' },
+    titleBar: { group: '3_undo@1', when: 'strata.canUndo' },
     writes: true,
   },
   'strata.showOutput': { title: 'Show Git Output', palette: true, titleBar: { group: '9_output@1' } },

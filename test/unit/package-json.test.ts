@@ -87,6 +87,64 @@ describe('package.json commands', () => {
   });
 });
 
+describe('graph title bar', () => {
+  const items = pkg.contributes.menus['editor/title'] ?? [];
+  /** Evaluates `key == 'v'`, `key != 'v'`, `key` and `!key` terms joined by &&, as the title bar's clauses use. */
+  const holds = (when: string, ctx: Record<string, string | boolean>) =>
+    when.split('&&').every((term) => {
+      const t = term.trim();
+      const cmp = /^([\w.]+) (==|!=) '([^']*)'$/.exec(t);
+      if (cmp) return (ctx[cmp[1]!] === cmp[3]) === (cmp[2] === '==');
+      assert.match(t, /^!?[\w.]+$/, `unsupported when clause term: ${t}`);
+      return t.startsWith('!') ? !ctx[t.slice(1)] : Boolean(ctx[t]);
+    });
+  const order = (g: string) => {
+    const [name = '', at = '0'] = g.split('@');
+    return [name, Number(at)] as const;
+  };
+  /** The icons (navigation) and the overflow menu, in VS Code's order. */
+  const bar = (state: Record<string, string | boolean>) => {
+    const ctx = { activeWebviewPanelId: 'strata.graph', 'strata.operation': '', ...state };
+    const shown = items
+      .filter((m) => m.command.startsWith('strata.') && holds(m.when ?? '', ctx))
+      .map((m) => ({ id: m.command, at: order((m as { group?: string }).group ?? '') }))
+      .sort((a, b) => a.at[0].localeCompare(b.at[0]) || a.at[1] - b.at[1]);
+    return {
+      icons: shown.filter((m) => m.at[0] === 'navigation').map((m) => m.id),
+      overflow: shown.filter((m) => m.at[0] !== 'navigation').map((m) => m.id),
+    };
+  };
+
+  it('shows Fetch, Pull and Push as icons on a branch with an upstream, Publish Branch on one without', () => {
+    assert.deepEqual(bar({ 'strata.head': 'tracking' }).icons, ['strata.fetch', 'strata.pull', 'strata.push']);
+    assert.deepEqual(bar({ 'strata.head': 'branch' }).icons, ['strata.fetch', 'strata.publish']);
+    assert.deepEqual(bar({ 'strata.head': 'detached' }).icons, ['strata.fetch']);
+  });
+
+  it('shows Continue, Abort and Fetch while an operation is stopped', () => {
+    const stopped = bar({ 'strata.head': 'tracking', 'strata.operation': 'rebase', 'strata.canUndo': true });
+    assert.deepEqual(stopped.icons, ['strata.operation.continue', 'strata.operation.abort', 'strata.fetch']);
+    assert.deepEqual(stopped.overflow, [
+      'strata.stash.push',
+      'strata.stash.pushUntracked',
+      'strata.showStashes',
+      'strata.operation.skip',
+      'strata.undo',
+      'strata.showOutput',
+    ]);
+  });
+
+  it('keeps the stash commands, Undo and Show Git Output in the overflow menu', () => {
+    assert.deepEqual(bar({ 'strata.head': 'tracking', 'strata.canUndo': true }).overflow, [
+      'strata.stash.push',
+      'strata.stash.pushUntracked',
+      'strata.showStashes',
+      'strata.undo',
+      'strata.showOutput',
+    ]);
+  });
+});
+
 describe('package.json activation', () => {
   it('activates after startup too, to replace a graph an extension host restart left behind', () => {
     // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.

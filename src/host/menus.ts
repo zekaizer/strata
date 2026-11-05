@@ -252,7 +252,11 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.push': write((host, ctx) =>
     push(host, optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch),
   ),
-  'strata.publish': on(['branch'], (host, t) => publish(host, t.ref.short)),
+  'strata.publish': write((host, ctx) => {
+    const branch = optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch;
+    // Detached since the title bar showed it: Push says there is no branch.
+    return branch === undefined ? push(host, undefined) : publish(host, branch);
+  }),
   'strata.pushTag': on(['tag'], (host, t) => pushTag(host, t.ref.short)),
   'strata.resolveConflicts': async () => {
     const host = panel().flowHost();

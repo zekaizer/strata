@@ -92,10 +92,14 @@ offers the same for its badges from the keyboard. On the row of a commit one
 local branch points at (besides the current one), Checkout, Merge and Rebase
 act on that branch, so a merge commit names it, and **Checkout (Detached)**
 checks out the commit; with several branches there, the row acts on the
-commit and you pick a branch from its badge. The graph tab's title bar
-and the Command Palette have Fetch, Pull, Push, the stash commands, **Show
-Stashes...**, **Undo Last Operation** and **Show Git Output**, and, while an
-operation is stopped, Continue, Abort and Skip.
+commit and you pick a branch from its badge.
+
+The graph tab's title bar has buttons for **Fetch From All Remotes**, and
+Pull and Push (or **Publish Branch...** when the current branch has no
+upstream); while an operation is stopped, for Continue, Abort and Fetch. Its
+**...** menu has the stash commands, **Show Stashes...**, Skip (while
+stopped), **Undo Last Operation** and **Show Git Output**. The Command
+Palette has them too.
 
 - **Branches and tags:** Checkout (a remote branch checks out its local
   branch, or creates one that tracks it; when the local branch of that name

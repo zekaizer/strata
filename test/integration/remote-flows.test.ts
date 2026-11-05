@@ -386,6 +386,17 @@ describe('remote operations', () => {
     assert.equal(git('tag', '--list', 'strata-v1'), 'strata-v1');
   });
 
+  it('tells the title bar whether the current branch has an upstream, also one given by URL', async () => {
+    assert.equal(api().contextValue('strata.head'), 'branch');
+    git('config', 'branch.main.remote', bare);
+    git('config', 'branch.main.merge', 'refs/heads/main');
+    await reload(panel());
+    await waitFor('upstream by URL', () => api().contextValue('strata.head') === 'tracking');
+    git('switch', '--quiet', '--detach', 'main');
+    await reload(panel());
+    await waitFor('detached', () => api().contextValue('strata.head') === 'detached');
+  });
+
   it("fetches a remote branch badge's remote, and every remote from the title bar", async () => {
     await publish();
     const second = join(root, 'second.git');
