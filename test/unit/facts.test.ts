@@ -28,7 +28,7 @@ import {
   readUntrackedAt,
   readUntrackedIn,
   readUpstream,
-  readWorktreeBranches,
+  readWorktrees,
   refsReach,
 } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
@@ -371,14 +371,24 @@ describe('confirmation facts', () => {
     assert.equal(await isShallowEdge('git', shallow, tip), false, 'its parent is here now');
   });
 
-  it('names the other worktrees branches are checked out in', async () => {
+  it('lists the other worktrees of the repository, from any of them', async () => {
     const other = join(root, 'other worktree');
     run(dir, 'worktree', 'add', '--quiet', other, 'topic');
     try {
-      assert.deepEqual([...(await readWorktreeBranches('git', dir))], [['refs/heads/topic', other]]);
+      const fromMain = await readWorktrees('git', dir);
+      assert.deepEqual(
+        fromMain.map((w) => [w.path, w.branch, w.main]),
+        [[other, 'refs/heads/topic', false]],
+      );
+      assert.equal(fromMain[0]?.head, run(dir, 'rev-parse', 'topic'));
+      const fromOther = await readWorktrees('git', other);
+      assert.deepEqual(
+        fromOther.map((w) => [w.path, w.branch, w.main]),
+        [[dir, 'refs/heads/main', true]],
+      );
     } finally {
       run(dir, 'worktree', 'remove', '--force', other);
     }
-    assert.deepEqual([...(await readWorktreeBranches('git', dir))], []);
+    assert.deepEqual(await readWorktrees('git', dir), []);
   });
 });

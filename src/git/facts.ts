@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { parseGitVersion, type GitVersion } from '../core/git-version.ts';
 import { hasConflictMarkers, type OperationState } from '../core/repo-state.ts';
 import type { CommitList, CommitRef, ResetFacts } from '../core/wording.ts';
+import { parseWorktreeList, type WorktreeInfo } from '../core/worktrees.ts';
 import { runGit } from './run.ts';
 import { readStashList } from './stash.ts';
 
@@ -472,19 +473,13 @@ export async function isShallowEdge(git: string, cwd: string, hash: string): Pro
 export const readConfig = (git: string, cwd: string, key: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['config', '--get', key]));
 
-/** Branches checked out in other worktrees of the repository, by full ref, with the worktree's path. */
-export async function readWorktreeBranches(git: string, cwd: string): Promise<Map<string, string>> {
+/** The other worktrees of the repository: all but the one `cwd` is in. */
+export async function readWorktrees(git: string, cwd: string): Promise<WorktreeInfo[]> {
   const [list, top] = await Promise.all([
     runGit(git, cwd, ['worktree', 'list', '--porcelain']),
     runGit(git, cwd, ['rev-parse', '--show-toplevel']).then((s) => s.trim()),
   ]);
-  const found = new Map<string, string>();
-  for (const block of list.split('\n\n')) {
-    const path = /^worktree (.*)$/m.exec(block)?.[1];
-    const branch = /^branch (.*)$/m.exec(block)?.[1];
-    if (path !== undefined && branch !== undefined && path !== top) found.set(branch, path);
-  }
-  return found;
+  return parseWorktreeList(list).filter((w) => w.path !== top);
 }
 
 const gitVersions = new Map<string, Promise<GitVersion | undefined>>();

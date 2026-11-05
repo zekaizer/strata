@@ -5,6 +5,7 @@ import type { Operation } from '../../core/operations.ts';
 import { pathConflict, refNameProblem } from '../../core/ref-name.ts';
 import type { Ref, RefKind } from '../../core/refs.ts';
 import { remoteBranch } from '../../core/remote-branch.ts';
+import { holders } from '../../core/worktrees.ts';
 import { COMMANDS, refActions, type Section } from '../../shared/commands.ts';
 import {
   checkedOutElsewhere,
@@ -38,7 +39,7 @@ import {
   readUnmerged,
   readUnmergedCommits,
   readUpstream,
-  readWorktreeBranches,
+  readWorktrees,
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
@@ -125,9 +126,9 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
  * would silently re-point that worktree's HEAD: says where it is. Resolves whether it is free.
  */
 async function notElsewhere(host: FlowHost, ref: Ref): Promise<boolean> {
-  const path = (await readWorktreeBranches(host.git, host.cwd)).get(ref.name);
-  if (path === undefined) return true;
-  void host.ui.notify('error', checkedOutElsewhere(ref.short, path));
+  const holder = holders(await readWorktrees(host.git, host.cwd)).get(ref.name);
+  if (holder === undefined) return true;
+  void host.ui.notify('error', checkedOutElsewhere(ref.short, holder.path));
   return false;
 }
 
