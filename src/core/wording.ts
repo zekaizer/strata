@@ -363,6 +363,10 @@ export const tagMessageInput = (tag: string, at: CommitRef): { title: string; pr
 export const refExists = (kind: 'branch' | 'tag', name: string, short: string): string =>
   `A ${kind} named '${name}' already exists (at ${short}).`;
 
+/** `name` would be a directory of `other` or the other way around (pathConflict). */
+export const refPathConflict = (kind: 'branch' | 'tag', name: string, other: string): string =>
+  `A ${kind} can't be named '${name}' while the ${kind} '${other}' exists.`;
+
 /** A rename to the name it has. */
 export const NEEDS_NEW_NAME = 'Enter a different name.';
 

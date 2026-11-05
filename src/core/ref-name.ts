@@ -28,3 +28,10 @@ export function refNameProblem(name: string): string | undefined {
   }
   return undefined;
 }
+
+/**
+ * The name among `existing` (of the same kind) that `name` cannot exist beside: git refuses 'a'
+ * beside 'a/b', with any ref storage.
+ */
+export const pathConflict = (name: string, existing: readonly string[]): string | undefined =>
+  existing.find((e) => e.startsWith(`${name}/`) || name.startsWith(`${e}/`));

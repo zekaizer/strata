@@ -59,6 +59,28 @@ describe('ref operations', () => {
     assert.equal(git('branch', '--show-current'), 'main');
   });
 
+  it('refuses a branch name that would put a branch inside another, or the other way around', async () => {
+    ui.type('feature');
+    await run('strata.createBranch', commitMenu(git('rev-parse', 'main~1')));
+    assert.match(
+      ui.first('input').problem ?? '',
+      /^A branch can't be named 'feature' while the branch 'feature\/\w+' exists\.$/,
+    );
+    ui.clear();
+    ui.type('main/next');
+    await run('strata.createBranch', commitMenu(git('rev-parse', 'main~1')));
+    assert.equal(ui.first('input').problem, "A branch can't be named 'main/next' while the branch 'main' exists.");
+    assert.equal(git('branch', '--show-current'), 'main');
+  });
+
+  it('renames a branch into a name under its own', async () => {
+    const tip = git('rev-parse', 'wip/experiment');
+    ui.type('wip/experiment/old');
+    await run('strata.renameBranch', branchMenu('wip/experiment', tip));
+    assert.equal(ui.first('input').problem, undefined);
+    assert.equal(git('rev-parse', 'refs/heads/wip/experiment/old'), tip);
+  });
+
   it('deletes a branch with commits no other ref has, after saying so, and undoes that', async () => {
     const tip = git('rev-parse', 'wip/experiment');
     git('config', 'branch.wip/experiment.description', 'Trying things');

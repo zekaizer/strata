@@ -16,6 +16,7 @@ import {
   NEEDS_NEW_NAME,
   popConflicted,
   refExists,
+  refPathConflict,
   renameInput,
   stashButtons,
   stashLabel,
@@ -84,6 +85,11 @@ describe('wording of ref operations', () => {
     });
     assert.equal(refExists('branch', 'main', 'abc1234'), "A branch named 'main' already exists (at abc1234).");
     assert.equal(refExists('tag', 'v1', 'abc1234'), "A tag named 'v1' already exists (at abc1234).");
+    assert.equal(
+      refPathConflict('branch', 'feature/x', 'feature'),
+      "A branch can't be named 'feature/x' while the branch 'feature' exists.",
+    );
+    assert.equal(refPathConflict('tag', 'v1', 'v1/rc'), "A tag can't be named 'v1' while the tag 'v1/rc' exists.");
   });
 
   it('says a renamed branch keeps its remote name', () => {

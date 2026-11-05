@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
 import { checkedOutPath } from '../../core/git-error.ts';
 import type { Operation } from '../../core/operations.ts';
-import { refNameProblem } from '../../core/ref-name.ts';
+import { pathConflict, refNameProblem } from '../../core/ref-name.ts';
 import type { Ref, RefKind } from '../../core/refs.ts';
 import { remoteBranch } from '../../core/remote-branch.ts';
 import { COMMANDS, refActions, type Section } from '../../shared/commands.ts';
@@ -21,6 +21,7 @@ import {
   quote,
   REF_ACTIONS,
   refExists,
+  refPathConflict,
   renameInput,
   stashButtons,
   switchConfirmation,
@@ -186,12 +187,23 @@ export async function checkoutDetached(host: FlowHost, rev: string): Promise<voi
   });
 }
 
-/** Validates a new branch or tag name against git's rules and the names the graph knows. */
+/**
+ * Validates a new branch or tag name against git's rules and the names the graph knows. `renaming`:
+ * the branch that gives up its name, which a name under it may extend.
+ */
 export const newName =
-  (host: FlowHost, kind: Extract<RefKind, 'branch' | 'tag'>) =>
+  (host: FlowHost, kind: Extract<RefKind, 'branch' | 'tag'>, renaming?: string) =>
   (name: string): string | undefined => {
-    const existing = host.refs.refs.find((r) => r.kind === kind && r.short === name);
-    return refNameProblem(name) ?? (existing ? refExists(kind, name, existing.hash.slice(0, 7)) : undefined);
+    const problem = refNameProblem(name);
+    if (problem !== undefined) return problem;
+    const others = host.refs.refs.filter((r) => r.kind === kind && r.short !== renaming);
+    const existing = others.find((r) => r.short === name);
+    if (existing) return refExists(kind, name, existing.hash.slice(0, 7));
+    const conflict = pathConflict(
+      name,
+      others.map((r) => r.short),
+    );
+    return conflict === undefined ? undefined : refPathConflict(kind, name, conflict);
   };
 
 export async function createBranch(host: FlowHost, at: string): Promise<void> {
@@ -254,7 +266,7 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
     readCommit(host.git, host.cwd, ref.name),
     readUpstream(host.git, host.cwd, ref.short),
   ]);
-  const valid = newName(host, 'branch');
+  const valid = newName(host, 'branch', ref.short);
   const to = await host.ui.input({
     ...renameInput(ref.short, upstream?.remote),
     value: ref.short,

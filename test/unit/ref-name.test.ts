@@ -1,7 +1,8 @@
 import * as assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { describe, it } from 'node:test';
-import { refNameProblem } from '../../src/core/ref-name.ts';
+import { pathConflict, refNameProblem } from '../../src/core/ref-name.ts';
+import { git, tempDir } from './helpers.ts';
 
 const NAMES = [
   'main',
@@ -58,5 +59,34 @@ describe('refNameProblem', () => {
     assert.equal(refNameProblem('a b'), "Names can't contain spaces.");
     assert.equal(refNameProblem('a..b'), "Names can't contain '..'.");
     assert.equal(refNameProblem('-x'), "Names can't start with '-'.");
+  });
+});
+
+describe('pathConflict', () => {
+  const dir = tempDir('ref-name');
+  git(dir, 'init', '--quiet', '-b', 'main');
+  git(dir, '-c', 'user.name=a', '-c', 'user.email=a@e', 'commit', '--quiet', '--allow-empty', '-m', 'one');
+  const existing = ['main', 'feature', 'wip/a/b'];
+  for (const b of existing.slice(1)) git(dir, 'branch', b);
+
+  it('names the branch that keeps git from creating one, exactly when git refuses', () => {
+    const expected: Record<string, string | undefined> = {
+      'feature/x': 'feature',
+      'feature/x/y': 'feature',
+      'main/x': 'main',
+      wip: 'wip/a/b',
+      'wip/a': 'wip/a/b',
+      'wip/a/b/c': 'wip/a/b',
+      'wip/b': undefined,
+      featurex: undefined,
+      feat: undefined,
+      'mai/n': undefined,
+    };
+    for (const [name, other] of Object.entries(expected)) {
+      const refused = spawnSync('git', ['branch', name], { cwd: dir }).status !== 0;
+      if (!refused) git(dir, 'branch', '--delete', name);
+      assert.equal(refused, other !== undefined, `git ${refused ? 'refuses' : 'accepts'} ${name}`);
+      assert.equal(pathConflict(name, existing), other, name);
+    }
   });
 });
