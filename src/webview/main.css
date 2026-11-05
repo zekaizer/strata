@@ -622,16 +622,16 @@ body.keyboard-nav .scroller:focus .row.cursor {
 }
 
 /*
- * Quiet until their row is hovered or selected, so the subjects lead; the current branch always
- * keeps its tone. High contrast themes keep every badge at full contrast.
+ * Quiet until their row is hovered or selected, so the subjects lead; the current branch and its
+ * upstream always keep their tone. High contrast themes keep every badge at full contrast.
  */
-body:not(.vscode-high-contrast) .row:not(.selected) .badge:not(.badge-head) {
+body:not(.vscode-high-contrast) .row:not(.selected) .badge:not(.badge-head, .badge-tracked) {
   border-color: color-mix(in srgb, var(--badge-color) 45%, transparent);
   background: color-mix(in srgb, var(--badge-color) 7%, transparent);
   color: var(--vscode-descriptionForeground);
 }
 
-body:not(.vscode-high-contrast) .row:not(.selected) .badge:not(.badge-head) .codicon {
+body:not(.vscode-high-contrast) .row:not(.selected) .badge:not(.badge-head, .badge-tracked) .codicon {
   color: color-mix(in srgb, var(--badge-color) 60%, transparent);
 }
 

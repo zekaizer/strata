@@ -2418,6 +2418,7 @@ function renderBadge(b: Badge): HTMLElement {
   const e =
     b.look === 'more' ? el('span', 'badge badge-more', b.text) : badge(b.look, BADGE_ICON[b.look], b.text, b.title);
   e.title = b.title;
+  if (b.tracked) e.classList.add('badge-tracked');
   e.dataset['refs'] = b.context.webviewSection === 'head' ? 'HEAD' : b.refs.join(' ');
   e.setAttribute('data-vscode-context', JSON.stringify(b.context));
   if (b.remotes.length > 0) e.append(remoteSegment(b));

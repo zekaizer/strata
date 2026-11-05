@@ -79,6 +79,66 @@ describe('rowBadges', () => {
     assert.equal(tag!.text, 'v1.0');
   });
 
+  describe("the current branch's upstream", () => {
+    const elsewhere = h('d');
+    /** The badges of a row holding `row`, in a repository whose refs are `row` plus `others` on another commit. */
+    const tracked = (row: Ref[], others: Ref[], headBranch: string | undefined) =>
+      rowBadges(at, row, {
+        head: headBranch === undefined ? at : elsewhere,
+        headBranch,
+        refs: [...others.map((r) => ({ ...r, hash: elsewhere })), ...row],
+        remotes: ['origin', 'upstream'],
+      }).map((b) => [b.text, b.tracked]);
+
+    it('marks the upstream on another commit', () => {
+      assert.deepEqual(
+        tracked([ref('refs/remotes/origin/main')], [ref('refs/heads/main', 'refs/remotes/origin/main')], 'main'),
+        [['origin/main', true]],
+      );
+    });
+
+    it('marks an upstream of another name', () => {
+      assert.deepEqual(
+        tracked(
+          [ref('refs/remotes/origin/feature-x')],
+          [ref('refs/heads/feat', 'refs/remotes/origin/feature-x')],
+          'feat',
+        ),
+        [['origin/feature-x', true]],
+      );
+    });
+
+    it('leaves other remote-tracking branches unmarked', () => {
+      assert.deepEqual(
+        tracked(
+          [ref('refs/remotes/upstream/main'), ref('refs/remotes/origin/develop')],
+          [ref('refs/heads/main', 'refs/remotes/origin/main')],
+          'main',
+        ),
+        [
+          ['upstream/main', false],
+          ['origin/develop', false],
+        ],
+      );
+    });
+
+    it('marks nothing on a detached HEAD', () => {
+      assert.deepEqual(
+        tracked([ref('refs/remotes/origin/main')], [ref('refs/heads/main', 'refs/remotes/origin/main')], undefined),
+        [
+          ['HEAD', false],
+          ['origin/main', false],
+        ],
+      );
+    });
+
+    it('marks nothing when the current branch has no upstream', () => {
+      assert.deepEqual(tracked([ref('refs/remotes/origin/main')], [ref('refs/heads/main')], 'main'), [
+        ['origin/main', false],
+      ]);
+    });
+  });
+
   it('collapses badges past the limit into "+N", which stands for every ref it hides', () => {
     const tags = Array.from({ length: MAX_BADGES - 1 }, (_, i) => ref(`refs/tags/t${i}`));
     const refs = [...tags, ref('refs/heads/y'), ref('refs/remotes/origin/y'), ref('refs/tags/z')];

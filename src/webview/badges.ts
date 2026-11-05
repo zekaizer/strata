@@ -15,6 +15,8 @@ export interface Target {
 export interface Badge extends Target {
   /** The current branch and a detached HEAD share the head look. */
   look: 'head' | 'branch' | 'remote' | 'tag' | 'more';
+  /** A remote-tracking branch badge standing for the current branch's upstream. */
+  tracked: boolean;
   title: string;
   /** Full names of the refs it stands for, merged remote names and "+N" contents included. */
   refs: string[];
@@ -36,12 +38,17 @@ export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnaps
       text: 'HEAD',
       title: 'Detached HEAD',
       context: { webviewSection: 'head', strataHash: hash },
+      tracked: false,
       refs: [],
       remotes: [],
       also: [],
     });
+  const upstream =
+    snapshot.headBranch === undefined
+      ? undefined
+      : snapshot.refs.find((r) => r.kind === 'branch' && r.short === snapshot.headBranch)?.upstream;
   for (const { ref, remotes } of pairRefs(refs, snapshot.remotes))
-    all.push(refBadge(hash, ref, remotes, snapshot.headBranch));
+    all.push(refBadge(hash, ref, remotes, snapshot.headBranch, upstream));
   if (all.length <= MAX_BADGES) return all;
   const rest = all.slice(MAX_BADGES - 1);
   const names = rest.flatMap((b) => b.refs);
@@ -50,6 +57,7 @@ export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnaps
     text: `+${rest.length}`,
     title: rest.map((b) => (b.also.length > 0 ? `${b.text} (also ${b.also.join(', ')})` : b.title)).join('\n'),
     context: { webviewSection: 'refs', strataHash: hash, strataRefs: names.join(' ') },
+    tracked: false,
     refs: names,
     remotes: [],
     also: [],
@@ -57,7 +65,13 @@ export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnaps
   return [...all.slice(0, MAX_BADGES - 1), more];
 }
 
-function refBadge(hash: string, r: Ref, remotes: Ref[], headBranch: string | undefined): Badge {
+function refBadge(
+  hash: string,
+  r: Ref,
+  remotes: Ref[],
+  headBranch: string | undefined,
+  upstream: string | undefined,
+): Badge {
   const current = r.kind === 'branch' && r.short === headBranch;
   const context: BadgeContext =
     r.kind === 'branch'
@@ -74,6 +88,7 @@ function refBadge(hash: string, r: Ref, remotes: Ref[], headBranch: string | und
   const names = [r.name, ...remotes.map((x) => x.name)];
   return {
     look: current ? 'head' : r.kind,
+    tracked: r.kind === 'remote' && r.name === upstream,
     text: r.short,
     title: names.join('\n'),
     context,
