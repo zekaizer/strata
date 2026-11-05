@@ -1,12 +1,13 @@
 import { basename } from 'node:path';
 import * as vscode from 'vscode';
+import type { PathFilter } from '../core/path-filter.ts';
 import { parseRepoKey, pickRepo, type RepoKey, type RepoPreference } from '../core/repos.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import { setContext } from './context.ts';
 import type { FlowEnv } from './flow.ts';
 import type { GitRepository } from './git-api.ts';
 import type { RepoList } from './repositories.ts';
-import { RepoSession } from './session.ts';
+import { RepoSession, validOptions } from './session.ts';
 
 /** What the webview saved in a previous session of the panel (see the `ready` message). */
 export type SavedView = Pick<Extract<WebviewToHost, { type: 'ready' }>, 'last' | 'views' | 'options'>;
@@ -49,15 +50,16 @@ export class GraphController implements vscode.Disposable {
 
   /**
    * The webview (re)started: shows `chosen` (the user's choice) when given, else the repository
-   * it showed last when open, else the best one open.
+   * it showed last when open, else the best one open. `path`: the history `chosen` shows.
    */
-  start(saved?: SavedView, chosen?: RepoKey): Promise<void> {
+  start(saved?: SavedView, chosen?: RepoKey, path?: PathFilter | null): Promise<void> {
     if (saved) {
       this.restored = saved.last;
       this.views.clear();
       for (const [root, options] of Object.entries(saved.views)) this.views.set(root, options);
       this.unkeyed = saved.options;
     }
+    if (chosen !== undefined && path !== undefined) this.views.set(chosen, { ...this.optionsOf(chosen), path });
     if (chosen !== undefined) this.restored = undefined;
     return this.pick({ chosen }, saved !== undefined);
   }
@@ -66,6 +68,17 @@ export class GraphController implements vscode.Disposable {
   choose(key: RepoKey): Promise<void> {
     this.restored = undefined;
     return this.pick({ chosen: key });
+  }
+
+  /** Shows the history of `path` (null: of the whole repository) in repository `key`, as the user's choice. */
+  async showPath(key: RepoKey, path: PathFilter | null): Promise<void> {
+    this.restored = undefined;
+    if (this.session?.key === key) {
+      await this.session.showPath(path);
+      return;
+    }
+    this.views.set(key, { ...this.optionsOf(key), path });
+    await this.pick({ chosen: key });
   }
 
   /** A repository opened or closed: the restored one may be open now, or the shown one gone. */
@@ -132,7 +145,7 @@ export class GraphController implements vscode.Disposable {
 
   private optionsOf(key: RepoKey): ViewOptions {
     // States saved before an option existed lack it.
-    return { ...DEFAULT_OPTIONS, ...(this.views.get(key) ?? this.unkeyed) };
+    return validOptions({ ...DEFAULT_OPTIONS, ...(this.views.get(key) ?? this.unkeyed) });
   }
 
   private newSession(key: RepoKey, repo: GitRepository): RepoSession {
