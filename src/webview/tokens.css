@@ -64,6 +64,7 @@
   /* Motion: body.vscode-reduce-motion and prefers-reduced-motion turn the animations off. */
   --duration-spin: 1.5s;
   --duration-landing: 1.2s;
+  --duration-progress: 2s;
 
   /* Semantic colors */
   --color-fg: var(--vscode-foreground);
@@ -82,6 +83,7 @@
   --color-danger: var(--vscode-errorForeground);
   --color-warning: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
   --color-success: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+  --color-progress: var(--vscode-progressBar-background, var(--color-focus));
 
   /* Ref kinds: chips, the ref card and the head row. */
   --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));

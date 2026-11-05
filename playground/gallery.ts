@@ -253,7 +253,39 @@ function popovers(): HTMLElement {
       spec('header, rows with actions, empty state', pop(header, rules, empty)),
       spec('.popover.wide: button rows (focus-visible), note', withClass(pop(repos), 'wide')),
     ),
+    row(...bars()),
   );
+}
+
+/** .popover.bar: the find widget's parts, at rest, failing and with progress. */
+function bars(): HTMLElement[] {
+  const bar = (value: string, summary: string, progress?: number, problem = false) => {
+    const p = el('div', 'popover bar g-static');
+    const field = el('input', 'field');
+    field.value = value;
+    const note = el('span', 'popover-summary', summary);
+    if (problem) note.style.color = 'var(--color-danger)';
+    const button = (icon: string, disabled = false) => {
+      const b = el('button', `icon-button codicon codicon-${icon}`);
+      b.disabled = disabled;
+      return b;
+    };
+    p.append(field, note, button('arrow-up', problem), button('arrow-down', problem), button('close'));
+    if (progress !== undefined) {
+      const track = el('div', `popover-progress${Number.isNaN(progress) ? ' indeterminate' : ''}`);
+      const fill = el('div', 'popover-progress-bar');
+      if (!Number.isNaN(progress)) fill.style.width = `${progress * 100}%`;
+      track.append(fill);
+      p.append(track);
+    }
+    return p;
+  };
+  return [
+    spec('.popover.bar', bar('b384', '3 of 21')),
+    spec('.popover.bar, buttons disabled', bar('xyzzy', 'No results', undefined, true)),
+    spec('.popover-progress (40%)', bar('login form', 'Going to 1 of 1…', 0.4)),
+    spec('.popover-progress.indeterminate', bar('login form', 'Going to 1 of 1…', NaN)),
+  ];
 }
 
 function chips(): HTMLElement {
