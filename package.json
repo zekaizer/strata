@@ -435,17 +435,17 @@
         {
           "command": "strata.cherryPick",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "3_apply@1"
+          "group": "3_pick@1"
         },
         {
           "command": "strata.revert",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "3_apply@2"
+          "group": "3_pick@2"
         },
         {
           "command": "strata.merge",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "3_apply@3"
+          "group": "4_integrate@1"
         },
         {
           "command": "strata.merge",
@@ -460,7 +460,7 @@
         {
           "command": "strata.rebase",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "3_apply@4"
+          "group": "4_integrate@2"
         },
         {
           "command": "strata.rebase",
@@ -495,7 +495,7 @@
         {
           "command": "strata.refActions",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataHasRefs",
-          "group": "7_refs@1"
+          "group": "2_checkout@5"
         },
         {
           "command": "strata.refActions",
@@ -505,7 +505,7 @@
         {
           "command": "strata.reset",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "6_reset@1"
+          "group": "9_reset@1"
         },
         {
           "command": "strata.push",

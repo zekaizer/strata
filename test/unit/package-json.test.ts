@@ -87,6 +87,29 @@ describe('package.json commands', () => {
   });
 });
 
+describe('commit row menu', () => {
+  /** The row menu's items for these flags, one array per separator-delimited group, in VS Code's order. */
+  const groups = (flags: Record<string, unknown>) => {
+    const by = new Map<string, string[]>();
+    for (const id of refActions('commit', flags)) {
+      const spec: CommandSpec = COMMANDS[id];
+      const group = spec.menus!.find((m) => m.section === 'commit')!.group.split('@')[0]!;
+      by.set(group, [...(by.get(group) ?? []), id]);
+    }
+    return [...by.values()];
+  };
+
+  it('groups checkout and refs, pick, integrate and copy, with Reset last on its own', () => {
+    assert.deepEqual(groups({ strataBranch: 'refs/heads/topic', strataHasRefs: true }), [
+      ['strata.checkout', 'strata.checkoutDetached', 'strata.createBranch', 'strata.createTag', 'strata.refActions'],
+      ['strata.cherryPick', 'strata.revert'],
+      ['strata.merge', 'strata.rebase'],
+      ['strata.commit.copyHash', 'strata.commit.copyShortHash', 'strata.commit.copySubject', 'strata.commit.copyPatch'],
+      ['strata.reset'],
+    ]);
+  });
+});
+
 describe('graph title bar', () => {
   const items = pkg.contributes.menus['editor/title'] ?? [];
   /** Evaluates `key == 'v'`, `key != 'v'`, `key` and `!key` terms joined by &&, as the title bar's clauses use. */
@@ -178,11 +201,6 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.copyRefName',
       'strata.deleteRemoteBranch',
     ]);
-    assert.deepEqual(
-      refActions('commit', { strataBranch: 'refs/heads/topic', strataHasRefs: true }).slice(0, 2),
-      ['strata.checkout', 'strata.checkoutDetached'],
-      "a branch tip's row checks out the branch first",
-    );
     assert.deepEqual(refActions('tag', {}), [
       'strata.checkoutDetached',
       'strata.pushTag',

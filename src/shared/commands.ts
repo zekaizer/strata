@@ -101,14 +101,14 @@ export const COMMANDS = {
   'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@4')], writes: true },
   'strata.cherryPick': {
     title: 'Cherry Pick',
-    menus: [commit('3_apply@1', '!strataIsHead')],
+    menus: [commit('3_pick@1', '!strataIsHead')],
     writes: true,
   },
-  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2')], writes: true },
+  'strata.revert': { title: 'Revert', menus: [commit('3_pick@2')], writes: true },
   'strata.merge': {
     title: 'Merge into Current Branch...',
     menus: [
-      commit('3_apply@3', '!strataIsHead'),
+      commit('4_integrate@1', '!strataIsHead'),
       { section: 'branch', group: '2_apply@1', when: '!strataIsCurrent' },
       { section: 'remoteBranch', group: '2_apply@1' },
     ],
@@ -117,7 +117,7 @@ export const COMMANDS = {
   'strata.rebase': {
     title: 'Rebase Current Branch onto This...',
     menus: [
-      commit('3_apply@4', '!strataIsHead'),
+      commit('4_integrate@2', '!strataIsHead'),
       { section: 'branch', group: '2_apply@2', when: '!strataIsCurrent' },
       { section: 'remoteBranch', group: '2_apply@2' },
     ],
@@ -129,11 +129,11 @@ export const COMMANDS = {
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
   'strata.refActions': {
     title: 'Branch and Tag Actions...',
-    menus: [commit('7_refs@1', 'strataHasRefs'), { section: 'refs', group: '1_refs@1' }],
+    menus: [commit('2_checkout@5', 'strataHasRefs'), { section: 'refs', group: '1_refs@1' }],
   },
   'strata.reset': {
     title: 'Reset Current Branch to Here...',
-    menus: [commit('6_reset@1', '!strataIsHead')],
+    menus: [commit('9_reset@1', '!strataIsHead')],
     writes: true,
   },
 
