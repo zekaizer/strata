@@ -54,10 +54,7 @@ describe('wording of ref operations', () => {
       { id: 'stash', label: 'Stash & Switch' },
     ]);
     assert.equal(c.message, "Switching to 'topic' would overwrite your changes to 2 files.");
-    assert.equal(
-      c.detail,
-      "a.txt and b.txt. Stash them and bring them back after switching, or let git merge them into 'topic' (conflicts are possible). Uncommitted changes: 2 files.",
-    );
+    assert.equal(c.detail, "'topic' changes a.txt and b.txt too.\nUncommitted changes: 2 files.");
     assert.equal(
       switchConfirmation('abc1234', ['a.txt'], '', []).message,
       'Switching to abc1234 would overwrite your changes to 1 file.',
@@ -69,7 +66,7 @@ describe('wording of ref operations', () => {
     assert.equal(c.message, 'Leave 2 commits behind?');
     assert.equal(
       c.detail,
-      'HEAD is detached at abc1234 with 2 commits on no branch (newest "WIP"). After switching they\'re only reachable through the reflog.',
+      'No branch has them; newest abc1234 "WIP".\nUndo can\'t bring them back; only the reflog keeps them.',
     );
     assert.deepEqual(labels(c.buttons), ['Switch Anyway']);
     assert.equal(leaveBehindConfirmation(1, tip).message, 'Leave 1 commit behind?');
@@ -97,7 +94,7 @@ describe('wording of ref operations', () => {
   it('asks what to do when the local namesake of a remote branch tracks another', () => {
     assert.deepEqual(tracksOtherConfirmation('main', 'upstream/main', 'origin/main'), {
       message: "'main' tracks 'upstream/main', not 'origin/main'.",
-      detail: "Switch to 'main' anyway, or create a branch of another name that tracks 'origin/main'.",
+      detail: '',
       buttons: [
         { id: 'new', label: 'Create Tracking Branch...' },
         { id: 'switch', label: "Switch to 'main'" },

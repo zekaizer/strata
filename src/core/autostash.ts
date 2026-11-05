@@ -16,8 +16,6 @@ export type StashChoice = 'stash' | 'keep' | 'migrate' | 'discard';
 export interface StashChoices {
   /** Answers in order; the first is the default. Empty when nothing needs asking. */
   choices: StashChoice[];
-  /** One sentence for the confirmation, naming where the default came from. */
-  explain: string;
   /**
    * How 'stash' runs: git's own --autostash, Strata's stash push / operation / stash pop, or a
    * stash that is never popped (it keeps what a reset would otherwise discard).
@@ -35,36 +33,21 @@ export interface DirtyFacts {
   fastForward: boolean;
 }
 
-const NAMES: Record<StashOp, string> = {
-  rebase: 'rebase',
-  merge: 'merge',
-  pullRebase: 'pull',
-  pullMerge: 'pull',
-  cherryPick: 'cherry-pick',
-  revert: 'revert',
-  switch: 'switch',
-  resetHard: 'reset',
-  resetKeep: 'reset',
-};
-
 /** Decides which answers an operation offers for uncommitted changes, and in which order. */
 export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: AutostashSetting): StashChoices {
-  const none: StashChoices = { choices: [], explain: '', mechanism: 'git' };
+  const none: StashChoices = { choices: [], mechanism: 'git' };
   if (dirty.files === 0) return none;
-  const name = NAMES[op];
   switch (op) {
     case 'resetHard':
       // Strata never pops this stash: popping would undo the reset. Offered first even with "never".
       return {
         choices: ['stash', 'discard'],
-        explain: 'A hard reset discards uncommitted changes; stashing first keeps them in the stash list.',
         mechanism: 'safety',
       };
     case 'resetKeep':
       if (!dirty.overlap) return none;
       return {
         choices: ['stash'],
-        explain: "git can't keep changes to files the reset also changes.",
         mechanism: 'safety',
       };
     case 'switch':
@@ -72,23 +55,19 @@ export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: Aut
       if (!dirty.overlap) return none;
       return {
         choices: setting === 'never' ? ['migrate', 'stash'] : ['stash', 'migrate'],
-        explain:
-          setting === 'never' ? 'strata.autoStash is "never".' : 'Stashing brings the changes back after switching.',
         mechanism: 'explicit',
       };
     case 'rebase':
     case 'pullRebase':
-      return { choices: ['stash'], explain: `git can't ${name} with uncommitted changes.`, mechanism: 'git' };
+      return { choices: ['stash'], mechanism: 'git' };
     case 'cherryPick':
     case 'revert':
       // git refuses over any staged change, or over changes to the files the commit changes,
       // before touching anything; other changes stay in place, also through a conflict and its abort.
-      if (dirty.staged > 0)
-        return { choices: ['stash'], explain: `git can't ${name} with staged changes.`, mechanism: 'explicit' };
+      if (dirty.staged > 0) return { choices: ['stash'], mechanism: 'explicit' };
       if (!dirty.overlap) return none;
       return {
         choices: ['stash'],
-        explain: `git can't ${name} over changes to the files it changes.`,
         mechanism: 'explicit',
       };
     case 'merge':
@@ -97,13 +76,11 @@ export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: Aut
       if (dirty.staged > 0 && !dirty.fastForward)
         return {
           choices: ['stash'],
-          explain: "git can't create a merge commit with staged changes.",
           mechanism: 'git',
         };
       if (!dirty.overlap) return none;
       return {
         choices: ['stash'],
-        explain: `git can't ${name} over changes to the files it changes.`,
         mechanism: 'git',
       };
   }

@@ -1,6 +1,5 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { resolveStashChoices } from '../../src/core/autostash.ts';
 import {
   conflictsInProgress,
   dirtySection,
@@ -39,7 +38,7 @@ describe('wording of history operations', () => {
   it('offers fast-forward or a merge commit, merge commit first when merge.ff is false', () => {
     const ff = mergeConfirmation(merge, undefined);
     assert.equal(ff.message, "Merge 'topic' into 'main'?");
-    assert.equal(ff.detail, "'main' can fast-forward to abc1234 (2 commits), or record a merge commit.");
+    assert.equal(ff.detail, "Brings 2 commits from 'topic' (abc1234) into 'main'.");
     assert.deepEqual(labels(ff.buttons), ['Fast-Forward', 'Create Merge Commit']);
     assert.deepEqual(labels(mergeConfirmation(merge, false).buttons), ['Create Merge Commit', 'Fast-Forward']);
   });
@@ -51,7 +50,7 @@ describe('wording of history operations', () => {
     });
     assert.equal(
       d.detail,
-      "Creates a merge commit on 'main' with 2 commits from 'topic'. Uncommitted changes: 1 file.",
+      "Creates a merge commit on 'main' with 2 commits from 'topic'.\nUncommitted changes: 1 file.",
     );
     assert.deepEqual(labels(d.buttons), ['Stash & Merge', 'Merge Keeping Changes']);
     assert.deepEqual(mergeAnswer(d.buttons[1]!.id), { mode: 'ff', choice: 'keep' });
@@ -59,7 +58,7 @@ describe('wording of history operations', () => {
       section: 'Uncommitted changes: 1 file.',
       modes: [{ mode: 'ff', choices: ['stash'] }],
     });
-    assert.equal(pull.detail, "'main' fast-forwards to abc1234 (2 commits). Uncommitted changes: 1 file.");
+    assert.equal(pull.detail, "'main' fast-forwards to abc1234 (2 commits).\nUncommitted changes: 1 file.");
   });
 
   it('calls the merge or rebase of a pull Pull', () => {
@@ -82,10 +81,7 @@ describe('wording of history operations', () => {
         { mode: 'ff', choices: ['keep', 'stash'] },
       ],
     });
-    assert.equal(
-      d.detail,
-      "'main' can fast-forward to abc1234 (2 commits), or record a merge commit. Uncommitted changes: 1 file.",
-    );
+    assert.equal(d.detail, "Brings 2 commits from 'topic' (abc1234) into 'main'.\nUncommitted changes: 1 file.");
     assert.deepEqual(labels(d.buttons), [
       'Stash & Create Merge Commit',
       'Fast-Forward Keeping Changes',
@@ -119,7 +115,7 @@ describe('wording of history operations', () => {
     assert.equal(r.message, "Rebase 'feature' onto 'main'?");
     assert.equal(
       r.detail,
-      "Replays 4 commits of 'feature' on top of 'main' (e4f5a6b). 1 merge commit is dropped; the commits they brought in are replayed one by one. 2 of them are on origin/feature: you'll need to force push afterwards. Undo restores the original commits.",
+      "Replays 4 commits of 'feature' on 'main' (e4f5a6b), without its 1 merge commit. 2 are on origin/feature: you'll need to force push.\nUndo restores the original commits.",
     );
   });
 
@@ -143,7 +139,7 @@ describe('wording of history operations', () => {
     assert.equal(p.message, 'Revert abc1234 "Add lexer" on \'main\'?');
     assert.equal(
       p.detail,
-      'Undoes the changes of the 3 commits it merged into aaa1111 "Release prep" from bbb2222 "Add parser". Merging those commits again later won\'t bring them back.',
+      'Undoes the changes of the 3 commits it merged into aaa1111 "Release prep" from bbb2222 "Add parser". Merging them again won\'t bring them back.',
     );
   });
 
@@ -151,7 +147,7 @@ describe('wording of history operations', () => {
     const p = pickConfirmation('cherryPick', c, 'HEAD', true, '', [], { parents, mainline: 2 });
     assert.equal(
       p.detail,
-      'Applies the changes of the 5 commits it merged into bbb2222 "Add parser" from aaa1111 "Release prep". HEAD is detached: the new commit will be on no branch.',
+      'Applies the changes of the 5 commits it merged into bbb2222 "Add parser" from aaa1111 "Release prep".\nHEAD is detached: the new commit will be on no branch.',
     );
     const octopus = [...parents, { short: 'ccc3333', subject: 'Add docs', mergedIn: 1 }];
     assert.match(
@@ -218,12 +214,11 @@ describe('wording of history operations', () => {
 
   it('names the untracked files a hard reset would overwrite instead of claiming they stay', () => {
     const dirty = { files: 1, staged: 0, overlap: false, fastForward: false };
-    const choices = resolveStashChoices('resetHard', dirty, 'gitConfig');
     assert.equal(
-      dirtySection(dirty, choices, 0, ['parser.ts']),
-      'Uncommitted changes: 1 file. A hard reset discards uncommitted changes; stashing first keeps them in the stash list. 1 untracked file at paths the reset restores would be overwritten (parser.ts); stashing takes them too.',
+      dirtySection(dirty, 'resetHard', 0, ['parser.ts']),
+      "Undo can't bring back your uncommitted changes in 1 file and untracked parser.ts once discarded.",
     );
-    assert.doesNotMatch(dirtySection(dirty, choices, 0, []), /stay in place/);
+    assert.doesNotMatch(dirtySection(dirty, 'resetHard', 0, []), /stay in place/);
     assert.deepEqual(resetPick("'main'", c, 2), {
       title: 'Reset \'main\' to abc1234 "Add lexer"',
       placeholder: "2 commits leave 'main'. What happens to their changes?",

@@ -17,7 +17,7 @@ import {
   undoMovedConfirmation,
   undone,
 } from '../core/wording.ts';
-import { readCommit, readHead } from '../git/facts.ts';
+import { countCommits, readCommit, readHead } from '../git/facts.ts';
 import { GitOpError } from '../git/op.ts';
 import { runGit } from '../git/run.ts';
 import { commandLine, type Exec, type OpRunner, type RunnerHost } from './runner.ts';
@@ -274,11 +274,12 @@ export async function undoLast(host: FlowHost): Promise<void> {
       return;
     }
     if (head.hash !== g.after) {
-      const [now, back] = await Promise.all([
+      const [now, back, newer] = await Promise.all([
         readCommit(host.git, host.cwd, head.hash),
         readCommit(host.git, host.cwd, g.before),
+        countCommits(host.git, host.cwd, [`${g.after}..${head.hash}`]),
       ]);
-      const ask = undoMovedConfirmation(head.branch, undo.label, now.short, back.short, g.deletes);
+      const ask = undoMovedConfirmation(head.branch, undo.label, newer, now, back.short);
       if (!(await host.ui.confirm(ask))) return;
     }
     expect = [{ rev: 'HEAD', hash: head.hash, name }];

@@ -28,6 +28,7 @@ import {
   readConfig,
   readForkPoint,
   readHead,
+  readMergeBase,
   readTrackingBranches,
   readUnmergedRemoteCommits,
   readUpstream,
@@ -35,7 +36,8 @@ import {
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { fail, finish, notify, run, type Expect, type FlowHost, type Next } from '../flow.ts';
-import { merge, rebase, refSource, type Source } from './history.ts';
+import { changes } from './changes.ts';
+import { merge, rebase, refSource, type PullRun, type Source } from './history.ts';
 
 /**
  * Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it
@@ -122,7 +124,8 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
   const src: Source = upstream.ref
     ? await refSource(host, { name: upstream.ref, short: upstream.name })
     : { rev: tracking, arg: tracking, name: quote(upstream.name) };
-  if (ahead === 0) return merge(host, src, 'pull', next);
+  const how: PullRun = next ? { next } : {};
+  if (ahead === 0) return merge(host, src, how);
   const [rebaseCfg, ff] = await Promise.all([
     readConfig(host.git, host.cwd, `branch.${branch}.rebase`).then(
       async (v) => v ?? (await readConfig(host.git, host.cwd, 'pull.rebase')),
@@ -132,16 +135,27 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
   const rebaseFirst = rebaseCfg === undefined ? undefined : BOOL[rebaseCfg.toLowerCase()];
   const canMerge = ff !== 'only';
   // As git pull --rebase: commits upstream had before a force push are not the branch's own.
-  const rebaseOnto = async () => rebase(host, src, 'pull', await readForkPoint(host.git, host.cwd, tracking), next);
-  if (rebaseFirst === true) return rebaseOnto();
-  if (rebaseFirst === false && canMerge) return merge(host, src, 'pull', next);
-  // Unset, "merges" or "interactive": ask, saying what Strata can do.
+  const rebaseOnto = async (r: PullRun) => rebase(host, src, r, await readForkPoint(host.git, host.cwd, tracking));
+  if (rebaseFirst === true) return rebaseOnto(how);
+  if (rebaseFirst === false && canMerge) return merge(host, src, how);
+  // Unset, "merges" or "interactive": ask, saying what Strata can do, and about changes at once.
   const note = !canMerge ? PULL_NOTES.ffOnly : rebaseCfg?.startsWith('m') ? PULL_NOTES.rebaseMerges : undefined;
+  const base = await readMergeBase(host.git, host.cwd, 'HEAD', tracking);
+  const [forRebase, forMerge] = await Promise.all([
+    changes(host, 'pullRebase'),
+    changes(host, 'pullMerge', [base ?? 'HEAD', tracking]),
+  ]);
+  const stashRebase = forRebase.choices.choices.length > 0;
+  const stashMerge = forMerge.choices.choices.length > 0;
+  const buttons: { id: 'rebase' | 'merge'; label: string }[] = [
+    { id: 'rebase', label: stashRebase ? 'Stash & Rebase' : 'Rebase' },
+    ...(canMerge ? [{ id: 'merge' as const, label: stashMerge ? 'Stash & Merge' : 'Merge' }] : []),
+  ];
   const answer = await host.ui.confirm(
-    divergedConfirmation(quote(branch), upstream.name, ahead, behind, { rebase: true, merge: canMerge }, note),
+    divergedConfirmation(quote(branch), upstream.name, ahead, behind, buttons, note, forRebase.section),
   );
-  if (answer === 'rebase') await rebaseOnto();
-  else if (answer === 'merge') await merge(host, src, 'pull', next);
+  if (answer === 'rebase') await rebaseOnto({ ...how, stash: stashRebase });
+  else if (answer === 'merge') await merge(host, src, { ...how, stash: stashMerge });
 }
 
 /** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */

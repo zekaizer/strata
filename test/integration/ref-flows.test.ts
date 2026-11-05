@@ -170,7 +170,7 @@ describe('ref operations', () => {
     const asked = {
       kind: 'confirm',
       message: "'strata-up' tracks 'upstream/strata-up', not 'origin/strata-up'.",
-      detail: "Switch to 'strata-up' anyway, or create a branch of another name that tracks 'origin/strata-up'.",
+      detail: '',
       buttons: ['Create Tracking Branch...', "Switch to 'strata-up'"],
     };
 
@@ -272,8 +272,10 @@ describe('ref operations', () => {
     await run('strata.checkout', branchMenu('feature/search', git('rev-parse', 'feature/search')));
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Switching to 'feature/search' would overwrite your changes to 1 file.");
-    assert.match(asked.detail, /^main\.txt\. Stash them and bring them back after switching, or let git merge/);
-    assert.match(asked.detail, /Uncommitted changes: 1 file\./);
+    assert.equal(
+      asked.detail,
+      "'feature/search' changes main.txt too.\nUncommitted changes in 1 file; untracked files stay in place.",
+    );
     assert.deepEqual(asked.buttons, ['Stash & Switch', 'Migrate Changes']);
     assert.equal(git('branch', '--show-current'), 'feature/search');
     assert.equal(
@@ -312,7 +314,7 @@ describe('ref operations', () => {
         kind: 'confirm',
         message: "2 untracked files are in the way of the switch to 'strata-new': new.txt and two words.txt.",
         detail:
-          "Strata can move them into a stash and try again. That stash stays in the list; Strata does not bring the files back, because the switch to 'strata-new' puts its own versions there.",
+          "The stash keeps them; Strata doesn't bring them back, because the switch to 'strata-new' puts its own versions there.",
         buttons: ['Stash Them & Retry'],
       },
     ]);
@@ -413,7 +415,7 @@ describe('ref operations', () => {
     await run('strata.checkoutDetached', commitMenu(git('rev-parse', 'main~1')));
     const asked = ui.first('confirm');
     assert.equal(asked.message, 'Leave 1 commit behind?');
-    assert.match(asked.detail, /\(newest "Lonely"\)/);
+    assert.match(asked.detail, /; newest [0-9a-f]+ "Lonely"\./);
     assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main~1'));
   });
 

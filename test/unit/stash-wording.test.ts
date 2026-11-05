@@ -47,7 +47,7 @@ describe('wording of stash operations', () => {
     assert.equal(d.message, 'Drop stash@{2} ("On main: wip")?');
     assert.equal(
       d.detail,
-      '3 changed files and 1 untracked on abc1234 "Base". Undo brings it back as stash@{0}; after that only git fsck can find it.',
+      '3 changed files and 1 untracked on abc1234 "Base".\nUndo brings it back; after that only git fsck can find it.',
     );
     assert.deepEqual(d.buttons, [{ id: 'drop', label: 'Drop Stash' }]);
     assert.match(dropStashConfirmation(0, 'x', undefined, { short: 'a', subject: 'b' }).detail, /^Made on a "b"\./);

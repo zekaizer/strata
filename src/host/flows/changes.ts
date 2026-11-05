@@ -48,7 +48,7 @@ export async function changes(host: FlowHost, op: StashOp, touches?: readonly [s
   const setting = host.settings().autoStash;
   const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting);
   const choices = resolve(dirty);
-  const section = choices.choices.length > 0 ? dirtySection(dirty, choices, worktree.submodules) : '';
+  const section = choices.choices.length > 0 ? dirtySection(dirty, op, worktree.submodules) : '';
   return { worktree, overlap, dirty, choices, section, resolve };
 }
 

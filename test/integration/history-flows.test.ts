@@ -84,14 +84,15 @@ describe('history operations', () => {
 
     ui.clear();
     await run('strata.undo');
-    assert.equal(
-      ui.first('confirm').message,
-      `'main' has moved since the merge (now at ${git('rev-parse', '--short', later)}).`,
+    assert.equal(ui.first('confirm').message, "Undo the merge and lose 1 commit on 'main'?");
+    assert.match(
+      ui.first('confirm').detail,
+      new RegExp(`^Made since the merge, newest ${git('rev-parse', '--short', later)} "Later"\\.`),
     );
     assert.equal(git('rev-parse', 'main'), later);
 
     ui.clear();
-    ui.press('Undo Anyway');
+    ui.press('Undo and Drop 1 Commit');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'main'), before);
   });
@@ -141,7 +142,7 @@ describe('history operations', () => {
     await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
     const asked = ui.first('confirm');
     assert.deepEqual(asked.buttons, ['Fast-Forward Keeping Changes', 'Stash & Create Merge Commit']);
-    assert.match(asked.detail, /git can't create a merge commit with staged changes\./);
+    assert.match(asked.detail, /\nUncommitted changes in 1 file \(1 staged\); untracked files stay in place\.$/);
     assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
     assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'still staged');
   });
@@ -237,10 +238,7 @@ describe('history operations', () => {
     ui.press('Stash Changes & Abort');
     await run('strata.operation.abort');
     const asked = ui.first('confirm');
-    assert.match(
-      asked.detail,
-      / Your uncommitted changes in 2 files \(NOTES\.md and added\.txt\) would be discarded: Stash Changes & Abort keeps them in the stash list; Discard Changes & Abort throws them away\.$/,
-    );
+    assert.match(asked.detail, /\nYour uncommitted changes in 2 files \(NOTES\.md and added\.txt\) would be lost\.$/);
     assert.deepEqual(asked.buttons, ['Stash Changes & Abort', 'Discard Changes & Abort']);
     assert.equal(git('rev-parse', 'HEAD'), tip);
     assert.equal(git('stash', 'list', '--format=%gs'), 'On strata-topic: Strata: before abort of the rebase');
@@ -304,7 +302,7 @@ describe('history operations', () => {
     assert.match(
       ui.first('confirm').detail,
       new RegExp(
-        `^'main' goes back to ${git('rev-parse', '--short', start)} as before the cherry pick, dropping the 1 commit it has made so far\\.`,
+        `^'main' goes back to ${git('rev-parse', '--short', start)}, dropping the 1 commit it made and your conflict resolutions\\.`,
       ),
     );
     assert.equal(git('rev-parse', 'HEAD'), start);
@@ -320,7 +318,7 @@ describe('history operations', () => {
     await run('strata.operation.abort');
     assert.match(
       ui.first('confirm').detail,
-      new RegExp(`^'strata-topic' goes back to ${git('rev-parse', '--short', tip)} as before the rebase\\.`),
+      new RegExp(`^'strata-topic' goes back to ${git('rev-parse', '--short', tip)}, dropping `),
     );
     assert.equal(git('rev-parse', 'HEAD'), tip);
   });
@@ -403,8 +401,8 @@ describe('history operations', () => {
     assert.equal(asked.message, 'Continuing this rebase edits commit messages.');
     assert.equal(
       asked.detail,
-      `git opens an editor for reword ${b.slice(0, 7)} and fixup -c ${c.slice(0, 7)}, which Strata can't show. ` +
-        'Continue in a terminal to edit them there, or continue here with the messages git prepares, unedited.',
+      `git would open an editor for reword ${b.slice(0, 7)} and fixup -c ${c.slice(0, 7)}, which Strata can't show.\n` +
+        'Continued here, they keep the messages git prepares.',
     );
     assert.deepEqual(asked.buttons, ['Continue in Terminal', 'Continue Anyway']);
     assert.equal(api().contextValue('strata.operation'), 'rebase', 'cancelled');
@@ -473,7 +471,7 @@ describe('history operations', () => {
     ui.clear();
     ui.press('Abort Rebase');
     await run('strata.operation.abort');
-    assert.match(ui.first('confirm').detail, /Your stashed changes are restored\.$/);
+    assert.match(ui.first('confirm').detail, /\nYour stashed changes come back\.$/);
     assert.equal(git('rev-parse', 'HEAD'), tip);
     assert.equal(read('NOTES.md'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
@@ -878,8 +876,7 @@ describe('history operations', () => {
       {
         kind: 'confirm',
         message: "This clone is shallow: 'strata-deep' and 'strata-topic' have no common commit in it.",
-        detail:
-          'Fetch More History goes 100 commits further back; Fetch Full History fetches the whole history. Then try again.',
+        detail: 'Fetch more of it, then try again.',
         buttons: ['Fetch More History', 'Fetch Full History'],
       },
     ]);
@@ -1049,7 +1046,7 @@ describe('history operations', () => {
       [
         [
           `Revert ${short(merge)} "Merge branch 'strata-side'" on 'main'?`,
-          `Undoes the changes of the 2 commits it merged into ${short(`${merge}^1`)} "Mainline" from ${short(`${merge}^2`)} "side.txt: side 2". Merging those commits again later won't bring them back.`,
+          `Undoes the changes of the 2 commits it merged into ${short(`${merge}^1`)} "Mainline" from ${short(`${merge}^2`)} "side.txt: side 2". Merging them again won't bring them back.`,
           ['Revert'],
         ],
       ],
@@ -1076,7 +1073,7 @@ describe('history operations', () => {
     assert.match(
       ui.first('confirm').detail,
       new RegExp(
-        `^Applies the changes of the 1 commit it merged into ${short(`${merge}^2`)} "side\\.txt: side 2" from ${short(`${merge}^1`)} "Mainline"\\. `,
+        `^Applies the changes of the 1 commit it merged into ${short(`${merge}^2`)} "side\\.txt: side 2" from ${short(`${merge}^1`)} "Mainline"\\.\n`,
       ),
     );
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-side'");
@@ -1162,10 +1159,7 @@ describe('history operations', () => {
     await run('strata.reset', commitMenu(target));
     const asked = ui.first('confirm');
     assert.deepEqual(asked.buttons, ['Stash Changes & Reset', 'Discard Changes & Reset']);
-    assert.match(
-      asked.detail,
-      /Stash Changes & Reset keeps them in the stash list; Discard Changes & Reset throws them away\./,
-    );
+    assert.match(asked.detail, /\nUndo can't bring back your uncommitted changes in 1 file once discarded\.$/);
     assert.equal(git('rev-parse', 'HEAD'), target);
     assert.equal(git('status', '--porcelain', '--untracked-files=no'), '');
     const short = git('rev-parse', '--short', target);
