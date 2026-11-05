@@ -271,6 +271,8 @@ export interface ProbeState {
     marks: Record<number, string[]>;
     hitRows: number[];
     badges: string[];
+    /** Marked text in the open details. */
+    detailsMarks: string[];
     /** While the match list shows: the text of its headings, rows and notes, in order. */
     list: string[] | undefined;
   };

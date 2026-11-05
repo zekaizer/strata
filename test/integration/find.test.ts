@@ -248,4 +248,18 @@ describe('find commits', () => {
     await panel().simulate({ kind: 'click', selector: '.find-list .find-row:last-of-type' });
     await until('author search', (p) => p.find.input === 'author:"Ada Lovelace"' && p.find.matches > 0);
   });
+  it('marks the text in the open details of a match, and unmarks it on close', async () => {
+    await open();
+    await type('login');
+    const hits = expected('--grep=login');
+    let s = await until('a match selected', (p) => p.selected !== undefined && hits.includes(p.selected));
+    const first = s.selected;
+    const row = Object.entries(s.rowHashes).find(([, h]) => h === first)![0];
+    await panel().simulate({ kind: 'clickRow', index: Number(row) });
+    s = await until('details marked', (p) => p.detailsShown === first && p.find.detailsMarks.length > 0);
+    assert.ok(s.find.detailsMarks.every((m) => m.toLowerCase() === 'login'));
+    await panel().simulate({ kind: 'focus', selector: '.find-input' });
+    await key('Escape');
+    await until('details unmarked', (p) => !p.find.open && p.find.detailsMarks.length === 0);
+  });
 });

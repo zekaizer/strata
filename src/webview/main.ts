@@ -1086,6 +1086,7 @@ class App {
     this.pendingStep = undefined;
     this.findWidget.hide();
     if (searched) vscode.postMessage({ type: 'findStop' });
+    this.remarkDetails();
     this.scroller.focus({ preventScroll: true });
     this.queueRender();
   }
@@ -1120,7 +1121,13 @@ class App {
       if (this.generation >= 0) vscode.postMessage({ type: 'find', generation: this.generation, id, query });
     }
     this.updateFindCount();
+    this.remarkDetails();
     this.queueRender();
+  }
+
+  /** Renders the open details again, so their marks follow the search. */
+  private remarkDetails(): void {
+    if (this.expanded && this.details) this.renderDetails();
   }
 
   private onFindHits(m: Extract<HostToWebview, { type: 'findHits' }>): void {
@@ -1136,6 +1143,8 @@ class App {
     search.hits.push(...m.hits);
     search.done = m.done;
     search.capped = m.capped;
+    const shown = this.details?.hash;
+    if (shown !== undefined && [...(m.exact ?? []), ...m.hits].some((h) => h.hash === shown)) this.remarkDetails();
     if (this.pendingStep !== undefined && (search.matches.length > 0 || m.done)) {
       const back = this.pendingStep;
       this.pendingStep = undefined;
@@ -1392,6 +1401,12 @@ class App {
           : (this.commits.find((c) => c.author.toLowerCase().includes(text))?.author ?? null);
     }
     return search.suggestion ?? undefined;
+  }
+
+  /** The find text to mark in the details of commit `hash`, when it is a match. */
+  private detailsNeedle(hash: string): string | undefined {
+    const text = this.search?.query.text;
+    return text && this.isMatch(hash) ? text : undefined;
   }
 
   private isMatch(hash: string | undefined): boolean {
@@ -2419,10 +2434,10 @@ class App {
       ruler,
       stash ? this.stashByline(d, stash) : this.byline(d),
       stash ? this.stashMeta(d, stash) : this.metaTable(d),
-      el('h2', 'details-subject', subject),
+      marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'),
     );
     if (body) {
-      const pre = el('pre', 'details-message', reflowBody(body));
+      const pre = marked('details-message', reflowBody(body), this.detailsNeedle(d.hash), 'pre');
       pre.id = 'details-body';
       const more = el('button', 'link-button details-more');
       more.hidden = true;
@@ -3138,6 +3153,7 @@ class App {
           Number(r.dataset['index']),
         ),
         badges: [...this.rowsLayer.querySelectorAll('.badge.find-match')].map((b) => b.textContent),
+        detailsMarks: [...this.expansion.querySelectorAll('mark')].map((m) => m.textContent),
         list: this.findWidget.listShown
           ? [...this.findWidget.list.children].map((e) =>
               e.children.length === 0
@@ -3407,9 +3423,14 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
 }
 
 /** A badge; it and each remote name in it carry their own menu context. */
-/** A `className` span of `text`, with each occurrence of `needle` (any case) in a <mark>. */
-function marked(className: string, text: string, needle: string | undefined): HTMLElement {
-  const e = el('span', className);
+/** A `className` element (a span by default) of `text`, with each occurrence of `needle` (any case) in a <mark>. */
+function marked(
+  className: string,
+  text: string,
+  needle: string | undefined,
+  tag: 'span' | 'h2' | 'pre' = 'span',
+): HTMLElement {
+  const e = el(tag, className);
   let at = 0;
   for (const [start, end] of needle === undefined ? [] : matchRanges(text, needle)) {
     e.append(text.slice(at, start), el('mark', 'find-mark', text.slice(start, end)));
