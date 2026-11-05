@@ -23,6 +23,10 @@ page, so it opens quickly even on very large repositories.
   first-parent history. By default the graph shows all local and
   remote-tracking branches; tags label their commits, and a tag that is on no
   branch shows when you select it in the filter.
+- Hide the badges of noisy refs, such as CI tags, without changing the
+  history: glob rules per repository (`IR*`), with exceptions, that leave the
+  commits and lines in place. Strata keeps the rules itself; nothing is written
+  to the repository or its git config.
 - The graph comes back after restarting VS Code, pinned if you pinned it, at
   the commit you had selected and with the same filters.
 - Works in narrow editors: columns collapse as space shrinks, and commit
@@ -75,6 +79,18 @@ page, so it opens quickly even on very large repositories.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
+- To hide badges, type a pattern in the branch button's search: `*` matches
+  any text (slashes too), `?` one character, and the rest is compared exactly,
+  case included. The list shows the refs it matches; **Hide N badges** (or
+  <kbd>Enter</kbd>) adds a rule, and **Show N again** adds an exception for
+  refs it already hides. The eye beside a ref hides or shows just its badge.
+  **Hidden badges** lists the rules, the last matching one deciding; move or
+  remove them there, or tick **Show hidden badges** to see every badge until
+  you close the graph. The toolbar button says how many badges are hidden. The
+  current branch's badge is never hidden.
+- Right-click a branch, remote branch or tag badge for **Hide Badge**, or for
+  **Hide Similar Badges...**, which opens the search with a pattern for refs
+  named like it (`IR-1.2.3` gives `IR*`) to check before hiding.
 - With stashes in the repository, the toolbar counts them and how many are not
   in the graph (their commit is not loaded yet, filtered out, or on no branch).
   Click it for **Show Stashes**: pick one to select it and open its details,
