@@ -149,6 +149,13 @@ function buttons(): HTMLElement {
     ),
     row(...['default', 'hover', 'focus-visible'].map(toggled)),
     row(...states('.icon-button', icon, ['default', 'hover', 'active', 'focus-visible', 'disabled'])),
+    row(
+      ...states(
+        '.icon-button.active',
+        () => withClass(el('button', 'icon-button codicon codicon-list-unordered'), 'active'),
+        ['default', 'hover', 'focus-visible'],
+      ),
+    ),
     row(...states('.link-button', link, ['default', 'hover', 'focus-visible', 'disabled'])),
     row(
       ...states('.inline-button', inline, ['default', 'hover', 'focus-visible']),

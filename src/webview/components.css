@@ -74,7 +74,7 @@ body:not(.hover-off) :is(.tool-button, .icon-button, .inline-button):not(:disabl
   outline-offset: -1px;
 }
 
-body:not(.hover-off) :is(.tool-button:not(.active), .icon-button, .inline-button):not(:disabled):active,
+body:not(.hover-off) :is(.tool-button:not(.active), .icon-button:not(.active), .inline-button):not(:disabled):active,
 .tool-button[aria-expanded='true']:not(.active) {
   background: var(--color-toolbar-active);
 }
@@ -90,15 +90,15 @@ body:not(.hover-off) :is(.tool-button:not(.active), .icon-button, .inline-button
 }
 
 /* A toggle that is on. */
-.tool-button.active,
-body:not(.hover-off) .tool-button.active:hover {
+:is(.tool-button, .icon-button).active,
+body:not(.hover-off) :is(.tool-button, .icon-button).active:hover {
   background: var(--vscode-inputOption-activeBackground);
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   color: var(--vscode-inputOption-activeForeground, var(--color-fg));
 }
 
 /* The focus ring would land on the 1px active border, which is nearly the same color. */
-.tool-button.active:focus-visible {
+:is(.tool-button, .icon-button).active:focus-visible {
   outline-offset: 1px;
 }
 

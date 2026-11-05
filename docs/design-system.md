@@ -183,7 +183,7 @@ outline. A tool button that toggles is `.active` when on; one that opens a popov
 | Class             | Looks                                         | States beyond the common ones                                                       |
 | ----------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `.tool-button`    | Icon and `.tool-label`, no box until hovered  | `.active` (toggle on: input option colors), `[aria-expanded='true']` (popover open) |
-| `.icon-button`    | 22×22, icon only                              |                                                                                     |
+| `.icon-button`    | 22×22, icon only                              | `.active` (toggle on: input option colors)                                          |
 | `.inline-button`  | No box until hovered, inside a line of text   | `.inline-button.codicon`: a small icon (`--icon-size-sm`)                           |
 | `.button`         | Push button, secondary colors                 | `[aria-disabled='true']` holds it while keeping focus                               |
 | `.button.primary` | Push button, primary colors                   | Disabled or held: drops its fill                                                    |
