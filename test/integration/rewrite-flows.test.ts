@@ -83,6 +83,25 @@ describe('tidying recent commits', () => {
     assert.equal(git('rev-parse', 'strata-at-b'), b, 'Undo moves it back too');
   });
 
+  it('leaves a branch checked out in another worktree on the old commits, and says so', async () => {
+    const [a, b] = await three();
+    const elsewhere = mkdtempSync(join(tmpdir(), 'strata-wt-'));
+    git('worktree', 'add', '--quiet', '-b', 'strata-wt', join(elsewhere, 'wt'), b);
+    try {
+      await reload(panel());
+      ui.press('Save');
+      await saveEdit('reword', [a], 'a reworded\n');
+      const asked = ui.first('confirm');
+      assert.match(asked.detail, /'strata-wt' is checked out in another worktree and keeps the old commits\./);
+      assert.deepEqual(asked.buttons, ['Save']);
+      assert.equal(git('rev-parse', 'strata-wt'), b);
+      assert.equal(message('HEAD~2'), 'a reworded');
+    } finally {
+      git('worktree', 'remove', '--force', join(elsewhere, 'wt'));
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
   it('warns before rewriting commits a remote-tracking branch has', async () => {
     const [a, b] = await three();
     git('update-ref', 'refs/remotes/origin/strata-pushed', b);
