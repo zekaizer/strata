@@ -179,6 +179,8 @@ export interface ProbeState {
   /** Text of the toolbar's ref filter button, e.g. "All". */
   refFilterButton: string;
   badgeFilter: BadgeFilterProbe;
+  /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
+  refCard: { hash: string; lines: string[] } | undefined;
   /** The repository's badge rules as the host last sent them. */
   badgeRules: BadgeRule[];
   /** Label of the toolbar's stash count button; empty while it is hidden. */
@@ -334,6 +336,8 @@ export type SimulatedAction =
   | { kind: 'clickRow'; index: number; y?: number }
   /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
   | { kind: 'scrollToRow'; index: number }
+  /** Moves the pointer onto row `index`'s graph node, or `dx` px right of it. */
+  | { kind: 'hoverNode'; index: number; dx?: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
   | {
       kind: 'key';

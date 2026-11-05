@@ -27,13 +27,14 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
+import { cardRefs, fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
-import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
+import { drawGraph, graphWidth, laneX, LANE_WIDTH, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
 import { BadgeFilter } from './badge-filter.ts';
+import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
@@ -151,6 +152,10 @@ class App {
   private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly badgeFilter: BadgeFilter;
+  /** The refs of the commit whose graph node the pointer rests on. */
+  private readonly refCard = new RefCard();
+  /** A pointer press on a node closes its card until the pointer leaves that node. */
+  private cardDismissed: string | undefined;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
   /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
   private readonly stashButton = el('button', 'tool-button stash-button');
@@ -342,7 +347,14 @@ class App {
     this.announcer.setAttribute('role', 'status');
     this.announcer.setAttribute('aria-live', 'polite');
     this.alert.setAttribute('role', 'alert');
-    root.replaceChildren(this.toolbar, this.banner.element, this.viewport, this.announcer, this.alert);
+    root.replaceChildren(
+      this.toolbar,
+      this.banner.element,
+      this.viewport,
+      this.refCard.element,
+      this.announcer,
+      this.alert,
+    );
     // Escape from anywhere in the details goes back to the list; the selection stays.
     this.expansion.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -370,9 +382,11 @@ class App {
     });
 
     this.scroller.addEventListener('scroll', () => {
+      this.pointNode(undefined);
       this.queueRender();
       this.saveState();
     });
+    this.trackNodeHover();
     // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
       // By the dispatch path: the target may already be detached (a fold or a parent link
@@ -982,6 +996,62 @@ class App {
   }
 
   /**
+   * Shows the ref card of the commit whose node the pointer rests on. Hover highlights going off
+   * (the pointer may have left, keys moved the rows) close it.
+   */
+  private trackNodeHover(): void {
+    this.scroller.addEventListener('pointermove', (e) => {
+      // Chromium sends moves without movement when content changes under a still pointer.
+      if (e.movementX === 0 && e.movementY === 0) return;
+      const target = this.nodeAt(e.clientX, e.clientY);
+      if (target?.hash !== this.cardDismissed) this.cardDismissed = undefined;
+      this.pointNode(this.cardDismissed === undefined ? target : undefined);
+    });
+    this.scroller.addEventListener('pointerleave', () => {
+      this.pointNode(undefined);
+    });
+    this.scroller.addEventListener('pointerdown', () => {
+      this.cardDismissed = this.refCard.hash;
+      this.pointNode(undefined);
+    });
+    new MutationObserver(() => {
+      if (document.body.classList.contains('hover-off')) this.pointNode(undefined);
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  /** Points the ref card at a node, restoring the tooltip of the row it leaves. */
+  private pointNode(target: CardTarget | undefined): void {
+    const was = this.refCard.hash;
+    this.refCard.point(target);
+    if (this.refCard.hash === was) return;
+    for (const row of this.rowsLayer.querySelectorAll<HTMLElement>('.row')) {
+      const item = this.list[Number(row.dataset['index'])];
+      if (item?.kind !== 'commit' || (item.commit.hash !== was && item.commit.hash !== this.refCard.hash)) continue;
+      if (item.commit.hash === this.refCard.hash) row.removeAttribute('title');
+      else row.title = commitTitle(item.commit);
+    }
+  }
+
+  /** The commit node within reach of a client position, with its refs and centre. */
+  private nodeAt(clientX: number, clientY: number): CardTarget | undefined {
+    const box = this.scroller.getBoundingClientRect();
+    const index = this.rowAt(clientY - box.top + this.scroller.scrollTop);
+    const item = this.list[index];
+    const row = item && this.rows[item.row];
+    if (item?.kind !== 'commit' || !row) return undefined;
+    const x = laneX(row.lane);
+    // A node scrolled out of the clipped graph column is not on screen.
+    if (x > this.canvas.clientWidth) return undefined;
+    const centre = {
+      x: box.left + x,
+      y: box.top + this.rowTop(index) + this.geometry.height(index) - ROW_HEIGHT / 2 - this.scroller.scrollTop,
+    };
+    if (Math.abs(clientX - centre.x) > NODE_REACH || Math.abs(clientY - centre.y) > NODE_REACH) return undefined;
+    const hash = item.commit.hash;
+    return { hash, refs: cardRefs(hash, this.refsByHash.get(hash) ?? [], this.refs, this.hiddenBadges), ...centre };
+  }
+
+  /**
    * Turns hover highlights off when the pointer may have left without the webview noticing
    * (focus moves to an editor, the panel is hidden, the pointer leaves the iframe) and back on
    * at the next pointer movement.
@@ -1501,7 +1571,8 @@ class App {
       this.dateCell(c.authorTime),
       el('span', 'hash', shortHash(c.hash)),
     );
-    row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    // On the node the ref card stands in for the row's tooltip.
+    if (this.refCard.hash !== c.hash) row.title = commitTitle(c);
     // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
     const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length));
     const said = [
@@ -2414,6 +2485,7 @@ class App {
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       refFilterButton: this.refFilter.button.textContent,
       badgeFilter: this.badgeFilter.probe(),
+      refCard: this.refCard.probe(),
       badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
@@ -2515,6 +2587,21 @@ class App {
         }
         break;
       }
+      case 'hoverNode': {
+        this.ensureVisible(a.index);
+        this.render();
+        const box = this.scroller.getBoundingClientRect();
+        const item = this.list[a.index];
+        const row = item && this.rows[item.row];
+        if (!row) break;
+        const x = box.left + laneX(row.lane) + (a.dx ?? 0);
+        const y =
+          box.top + this.rowTop(a.index) + this.geometry.height(a.index) - ROW_HEIGHT / 2 - this.scroller.scrollTop;
+        (document.elementFromPoint(x, y) ?? this.scroller).dispatchEvent(
+          new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y, movementX: 1 }),
+        );
+        break;
+      }
       case 'scrollToRow':
         this.scroller.scrollTop = this.rowTop(a.index);
         this.render();
@@ -2592,6 +2679,11 @@ class App {
     }
   }
 }
+
+/** How far from a node's centre, in px across and down, the pointer still rests on it. */
+const NODE_REACH = LANE_WIDTH / 2 + 1;
+
+const commitTitle = (c: Commit) => `${c.subject}\n${c.author} <${c.authorEmail}>`;
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 

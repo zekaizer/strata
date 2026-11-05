@@ -1818,3 +1818,70 @@ body:not(.hover-off) .file:hover .file-actions,
   line-height: 14px;
   color: var(--vscode-descriptionForeground);
 }
+
+/* The refs of the commit whose graph node the pointer rests on (ref-card.ts). */
+.ref-card {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: min(360px, calc(100vw - 8px));
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent));
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+}
+
+.ref-card[hidden] {
+  display: none;
+}
+
+.ref-card-line {
+  --badge-color: var(--badge-branch);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.ref-card-line .codicon {
+  flex: none;
+  color: var(--badge-color);
+}
+
+.ref-card-remote {
+  --badge-color: var(--badge-remote);
+}
+
+.ref-card-tag {
+  --badge-color: var(--badge-tag);
+}
+
+.ref-card-head .ref-card-text {
+  font-weight: 600;
+}
+
+.ref-card-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ref-card-note,
+.ref-card-more {
+  flex: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.92em;
+}
+
+.ref-card-line.hidden-badge .ref-card-text,
+.ref-card-line.hidden-badge .codicon {
+  color: var(--vscode-disabledForeground);
+}

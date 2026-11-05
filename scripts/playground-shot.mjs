@@ -16,12 +16,12 @@ try {
   process.exit(1);
 }
 
-// Usage: node scripts/playground-shot.mjs [outDir] [WxH] [query] [hoverSelector]
-//   e.g. query "repo=octopus&select=1", hoverSelector ".expansion .file"
+// Usage: node scripts/playground-shot.mjs [outDir] [WxH] [query] [hover]
+//   e.g. query "repo=octopus&select=1", hover ".expansion .file" (a selector) or "@30,394" (a point)
 const outDir = process.argv[2] ?? 'artifacts/playground';
 const [width, height] = (process.argv[3] ?? '1200x800').split('x').map(Number);
 const query = process.argv[4] ?? 'repo=branchy&select=1';
-/** Optional CSS selector to hover before the screenshot (e.g. to show row actions). */
+/** Optional CSS selector, or "@x,y" in CSS px, to hover before the screenshot (e.g. to show row actions). */
 const hover = process.argv[5];
 const root = 'out/playground';
 const types = {
@@ -59,7 +59,13 @@ for (const theme of ['dark', 'light', 'high-contrast', 'high-contrast-light']) {
   await page.waitForFunction(() => window.__strataSent.some((m) => m.type === 'ready'));
   // Let pages, layout and any requested selection settle.
   await page.waitForTimeout(400);
-  if (hover) {
+  if (hover?.startsWith('@')) {
+    const [x, y] = hover.slice(1).split(',').map(Number);
+    await page.mouse.move(x - 20, y);
+    await page.mouse.move(x, y, { steps: 4 });
+    // Past the ref card's show delay.
+    await page.waitForTimeout(600);
+  } else if (hover) {
     await page.hover(hover);
     await page.waitForTimeout(100);
   }
