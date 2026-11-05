@@ -113,6 +113,8 @@ export type WebviewToHost =
 /** Webview state reported for integration tests. */
 export interface ProbeState {
   generation: number;
+  /** Root of the repository shown. */
+  repo: string | undefined;
   commits: number;
   laidOut: number;
   done: boolean;

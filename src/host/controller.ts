@@ -20,7 +20,8 @@ import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHo
 import { setContext } from './context.ts';
 import { readUnmerged, readUpstream } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
-import type { GitApi, GitRepository } from './git-api.ts';
+import type { RepoKey } from '../core/repos.ts';
+import { repoKey, type GitApi, type GitRepository } from './git-api.ts';
 
 const REFRESH_DEBOUNCE_MS = 400;
 /** A first page slower than this suggests writing a commit-graph (git's topological walk reads all history without one). */
@@ -46,6 +47,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private readonly env: FlowEnv;
   private disposed = false;
   private repo: GitRepository | undefined;
+  private key: RepoKey | undefined;
   private reader: LogReader | undefined;
   private generation = 0;
   private options: ViewOptions = DEFAULT_OPTIONS;
@@ -88,7 +90,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
         if (!this.repo) void this.start();
       }),
       api.onDidCloseRepository((r) => {
-        if (r === this.repo) void this.start();
+        if (repoKey(r) === this.key) void this.start();
       }),
     );
   }
@@ -117,10 +119,12 @@ export class GraphController implements vscode.Disposable, FlowHost {
     if (options) this.options = options;
     const active = vscode.window.activeTextEditor?.document.uri;
     const repo = (active && this.api.getRepository(active)) ?? this.api.repositories[0];
-    if (repo !== this.repo) {
+    const key = repo && repoKey(repo);
+    if (key !== this.key) {
       this.setUndo(undefined);
       this.repoSubscription?.dispose();
       this.repo = repo;
+      this.key = key;
       this.stashCache = stashCache();
       this.repoSubscription =
         repo &&

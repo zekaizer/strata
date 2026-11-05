@@ -2221,6 +2221,7 @@ class App {
     this.flushRender();
     return {
       generation: this.generation,
+      repo: this.repo?.root,
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,

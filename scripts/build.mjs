@@ -100,6 +100,7 @@ if (playground) {
       entryPoints: [
         ...(await listTests('test/integration')),
         ...(await listTests('test/perf')),
+        ...(await listTests('test/multirepo')),
         'test/restart/driver.ts',
       ],
       outdir: 'out/test',
