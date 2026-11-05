@@ -81,6 +81,8 @@ describe('repository state', () => {
       staged: 0,
       unstaged: 0,
       submodules: 0,
+      conflicted: 0,
+      untracked: undefined,
     });
   });
 
@@ -94,6 +96,21 @@ describe('repository state', () => {
     assert.deepEqual([...w.paths].sort(), ['f.txt', 'other.txt']);
     assert.equal(w.staged, 1);
     assert.equal(w.unstaged, 1);
+    assert.equal(w.untracked, undefined);
+  });
+
+  it('counts untracked files on request, each file of a new folder, and conflicts apart', async () => {
+    const d = repo();
+    mkdirSync(join(d, 'notes'));
+    writeFileSync(join(d, 'notes', 'a.txt'), 'a\n');
+    writeFileSync(join(d, 'notes', 'b.txt'), 'b\n');
+    writeFileSync(join(d, 'u.txt'), 'u\n');
+    stop(d, 'merge', 'topic');
+    const w = await readWorkingChanges('git', d, { untracked: true });
+    assert.deepEqual(
+      { staged: w.staged, unstaged: w.unstaged, conflicted: w.conflicted, untracked: w.untracked },
+      { staged: 1, unstaged: 0, conflicted: 1, untracked: 3 },
+    );
   });
 
   it('tells deletions from the index (git rm) from deleted files git still tracks', async () => {
