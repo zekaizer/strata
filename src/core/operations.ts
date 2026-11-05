@@ -64,6 +64,7 @@ export type Operation =
       setUpstream: boolean;
       forceWithLease: string | undefined;
     }
+  | { kind: 'pushTag'; remote: string; tag: string }
   /** Deletes full ref `ref` on `remote`. `lease`: the commit it must still be at there. */
   | { kind: 'deleteRemoteRef'; remote: string; ref: string; lease: string | undefined };
 
@@ -174,6 +175,8 @@ export function argv(op: Operation): string[] {
         op.remote,
         `refs/heads/${op.branch}:${op.dest}`,
       ];
+    case 'pushTag':
+      return ['push', '--progress', op.remote, `refs/tags/${op.tag}`];
     case 'deleteRemoteRef':
       return [
         'push',

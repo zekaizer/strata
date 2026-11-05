@@ -6,6 +6,8 @@ export type GitErrorKind =
   | 'rejected'
   /** A hook or the server refused the push; forcing cannot help. */
   | 'remoteRejected'
+  /** A tag push refused because the remote has a different tag of that name. */
+  | 'tagExists'
   /** No common commit, e.g. in a shallow clone. */
   | 'unrelated'
   | 'conflict'
@@ -44,6 +46,7 @@ const PATTERNS: readonly [RegExp, GitErrorKind][] = [
   [IN_THE_WAY, 'untrackedOverwrite'],
   [/is already checked out at|is already used by worktree at|used by worktree at/, 'checkedOutElsewhere'],
   [/\[remote rejected\]/, 'remoteRejected'],
+  [/\[rejected\][^\n]*\(already exists\)/, 'tagExists'],
   [/\[rejected\]|Updates were rejected/, 'rejected'],
   [/refusing to merge unrelated histories/, 'unrelated'],
   [/is not fully merged/, 'notMerged'],

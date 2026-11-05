@@ -9,12 +9,14 @@ import {
   NO_REMOTE,
   noUpstream,
   publishPick,
+  pushTagPick,
   PULL_NOTES,
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
   quote,
   REMOTE_DOING,
   REMOTE_DONE,
+  tagExistsOnRemote,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -197,16 +199,19 @@ async function rejected(
     await finish(host, { message: REMOTE_DONE.forcePushed(op.branch, destName) });
 }
 
+/** The remote to push to: the only one, or the user's choice with remote.pushDefault (or origin) first. */
+async function pickRemote(host: FlowHost, title: string): Promise<string | undefined> {
+  if (!hasRemote(host)) return undefined;
+  const preferred = (await readConfig(host.git, host.cwd, 'remote.pushDefault')) ?? 'origin';
+  const ordered = [...host.refs.remotes].sort((a, b) => Number(b === preferred) - Number(a === preferred));
+  return ordered.length === 1
+    ? ordered[0]
+    : host.ui.pick({ title, items: ordered.map((r) => ({ label: r, value: r })) });
+}
+
 /** Pushes `branch` to a remote of the user's choice and makes that its upstream. */
 export async function publish(host: FlowHost, branch: string): Promise<void> {
-  if (!hasRemote(host)) return;
-  const remotes = host.refs.remotes;
-  const preferred = (await readConfig(host.git, host.cwd, 'remote.pushDefault')) ?? 'origin';
-  const ordered = [...remotes].sort((a, b) => Number(b === preferred) - Number(a === preferred));
-  const remote =
-    ordered.length === 1
-      ? ordered[0]
-      : await host.ui.pick({ title: publishPick(branch), items: ordered.map((r) => ({ label: r, value: r })) });
+  const remote = await pickRemote(host, publishPick(branch));
   if (remote === undefined) return;
   const op: Operation = {
     kind: 'push',
@@ -218,6 +223,23 @@ export async function publish(host: FlowHost, branch: string): Promise<void> {
   };
   if (await remoteRun(host, REMOTE_DOING.publishing(branch, remote), remote, op))
     await finish(host, { message: REMOTE_DONE.published(branch, remote) });
+}
+
+/** Pushes `tag` to a remote of the user's choice; git refuses to replace a different tag there. */
+export async function pushTag(host: FlowHost, tag: string): Promise<void> {
+  const remote = await pickRemote(host, pushTagPick(tag));
+  if (remote === undefined) return;
+  try {
+    if (!(await remoteRun(host, REMOTE_DOING.pushingTag(tag, remote), remote, { kind: 'pushTag', remote, tag })))
+      return;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'tagExists')) throw e;
+    notify(host, 'error', tagExistsOnRemote(tag, remote), ['Show Output'], () => {
+      host.runner.showOutput();
+    });
+    return;
+  }
+  await finish(host, { message: REMOTE_DONE.tagPushed(tag, remote) });
 }
 
 /**

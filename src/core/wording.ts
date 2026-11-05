@@ -847,6 +847,10 @@ export function deleteRemoteBranchConfirmation(
 }
 
 export const publishPick = (branch: string): string => `Publish '${branch}' to…`;
+export const pushTagPick = (tag: string): string => `Push tag '${tag}' to…`;
+
+export const tagExistsOnRemote = (tag: string, remote: string): string =>
+  `'${remote}' already has a different tag '${tag}'; nothing was pushed.`;
 
 export const REMOTE_DONE = {
   fetched: (remote: string | undefined): string => `Fetched ${remote ?? 'all remotes'}`,
@@ -854,6 +858,7 @@ export const REMOTE_DONE = {
   pushed: (branch: string, upstream: string): string => `Pushed '${branch}' to ${upstream}`,
   forcePushed: (branch: string, upstream: string): string => `Force pushed '${branch}' to ${upstream}`,
   remoteBranchDeleted: (branch: string, remote: string): string => `Deleted branch '${branch}' from ${remote}`,
+  tagPushed: (tag: string, remote: string): string => `Pushed tag '${tag}' to ${remote}`,
   remoteBranchGone: (name: string, remote: string): string => `'${name}' was already gone from ${remote}`,
   upToDate: 'Already up to date',
 };
@@ -862,6 +867,7 @@ export const REMOTE_DOING = {
   fetching: (remote: string | undefined): string => `Fetching ${remote ?? 'all remotes'}`,
   pushing: (branch: string, dest: string): string => `Pushing '${branch}' to ${dest}`,
   publishing: (branch: string, remote: string): string => `Publishing '${branch}' to ${remote}`,
+  pushingTag: (tag: string, remote: string): string => `Pushing tag '${tag}' to ${remote}`,
   deletingBranch: (branch: string, remote: string): string => `Deleting '${branch}' from ${remote}`,
 };
 

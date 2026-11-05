@@ -155,6 +155,7 @@ export const COMMANDS = {
     titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
     writes: true,
   },
+  'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
   'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
   'strata.copyRefName': {
     title: 'Copy Name',

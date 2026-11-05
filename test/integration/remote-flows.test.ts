@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { branchMenu, flowSuite, reload, remoteMenu, run } from './flow-helpers.ts';
+import { branchMenu, flowSuite, reload, remoteMenu, run, tagMenu } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 const IDENTITY = ['-c', 'user.name=Other Person', '-c', 'user.email=other@example.com'];
@@ -273,6 +273,29 @@ describe('remote operations', () => {
     assert.equal(ui.of('confirm').length, 1);
     assert.deepEqual(errors(), []);
     assert.equal(tracked('origin/strata-x'), '');
+  });
+
+  it('pushes a tag to the remote picked, offering the push default first', async () => {
+    const mirror = join(root, 'mirror.git');
+    execFileSync('git', ['init', '--quiet', '--bare', mirror]);
+    git('remote', 'add', 'mirror', mirror);
+    git('config', 'remote.pushDefault', 'mirror');
+    git('tag', 'strata-v1', 'main~1');
+    await reload(panel());
+    ui.choose('origin');
+    await run('strata.pushTag', tagMenu('strata-v1'));
+    assert.deepEqual(ui.first('pick').items, ['mirror', 'origin']);
+    assert.deepEqual(errors(), []);
+    assert.equal(remote('rev-parse', 'refs/tags/strata-v1'), git('rev-parse', 'main~1'));
+  });
+
+  it('says so when the remote has a different tag of that name', async () => {
+    git('push', '--quiet', 'origin', 'main~1:refs/tags/strata-v1');
+    git('tag', 'strata-v1', 'main');
+    await reload(panel());
+    await run('strata.pushTag', tagMenu('strata-v1'));
+    assert.equal(errors()[0]?.message, "'origin' already has a different tag 'strata-v1'; nothing was pushed.");
+    assert.equal(remote('rev-parse', 'refs/tags/strata-v1'), git('rev-parse', 'main~1'));
   });
 
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {

@@ -33,7 +33,7 @@ import {
   skipCommit,
   sourceOf,
 } from './flows/history.ts';
-import { deleteRemoteBranch, fetchRemote, publish, pull, push } from './flows/remote.ts';
+import { deleteRemoteBranch, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
@@ -242,6 +242,7 @@ const handlers = (env: FlowEnv): Handlers => ({
     push(host, optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch),
   ),
   'strata.publish': on(['branch'], (host, t) => publish(host, t.ref.short)),
+  'strata.pushTag': on(['tag'], (host, t) => pushTag(host, t.ref.short)),
   'strata.resolveConflicts': async () => {
     const host = panel().flowHost();
     await resolveConflicts(host, await readUnmerged(host.git, host.cwd));

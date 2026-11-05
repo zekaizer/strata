@@ -203,6 +203,12 @@
         "enablement": "!strata.busy"
       },
       {
+        "command": "strata.pushTag",
+        "title": "Push Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.renameBranch",
         "title": "Rename Branch...",
         "category": "Strata",
@@ -502,6 +508,11 @@
           "group": "3_remote@1"
         },
         {
+          "command": "strata.pushTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "3_remote@1"
+        },
+        {
           "command": "strata.renameBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
           "group": "4_edit@1"
@@ -674,6 +685,10 @@
         {
           "command": "strata.fetch",
           "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.pushTag",
+          "when": "false"
         },
         {
           "command": "strata.renameBranch",

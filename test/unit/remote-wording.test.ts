@@ -8,7 +8,9 @@ import {
   noUpstream,
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
+  pushTagPick,
   REMOTE_DONE,
+  tagExistsOnRemote,
 } from '../../src/core/wording.ts';
 
 describe('wording of remote operations', () => {
@@ -89,6 +91,9 @@ describe('wording of remote operations', () => {
     assert.equal(REMOTE_DONE.published('x', 'origin'), "Published 'x' to origin");
     assert.equal(REMOTE_DONE.pushed('x', 'origin/x'), "Pushed 'x' to origin/x");
     assert.equal(REMOTE_DONE.upToDate, 'Already up to date');
+    assert.equal(pushTagPick('v1'), "Push tag 'v1' to…");
+    assert.equal(REMOTE_DONE.tagPushed('v1', 'origin'), "Pushed tag 'v1' to origin");
+    assert.equal(tagExistsOnRemote('v1', 'origin'), "'origin' already has a different tag 'v1'; nothing was pushed.");
     assert.equal(REMOTE_DONE.remoteBranchDeleted('x', 'origin'), "Deleted branch 'x' from origin");
     assert.equal(REMOTE_DONE.remoteBranchGone('origin/x', 'origin'), "'origin/x' was already gone from origin");
   });

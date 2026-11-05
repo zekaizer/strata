@@ -94,7 +94,9 @@ operation is stopped, Continue, Abort and Skip.
 - **Branches and tags:** Checkout (a remote branch checks out its local
   branch, or creates one that tracks it), Create Branch, Create Tag, Rename,
   Delete and Copy Name. Deleting a branch says which commits no other branch
-  or tag has.
+  or tag has. Push Tag pushes a tag to a remote (you pick one when there are
+  several), and says so when the remote already has a different tag of that
+  name.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
   Branch to Here in any of git's modes. Each confirmation says what happens to

@@ -290,6 +290,18 @@ describe('operations', () => {
     assert.equal(run(c, 'branch', '--remotes', '--list', 'origin/topic'), '');
   });
 
+  it('pushes a tag, refusing to replace a different tag of that name', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', origin, c);
+    run(c, 'tag', '--annotate', '--message', 'v1', 'v1', 'main');
+    await op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' });
+    assert.equal(run(origin, 'rev-parse', 'v1'), run(c, 'rev-parse', 'v1'));
+    await op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' });
+    run(c, 'tag', '--force', 'v1', 'main');
+    await assert.rejects(op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' }), { kind: 'tagExists' });
+  });
+
   it('pushes to an upstream branch of another name', async () => {
     const origin = repo();
     const c = join(root, `clone${n++}`);

@@ -20,6 +20,10 @@ describe('classifyGitError', () => {
     ],
     [' ! [rejected]        (delete) -> topic (stale info)\nerror: failed to push some refs', 'rejected'],
     ["fatal: couldn't find remote ref refs/heads/topic", 'noRemoteRef'],
+    [
+      " ! [rejected]        v1 -> v1 (already exists)\nerror: failed to push some refs to 'origin'\nhint: Updates were rejected because the tag already exists in the remote.",
+      'tagExists',
+    ],
     ['fatal: refusing to merge unrelated histories', 'unrelated'],
     [
       'CONFLICT (content): Merge conflict in f.txt\nAutomatic merge failed; fix conflicts and then commit the result.',
