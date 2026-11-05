@@ -263,16 +263,100 @@ body:not(.hover-off) .popover-item:hover {
   display: none;
 }
 
-/* Below the refs, which scroll: the stash option stays in view. */
-.popover-stashes {
+/* Below the refs, which scroll: the badge and stash options stay in view. */
+.popover-section {
   flex: none;
   margin-top: 4px;
   padding-top: 2px;
   border-top: 1px solid var(--separator);
 }
 
-.popover-stashes[hidden] {
+.popover-section[hidden],
+.popover-actions[hidden],
+.ref-filter-hidden[hidden] {
   display: none;
+}
+
+/* The ref name may ellipsize; the hidden count stays readable. */
+.ref-filter-hidden {
+  flex: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+.popover-pattern {
+  padding-bottom: 0;
+}
+
+.popover-row {
+  display: flex;
+  align-items: center;
+  margin-right: 6px;
+}
+
+.popover-row .popover-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.popover-eye {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+/* The eye shows on hover and focus, and stays on rows whose badge is hidden. */
+.popover-row:not(.badge-hidden) .popover-eye {
+  opacity: 0;
+}
+body:not(.hover-off) .popover-row:hover .popover-eye,
+.popover-row .popover-eye:focus-visible {
+  opacity: 1;
+}
+
+.popover-row.badge-hidden .popover-item {
+  color: var(--vscode-disabledForeground);
+}
+
+.popover-rules {
+  max-height: 132px;
+  overflow: auto;
+}
+
+.popover-rule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px;
+  padding: 0 0 0 7px;
+}
+
+.popover-rule-pattern {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--vscode-editor-font-family, monospace);
+}
+
+.popover-rule-count {
+  flex: none;
+  min-width: 2ch;
+  text-align: right;
+  color: var(--vscode-descriptionForeground);
+}
+
+.popover-rule .icon-button {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.popover-rule .icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+body:not(.hover-off) .popover-rule .icon-button:not(:disabled):hover,
+body:not(.hover-off) .popover-eye:hover {
+  background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* Narrow toolbars keep the icons and drop the labels. */

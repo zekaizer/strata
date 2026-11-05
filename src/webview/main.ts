@@ -283,15 +283,22 @@ class App {
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
-    this.refFilter = new RefFilter(
-      this.toolbar,
-      (refs) => {
+    this.refFilter = new RefFilter(this.toolbar, {
+      onRefs: (refs) => {
         this.setOptions({ ...this.options, refs });
       },
-      (show) => {
+      onShowStashes: (show) => {
         this.setShowStashes(show);
       },
-    );
+      onBadgeRules: (rules) => {
+        vscode.postMessage({ type: 'setBadgeRules', rules });
+      },
+      onShowHiddenBadges: (show) => {
+        this.showHiddenBadges = show;
+        this.applyBadgeRules();
+        this.relist();
+      },
+    });
     this.stashButton.append(
       el('span', 'codicon codicon-git-stash'),
       el('span', 'tool-label stash-count'),
@@ -739,6 +746,11 @@ class App {
   private applyBadgeRules(): void {
     this.hiddenBadges = hiddenRefs(this.badgeRules, this.refs);
     this.badgeRefsByHash = shownRefs(this.refsByHash, this.showHiddenBadges ? new Set() : this.hiddenBadges);
+    this.refFilter.updateBadges({
+      rules: this.badgeRules,
+      hidden: this.hiddenBadges,
+      showHidden: this.showHiddenBadges,
+    });
   }
 
   private setStashes(stashes: StashEntry[]): void {
@@ -2374,6 +2386,7 @@ class App {
       })(),
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
+      refFilterButton: this.refFilter.button.textContent,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
           !f.matches(':hover') &&

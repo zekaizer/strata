@@ -126,6 +126,8 @@ export interface ProbeState {
   rowLabels: Record<string, string>;
   /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
   operationNotes: Record<string, string>;
+  /** Text of the toolbar's ref filter button, e.g. "All · 2 hidden". */
+  refFilterButton: string;
   /** Label of the toolbar's stash count button; empty while it is hidden. */
   stashButton: string;
   /** Rendered stash rows by row index: badge, subject cell and aria-label text, and menu context. */
