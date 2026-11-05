@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFile, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { classifyGitError, parseProgress, type GitErrorKind } from '../core/git-error.ts';
-import { argv, type Operation } from '../core/operations.ts';
+import { argv, env, type Operation } from '../core/operations.ts';
 import { gitEnv } from './env.ts';
 import { runGit } from './run.ts';
 
@@ -85,7 +85,7 @@ export function runGitOp(
   });
 }
 
-/** Runs `op`; rejects like runGitOp. */
+/** Runs `op` with its environment (env()) over `opts.env`; rejects like runGitOp. */
 export async function runOperation(
   git: string,
   cwd: string,
@@ -93,7 +93,7 @@ export async function runOperation(
   opts: OpOptions = {},
 ): Promise<{ stdout: string; stderr: string }> {
   try {
-    return await runGitOp(git, cwd, argv(op), opts);
+    return await runGitOp(git, cwd, argv(op), { ...opts, env: { ...opts.env, ...env(op) } });
   } catch (e) {
     if (op.kind === 'merge' && op.autostash && e instanceof GitOpError)
       await applyLeftMergeAutostash(git, cwd, opts.env === undefined ? {} : { env: opts.env });

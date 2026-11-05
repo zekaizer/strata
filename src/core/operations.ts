@@ -1,4 +1,12 @@
 import type { OperationKind } from './repo-state.ts';
+import { shellCommand } from './shell.ts';
+
+/** Who wrote a commit and when: `date` as git stores it, "<unix seconds> <+hhmm>". */
+export interface Ident {
+  name: string;
+  email: string;
+  date: string;
+}
 
 /** Reset modes, in increasing order of what they throw away. */
 export type ResetMode = 'soft' | 'mixed' | 'keep' | 'hard';
@@ -78,7 +86,23 @@ export type Operation =
   | { kind: 'deleteRemoteRef'; remote: string; ref: string; lease: string | undefined }
   /** `force`: once for a worktree with changes, twice for a locked one. `path`: as git lists it. */
   | { kind: 'removeWorktree'; path: string; force: 0 | 1 | 2 }
-  | { kind: 'pruneWorktrees' };
+  | { kind: 'pruneWorktrees' }
+  /**
+   * A commit object of `tree` on `parents` with `author`, committed now by the user; prints its id.
+   * `message` is used as given (cleaned up by the caller). `sign`: GPG-sign it, as commit.gpgSign
+   * asks (commit-tree does not read that setting).
+   */
+  | { kind: 'commitTree'; tree: string; parents: readonly string[]; message: string; author: Ident; sign: boolean }
+  /**
+   * Moves `ref` (a full ref name, or HEAD when detached, which is not followed) to `to`, failing
+   * unless it is still at `from`. `reason` goes into the reflog.
+   */
+  | { kind: 'updateRef'; ref: string; to: string; from: string; reason: string }
+  /**
+   * An interactive rebase of HEAD onto `base` (undefined: from the root) running the todo list
+   * Strata wrote to `todoPath` instead of the one git proposes.
+   */
+  | { kind: 'rebaseTodo'; base: string | undefined; todoPath: string; autostash: boolean };
 
 /** How many commits further back Fetch More History reaches in a shallow clone. */
 export const MORE_HISTORY = 100;
@@ -94,6 +118,34 @@ const stash = (index: number) => `stash@{${index}}`;
 const merge = (migrate: boolean) => (migrate ? ['--merge'] : []);
 const mainline = (parent: number | undefined) => (parent === undefined ? [] : ['--mainline', String(parent)]);
 const autostash = (on: boolean) => [on ? '--autostash' : '--no-autostash'];
+
+/** What a plain rebase does: no other branch moves, merges are not kept, no fixup! commit is reordered. */
+const PLAIN_REBASE = [
+  '-c',
+  'rebase.updateRefs=false',
+  '-c',
+  'rebase.rebaseMerges=false',
+  '-c',
+  'rebase.autoSquash=false',
+];
+
+/** Environment variables an operation needs besides the arguments (git >= 2.34). */
+export function env(op: Operation): Record<string, string> {
+  switch (op.kind) {
+    case 'commitTree':
+      // '@': the date is read as seconds since the epoch, however small.
+      return {
+        GIT_AUTHOR_NAME: op.author.name,
+        GIT_AUTHOR_EMAIL: op.author.email,
+        GIT_AUTHOR_DATE: `@${op.author.date}`,
+      };
+    case 'rebaseTodo':
+      // git runs the sequence editor through its shell (sh on Windows too) with the todo file's path.
+      return { GIT_SEQUENCE_EDITOR: `cp ${shellCommand([op.todoPath], 'posix')}` };
+    default:
+      return {};
+  }
+}
 
 /** The git arguments of an operation (git >= 2.34). */
 export function argv(op: Operation): string[] {
@@ -142,7 +194,7 @@ export function argv(op: Operation): string[] {
       // The confirmation names what a plain rebase does: no other branch moves, merges are dropped
       // (their commits replayed one by one), and no fixup! commits are reordered. Unknown keys are ignored.
       return [
-        ...['-c', 'rebase.updateRefs=false', '-c', 'rebase.rebaseMerges=false', '-c', 'rebase.autoSquash=false'],
+        ...PLAIN_REBASE,
         'rebase',
         ...autostash(op.autostash),
         ...(op.from === undefined ? [op.onto] : ['--onto', op.onto, op.from]),
@@ -213,5 +265,24 @@ export function argv(op: Operation): string[] {
       return ['worktree', 'remove', ...Array<string>(op.force).fill('--force'), '--', op.path];
     case 'pruneWorktrees':
       return ['worktree', 'prune'];
+    case 'commitTree':
+      return [
+        'commit-tree',
+        ...(op.sign ? ['-S'] : []),
+        ...op.parents.flatMap((p) => ['-p', p]),
+        '-m',
+        op.message,
+        op.tree,
+      ];
+    case 'updateRef':
+      return ['update-ref', ...(op.ref === 'HEAD' ? ['--no-deref'] : []), '-m', op.reason, op.ref, op.to, op.from];
+    case 'rebaseTodo':
+      return [
+        ...PLAIN_REBASE,
+        'rebase',
+        '--interactive',
+        ...autostash(op.autostash),
+        op.base === undefined ? '--root' : op.base,
+      ];
   }
 }
