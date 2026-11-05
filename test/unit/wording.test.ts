@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   abortConfirmation,
+  COMMIT_GRAPH_OFFER,
   commandUnquotable,
   deleteBranchConfirmation,
   dirtySection,
@@ -217,5 +218,30 @@ describe('wording of undo and failures', () => {
 
   it('names the git that is too old to write', () => {
     assert.equal(gitTooOld('2.33.8'), 'Strata needs git 2.34 or newer to change repositories (found 2.33.8).');
+  });
+});
+
+/** VS Code's title case for buttons: every word capitalized but short conjunctions, articles and prepositions. */
+const titleCase = (label: string) =>
+  label
+    .split(' ')
+    .every(
+      (w, i) =>
+        (i > 0 && /^(a|an|and|as|at|but|by|for|in|into|nor|of|on|onto|or|the|to|with)$/.test(w)) || /^[^a-z]/.test(w),
+    );
+
+describe('commit-graph offer', () => {
+  it('labels its buttons in title case, as every other notification does', () => {
+    const labels = [
+      ...COMMIT_GRAPH_OFFER.graph('zephyr', false).buttons,
+      ...COMMIT_GRAPH_OFFER.graph('zephyr', true).buttons,
+      ...COMMIT_GRAPH_OFFER.filters('kernel/sched.c').buttons,
+      COMMIT_GRAPH_OFFER.later,
+      COMMIT_GRAPH_OFFER.never,
+    ];
+    assert.deepEqual(
+      labels.filter((l) => !titleCase(l)),
+      [],
+    );
   });
 });

@@ -1250,11 +1250,14 @@ export const PATH_HISTORY = {
     'Renames that change the file are not looked for in a partial clone: its contents are downloaded on demand.',
 } as const;
 
-const KEEP_GRAPH = 'Write and keep updated';
+const KEEP_GRAPH = 'Write and Keep Updated';
 
 /** The offer to write a commit-graph when history is slow to load. */
 export const COMMIT_GRAPH_OFFER = {
   keep: KEEP_GRAPH,
+  /** After the offer's buttons: asks again in the next window, or never. */
+  later: 'Not Now',
+  never: "Don't Ask Again",
   /** The repository has none: `forPaths` when a file or folder history was slow, which also needs filters. */
   graph: (repo: string, forPaths: boolean): { message: string; buttons: string[] } => ({
     message: forPaths
@@ -1264,7 +1267,7 @@ export const COMMIT_GRAPH_OFFER = {
       : `History of ${repo} loads slowly because the repository has no commit-graph. Writing one ` +
         '(git commit-graph write --reachable) makes the graph open in a fraction of the time. Kept updated, ' +
         'it also covers new commits as they come in.',
-    buttons: [KEEP_GRAPH, 'Write once'],
+    buttons: [KEEP_GRAPH, 'Write Once'],
   }),
   /** It has one without changed-path filters, and the history of `path` was slow. */
   filters: (path: string): { message: string; buttons: string[] } => ({

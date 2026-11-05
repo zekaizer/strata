@@ -100,7 +100,7 @@ to get started and the requirements.
   (click it to select that commit). In wide editors the message and the files
   sit side by side, and a tree that fits flows into columns.
 - Use the branch button in the toolbar to show only some refs (type to search,
-  **Show all** to reset), and **First parent** to follow only the main line of
+  **Show All** to reset), and **First parent** to follow only the main line of
   merges.
 - To hide badges, click **Badges** in the toolbar (it says **N hidden** once
   some are) and type a pattern under **Hide badges matching**: `*` matches any
@@ -418,7 +418,7 @@ commit-graph; without one, git again reads all history first.
 
 New commits (your own, fetched or rebased) are not in the commit-graph until it
 is written again. With `strata.keepCommitGraphUpdated` turned on (or **Write and
-keep updated** in the offer), Strata adds them in the background a few seconds
+Keep Updated** in the offer), Strata adds them in the background a few seconds
 after the history changes, which takes milliseconds even on the Linux kernel. It
 only updates repositories that already have a commit-graph.
 

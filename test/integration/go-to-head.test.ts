@@ -23,7 +23,7 @@ describe('go to HEAD', () => {
     return top >= 0 && top + s.rowHeights[Number(row)]! <= s.listHeight;
   };
   const goToHead = () => panel().simulate({ kind: 'click', selector: '.head-button' });
-  /** Ticks or unticks a ref in the branch filter (null: Show all) and waits for the history it shows. */
+  /** Ticks or unticks a ref in the branch filter (null: Show All) and waits for the history it shows. */
   const filter = async (ref: string | null, whole = true) => {
     const before = (await panel().probe()).generation;
     await panel().simulate({ kind: 'click', selector: '.ref-filter-button' });

@@ -1203,11 +1203,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const graph = await hasCommitGraph(git, this.cwd);
     if (graph && (!forPaths || (await hasChangedPaths(git, this.cwd)))) return;
     this.suggested.add(this.key);
-    const never = "Don't ask again";
+    const { later, never } = COMMIT_GRAPH_OFFER;
     const offer = graph
       ? COMMIT_GRAPH_OFFER.filters(this.pathName())
       : COMMIT_GRAPH_OFFER.graph(basename(this.cwd), forPaths);
-    const choice = await vscode.window.showInformationMessage(offer.message, ...offer.buttons, 'Not now', never);
+    const choice = await vscode.window.showInformationMessage(offer.message, ...offer.buttons, later, never);
     if (choice === COMMIT_GRAPH_OFFER.keep)
       await config.update('keepCommitGraphUpdated', true, vscode.ConfigurationTarget.Global);
     if (choice !== undefined && offer.buttons.includes(choice)) await this.writeCommitGraph(forPaths);
