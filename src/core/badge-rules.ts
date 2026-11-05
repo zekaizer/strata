@@ -38,30 +38,32 @@ export function hidingRule(rules: readonly BadgeRule[], short: string): BadgeRul
   return rule?.keep === false ? rule : undefined;
 }
 
-/** How many refs of `snapshot` each rule decides (is the last match of), the current branch aside. */
+/** How many refs of `snapshot` each rule decides (is the last match of), checked out branches aside. */
 export function ruleCounts(rules: readonly BadgeRule[], snapshot: RefSnapshot): number[] {
   const counts = rules.map(() => 0);
   const decide = decider(rules);
   for (const r of snapshot.refs) {
-    if (isCurrent(r, snapshot)) continue;
+    if (checkedOut(r, snapshot)) continue;
     const i = decide(r.short);
     if (i >= 0) counts[i]!++;
   }
   return counts;
 }
 
-const isCurrent = (r: Ref, snapshot: RefSnapshot): boolean => r.kind === 'branch' && r.short === snapshot.headBranch;
+/** The current branch, or a branch another worktree has checked out: its badge also names that worktree. */
+const checkedOut = (r: Ref, snapshot: RefSnapshot): boolean =>
+  r.kind === 'branch' && (r.short === snapshot.headBranch || snapshot.worktrees.some((w) => w.branch === r.name));
 
 /**
- * The refs of `snapshot` whose badges `rules` hide, by full name, with the rule hiding each. The
- * current branch is never hidden.
+ * The refs of `snapshot` whose badges `rules` hide, by full name, with the rule hiding each.
+ * Checked out branches (this worktree's or another's) are never hidden.
  */
 export function hiddenRefs(rules: readonly BadgeRule[], snapshot: RefSnapshot): Map<string, BadgeRule> {
   const hidden = new Map<string, BadgeRule>();
   if (rules.length === 0) return hidden;
   const decide = decider(rules);
   for (const r of snapshot.refs) {
-    if (isCurrent(r, snapshot)) continue;
+    if (checkedOut(r, snapshot)) continue;
     const rule = rules[decide(r.short)];
     if (rule?.keep === false) hidden.set(r.name, rule);
   }

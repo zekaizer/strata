@@ -777,7 +777,7 @@
         },
         {
           "command": "strata.hideBadge",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent && !strataInWorktree",
           "group": "6_hide@1"
         },
         {
@@ -792,7 +792,7 @@
         },
         {
           "command": "strata.hideSimilarBadges",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent && !strataInWorktree",
           "group": "6_hide@2"
         },
         {

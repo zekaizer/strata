@@ -111,7 +111,9 @@ to get started and the requirements.
   listed ref hides or shows just its badge; with nothing typed, the list shows
   the hidden badges. **Rules** lists the rules, the last matching one deciding;
   move or remove them there, or tick **Show hidden badges** to see every badge
-  until you close the graph. The current branch's badge is never hidden.
+  until you close the graph. A checked out branch's badge is never hidden: the
+  current branch's, and one another worktree has checked out, which names that
+  worktree.
 - Right-click a branch, remote branch or tag badge for **Hide Badge**, or for
   **Hide Similar Badges...**, which opens the badge popover with a pattern for
   refs named like it (`release/2.1` gives `release/*`) to check before hiding.
