@@ -2968,6 +2968,7 @@ class App {
       count.classList.toggle('over', subject > 72);
       const empty = cleanMessage(field.value) === '';
       save.setAttribute('aria-disabled', String(empty || ed.saving));
+      field.readOnly = ed.saving;
       save.title = empty ? 'Enter a message' : '';
       if (ed.saving) save.textContent = 'Saving…';
     };
