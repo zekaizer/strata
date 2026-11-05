@@ -7,6 +7,7 @@ import {
   alreadyReverted,
   HISTORY_DONE,
   mainlinePick,
+  mergeAnswer,
   mergeConfirmation,
   operationInProgress,
   pickConfirmation,
@@ -38,13 +39,48 @@ describe('wording of history operations', () => {
   });
 
   it('says how a merge with uncommitted changes records the result, and asks about the changes', () => {
-    const d = mergeConfirmation(merge, undefined, {
+    const d = mergeConfirmation({ ...merge, canFastForward: false }, undefined, {
       section: 'Uncommitted changes: 1 file.',
-      buttons: [{ id: 'stash', label: 'Stash & Merge' }],
-      mode: 'ff',
+      modes: [{ mode: 'ff', choices: ['stash', 'keep'] }],
     });
-    assert.equal(d.detail, "'main' fast-forwards to abc1234 (2 commits). Uncommitted changes: 1 file.");
-    assert.deepEqual(labels(d.buttons), ['Stash & Merge']);
+    assert.equal(
+      d.detail,
+      "Creates a merge commit on 'main' with 2 commits from 'topic'. Uncommitted changes: 1 file.",
+    );
+    assert.deepEqual(labels(d.buttons), ['Stash & Merge', 'Merge Keeping Changes']);
+    assert.deepEqual(mergeAnswer(d.buttons[1]!.id), { mode: 'ff', choice: 'keep' });
+    const pull = mergeConfirmation(merge, undefined, {
+      section: 'Uncommitted changes: 1 file.',
+      modes: [{ mode: 'ff', choices: ['stash'] }],
+    });
+    assert.equal(pull.detail, "'main' fast-forwards to abc1234 (2 commits). Uncommitted changes: 1 file.");
+  });
+
+  it('offers fast-forward or a merge commit with uncommitted changes too, each with what to do about them', () => {
+    const d = mergeConfirmation(merge, false, {
+      section: 'Uncommitted changes: 1 file.',
+      modes: [
+        { mode: 'noFastForward', choices: ['stash'] },
+        { mode: 'ff', choices: ['keep', 'stash'] },
+      ],
+    });
+    assert.equal(
+      d.detail,
+      "'main' can fast-forward to abc1234 (2 commits), or record a merge commit. Uncommitted changes: 1 file.",
+    );
+    assert.deepEqual(labels(d.buttons), [
+      'Stash & Create Merge Commit',
+      'Fast-Forward Keeping Changes',
+      'Stash & Fast-Forward',
+    ]);
+    assert.deepEqual(
+      d.buttons.map((b) => mergeAnswer(b.id)),
+      [
+        { mode: 'noFastForward', choice: 'stash' },
+        { mode: 'ff', choice: 'keep' },
+        { mode: 'ff', choice: 'stash' },
+      ],
+    );
   });
 
   it('says what a rebase replays and drops', () => {

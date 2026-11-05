@@ -88,6 +88,24 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-ahead'");
   });
 
+  it('offers fast-forward or a merge commit with uncommitted changes too', async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'mine\n');
+    await reload(panel());
+    ui.press('Create Merge Commit Keeping Changes');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    assert.deepEqual(ui.first('confirm').buttons, [
+      'Stash & Fast-Forward',
+      'Fast-Forward Keeping Changes',
+      'Stash & Create Merge Commit',
+      'Create Merge Commit Keeping Changes',
+    ]);
+    assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-ahead'));
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
   it('merges the clicked branch when a tag has the same name', async () => {
     branchWith('strata-rel', 'main', 'tagged.txt', 'tagged\n');
     git('tag', 'strata-rel');
@@ -560,7 +578,7 @@ describe('history operations', () => {
   it("merges after moving untracked files out of its way, with git's autostash both times", async () => {
     const tip = await inTheWay();
     write('NOTES.md', 'dirty\n');
-    ui.press('Stash & Merge', 'Stash It & Retry');
+    ui.press('Stash & Fast-Forward', 'Stash It & Retry');
     await run('strata.merge', branchMenu('strata-new', tip));
     assert.equal(ui.of('confirm')[1]?.message, "1 untracked file is in the way of the merge of 'strata-new': new.txt.");
     assert.equal(git('rev-parse', 'HEAD'), tip, 'fast-forwarded');

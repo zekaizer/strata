@@ -16,6 +16,7 @@ import {
   HISTORY_DONE,
   IN_THE_WAY_OF,
   mainlinePick,
+  mergeAnswer,
   mergeConfirmation,
   type MergeParents,
   opName,
@@ -271,22 +272,27 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
     readConfigBool(host.git, host.cwd, 'merge.ff'),
   ]);
   const facts = { src: src.name, into: h.name, short: from.short, count, canFastForward };
-  let mode: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
+  const preferred: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
+  let mode = preferred;
   let autostash = false;
   if (c.choices.choices.length > 0) {
+    // A pull merges as git pull would, without asking how.
+    const modes: MergeMode[] =
+      ask === 'always' && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
     const answer = await host.ui.confirm(
       mergeConfirmation(facts, mergeFf, {
         section: c.section,
-        buttons: stashButtons('merge', c.choices.choices),
-        mode,
+        modes: modes.map((m) => ({ mode: m, choices: c.choices.choices })),
       }),
     );
     if (answer === undefined) return;
-    autostash = answer === 'stash';
+    const picked = mergeAnswer(answer);
+    mode = picked.mode;
+    autostash = picked.choice === 'stash';
   } else if (ask === 'always') {
     const answer = await host.ui.confirm(mergeConfirmation(facts, mergeFf));
     if (answer === undefined) return;
-    mode = answer === 'noFastForward' ? 'noFastForward' : 'ff';
+    mode = answer;
   } else mode = 'ff';
   const r = await runStoppable(host, () =>
     runMovingUntracked(
