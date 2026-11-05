@@ -8,6 +8,7 @@ import {
   type Worktree,
 } from '../core/repo-state.ts';
 import { runGit } from './run.ts';
+import { sequencerTodo } from '../core/todo.ts';
 
 /** Files git keeps while an operation is stopped. */
 const MARKERS = [
@@ -18,6 +19,7 @@ const MARKERS = [
   'MERGE_AUTOSTASH',
   'CHERRY_PICK_HEAD',
   'REVERT_HEAD',
+  'sequencer/todo',
 ] as const;
 
 const text = (path: string) =>
@@ -43,7 +45,7 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
   const at = await gitPaths(git, cwd, MARKERS);
 
   let kind: OperationKind | undefined;
-  let state: Pick<OperationState, 'branch' | 'onto' | 'step' | 'applying' | 'autostash'> | undefined;
+  let state: Pick<OperationState, 'branch' | 'onto' | 'step' | 'applying' | 'autostash' | 'remaining'> | undefined;
   // rebase-apply is also used by `git am`, which Strata does not run; `applying` marks that case.
   const rebaseDir = (await exists(at['rebase-merge']))
     ? at['rebase-merge']
@@ -69,11 +71,12 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
       autostash,
     };
   } else {
-    const [mergeHead, pick, revert, mergeAutostash] = await Promise.all([
+    const [mergeHead, pick, revert, mergeAutostash, todo] = await Promise.all([
       text(at['MERGE_HEAD']),
       text(at['CHERRY_PICK_HEAD']),
       text(at['REVERT_HEAD']),
       exists(at['MERGE_AUTOSTASH']),
+      text(at['sequencer/todo']),
     ]);
     const found: [OperationKind, string | undefined][] = [
       ['merge', firstLine(mergeHead)],
@@ -81,8 +84,9 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
       ['revert', revert],
     ];
     const hit = found.find(([, h]) => h !== undefined);
-    if (!hit) return undefined;
-    kind = hit[0];
+    const between = hit || todo === undefined ? undefined : sequencerTodo(todo);
+    kind = hit?.[0] ?? between?.kind;
+    if (kind === undefined) return undefined;
     const branch = await runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(
       (b) => b.trim(),
       () => undefined,
@@ -91,8 +95,9 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
       branch,
       onto: undefined,
       step: undefined,
-      applying: hit[1],
+      applying: hit?.[1],
       autostash: kind === 'merge' && mergeAutostash,
+      ...(between ? { remaining: between.remaining } : {}),
     };
   }
   const conflicts = (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--']))
@@ -101,6 +106,7 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
   // git refuses to continue a cherry pick or revert that would commit nothing.
   const empty =
     (kind === 'cherryPick' || kind === 'revert') &&
+    state.applying !== undefined &&
     conflicts.length === 0 &&
     (await runGit(git, cwd, ['diff', '--cached', '--quiet', 'HEAD', '--']).then(
       () => true,

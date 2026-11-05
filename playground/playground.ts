@@ -213,6 +213,7 @@ function repoStates(state: string, d: PlaygroundData): [OperationState | undefin
       [{ ...merge, ...resolved }, undefined],
     ],
     sequencer: [[pick, { kind: 'pendingStash', stash, operation: 'cherry pick' }]],
+    sequencerBetween: [[{ ...pick, ...resolved, applying: undefined, remaining: 2 }, undefined]],
     leftover: [[undefined, { kind: 'restoreConflicted', stash, files: ['src/lexer.ts'] }]],
     leftoverResolved: [[undefined, { kind: 'restoreConflicted', stash, files: [] }]],
     pending: [[undefined, { kind: 'pendingStash', stash, operation: 'cherry pick' }]],

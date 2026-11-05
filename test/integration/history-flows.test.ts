@@ -483,6 +483,50 @@ describe('history operations', () => {
     assert.equal(git('stash', 'list'), '');
   });
 
+  /** A cherry pick of three commits from the command line, stopped at the second, which `git commit` then committed. */
+  const pickedPastCommit = async () => {
+    git('switch', '--quiet', '--create', 'strata-src', 'main~1');
+    const commits = [
+      commitFile('one.txt', 'one\n'),
+      commitFile('main.txt', 'picked\n'),
+      commitFile('three.txt', 'three\n'),
+    ];
+    git('switch', '--quiet', 'main');
+    assert.notEqual(spawnSync('git', ['cherry-pick', ...commits], { cwd: workspaceRoot() }).status, 0);
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    git('commit', '--quiet', '--no-edit');
+    await reload(panel());
+    return git('rev-parse', 'HEAD');
+  };
+
+  it('takes a cherry pick stopped between commits for one in progress, and Continue picks the rest', async () => {
+    await pickedPastCommit();
+    assert.equal(api().contextValue('strata.operation'), 'cherryPick');
+    const s = await waitFor('between banner', async () => {
+      const p = await panel().probe();
+      return p.banner?.state === 'sequencerBetween' && p;
+    });
+    assert.equal(
+      s.banner?.text,
+      "Cherry picking onto 'main' stopped between commits. Continue cherry picks the remaining 1 commit.",
+    );
+    assert.deepEqual(s.banner.buttons, ['Continue', 'Abort...']);
+    await run('strata.operation.continue');
+    assert.equal(git('log', '-1', '--format=%s'), 'three.txt: three');
+    assert.equal(git('log', '-1', '--skip=1', '--format=%s'), 'main.txt: picked');
+    assert.equal(api().contextValue('strata.operation'), '');
+  });
+
+  it('aborts a cherry pick stopped between commits, keeping the commits made', async () => {
+    const head = await pickedPastCommit();
+    ui.press('Abort Cherry Pick');
+    await run('strata.operation.abort');
+    assert.equal(ui.first('confirm').message, 'Abort the cherry pick?');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('rev-parse', 'HEAD'), head);
+  });
+
   it('restores the stash of a cherry pick that stopped once Continue finishes it', async () => {
     const picked = await conflicting();
     const notes = read('NOTES.md');

@@ -132,6 +132,25 @@ describe('the banner of a stopped operation', () => {
     );
   });
 
+  it('offers Continue and Abort for a cherry pick or revert stopped between commits', () => {
+    const between = { ...pick, applying: undefined, conflicts: [], conflictCount: 0, remaining: 2 };
+    const b = bannerOf(between, undefined, facts());
+    assert.equal(b?.state, 'sequencerBetween');
+    assert.equal(b.warning, false);
+    assert.equal(
+      text(b),
+      "Cherry picking onto 'main' stopped between commits. Continue cherry picks the remaining 2 commits.",
+    );
+    assert.deepEqual(
+      actions(b)?.map(([label]) => label),
+      ['Continue', 'Abort...'],
+    );
+    assert.equal(
+      text(bannerOf({ ...between, kind: 'revert', remaining: 0 }, undefined, facts())),
+      "Reverting on 'main' stopped between commits. Continue finishes the revert.",
+    );
+  });
+
   it("names a cherry pick's commit, and the stash Strata keeps its uncommitted changes in", () => {
     const pending: Leftover = { kind: 'pendingStash', stash: { hash: h('e'), index: 0 }, operation: 'cherry pick' };
     const b = bannerOf(pick, pending, facts());
