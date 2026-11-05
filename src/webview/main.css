@@ -838,6 +838,12 @@ body.keyboard-nav .scroller:focus .row.cursor {
   outline-offset: -1px;
 }
 
+/* Focus reached the list with no row to mark (none selected, or it is scrolled away): the list shows it. */
+body.keyboard-nav .scroller:focus:not(:has(.row.selected, .row.cursor)) {
+  outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder));
+  outline-offset: -1px;
+}
+
 .row.head .text {
   font-weight: 600;
 }
