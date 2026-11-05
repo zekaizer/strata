@@ -36,19 +36,23 @@ import { runGit } from '../../git/run.ts';
 import { fail, finish, notify, run, type Expect, type FlowHost } from '../flow.ts';
 import { merge, rebase, refSource, type Source } from './history.ts';
 
-/** Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it ran. */
+/**
+ * Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it
+ * ran. `rerun`: the command `op` is only the first step of.
+ */
 async function remoteRun(
   host: FlowHost,
   label: string,
   remote: string | undefined,
   op: Operation,
-  expect?: readonly Expect[],
+  opts: { expect?: readonly Expect[]; rerun?: string } = {},
 ): Promise<boolean> {
+  const { expect, rerun } = opts;
   try {
     return (await run(host, label, (exec) => exec(op), { remote: true, ...(expect ? { expect } : {}) })) !== undefined;
   } catch (e) {
     if (e instanceof GitOpError && (e.kind === 'auth' || e.kind === 'hostKey')) {
-      await fail(host, e, { name: remote, op, cwd: host.cwd });
+      await fail(host, e, { name: remote, op, cwd: host.cwd, ...(rerun ? { rerun } : {}) });
       return false;
     }
     throw e;
@@ -94,7 +98,8 @@ export async function pull(host: FlowHost): Promise<void> {
   }
   const fetch: Operation = { kind: 'fetch', remote: upstream.remote, ref: `refs/heads/${upstream.remoteBranch}` };
   try {
-    if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch))) return;
+    if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch, { rerun: 'Pull' })))
+      return;
   } catch (e) {
     if (!(e instanceof GitOpError && e.kind === 'noRemoteRef')) throw e;
     goneUpstream(host, branch, upstream.name);
@@ -297,7 +302,11 @@ export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false
   const op: Operation = { kind: 'deleteRemoteRef', remote, ref: dest, lease: tip.hash };
   const label = REMOTE_DOING.deletingBranch(branch, remote);
   try {
-    if (!(await remoteRun(host, label, remote, op, [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }])))
+    if (
+      !(await remoteRun(host, label, remote, op, {
+        expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+      }))
+    )
       return;
   } catch (e) {
     if (!(e instanceof GitOpError && e.kind === 'rejected')) throw e;

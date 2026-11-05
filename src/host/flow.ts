@@ -163,11 +163,14 @@ export function notify(
   );
 }
 
-/** Shows why an operation failed. `remote` names the remote operation, for a failed sign-in. */
+/**
+ * Shows why an operation failed. `remote` names the remote operation, for a failed sign-in;
+ * `rerun`: the command that ran it, when `op` is only its first step.
+ */
 export async function fail(
   host: Presenter,
   e: unknown,
-  remote?: { name: string | undefined; op: Operation; cwd: string },
+  remote?: { name: string | undefined; op: Operation; cwd: string; rerun?: string },
 ): Promise<void> {
   if (e instanceof Outdated) {
     void host.ui.notify('error', e.message);
@@ -175,7 +178,7 @@ export async function fail(
     return;
   }
   if (e instanceof GitOpError && remote && (e.kind === 'auth' || e.kind === 'hostKey')) {
-    const choice = await host.ui.confirm(signInConfirmation(remote.name, e.kind));
+    const choice = await host.ui.confirm(signInConfirmation(remote.name, e.kind, remote.rerun));
     if (choice === 'terminal') {
       const line = shellCommand(['git', ...argv(remote.op)], shellKind(vscode.env.shell));
       // Typed or pasted, a line the shell splits differently would run other commands.

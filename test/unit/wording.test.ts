@@ -203,6 +203,9 @@ describe('wording of undo and failures', () => {
       signInConfirmation('origin', 'hostKey').detail,
       'Connect to the host once from a terminal to accept its key.',
     );
+    // Pull's terminal command is only its fetch.
+    assert.match(signInConfirmation('origin', 'auth', 'Pull').detail, / to sign in there, then run Pull again\.$/);
+    assert.match(signInConfirmation('origin', 'hostKey', 'Pull').detail, / to accept its key, then run Pull again\.$/);
   });
 
   it('says why a command was not typed into the terminal', () => {

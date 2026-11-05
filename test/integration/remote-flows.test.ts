@@ -174,6 +174,17 @@ describe('remote operations', () => {
     assert.deepEqual(errors(), []);
   });
 
+  it("asks to pull again after signing in, since the terminal runs only the pull's fetch", async () => {
+    await publish();
+    git('switch', '--quiet', 'strata-pub');
+    git('remote', 'set-url', 'origin', 'ssh://strata.invalid/origin.git');
+    git('config', 'core.sshCommand', 'sh -c \'echo "Permission denied (publickey)." >&2; exit 255\'');
+    ui.press(undefined);
+    await run('strata.pull');
+    assert.equal(ui.first('confirm').message, "Strata couldn't sign in to 'origin'.");
+    assert.match(ui.first('confirm').detail, / to sign in there, then run Pull again\.$/);
+  });
+
   it('pulls from an upstream that is a local branch', async () => {
     git('branch', 'strata-feat', 'main');
     git('branch', '--track', 'strata-loc', 'strata-feat');

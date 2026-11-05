@@ -238,18 +238,23 @@ export const gitFailure = (message: string): string => message.trim().split('\n'
 export const gitTooOld = (found: string): string =>
   `Strata needs git 2.27 or newer to change repositories (found ${found}).`;
 
-/** A remote operation that git could not authenticate (auth) or whose host it does not know yet (hostKey). */
+/**
+ * A remote operation that git could not authenticate (auth) or whose host it does not know yet
+ * (hostKey). `rerun`: the command to run again afterwards, when the terminal runs only part of it.
+ */
 export function signInConfirmation(
   remote: string | undefined,
   kind: 'auth' | 'hostKey',
+  rerun?: string,
 ): Confirmation<'terminal' | 'output'> {
   const name = remote === undefined ? 'a remote' : `'${remote}'`;
+  const then = rerun === undefined ? '.' : `, then run ${rerun} again.`;
   return {
     message: kind === 'auth' ? `Strata couldn't sign in to ${name}.` : `Strata couldn't connect to ${name}.`,
     detail:
       kind === 'auth'
-        ? 'git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there.'
-        : 'Connect to the host once from a terminal to accept its key.',
+        ? `git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there${then}`
+        : `Connect to the host once from a terminal to accept its key${then}`,
     buttons: [
       { id: 'terminal', label: 'Run in Terminal' },
       { id: 'output', label: 'Show Output' },
