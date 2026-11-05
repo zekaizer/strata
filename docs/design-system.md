@@ -162,6 +162,13 @@ All tokens are custom properties on `:root` in `tokens.css`.
 | `--color-warning`            | `--vscode-list-warningForeground`, else `--vscode-editorWarning-foreground` | Warnings, autostash                    |
 | `--color-success`            | `--vscode-testing-iconPassed`, else `--vscode-charts-green`                 | "Copied"                               |
 | `--color-progress`           | `--vscode-progressBar-background`, else the focus color                     | Progress bars                          |
+| `--color-git-added`          | `--vscode-gitDecoration-addedResourceForeground`                            | Added files                            |
+| `--color-git-modified`       | `--vscode-gitDecoration-modifiedResourceForeground`                         | Modified files                         |
+| `--color-git-deleted`        | `--vscode-gitDecoration-deletedResourceForeground`                          | Deleted files                          |
+| `--color-git-renamed`        | `--vscode-gitDecoration-renamedResourceForeground`, else modified           | Renamed and copied files               |
+| `--color-git-staged`         | `--vscode-gitDecoration-stageModifiedResourceForeground`, else modified     | Staged changes                         |
+| `--color-git-untracked`      | `--vscode-gitDecoration-untrackedResourceForeground`                        | Untracked files                        |
+| `--color-git-conflict`       | `--vscode-gitDecoration-conflictingResourceForeground`, else warning        | Conflicted files                       |
 | `--badge-branch`             | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | Branch chips                           |
 | `--badge-remote`             | `--vscode-scmGraph-historyItemRemoteRefColor`, else charts purple           | Remote chips                           |
 | `--badge-tag`                | `--vscode-charts-yellow`                                                    | Tag chips                              |

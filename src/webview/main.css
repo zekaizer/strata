@@ -924,21 +924,21 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .status-A .file-status {
-  color: var(--vscode-gitDecoration-addedResourceForeground);
+  color: var(--color-git-added);
 }
 
 .status-M .file-status,
 .status-T .file-status {
-  color: var(--vscode-gitDecoration-modifiedResourceForeground);
+  color: var(--color-git-modified);
 }
 
 .status-D .file-status {
-  color: var(--vscode-gitDecoration-deletedResourceForeground);
+  color: var(--color-git-deleted);
 }
 
 .status-R .file-status,
 .status-C .file-status {
-  color: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-gitDecoration-modifiedResourceForeground));
+  color: var(--color-git-renamed);
 }
 
 .file-actions {
