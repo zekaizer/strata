@@ -17,6 +17,12 @@ to get started and the requirements.
   commit is no longer on its branch (after a rebase or amend) sits above the
   branch's tip and says so; an autostash git left behind shows in the warning
   color. Stashing or dropping updates the rows without reloading the history.
+- Other worktrees of the repository: a branch checked out in another worktree
+  names it inside its badge (`feature │ review`), with a lock when the worktree
+  is locked and struck through when its folder is gone; a worktree on a
+  detached HEAD has a badge of its own on that commit, and commits made there
+  show in the graph too. The graph follows what the other worktrees do: their
+  commits, switches, locks and removals.
 - Commit details: author, committer, full message, parents and changed files.
 - Click a changed file to open its diff in the VS Code diff editor; browse file
   after file without losing your place in the graph.
@@ -187,6 +193,16 @@ wait for it.
   one when there are several), and says so when the remote already has a
   different tag of that name. Delete Remote Tag deletes it there and keeps your
   local tag; that can't be undone.
+- **Worktrees:** right-click a worktree's name in a branch badge, or its own
+  badge, to **Open Worktree in New Window** or **in Current Window**, **Reveal
+  Worktree in File Explorer** (local windows only), **Copy Worktree Path**, or
+  **Show Worktree in Graph** when this window has it open. **Remove
+  Worktree...** says first what goes with it (its folder, its uncommitted
+  changes, its lock); the branch stays. A worktree whose folder is gone offers
+  **Prune Worktrees**. A branch another worktree has checked out has no
+  Checkout, Rename or Delete in its menu; when one is refused anyway (from the
+  keyboard, or the worktree appeared meanwhile), the notification names the
+  worktree and offers to show or open it, or to prune it and try again.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current Branch
   to Here in any of git's modes. Strata asks first only when there is a choice
