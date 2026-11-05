@@ -64,6 +64,8 @@ export interface FlowEnv {
   ui: Ui;
   readonly state: vscode.Memento;
   readonly badgeRules: BadgeRuleStore;
+  /** The Undo of the last operation in each repository, by RepoKey. */
+  readonly undos: Map<string, Undo>;
 }
 
 /** What Strata remembers about the stashes it pushed or restored in the graph's worktree (StashMark). */
@@ -78,7 +80,7 @@ export interface Leftovers {
   keep(hash: string): Promise<void>;
 }
 
-/** The graph a flow works on (implemented by GraphController). */
+/** The repository a flow works on, as the graph showed it when the flow started (a RepoSession). */
 export interface FlowHost extends RunnerHost {
   readonly ui: Ui;
   readonly runner: OpRunner;

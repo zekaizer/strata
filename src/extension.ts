@@ -30,6 +30,7 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
     ui: vscodeUi,
     state: context.workspaceState,
     badgeRules: new BadgeRuleStore(context.globalState),
+    undos: new Map(),
   };
   GraphPanel.env = env;
   const show = () => GraphPanel.show(context.extensionUri);

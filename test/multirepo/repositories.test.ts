@@ -1,12 +1,10 @@
 import * as assert from 'node:assert/strict';
-import { join } from 'node:path';
-import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
-import { commitMenu, run } from '../integration/flow-helpers.ts';
+import { commitMenu, reload, run } from '../integration/flow-helpers.ts';
 import { strata, waitFor } from '../integration/helpers.ts';
 import { ScriptedUi } from '../integration/scripted-ui.ts';
-import { allOpen, closeRepo, gitIn, openRepo, showing } from './helpers.ts';
+import { allOpen, branchMenuIn, closeRepo, commitTree, gitIn, openRepo, rootOf, startOn } from './helpers.ts';
 
 describe('several repositories', () => {
   const ui = new ScriptedUi();
@@ -49,21 +47,41 @@ describe('several repositories', () => {
     await run('strata.createBranch', commitMenu(head));
     try {
       assert.equal(api.contextValue('strata.canUndo'), true);
-      // The graph starts again on the active editor's repository.
-      const file = gitIn(shown, 'ls-files').split('\n')[0]!;
-      await vscode.window.showTextDocument(vscode.Uri.file(join(shown, file)), { preview: true });
-      const before = (await panel.probe()).generation;
-      await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
-      await waitFor('the reloaded graph', async () => {
-        const p = await panel.probe().catch(() => undefined);
-        return p !== undefined && p.generation !== before && p.done;
-      });
-      await showing(panel, shown);
+      await startOn(panel, shown);
       assert.equal(api.contextValue('strata.canUndo'), true);
     } finally {
-      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
       gitIn(shown, 'checkout', '--quiet', 'main');
       gitIn(shown, 'branch', '-D', 'strata-undo-kept');
+    }
+  });
+
+  it("acts on a flow's repository when its notification is clicked after the graph moved on", async () => {
+    const alpha = rootOf('alpha');
+    const beta = rootOf('beta');
+    await startOn(panel, alpha);
+    const before = gitIn(alpha, 'rev-parse', 'main');
+    gitIn(alpha, 'branch', 'strata-ahead', commitTree(alpha, before, 'Ahead'));
+    await reload(panel);
+    const toast = ui.later();
+    ui.press('Fast-Forward');
+    await run('strata.merge', branchMenuIn(alpha, 'strata-ahead'));
+    const click = await toast;
+    assert.notEqual(gitIn(alpha, 'rev-parse', 'main'), before);
+    const betaMain = gitIn(beta, 'rev-parse', 'main');
+    try {
+      await startOn(panel, beta);
+      ui.clear();
+      await click('Undo');
+      assert.equal(gitIn(alpha, 'rev-parse', 'main'), before, 'Undo moved main back in alpha');
+      assert.equal(gitIn(beta, 'rev-parse', 'main'), betaMain);
+      assert.deepEqual(
+        ui.asked.filter((q) => q.kind === 'notify' && q.message.startsWith('Undo is no longer')),
+        [],
+      );
+      assert.equal((await panel.probe()).repo, beta, 'the graph stays on beta');
+    } finally {
+      gitIn(alpha, 'reset', '--hard', '--quiet', before);
+      gitIn(alpha, 'branch', '-D', 'strata-ahead');
     }
   });
 });

@@ -10,6 +10,7 @@ import type {
 import type { FileChange, FileView } from '../core/details.ts';
 import type { Ref } from '../core/refs.ts';
 import { GraphController } from './controller.ts';
+import type { RepoSession } from './session.ts';
 import type { FlowEnv, FlowHost } from './flow.ts';
 import { isCommandId } from '../shared/commands.ts';
 import { getGitApi } from './git-api.ts';
@@ -123,24 +124,24 @@ export class GraphPanel implements vscode.Disposable {
     view: FileView | 'primary',
     beside: boolean,
   ): Promise<void> {
-    return this.requireController().openFileFromMenu(hash, base, file, view, beside);
+    return this.session().openFileFromMenu(hash, base, file, view, beside);
   }
 
   absolutePath(path: string): string {
-    return this.requireController().absolutePath(path);
+    return this.session().absolutePath(path);
   }
 
   shortHash(hash: string): Promise<string> {
-    return this.requireController().shortHash(hash);
+    return this.session().shortHash(hash);
   }
 
   copyCommitPatch(hash: string): Promise<void> {
-    return this.requireController().copyCommitPatch(hash);
+    return this.session().copyCommitPatch(hash);
   }
 
   /** Hides the badge of `ref` with a rule naming it. */
   hideBadge(ref: Ref): Promise<void> {
-    return this.requireController().hideBadge(ref);
+    return this.session().hideBadge(ref);
   }
 
   /** Opens the graph's ref filter searching for `search`. */
@@ -149,30 +150,31 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   copyStashPatch(hash: string): Promise<void> {
-    return this.requireController().copyStashPatch(hash);
+    return this.session().copyStashPatch(hash);
   }
 
   showStashes(): void {
-    this.requireController().showStashes();
+    this.session().showStashes();
   }
 
   copyFilePatch(hash: string, base: string | undefined, file: FileChange): Promise<void> {
-    return this.requireController().copyFilePatch(hash, base, file);
+    return this.session().copyFilePatch(hash, base, file);
   }
 
-  /** The graph flows change the repository through. */
+  /** The shown repository, which a flow started now works on until it ends. */
   flowHost(): FlowHost {
-    return this.requireController();
+    return this.session();
   }
 
-  private requireController(): GraphController {
-    if (!this.controller) throw new Error('the commit graph has not loaded a repository');
-    return this.controller;
+  private session(): RepoSession {
+    const s = this.controller?.shown;
+    if (!s) throw new Error('the commit graph has not loaded a repository');
+    return s;
   }
 
   /** Writes a commit-graph for the shown repository and reloads. */
   writeCommitGraph(): Promise<void> {
-    return this.controller?.writeCommitGraph() ?? Promise.resolve();
+    return this.controller?.shown?.writeCommitGraph() ?? Promise.resolve();
   }
 
   /** Resolves once the webview has booted. */

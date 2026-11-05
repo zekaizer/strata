@@ -8,6 +8,8 @@ import { setContext } from './context.ts';
 export interface RunnerHost {
   readonly git: string;
   readonly cwd: string;
+  /** Named in the output when set: there are several repositories to tell apart. */
+  readonly repoName: string | undefined;
   /** Tells the graph an operation started (label) or ended (undefined). */
   busy(label: string | undefined): void;
 }
@@ -88,7 +90,7 @@ export class OpRunner implements vscode.Disposable {
     onProgress: (p: { phase: string; percent: number }) => void,
   ): Promise<{ stdout: string; stderr: string }> {
     for (let attempt = 0; ; attempt++) {
-      this.output.info(`> ${commandLine(op)}`);
+      this.output.info(`${host.repoName === undefined ? '' : `[${host.repoName}] `}> ${commandLine(op)}`);
       try {
         const { stdout, stderr } = await runOperation(host.git, host.cwd, op, { signal, onProgress });
         if (stderr.trim()) this.output.info(stderr.trim());

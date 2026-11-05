@@ -50,3 +50,43 @@ export async function showing(panel: GraphPanel, root: string): Promise<void> {
     return p.repo === root && p.done && p.commits > 0;
   });
 }
+
+/** Commits on top of `parent` without touching the work tree. */
+export const commitTree = (cwd: string, parent: string, message: string): string =>
+  gitIn(
+    cwd,
+    '-c',
+    'user.name=Ada Lovelace',
+    '-c',
+    'user.email=ada@example.com',
+    'commit-tree',
+    `${parent}^{tree}`,
+    '-p',
+    parent,
+    '-m',
+    message,
+  );
+
+/** Makes the graph start again on the repository at `root`, through the active editor it follows on a start. */
+export async function startOn(panel: GraphPanel, root: string): Promise<void> {
+  const file = gitIn(root, 'ls-files').split('\n')[0]!;
+  await vscode.window.showTextDocument(vscode.Uri.file(join(root, file)), { preview: true });
+  const before = (await panel.probe()).generation;
+  await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+  await waitFor('the reloaded graph', async () => {
+    const p = await panel.probe().catch(() => undefined);
+    return p !== undefined && p.generation !== before && p.done;
+  });
+  await showing(panel, root);
+  await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+}
+
+/** A local branch badge's menu context in the repository at `cwd`. */
+export const branchMenuIn = (cwd: string, name: string) => ({
+  webview: 'strata.graph',
+  webviewSection: 'branch',
+  strataRef: `refs/heads/${name}`,
+  strataHash: gitIn(cwd, 'rev-parse', name),
+  strataIsCurrent: false,
+  strataUpstream: false,
+});

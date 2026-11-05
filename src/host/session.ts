@@ -17,7 +17,7 @@ import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
 import type { HostToWebview, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
-import { setContext } from './context.ts';
+import { setContext, type ContextKey } from './context.ts';
 import { readUnmerged, readUpstream } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { RepoKey } from '../core/repos.ts';
@@ -46,12 +46,20 @@ export interface SessionDeps {
   readonly options: ViewOptions;
   /** Repositories already offered a commit-graph in this window. */
   readonly suggested: Set<string>;
+  /** An operation started or ended in this session's repository: the graph shows it whichever repository it shows. */
+  readonly busy: (label: string | undefined) => void;
+  /** Shows the stash or commit `hash` of the repository `key`, showing that repository first if needed. */
+  readonly reveal: (key: RepoKey, hash: string) => void;
 }
 
 /**
  * One repository shown in the graph: the `git log` reader for the current history
  * ("generation"), what the graph was told about the repository, and the watchers that reload it.
  * The graph replaces the whole session when it shows another repository.
+ *
+ * Flows work on the session they started in. Once the graph shows another repository the session
+ * is disposed: its flows still run git in its repository and keep its Undo, but nothing reaches
+ * the graph or the context keys any more.
  */
 export class RepoSession implements vscode.Disposable, FlowHost {
   readonly key: RepoKey;
@@ -68,7 +76,6 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private readonly stashCache = stashCache();
   /** What the graph was last told is in progress or left behind. */
   private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
-  private undoRecord: Undo | undefined;
   private gitDirOf: Promise<string> | undefined;
   private commonDirOf: Promise<string> | undefined;
   private running: string | undefined;
@@ -80,6 +87,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** Generation whose first page has been served (and timed). */
   private timedGeneration = -1;
   private readonly suggested: Set<string>;
+  private readonly onBusy: (label: string | undefined) => void;
+  private readonly revealIn: (key: RepoKey, hash: string) => void;
   private graphTimer: ReturnType<typeof setTimeout> | undefined;
   /** An update is running; `graphAgain` asks for another one when it ends. */
   private graphUpdating = false;
@@ -94,6 +103,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.generation = deps.generation;
     this.options = deps.options;
     this.suggested = deps.suggested;
+    this.onBusy = deps.busy;
+    this.revealIn = deps.reveal;
+    void this.context('strata.canUndo', this.lastUndo !== undefined);
     this.disposables.push(
       vscode.window.tabGroups.onDidChangeTabs(() => {
         this.syncShownFile();
@@ -154,9 +166,13 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     });
   }
 
-  /** Replies arrive after awaits; once the panel is gone there is nobody to send them to. */
+  /** Replies arrive after awaits; once the graph shows another repository or is gone, they are not its. */
   private post(m: HostToWebview): void {
     if (!this.disposed) this.send(m);
+  }
+
+  private async context(key: ContextKey, value: boolean | string): Promise<void> {
+    if (!this.disposed) await setContext(key, value);
   }
 
   async handle(m: WebviewToHost): Promise<void> {
@@ -262,7 +278,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const upstream =
       branch === undefined ? undefined : await readUpstream(this.api.git.path, cwd, branch).catch(() => undefined);
     if (generation !== this.generation) return;
-    await setContext('strata.head', branch === undefined ? 'detached' : upstream ? 'tracking' : 'branch');
+    await this.context('strata.head', branch === undefined ? 'detached' : upstream ? 'tracking' : 'branch');
   }
 
   /** Tells the graph and the `strata.operation` context key which operation is in progress; `force` even if unchanged. */
@@ -292,7 +308,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (!force && JSON.stringify(state) === JSON.stringify(this.repoState)) return;
     this.repoState = state;
     this.post({ type: 'repoState', ...state });
-    await setContext('strata.operation', state.operation?.kind ?? '');
+    await this.context('strata.operation', state.operation?.kind ?? '');
   }
 
   /**
@@ -362,7 +378,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   };
 
   reveal(hash: string): void {
-    this.post({ type: 'reveal', hash });
+    this.revealIn(this.key, hash);
   }
 
   /** With strata.keepCommitGraphUpdated, adds new commits to the repository's commit-graph after a change. */
@@ -619,7 +635,12 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   get lastUndo(): Undo | undefined {
-    return this.undoRecord;
+    return this.env.undos.get(this.key);
+  }
+
+  /** Output lines name the repository when there is more than one to tell apart. */
+  get repoName(): string | undefined {
+    return this.api.repositories.length > 1 ? basename(this.cwd) : undefined;
   }
 
   settings(): FlowSettings {
@@ -643,15 +664,14 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   setUndo(undo: Undo | undefined): void {
-    // A closed graph's Undo toast can still be clicked: strata.canUndo is the open graph's.
-    if (this.disposed) return;
-    this.undoRecord = undo;
-    void setContext('strata.canUndo', undo !== undefined);
+    if (undo) this.env.undos.set(this.key, undo);
+    else this.env.undos.delete(this.key);
+    void this.context('strata.canUndo', undo !== undefined);
   }
 
   busy(label: string | undefined): void {
     this.running = label;
-    this.post({ type: 'busy', label });
+    this.onBusy(label);
     if (label === undefined) this.scheduleRefresh();
   }
 
@@ -691,7 +711,6 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   dispose(): void {
-    this.setUndo(undefined);
     this.disposed = true;
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);
