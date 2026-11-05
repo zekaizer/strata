@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  deleteRemoteBranchConfirmation,
   divergedConfirmation,
   forcePushConfirmation,
   NO_REMOTE,
@@ -61,11 +62,34 @@ describe('wording of remote operations', () => {
     );
   });
 
+  it('confirms deleting a remote branch with the commits it would leave on no ref', () => {
+    const tip = { short: 'abc1234', subject: 'Fix' };
+    assert.deepEqual(deleteRemoteBranchConfirmation('origin', 'x', 'origin/x', tip, [], [], false), {
+      message: "Delete branch 'x' from 'origin'?",
+      detail:
+        "'origin/x' points at abc1234 \"Fix\", which is also on another branch or tag. No commits are lost. Strata can't undo this.",
+      buttons: [{ id: 'delete', label: 'Delete Remote Branch' }],
+    });
+    const lost = deleteRemoteBranchConfirmation('origin', 'x', 'origin/x', tip, [tip, tip], ['x', 'y'], true);
+    assert.equal(lost.message, "Delete branch 'x' from 'origin' and its 2 unmerged commits?");
+    assert.equal(
+      lost.detail,
+      "'origin/x' changed on 'origin' since the last fetch. 2 commits would be on no branch, newest \"Fix\" (abc1234). Local branches 'x' and 'y' track it and stay. Strata can't undo this.",
+    );
+    assert.deepEqual(lost.buttons, [{ id: 'delete', label: 'Delete Remote Branch and Commits' }]);
+    assert.match(
+      deleteRemoteBranchConfirmation('origin', 'x', 'origin/x', tip, [], ['x'], false).detail,
+      / Local branch 'x' tracks it and stays\. /,
+    );
+  });
+
   it('says what was done', () => {
     assert.equal(REMOTE_DONE.fetched(undefined), 'Fetched all remotes');
     assert.equal(REMOTE_DONE.fetched('origin'), 'Fetched origin');
     assert.equal(REMOTE_DONE.published('x', 'origin'), "Published 'x' to origin");
     assert.equal(REMOTE_DONE.pushed('x', 'origin/x'), "Pushed 'x' to origin/x");
     assert.equal(REMOTE_DONE.upToDate, 'Already up to date');
+    assert.equal(REMOTE_DONE.remoteBranchDeleted('x', 'origin'), "Deleted branch 'x' from origin");
+    assert.equal(REMOTE_DONE.remoteBranchGone('origin/x', 'origin'), "'origin/x' was already gone from origin");
   });
 });

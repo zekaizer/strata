@@ -277,6 +277,19 @@ describe('operations', () => {
     assert.equal(run(origin, 'rev-parse', 'published'), head(c));
   });
 
+  it('deletes a remote branch, only where the lease still holds, and drops its remote-tracking branch', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', origin, c);
+    const at = run(c, 'rev-parse', 'origin/topic');
+    const del = { kind: 'deleteRemoteRef', remote: 'origin', ref: 'refs/heads/topic' } as const;
+    await assert.rejects(op(c, { ...del, lease: run(c, 'rev-parse', 'origin/main') }), { kind: 'rejected' });
+    assert.equal(run(origin, 'rev-parse', 'topic'), at, 'a stale lease deletes nothing');
+    await op(c, { ...del, lease: at });
+    assert.equal(run(origin, 'branch', '--list', 'topic'), '');
+    assert.equal(run(c, 'branch', '--remotes', '--list', 'origin/topic'), '');
+  });
+
   it('pushes to an upstream branch of another name', async () => {
     const origin = repo();
     const c = join(root, `clone${n++}`);

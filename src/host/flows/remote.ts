@@ -1,5 +1,8 @@
 import type { Operation } from '../../core/operations.ts';
+import type { Ref } from '../../core/refs.ts';
+import { remoteBranch } from '../../core/remote-branch.ts';
 import {
+  deleteRemoteBranchConfirmation,
   detachedNoBranch,
   divergedConfirmation,
   forcePushConfirmation,
@@ -13,16 +16,31 @@ import {
   REMOTE_DOING,
   REMOTE_DONE,
 } from '../../core/wording.ts';
-import { countCommits, readCommit, readConfig, readForkPoint, readHead, readUpstream } from '../../git/facts.ts';
+import {
+  countCommits,
+  readCommit,
+  readConfig,
+  readForkPoint,
+  readHead,
+  readTrackingBranches,
+  readUnmergedRemoteCommits,
+  readUpstream,
+} from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { fail, finish, notify, run, type FlowHost } from '../flow.ts';
+import { fail, finish, notify, run, type Expect, type FlowHost } from '../flow.ts';
 import { merge, rebase, refSource } from './history.ts';
 
 /** Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it ran. */
-async function remoteRun(host: FlowHost, label: string, remote: string | undefined, op: Operation): Promise<boolean> {
+async function remoteRun(
+  host: FlowHost,
+  label: string,
+  remote: string | undefined,
+  op: Operation,
+  expect?: readonly Expect[],
+): Promise<boolean> {
   try {
-    return (await run(host, label, (exec) => exec(op), { remote: true })) !== undefined;
+    return (await run(host, label, (exec) => exec(op), { remote: true, ...(expect ? { expect } : {}) })) !== undefined;
   } catch (e) {
     if (e instanceof GitOpError && (e.kind === 'auth' || e.kind === 'hostKey')) {
       await fail(host, e, { name: remote, op, cwd: host.cwd });
@@ -200,4 +218,48 @@ export async function publish(host: FlowHost, branch: string): Promise<void> {
   };
   if (await remoteRun(host, REMOTE_DOING.publishing(branch, remote), remote, op))
     await finish(host, { message: REMOTE_DONE.published(branch, remote) });
+}
+
+/**
+ * Deletes the branch of remote-tracking branch `ref` from its remote, leased on the commit the
+ * confirmation counted from. `moved`: asked again after the lease failed and `ref` was fetched.
+ */
+export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false): Promise<void> {
+  const rb = remoteBranch(ref.name, host.refs.remotes);
+  if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
+  const { remote, branch } = rb;
+  const [tip, unmerged, tracking] = await Promise.all([
+    readCommit(host.git, host.cwd, ref.name),
+    readUnmergedRemoteCommits(host.git, host.cwd, remote, branch),
+    readTrackingBranches(host.git, host.cwd, ref.name),
+  ]);
+  const ask = deleteRemoteBranchConfirmation(remote, branch, ref.short, tip, unmerged, tracking, moved);
+  if (!(await host.ui.confirm(ask))) return;
+  const dest = `refs/heads/${branch}`;
+  const op: Operation = { kind: 'deleteRemoteRef', remote, ref: dest, lease: tip.hash };
+  const label = REMOTE_DOING.deletingBranch(branch, remote);
+  try {
+    if (!(await remoteRun(host, label, remote, op, [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }])))
+      return;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'rejected')) throw e;
+    // The lease failed: the remote has the branch elsewhere, or no longer has it.
+    try {
+      const fetch: Operation = { kind: 'fetch', remote, ref: dest };
+      if (!(await remoteRun(host, REMOTE_DOING.fetching(remote), remote, fetch))) return;
+    } catch (f) {
+      if (!(f instanceof GitOpError && f.kind === 'noRemoteRef')) throw f;
+      // Without a lease git deletes a ref the remote lacks, and with it the remote-tracking branch.
+      if (await remoteRun(host, label, remote, { ...op, lease: undefined }))
+        await finish(host, { message: REMOTE_DONE.remoteBranchGone(ref.short, remote) });
+      return;
+    }
+    const now = await runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', ref.name]).then(
+      (s) => s.trim(),
+      () => undefined,
+    );
+    if (now === tip.hash) throw new Error(`git did not update ${ref.short}; see the output.`, { cause: e });
+    return deleteRemoteBranch(host, ref, true);
+  }
+  await finish(host, { message: REMOTE_DONE.remoteBranchDeleted(branch, remote) });
 }

@@ -21,6 +21,14 @@ export const branchMenu = (name: string, hash = git('rev-parse', 'HEAD')) =>
     strataUpstream: false,
   });
 
+/** A remote-tracking branch badge: `name` as in origin/x. */
+export const remoteMenu = (name: string) =>
+  menu({
+    webviewSection: 'remoteBranch',
+    strataRef: `refs/remotes/${name}`,
+    strataHash: git('rev-parse', `refs/remotes/${name}`),
+  });
+
 export const tagMenu = (name: string) =>
   menu({ webviewSection: 'tag', strataRef: `refs/tags/${name}`, strataHash: git('rev-parse', `${name}^{commit}`) });
 

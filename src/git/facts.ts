@@ -86,6 +86,36 @@ export function readUnmergedCommits(git: string, cwd: string, branch: string): P
   return commits(git, cwd, [`refs/heads/${branch}`, '--not', ...otherRefs(branch)]);
 }
 
+/**
+ * Commits of remote-tracking branch `remote`/`branch` on no other ref, newest first. --exclude
+ * takes the name without refs/remotes/; `<remote>/HEAD` may point at the branch itself.
+ */
+export function readUnmergedRemoteCommits(
+  git: string,
+  cwd: string,
+  remote: string,
+  branch: string,
+): Promise<CommitRef[]> {
+  return commits(git, cwd, [
+    `refs/remotes/${remote}/${branch}`,
+    '--not',
+    `--exclude=${remote}/${branch}`,
+    `--exclude=${remote}/HEAD`,
+    '--remotes',
+    '--branches',
+    '--tags',
+  ]);
+}
+
+/** The local branches whose upstream is `tracking` (a full remote-tracking ref). */
+export async function readTrackingBranches(git: string, cwd: string, tracking: string): Promise<string[]> {
+  const out = await runGit(git, cwd, ['for-each-ref', '--format=%(upstream)%00%(refname:short)', 'refs/heads']);
+  return out.split('\n').flatMap((line) => {
+    const [upstream, branch] = line.split('\0');
+    return upstream === tracking && branch ? [branch] : [];
+  });
+}
+
 /** Of `dirty` paths, those that also differ between HEAD and `target` (a switch would have to touch them). */
 export async function readOverlap(
   git: string,

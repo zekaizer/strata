@@ -63,7 +63,9 @@ export type Operation =
       dest: string;
       setUpstream: boolean;
       forceWithLease: string | undefined;
-    };
+    }
+  /** Deletes full ref `ref` on `remote`. `lease`: the commit it must still be at there. */
+  | { kind: 'deleteRemoteRef'; remote: string; ref: string; lease: string | undefined };
 
 /** How many commits further back Fetch More History reaches in a shallow clone. */
 export const MORE_HISTORY = 100;
@@ -171,6 +173,15 @@ export function argv(op: Operation): string[] {
         ...(op.forceWithLease === undefined ? [] : [`--force-with-lease=${op.dest}:${op.forceWithLease}`]),
         op.remote,
         `refs/heads/${op.branch}:${op.dest}`,
+      ];
+    case 'deleteRemoteRef':
+      return [
+        'push',
+        '--progress',
+        ...(op.lease === undefined ? [] : [`--force-with-lease=${op.ref}:${op.lease}`]),
+        '--delete',
+        op.remote,
+        op.ref,
       ];
   }
 }

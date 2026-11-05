@@ -14,6 +14,8 @@ export type GitErrorKind =
   | 'checkedOutElsewhere'
   | 'notMerged'
   | 'noUpstream'
+  /** A fetch of a ref the remote does not have. */
+  | 'noRemoteRef'
   | 'other';
 
 /** Classifies a failed git command by its stderr; the command must run with English messages (see runGitOp). */
@@ -46,6 +48,7 @@ const PATTERNS: readonly [RegExp, GitErrorKind][] = [
   [/refusing to merge unrelated histories/, 'unrelated'],
   [/is not fully merged/, 'notMerged'],
   [/has no upstream branch|no tracking information/, 'noUpstream'],
+  [/couldn't find remote ref/, 'noRemoteRef'],
 ];
 
 /** The last progress line of a chunk of `--progress` stderr, e.g. "Receiving objects:  45% (450/1000)". */

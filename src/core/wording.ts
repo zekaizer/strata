@@ -806,6 +806,46 @@ export function forcePushConfirmation(
   };
 }
 
+/**
+ * Deleting `branch` from `remote` (its remote-tracking branch is `name`). `unreachable`: the
+ * commits on no other ref once it is gone, newest first. `tracking`: local branches tracking it.
+ * `moved`: it was fetched again because the remote had it elsewhere.
+ */
+export function deleteRemoteBranchConfirmation(
+  remote: string,
+  branch: string,
+  name: string,
+  tip: CommitRef,
+  unreachable: CommitRef[],
+  tracking: readonly string[],
+  moved: boolean,
+): Confirmation<'delete'> {
+  const newest = unreachable[0];
+  const n = unreachable.length;
+  const tracks =
+    tracking.length === 0
+      ? []
+      : [
+          tracking.length === 1
+            ? `Local branch '${tracking[0]}' tracks it and stays.`
+            : `Local branches ${fileList(tracking.map(quote))} track it and stay.`,
+        ];
+  return {
+    message: newest
+      ? `Delete branch '${branch}' from '${remote}' and its ${plural(n, 'unmerged commit')}?`
+      : `Delete branch '${branch}' from '${remote}'?`,
+    detail: [
+      ...(moved ? [`'${name}' changed on '${remote}' since the last fetch.`] : []),
+      newest
+        ? `${plural(n, 'commit')} would be on no branch, newest "${newest.subject}" (${newest.short}).`
+        : `'${name}' points at ${tip.short} "${tip.subject}", which is also on another branch or tag. No commits are lost.`,
+      ...tracks,
+      "Strata can't undo this.",
+    ].join(' '),
+    buttons: [{ id: 'delete', label: newest ? 'Delete Remote Branch and Commits' : 'Delete Remote Branch' }],
+  };
+}
+
 export const publishPick = (branch: string): string => `Publish '${branch}' to…`;
 
 export const REMOTE_DONE = {
@@ -813,6 +853,8 @@ export const REMOTE_DONE = {
   published: (branch: string, remote: string): string => `Published '${branch}' to ${remote}`,
   pushed: (branch: string, upstream: string): string => `Pushed '${branch}' to ${upstream}`,
   forcePushed: (branch: string, upstream: string): string => `Force pushed '${branch}' to ${upstream}`,
+  remoteBranchDeleted: (branch: string, remote: string): string => `Deleted branch '${branch}' from ${remote}`,
+  remoteBranchGone: (name: string, remote: string): string => `'${name}' was already gone from ${remote}`,
   upToDate: 'Already up to date',
 };
 
@@ -820,6 +862,7 @@ export const REMOTE_DOING = {
   fetching: (remote: string | undefined): string => `Fetching ${remote ?? 'all remotes'}`,
   pushing: (branch: string, dest: string): string => `Pushing '${branch}' to ${dest}`,
   publishing: (branch: string, remote: string): string => `Publishing '${branch}' to ${remote}`,
+  deletingBranch: (branch: string, remote: string): string => `Deleting '${branch}' from ${remote}`,
 };
 
 /** Why a diverged pull offers less than Rebase and Merge, or rebases differently than configured. */

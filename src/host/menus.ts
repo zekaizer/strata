@@ -33,7 +33,7 @@ import {
   skipCommit,
   sourceOf,
 } from './flows/history.ts';
-import { fetchRemote, publish, pull, push } from './flows/remote.ts';
+import { deleteRemoteBranch, fetchRemote, publish, pull, push } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
@@ -204,6 +204,7 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
   'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),
+  'strata.deleteRemoteBranch': on(['remoteBranch'], (host, t) => deleteRemoteBranch(host, t.ref)),
   'strata.refActions': (ctx) => {
     const host = panel().flowHost();
     // A row's menu names all its refs; a "+N" badge's, the ones it hides.
