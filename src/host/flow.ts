@@ -129,13 +129,25 @@ export function run<T>(
   });
 }
 
-/** After an operation succeeded: reload the graph at `focus`, report, and offer Undo. */
-export async function finish(host: FlowHost, r: { message: string; focus?: string; undo?: Undo }): Promise<void> {
+/** What to offer after an operation, besides Undo (Push after a Pull that a rejected push started). */
+export interface Next {
+  action: string;
+  run: () => Promise<void>;
+}
+
+/** After an operation succeeded: reload the graph at `focus`, report, and offer Undo and `next`. */
+export async function finish(
+  host: FlowHost,
+  r: { message: string; focus?: string; undo?: Undo; next?: Next },
+): Promise<void> {
   await host.refresh(r.focus);
   host.setUndo(r.undo);
   host.done(r.message);
-  const undo = r.undo;
-  if (undo) notify(host, 'info', r.message, ['Undo'], () => undoIfLatest(host, undo));
+  const { undo, next } = r;
+  if (undo || next)
+    notify(host, 'info', r.message, [...(undo ? ['Undo'] : []), ...(next ? [next.action] : [])], (a) =>
+      a === 'Undo' && undo ? undoIfLatest(host, undo) : next?.run(),
+    );
 }
 
 /**

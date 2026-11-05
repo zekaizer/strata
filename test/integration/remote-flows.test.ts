@@ -73,6 +73,50 @@ describe('remote operations', () => {
     }
   });
 
+  /** strata-pub published, then a commit of someone else pushed and one of mine made: they diverged. */
+  const diverged = async () => {
+    await publish();
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', 'strata-pub', bare, other]);
+    writeFileSync(join(other, 'theirs.txt'), 'theirs\n');
+    execFileSync('git', [...IDENTITY, '-C', other, 'add', '.']);
+    execFileSync('git', [...IDENTITY, '-C', other, 'commit', '--quiet', '-m', 'Their fix']);
+    execFileSync('git', ['-C', other, 'push', '--quiet', 'origin', 'strata-pub']);
+    const mine = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Mine');
+    git('update-ref', 'refs/heads/strata-pub', mine);
+    await reload(panel());
+    return mine;
+  };
+
+  it('says how to get past a rejected push of another branch when it has nothing to offer', async () => {
+    const mine = await diverged();
+    await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+    assert.deepEqual(ui.of('confirm'), []);
+    assert.deepEqual(
+      errors().map((e) => [e.message, e.actions]),
+      [
+        [
+          "'origin/strata-pub' has 1 commit that 'strata-pub' doesn't have. Switch to 'strata-pub' and pull it first.",
+          ['Show Output'],
+        ],
+      ],
+    );
+  });
+
+  it('offers to push again after the Pull a rejected push offered', async () => {
+    const mine = await diverged();
+    git('switch', '--quiet', 'strata-pub');
+    git('config', 'pull.rebase', 'true');
+    await reload(panel());
+    ui.press('Pull').click('Push');
+    await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+    assert.equal(ui.first('confirm').detail, "Pull brings it into 'strata-pub', then you can push.");
+    const done = ui.of('notify').find((n) => n.actions.includes('Push'));
+    assert.deepEqual(done?.actions, ['Undo', 'Push']);
+    await waitFor('pushed after the pull', () => remote('rev-parse', 'strata-pub') === git('rev-parse', 'strata-pub'));
+    assert.equal(git('log', '-1', '--format=%s', 'strata-pub'), 'Mine');
+  });
+
   it('refuses the force push when the remote moved after the confirmation read it', async () => {
     await publish();
     const other = join(root, 'other');

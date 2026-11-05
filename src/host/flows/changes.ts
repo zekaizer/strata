@@ -22,7 +22,7 @@ import { readOverlap, readStash, readStashTop, readUnmerged, readUntrackedIn } f
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readOperationState, readWorktree } from '../../git/state.ts';
-import { finish, run, warnWithUndo, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import { finish, run, warnWithUndo, type Expect, type FlowHost, type Next, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 
 /** Uncommitted changes as an operation meets them, read right before it confirms. */
@@ -202,7 +202,7 @@ export async function resolveConflicts(host: FlowHost, paths: readonly string[])
 export async function finishRestoring(
   host: FlowHost,
   r: Restored,
-  done: { message: string; focus?: string; undo?: Undo },
+  done: { message: string; focus?: string; undo?: Undo; next?: Next },
   stash?: { label: string; pop: boolean },
 ): Promise<void> {
   if (r.kind === 'none' || r.kind === 'restored') return finish(host, done);

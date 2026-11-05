@@ -977,23 +977,40 @@ export function pushOtherNameConfirmation(
   };
 }
 
-/** A push the remote refused because it has commits `branch` lacks (counted after fetching them). */
+/** A push the remote refused because it has `count` commits `branch` lacks (counted after fetching them). */
+export const pushRejected = (upstream: string, branch: string, count: number): string =>
+  `'${upstream}' has ${plural(count, 'commit')} that '${branch}' doesn't have.`;
+
+/**
+ * The question after a rejected push, saying only what the offered answers do: Pull (`canPull`,
+ * the branch is the current one), a force push (`canForce`, git.allowForcePush). Undefined when
+ * there is nothing to offer: pushRejectedNotice says so instead.
+ */
 export function pushRejectedConfirmation(
   upstream: string,
   branch: string,
   count: number,
   canPull: boolean,
   canForce: boolean,
-): Confirmation<'pull' | 'force'> {
+): Confirmation<'pull' | 'force'> | undefined {
+  if (!canPull && !canForce) return undefined;
+  const them = count === 1 ? 'it' : 'them';
   return {
-    message: `'${upstream}' has ${plural(count, 'commit')} that '${branch}' doesn't have.`,
-    detail: 'Pull them first, or overwrite them with a force push.',
+    message: pushRejected(upstream, branch, count),
+    detail: [
+      ...(canPull ? [`Pull brings ${them} into '${branch}', then you can push.`] : []),
+      ...(canForce ? [`A force push removes ${them} from '${upstream}'.`] : []),
+    ].join('\n'),
     buttons: [
       ...(canPull ? [{ id: 'pull' as const, label: 'Pull' }] : []),
       ...(canForce ? [{ id: 'force' as const, label: 'Force Push (With Lease)...' }] : []),
     ],
   };
 }
+
+/** A rejected push of a branch that is not the current one, with force pushes turned off. */
+export const pushRejectedNotice = (upstream: string, branch: string, count: number): string =>
+  `${pushRejected(upstream, branch, count)} Switch to '${branch}' and pull ${count === 1 ? 'it' : 'them'} first.`;
 
 export function forcePushConfirmation(
   branch: string,

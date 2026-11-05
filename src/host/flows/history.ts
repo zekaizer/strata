@@ -61,7 +61,17 @@ import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readAbortTarget, readMessageEdits, readOperationState } from '../../git/state.ts';
 import { createStash } from '../../git/stash.ts';
-import { finish, headRef, notify, run, typeInTerminal, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import {
+  finish,
+  headRef,
+  notify,
+  run,
+  typeInTerminal,
+  type Expect,
+  type FlowHost,
+  type Next,
+  type Undo,
+} from '../flow.ts';
 import type { Exec } from '../runner.ts';
 import type { TargetOf } from '../target.ts';
 import {
@@ -253,7 +263,7 @@ async function runStoppable(
 }
 
 /** `via`: a pull merges as git pull would, asking only about uncommitted changes. */
-export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 'menu'): Promise<void> {
+export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 'menu', next?: Next): Promise<void> {
   const [h, from] = await Promise.all([head(host), readCommit(host.git, host.cwd, src.rev)]);
   if (await isAncestor(host.git, host.cwd, from.hash, h.hash)) {
     void host.ui.notify('info', alreadyContains(h.name, src.name));
@@ -322,6 +332,7 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 
     message: fastForwarded ? HISTORY_DONE.fastForwarded(h.name, from.short) : HISTORY_DONE.merged(src.name, h.name),
     focus: after.hash,
     undo: moveUndo(host, 'merge', h, after.hash),
+    ...(next ? { next } : {}),
   });
 }
 
@@ -334,6 +345,7 @@ export async function rebase(
   onto: Source,
   via: 'menu' | 'pull' = 'menu',
   from?: string,
+  next?: Next,
 ): Promise<void> {
   const [h, target] = await Promise.all([head(host), readCommit(host.git, host.cwd, onto.rev)]);
   if (await isAncestor(host.git, host.cwd, target.hash, h.hash)) {
@@ -370,6 +382,7 @@ export async function rebase(
     message: HISTORY_DONE.rebased(h.name, onto.name, counts.replay),
     focus: after.hash,
     undo: moveUndo(host, 'rebase', h, after.hash),
+    ...(next ? { next } : {}),
   });
 }
 

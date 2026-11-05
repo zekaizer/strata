@@ -15,6 +15,7 @@ import {
   PULL_NOTES,
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
+  pushRejectedNotice,
   quote,
   REMOTE_DOING,
   REMOTE_DONE,
@@ -33,7 +34,7 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { fail, finish, notify, run, type Expect, type FlowHost } from '../flow.ts';
+import { fail, finish, notify, run, type Expect, type FlowHost, type Next } from '../flow.ts';
 import { merge, rebase, refSource, type Source } from './history.ts';
 
 /**
@@ -83,8 +84,11 @@ const BOOL: Record<string, boolean> = {
   '0': false,
 };
 
-/** Fetches the upstream of the current branch, then fast-forwards, merges or rebases onto it. */
-export async function pull(host: FlowHost): Promise<void> {
+/**
+ * Fetches the upstream of the current branch, then fast-forwards, merges or rebases onto it.
+ * `next`: offered with the result once the branch has what it fetched.
+ */
+export async function pull(host: FlowHost, next?: Next): Promise<void> {
   const h = await readHead(host.git, host.cwd);
   if (h.branch === undefined) {
     void host.ui.notify('info', detachedNoBranch('pull'));
@@ -118,7 +122,7 @@ export async function pull(host: FlowHost): Promise<void> {
   const src: Source = upstream.ref
     ? await refSource(host, { name: upstream.ref, short: upstream.name })
     : { rev: tracking, arg: tracking, name: quote(upstream.name) };
-  if (ahead === 0) return merge(host, src, 'pull');
+  if (ahead === 0) return merge(host, src, 'pull', next);
   const [rebaseCfg, ff] = await Promise.all([
     readConfig(host.git, host.cwd, `branch.${branch}.rebase`).then(
       async (v) => v ?? (await readConfig(host.git, host.cwd, 'pull.rebase')),
@@ -128,16 +132,16 @@ export async function pull(host: FlowHost): Promise<void> {
   const rebaseFirst = rebaseCfg === undefined ? undefined : BOOL[rebaseCfg.toLowerCase()];
   const canMerge = ff !== 'only';
   // As git pull --rebase: commits upstream had before a force push are not the branch's own.
-  const rebaseOnto = async () => rebase(host, src, 'pull', await readForkPoint(host.git, host.cwd, tracking));
+  const rebaseOnto = async () => rebase(host, src, 'pull', await readForkPoint(host.git, host.cwd, tracking), next);
   if (rebaseFirst === true) return rebaseOnto();
-  if (rebaseFirst === false && canMerge) return merge(host, src, 'pull');
+  if (rebaseFirst === false && canMerge) return merge(host, src, 'pull', next);
   // Unset, "merges" or "interactive": ask, saying what Strata can do.
   const note = !canMerge ? PULL_NOTES.ffOnly : rebaseCfg?.startsWith('m') ? PULL_NOTES.rebaseMerges : undefined;
   const answer = await host.ui.confirm(
     divergedConfirmation(quote(branch), upstream.name, ahead, behind, { rebase: true, merge: canMerge }, note),
   );
   if (answer === 'rebase') await rebaseOnto();
-  else if (answer === 'merge') await merge(host, src, 'pull');
+  else if (answer === 'merge') await merge(host, src, 'pull', next);
 }
 
 /** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */
@@ -217,10 +221,21 @@ async function rejected(
     readCommit(host.git, host.cwd, theirs),
     readHead(host.git, host.cwd),
   ]);
-  const answer = await host.ui.confirm(
-    pushRejectedConfirmation(destName, op.branch, count, h.branch === op.branch, host.settings().allowForcePush),
+  const ask = pushRejectedConfirmation(
+    destName,
+    op.branch,
+    count,
+    h.branch === op.branch,
+    host.settings().allowForcePush,
   );
-  if (answer === 'pull') return pull(host);
+  if (!ask) {
+    notify(host, 'error', pushRejectedNotice(destName, op.branch, count), ['Show Output'], () => {
+      host.runner.showOutput();
+    });
+    return;
+  }
+  const answer = await host.ui.confirm(ask);
+  if (answer === 'pull') return pull(host, { action: 'Push', run: () => push(host, op.branch) });
   if (answer !== 'force') return;
   if (!(await host.ui.confirm(forcePushConfirmation(op.branch, op.remote, destName, count, newest.subject)))) return;
   const force = { ...op, forceWithLease: theirs };

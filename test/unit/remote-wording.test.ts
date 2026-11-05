@@ -10,6 +10,7 @@ import {
   noUpstream,
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
+  pushRejectedNotice,
   pushTagPick,
   REMOTE_DONE,
   tagExistsOnRemote,
@@ -56,13 +57,26 @@ describe('wording of remote operations', () => {
 
   it('says what a rejected push would overwrite', () => {
     const r = pushRejectedConfirmation('origin/x', 'x', 2, true, true);
+    assert.ok(r);
     assert.equal(r.message, "'origin/x' has 2 commits that 'x' doesn't have.");
-    assert.equal(r.detail, 'Pull them first, or overwrite them with a force push.');
+    assert.equal(r.detail, "Pull brings them into 'x', then you can push.\nA force push removes them from 'origin/x'.");
     assert.deepEqual(
       r.buttons.map((b) => b.label),
       ['Pull', 'Force Push (With Lease)...'],
     );
-    assert.deepEqual(pushRejectedConfirmation('origin/x', 'x', 1, false, false).buttons, []);
+    assert.equal(
+      pushRejectedConfirmation('origin/x', 'x', 1, false, true)?.detail,
+      "A force push removes it from 'origin/x'.",
+    );
+    assert.equal(
+      pushRejectedConfirmation('origin/x', 'x', 1, true, false)?.detail,
+      "Pull brings it into 'x', then you can push.",
+    );
+    assert.equal(pushRejectedConfirmation('origin/x', 'x', 1, false, false), undefined);
+    assert.equal(
+      pushRejectedNotice('origin/x', 'x', 1),
+      "'origin/x' has 1 commit that 'x' doesn't have. Switch to 'x' and pull it first.",
+    );
     const f = forcePushConfirmation('x', 'origin', 'origin/x', 2, 'Their fix');
     assert.equal(f.message, "Force push 'x' to 'origin'?");
     assert.equal(
