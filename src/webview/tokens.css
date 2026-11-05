@@ -1,0 +1,111 @@
+/*
+ * Design tokens (docs/design-system.md): the only file that may hold raw colors, radii, font sizes,
+ * spacing and layers; test/unit/design-tokens.test.ts enforces it. The scale follows VS Code's own
+ * UI: its font size, a 4px grid, 22px controls, 2px/4px/6px radii for controls/items/overlays and
+ * its theme colors. Graph colors are computed in theme.ts.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Spacing: a 4px grid with a 2px half step. */
+  --space-2: 2px;
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+
+  /* Radius: controls (push buttons, fields), items (everything hoverable or boxed), overlays. */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* Type: body, secondary text, captions (chips, section titles). */
+  --font-size: var(--vscode-font-size);
+  --font-size-sm: calc(var(--font-size) - 1px);
+  --font-size-xs: calc(var(--font-size) - 2px);
+  --font-mono: var(--vscode-editor-font-family, monospace);
+  --font-weight-strong: 600;
+  --line-height: 18px;
+  --line-height-prose: 1.5;
+
+  /* Icons (codicons): beside body text, beside secondary text. */
+  --icon-size: 16px;
+  --icon-size-sm: 12px;
+
+  /* Sizes */
+  --control-height: 22px;
+  --chip-height: 14px;
+  --toolbar-height: 32px;
+  --row-height: 24px;
+  /* Band above the commit line of rows with refs; REF_BAND in main.ts. */
+  --ref-band: 14px;
+  /* Shared by the row grid and the details under a row, so both start at the same column. */
+  --col-gap: var(--space-12);
+  --tree-indent: 16px;
+
+  /* Layers: rows and the graph canvas stack in document order, below these. */
+  --z-popover: 10;
+  --z-card: 20;
+
+  /* Elevation: popovers and cards, as VS Code's hover widget. */
+  --shadow-color: var(--vscode-widget-shadow, rgb(0 0 0 / 30%));
+  --shadow: 0 2px 8px var(--shadow-color);
+
+  /* Interaction */
+  --focus-ring: 1px solid var(--color-focus);
+  /* High contrast themes outline what the pointer is on; transparent elsewhere. */
+  --hover-outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  --toolbar-hover-outline: 1px dashed
+    var(--vscode-toolbar-hoverOutline, var(--vscode-contrastActiveBorder, transparent));
+  --opacity-disabled: 0.4;
+  --divider: 1px solid var(--color-border);
+
+  /* Motion: body.vscode-reduce-motion and prefers-reduced-motion turn the animations off. */
+  --duration-spin: 1.5s;
+  --duration-landing: 1.2s;
+
+  /* Semantic colors */
+  --color-fg: var(--vscode-foreground);
+  --color-muted: var(--vscode-descriptionForeground);
+  --color-disabled: var(--vscode-disabledForeground);
+  --color-icon: var(--vscode-icon-foreground, var(--vscode-foreground));
+  --color-border: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
+  --color-focus: var(--vscode-focusBorder);
+  --color-hover: var(--vscode-list-hoverBackground);
+  --color-toolbar-hover: var(--vscode-toolbar-hoverBackground);
+  --color-toolbar-active: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+  --color-selection: var(--vscode-list-activeSelectionBackground);
+  --color-selection-inactive: var(--vscode-list-inactiveSelectionBackground);
+  --color-link: var(--vscode-textLink-foreground);
+  --color-link-active: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
+  --color-danger: var(--vscode-errorForeground);
+  --color-warning: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
+  --color-success: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+
+  /* Ref kinds: chips, the ref card and the head row. */
+  --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
+  --badge-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));
+  --badge-tag: var(--vscode-charts-yellow);
+  --badge-stash: var(--vscode-descriptionForeground);
+  --badge-head: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
+
+  /*
+   * A surface one layer below the list (the commit details): darker than the rows, which cast a
+   * shadow onto it. The list's hover color is too close to it in light themes.
+   */
+  --surface-sunken: color-mix(in srgb, var(--vscode-editor-background) 94%, #000);
+  --surface-sunken-shadow: rgb(0 0 0 / 28%);
+  --surface-sunken-hover: color-mix(in srgb, var(--vscode-list-hoverBackground) 94%, #000);
+}
+
+body.vscode-dark {
+  --surface-sunken: color-mix(in srgb, var(--vscode-editor-background) 72%, #000);
+  --surface-sunken-shadow: rgb(0 0 0 / 75%);
+  --surface-sunken-hover: var(--vscode-list-hoverBackground);
+}
+
+body.vscode-high-contrast {
+  --surface-sunken: var(--vscode-editor-background);
+  --surface-sunken-hover: var(--vscode-list-hoverBackground);
+}

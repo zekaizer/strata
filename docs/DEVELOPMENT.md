@@ -92,6 +92,11 @@ scripts/             build, xvfb wrapper, screenshot tooling
 
 Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
 
+Webview styling follows `docs/design-system.md`: tokens in `src/webview/tokens.css`, shared
+components in `src/webview/components.css`, a guard in `npm run check`, and a gallery of every
+component in every state (`index.html?page=components` in the playground; screenshots with
+`node scripts/playground-shot.mjs artifacts/gallery 1280x800 page=components`).
+
 ## Icons and screenshot
 
 `media/icon.svg` is the source of the extension icon `media/icon.png`

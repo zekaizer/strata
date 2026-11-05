@@ -262,7 +262,7 @@ class App {
 
   private readonly toolbar = el('header', 'toolbar');
   private readonly switcher: RepoSwitcher;
-  private readonly status = el('span', 'status');
+  private readonly status = el('span', 'toolbar-status');
   private readonly viewport = el('div', 'viewport');
   private readonly scroller = el('div', 'scroller');
   private readonly sizer = el('div', 'sizer');
@@ -1693,8 +1693,11 @@ class App {
     subject.append(el('span', 'text', c.subject));
     const note = this.operationNotes.get(c.hash);
     if (note) {
-      const e = el('span', note.warning ? 'operation-note warning' : 'operation-note');
-      e.append(el('span', 'operation-note-text', note.text));
+      const e = el(
+        'span',
+        note.warning ? 'chip chip-outline chip-warning operation-note' : 'chip chip-outline operation-note',
+      );
+      e.append(el('span', 'chip-text', note.text));
       if (note.warning) e.prepend(codicon('warning'));
       subject.append(e);
     }
@@ -1737,7 +1740,7 @@ class App {
     };
     row.setAttribute('data-vscode-context', JSON.stringify(context));
     const subject = el('span', 'subject');
-    const name = badge('stash', 'git-stash', `stash@{${s.index}}`, `stash@{${s.index}}`);
+    const name = chip('stash', 'git-stash', `stash@{${s.index}}`, `stash@{${s.index}}`);
     if (s.autostash) {
       name.classList.add('autostash');
       name.append(el('span', 'badge-autostash', 'autostash'));
@@ -1872,7 +1875,7 @@ class App {
     for (const e of [...looks.map(([, e]) => e), tracked]) e.style.minWidth = '0';
     band.append(...looks.map(([, e]) => e), tracked, withRemote);
     document.body.append(band);
-    const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.badge-text, .badge-remote-names') ?? e).font;
+    const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.chip-text, .badge-remote-names') ?? e).font;
     const segment = withRemote.querySelector<HTMLElement>('.badge-remotes')!;
     const style = getComputedStyle(segment);
     const chrome: BadgeChrome = {
@@ -1947,13 +1950,13 @@ class App {
     const files = el('div', 'details-files');
     const changes = { hash: d.hash, base: d.base };
     if (stash && d.stash) {
-      const summary = el('div', 'files-summary', `Changes (${d.files.length})`);
+      const summary = el('div', 'section-title files-summary', `Changes (${d.files.length})`);
       if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
       files.append(summary, this.fileTree(changes, d.files, 'Changes', new Set(d.stash.staged)));
       const untracked = d.stash.untracked;
       if (untracked)
         files.append(
-          el('div', 'files-summary', `Untracked (${untracked.files.length})`),
+          el('div', 'section-title files-summary', `Untracked (${untracked.files.length})`),
           this.fileTree({ hash: untracked.hash, base: undefined }, untracked.files, 'Untracked files'),
         );
     } else {
@@ -1989,14 +1992,14 @@ class App {
 
   private bylineOf(d: CommitDetails, toggleTitle: string, ...parts: Node[]): HTMLElement {
     const line = el('div', 'byline');
-    const hash = el('button', 'byline-hash');
+    const hash = el('button', 'inline-button byline-hash');
     hash.append(el('span', 'hash-text', shortHash(d.hash)), codicon('copy', 'hash-icon'));
     hash.title = `${d.hash}\nClick to copy`;
     hash.setAttribute('aria-label', `Copy full commit hash ${shortHash(d.hash)}`);
     hash.addEventListener('click', () => {
       this.copyHash(d.hash, hash);
     });
-    const toggle = el('button', 'byline-toggle codicon');
+    const toggle = el('button', 'inline-button byline-toggle codicon');
     toggle.title = toggleTitle;
     toggle.setAttribute('aria-label', toggle.title);
     toggle.setAttribute('aria-controls', 'details-meta');
@@ -2129,7 +2132,7 @@ class App {
   }
 
   private metaCopy(hash: string): HTMLElement {
-    const copy = el('button', 'icon-button codicon codicon-copy meta-copy');
+    const copy = el('button', 'inline-button codicon codicon-copy meta-copy');
     copy.title = 'Copy full commit hash';
     copy.setAttribute('aria-label', copy.title);
     copy.addEventListener('click', () => {
@@ -2148,7 +2151,7 @@ class App {
   /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
   private filesSummaryLine(d: CommitDetails): HTMLElement {
     const s = filesSummary(d);
-    const line = el('div', 'files-summary', s.text);
+    const line = el('div', 'section-title files-summary', s.text);
     if (s.root) line.append(' · root commit');
     if (s.base !== undefined) line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, this.baseLink(s.base));
     return line;
@@ -2283,7 +2286,7 @@ class App {
           list.append(this.fileItem(source, n.change, n.name, depth, staged.has(n.change.path)));
           continue;
         }
-        const li = el('li', depth > 0 ? 'folder nested' : 'folder');
+        const li = el('li', depth > 0 ? 'list-row clickable folder nested' : 'list-row clickable folder');
         li.tabIndex = 0;
         li.dataset['path'] = n.path;
         li.setAttribute('role', 'treeitem');
@@ -2365,7 +2368,7 @@ class App {
 
   private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
     const views = fileViews(f, source.base);
-    const li = el('li', `file status-${f.status}${depth > 0 ? ' nested' : ''}`);
+    const li = el('li', `list-row clickable file status-${f.status}${depth > 0 ? ' nested' : ''}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'treeitem');
     li.setAttribute('aria-level', String(depth + 1));
@@ -2382,7 +2385,7 @@ class App {
     if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
     li.append(label);
     if (staged) {
-      const tag = el('span', 'file-staged', 'staged');
+      const tag = el('span', 'chip chip-outline file-staged', 'staged');
       tag.title = 'Staged when it was stashed';
       li.append(tag);
     }
@@ -2405,7 +2408,7 @@ class App {
       const label = FILE_VIEW_LABEL[view];
       const b = el(
         'button',
-        `file-action file-action-${view}${label === undefined ? ' codicon codicon-git-compare' : ''}`,
+        `inline-button file-action file-action-${view}${label === undefined ? ' codicon codicon-git-compare' : ''}`,
         label,
       );
       b.tabIndex = -1;
@@ -2479,10 +2482,10 @@ class App {
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.stash')].map((r) => [
           Number(r.dataset['index']),
           {
-            badge: r.querySelector('.badge-text')?.textContent ?? '',
+            badge: r.querySelector('.chip-text')?.textContent ?? '',
             text: r.querySelector('.subject')?.textContent ?? '',
             label: r.getAttribute('aria-label') ?? '',
-            autostash: !!r.querySelector('.badge-stash.autostash'),
+            autostash: !!r.querySelector('.chip-stash.autostash'),
             context: JSON.parse(r.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,
           },
         ]),
@@ -2564,8 +2567,8 @@ class App {
             [
               Number(r.dataset['index']),
               {
-                badges: els.map((b) => b.querySelector('.badge-text')?.textContent ?? b.textContent),
-                head: els.map((b) => b.classList.contains('badge-head')),
+                badges: els.map((b) => b.querySelector('.chip-text')?.textContent ?? b.textContent),
+                head: els.map((b) => b.classList.contains('chip-head')),
                 colors: els.map((b) => getComputedStyle(b).color),
                 subjectColor: getComputedStyle(text).color,
                 authorColor: getComputedStyle(r.querySelector('.author')!).color,
@@ -2892,7 +2895,8 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
 /** A badge; it and each remote name in it carry their own menu context. */
 function renderBadge(b: Badge): HTMLElement {
   const e =
-    b.look === 'more' ? el('span', 'badge badge-more', b.text) : badge(b.look, BADGE_ICON[b.look], b.text, b.title);
+    b.look === 'more' ? el('span', 'chip badge-more', b.text) : chip(b.look, BADGE_ICON[b.look], b.text, b.title);
+  e.classList.add('badge');
   e.title = b.title;
   if (b.tracked) e.classList.add('badge-tracked');
   e.dataset['refs'] = b.context.webviewSection === 'head' ? 'HEAD' : b.refs.join(' ');
@@ -2950,11 +2954,12 @@ function accessibleName(e: HTMLElement): string {
   return name === '' ? e.title : name;
 }
 
-function badge(kind: string, icon: string, text: string, title: string): HTMLElement {
-  const b = el('span', `badge badge-${kind}`);
-  b.title = title;
-  b.append(codicon(icon), el('span', 'badge-text', text));
-  return b;
+/** A ref chip (design-system.md); a row's ref band adds .badge. */
+function chip(kind: string, icon: string, text: string, title: string): HTMLElement {
+  const c = el('span', `chip chip-${kind}`);
+  c.title = title;
+  c.append(codicon(icon), el('span', 'chip-text', text));
+  return c;
 }
 
 /** VS Code injects theme colors as `--vscode-*` custom properties on <html>. */

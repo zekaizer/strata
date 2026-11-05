@@ -37,7 +37,7 @@ type WhereLine = [key: string, value: HTMLElement];
  * kept until forget().
  */
 export class RefCard {
-  readonly element = el('div', 'ref-card');
+  readonly element = el('div', 'card ref-card');
   /** The commit the card shows or is about to show. */
   private target: CardTarget | undefined;
   /** Whether the show delay for `target` has passed. */
@@ -104,8 +104,7 @@ export class RefCard {
       text(line.querySelectorAll('.ref-card-text, .ref-card-note')),
     );
     const where = [...this.element.querySelectorAll('.ref-card-key')].map(
-      (key) =>
-        `${key.textContent}: ${text(key.nextElementSibling!.querySelectorAll('.ref-card-text, .ref-card-note'))}`,
+      (key) => `${key.textContent}: ${text(key.nextElementSibling!.querySelectorAll('.chip-text, .ref-card-note'))}`,
     );
     return { hash: this.target.hash, lines: [...refs, ...where] };
   }
@@ -139,7 +138,7 @@ export class RefCard {
     }
     const where = whereLines(target, this.answers.get(target.hash));
     if (where.length > 0) {
-      if (lines.length > 0) lines.push(el('div', 'ref-card-rule'));
+      if (lines.length > 0) lines.push(el('div', 'card-divider'));
       const grid = el('div', 'ref-card-where');
       for (const [key, value] of where) grid.append(el('span', 'ref-card-key', key), value);
       lines.push(grid);
@@ -192,8 +191,8 @@ const value = (...parts: HTMLElement[]): HTMLElement => {
 };
 
 const chip = (kind: RefKind, text: string): HTMLElement => {
-  const e = el('span', `ref-card-chip ref-card-${kind}`);
-  e.append(codicon(ICON[kind]), el('span', 'ref-card-text', text));
+  const e = el('span', `chip chip-${kind}`);
+  e.append(codicon(ICON[kind]), el('span', 'chip-text', text));
   return e;
 };
 

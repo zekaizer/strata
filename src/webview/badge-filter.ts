@@ -35,17 +35,17 @@ export class BadgeFilter {
   private readonly label = el('span', 'tool-label');
   private readonly narrowCount = el('span', 'badge-count-narrow');
   private readonly popover = el('div', 'popover badge-popover');
-  private readonly input = el('input', 'popover-search badge-pattern');
-  private readonly summary = el('div', 'badge-summary');
-  private readonly hideButton = el('button', 'popover-button primary badge-hide', 'Hide');
-  private readonly showButton = el('button', 'popover-button badge-show', 'Show');
+  private readonly input = el('input', 'field badge-pattern');
+  private readonly summary = el('div', 'popover-summary');
+  private readonly hideButton = el('button', 'button primary badge-hide', 'Hide');
+  private readonly showButton = el('button', 'button badge-show', 'Show');
   private readonly ruleList = el('div', 'popover-rules');
-  private readonly refsHeading = el('div', 'popover-group');
+  private readonly refsHeading = el('div', 'section-title');
   private readonly list = el('div', 'popover-list badge-refs');
   /** Offered while badges are hidden, or shown for now. */
   private readonly showHidden = el('div', 'popover-section');
-  private readonly showHiddenBox = el('input');
-  private readonly showHiddenLabel = el('span', 'popover-item-text');
+  private readonly showHiddenBox = el('input', 'checkbox');
+  private readonly showHiddenLabel = el('span', 'list-row-text');
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private state: BadgeState = { rules: [], hidden: new Map(), showHidden: false };
   private readonly events: BadgeFilterEvents;
@@ -59,7 +59,7 @@ export class BadgeFilter {
       this.toggle();
     });
 
-    const inputLabel = el('label', 'badge-pattern-label', 'Hide badges matching');
+    const inputLabel = el('label', 'popover-label', 'Hide badges matching');
     inputLabel.htmlFor = 'badge-pattern';
     this.input.id = 'badge-pattern';
     this.input.type = 'search';
@@ -82,20 +82,20 @@ export class BadgeFilter {
     this.showButton.addEventListener('click', () => {
       this.addFromInput(true);
     });
-    const actions = el('div', 'badge-actions');
+    const actions = el('div', 'popover-header-actions');
     actions.append(this.summary, this.hideButton, this.showButton);
-    const top = el('div', 'badge-top');
+    const top = el('div', 'popover-header');
     top.append(inputLabel, this.input, actions);
 
     const rules = el('div', 'popover-section badge-rules');
-    rules.append(el('div', 'popover-group', 'Rules'), this.ruleList);
+    rules.append(el('div', 'section-title', 'Rules'), this.ruleList);
 
     this.showHiddenBox.type = 'checkbox';
     this.showHiddenBox.dataset['option'] = 'showHiddenBadges';
     this.showHiddenBox.addEventListener('change', () => {
       events.onShowHidden(this.showHiddenBox.checked);
     });
-    const showHiddenItem = el('label', 'popover-item');
+    const showHiddenItem = el('label', 'list-row clickable');
     showHiddenItem.append(this.showHiddenBox, codicon('eye'), this.showHiddenLabel);
     this.showHidden.append(showHiddenItem);
 
@@ -204,13 +204,13 @@ export class BadgeFilter {
         .filter((r) => r.kind === g.kind)
         .sort((a, b) => Number(this.isCurrent(b)) - Number(this.isCurrent(a)) || a.short.localeCompare(b.short));
       if (refs.length === 0) continue;
-      items.push(el('div', 'popover-group badge-kind', g.label));
+      items.push(el('div', 'section-title badge-kind', g.label));
       for (const r of refs.slice(0, MAX_PER_GROUP)) items.push(this.item(r, g.icon));
       if (refs.length > MAX_PER_GROUP)
-        items.push(el('div', 'popover-more', `${refs.length - MAX_PER_GROUP} more; narrow the pattern`));
+        items.push(el('div', 'popover-note', `${refs.length - MAX_PER_GROUP} more; narrow the pattern`));
     }
     if (items.length === 0)
-      items.push(el('div', 'popover-more', test ? 'No refs match' : 'No badges hidden. Type a pattern above.'));
+      items.push(el('div', 'popover-note', test ? 'No refs match' : 'No badges hidden. Type a pattern above.'));
     this.list.replaceChildren(...items);
     const n = this.state.hidden.size;
     const offered = n > 0 || this.state.showHidden;
@@ -252,14 +252,14 @@ export class BadgeFilter {
     const { rules } = this.state;
     if (rules.length === 0) {
       this.ruleList.replaceChildren(
-        el('div', 'popover-more badge-rules-empty', 'None yet. * matches any text, ? one character; later rules win.'),
+        el('div', 'popover-note', 'None yet. * matches any text, ? one character; later rules win.'),
       );
       return;
     }
     const counts = ruleCounts(rules, this.refs);
     this.ruleList.replaceChildren(
       ...rules.map((rule, i) => {
-        const row = el('div', rule.keep ? 'popover-rule keep' : 'popover-rule');
+        const row = el('div', rule.keep ? 'list-row popover-rule keep' : 'list-row popover-rule');
         const icon = codicon(rule.keep ? 'eye' : 'eye-closed');
         const n = counts[i]!;
         const what = `${rule.keep ? 'Shows' : 'Hides'} ${n} ${n === 1 ? 'badge' : 'badges'}`;
@@ -284,7 +284,7 @@ export class BadgeFilter {
         };
         row.append(
           icon,
-          el('span', 'popover-item-text popover-rule-pattern', rule.pattern),
+          el('span', 'list-row-text popover-rule-pattern', rule.pattern),
           count,
           button('up', 'arrow-up', `Move ${rule.pattern} up`, i === 0, () => moved(i - 1)),
           button('down', 'arrow-down', `Move ${rule.pattern} down`, i === rules.length - 1, () => moved(i + 1)),
@@ -301,13 +301,13 @@ export class BadgeFilter {
 
   private item(r: Ref, icon: string): HTMLElement {
     const hiding = this.state.hidden.get(r.name);
-    const row = el('div', hiding ? 'badge-ref badge-hidden' : 'badge-ref');
+    const row = el('div', hiding ? 'list-row badge-ref badge-hidden' : 'list-row badge-ref');
     row.dataset['short'] = r.short;
     row.title = hiding ? `${r.name}\nHidden by ${hiding.pattern}` : r.name;
-    row.append(codicon(icon), el('span', 'popover-item-text', r.short));
-    if (hiding) row.append(el('span', 'badge-ref-note', `by ${hiding.pattern}`));
+    row.append(codicon(icon), el('span', 'list-row-text', r.short));
+    if (hiding) row.append(el('span', 'list-row-note', `by ${hiding.pattern}`));
     if (this.isCurrent(r)) {
-      row.append(el('span', 'badge-ref-note', 'current branch, always shown'));
+      row.append(el('span', 'list-row-note', 'current branch, always shown'));
       return row;
     }
     // The short name, which git keeps free of * and ?, matches exactly this ref's name.

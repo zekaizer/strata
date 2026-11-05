@@ -150,7 +150,7 @@ describe('operation banner', () => {
       'Conflicts resolved. Continue finishes "Topic one" and replays the remaining 1 commit.',
     );
     assert.deepEqual(s.banner.buttons, ['Continue', 'Skip...', 'Abort...']);
-    assert.equal(s.focused, 'banner-button', 'Abort..., not the primary Continue');
+    assert.equal(s.focused, 'button banner-button', 'Abort..., not the primary Continue');
   });
 
   it('goes away when the rebase is aborted, handing focus to the list', async () => {

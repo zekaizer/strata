@@ -1,18 +1,6 @@
-/* All colors come from VS Code theme variables; graph colors are computed in theme.ts. */
-:root {
-  color-scheme: light dark;
-  --row-height: 24px;
-  /* Band above the commit line of rows with refs; REF_BAND in main.ts. */
-  --ref-band: 14px;
-  /* Shared by the row grid and the details under a row, so both start at the same column. */
-  --col-gap: 12px;
-  --separator: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));
-  --badge-branch: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
-  --badge-remote: var(--vscode-scmGraph-historyItemRemoteRefColor, var(--vscode-charts-purple));
-  --badge-tag: var(--vscode-charts-yellow);
-  --badge-stash: var(--vscode-descriptionForeground);
-  --badge-head: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
-}
+/* Tokens and shared components first; this file lays out the views (docs/design-system.md). */
+@import './tokens.css';
+@import './components.css';
 
 html,
 body {
@@ -23,10 +11,10 @@ body {
 }
 
 body {
-  color: var(--vscode-foreground);
+  color: var(--color-fg);
   background: var(--vscode-editor-background);
   font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
+  font-size: var(--font-size);
 }
 
 #app {
@@ -41,408 +29,19 @@ body {
 
 .toolbar {
   container: toolbar / inline-size;
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 32px;
-  padding: 0 8px 0 16px;
+  gap: var(--space-8);
+  height: var(--toolbar-height);
+  padding: 0 var(--space-8) 0 var(--space-16);
   border-bottom: 1px solid var(--vscode-panel-border, transparent);
   flex: none;
 }
 
-.toolbar {
-  position: relative;
-}
-
-.tool-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  max-width: 200px;
-  padding: 0 6px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-foreground);
-  font: inherit;
-  cursor: pointer;
-}
-/*
- * One language for every button: toolbar hover background, toolbar active background while
- * pressed, a dashed outline in high contrast themes, a solid focus ring for the keyboard.
- */
-body:not(.hover-off) .tool-button:not(:disabled):hover,
-body:not(.hover-off) .icon-button:not(:disabled):hover,
-body:not(.hover-off) .file-action:hover,
-body:not(.hover-off) .byline-hash:hover,
-body:not(.hover-off) .byline-toggle:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-  outline: 1px dashed var(--vscode-toolbar-hoverOutline, var(--vscode-contrastActiveBorder, transparent));
-  outline-offset: -1px;
-}
-
-body:not(.hover-off) .tool-button:not(.active, :disabled):active,
-body:not(.hover-off) .icon-button:not(:disabled):active,
-body:not(.hover-off) .file-action:active,
-body:not(.hover-off) .byline-hash:active,
-body:not(.hover-off) .byline-toggle:active,
-.tool-button[aria-expanded='true']:not(.active) {
-  background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
-}
-
-.tool-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tool-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
-.tool-button.active,
-body:not(.hover-off) .tool-button.active:hover {
-  background: var(--vscode-inputOption-activeBackground);
-  border-color: var(--vscode-inputOption-activeBorder, transparent);
-  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
-}
-
-/* The focus ring would land on the 1px active border, which is nearly the same color. */
-.tool-button.active:focus-visible {
-  outline-offset: 1px;
-}
-
-.tool-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.popover {
-  position: absolute;
-  top: 30px;
-  right: 8px;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  width: min(320px, calc(100vw - 16px));
-  max-height: min(420px, 70vh);
-  padding: 6px 0;
-  box-sizing: border-box;
-  border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, transparent));
-  border-radius: 6px;
-  background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background));
-  color: var(--vscode-quickInput-foreground, var(--vscode-foreground));
-  box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
-}
-
-.popover[hidden] {
-  display: none;
-}
-
-.popover-search {
-  margin: 0 6px;
-  padding: 4px 6px;
-  border: 1px solid var(--vscode-input-border, transparent);
-  border-radius: 2px;
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  font: inherit;
-  outline: none;
-}
-
-.popover-search:focus {
-  border-color: var(--vscode-focusBorder);
-}
-
-.popover-actions {
-  display: flex;
-  gap: 12px;
-  padding: 6px 13px;
-}
-
-.link-button {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--vscode-textLink-foreground);
-  font: inherit;
-  cursor: pointer;
-}
-body:not(.hover-off) .link-button:hover {
-  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
-  text-decoration: underline;
-}
-
-.link-button:disabled {
-  color: var(--vscode-disabledForeground);
-  cursor: default;
-  text-decoration: none;
-}
-
-/* High contrast themes mark links by more than their color. */
-body.vscode-high-contrast .link-button {
-  text-decoration: underline;
-}
-
-.link-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-  border-radius: 2px;
-}
-
-.popover-list {
-  overflow: auto;
-}
-
-.popover-group {
-  padding: 8px 13px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--vscode-descriptionForeground);
-}
-
-.popover-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 6px;
-  padding: 2px 7px;
-  border-radius: 3px;
-  cursor: pointer;
-}
-body:not(.hover-off) .popover-item:hover {
-  background: var(--vscode-list-hoverBackground);
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
-  outline-offset: -1px;
-}
-
-.popover-item input[type='checkbox'] {
-  appearance: none;
-  display: inline-grid;
-  place-content: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  border: 1px solid var(--vscode-checkbox-border, var(--vscode-widget-border, currentColor));
-  border-radius: 3px;
-  background: var(--vscode-checkbox-background, transparent);
-  color: var(--vscode-checkbox-foreground, var(--vscode-foreground));
-  cursor: pointer;
-}
-
-.popover-item input[type='checkbox']:checked::after {
-  content: '';
-  width: 9px;
-  height: 5px;
-  margin-top: -2px;
-  border: solid currentColor;
-  border-width: 0 0 2px 2px;
-  transform: rotate(-45deg);
-}
-
-.popover-item input[type='checkbox']:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
-}
-
-.popover-item-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.popover-more {
-  padding: 4px 13px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.tool-button[hidden] {
-  display: none;
-}
-
-.stash-count-narrow {
-  display: none;
-}
-
-/* Below the refs, which scroll: the badge and stash options stay in view. */
-.popover-section {
-  flex: none;
-  margin-top: 4px;
-  padding-top: 2px;
-  border-top: 1px solid var(--separator);
-}
-
-.popover-section[hidden],
-.popover-actions[hidden] {
-  display: none;
-}
-
-.badge-top {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 4px;
-  padding: 0 6px 4px;
-}
-
-.badge-top .popover-search {
-  margin: 0;
-}
-
-.badge-pattern-label {
-  padding: 0 1px;
-  font-weight: 600;
-}
-
-.badge-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 22px;
-}
-
-.badge-summary {
-  flex: 1;
-  min-width: 0;
-  color: var(--vscode-descriptionForeground);
-}
-
-.popover-button {
-  flex: none;
-  padding: 1px 10px;
-  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
-  border-radius: 2px;
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  font: inherit;
-  line-height: 18px;
-  cursor: pointer;
-}
-
-.popover-button.primary {
-  border-color: var(--vscode-button-border, transparent);
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-body:not(.hover-off) .popover-button:not(:disabled):hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
-}
-
-body:not(.hover-off) .popover-button.primary:not(:disabled):hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
-.popover-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* A disabled primary button keeps no fill: at half opacity it would still stand out. */
-.popover-button.primary:disabled {
-  border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-}
-
-.popover-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
-}
-
-/* The matching refs scroll; the pattern, the rules and the checkbox stay in view. */
-.badge-popover .badge-listed {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-height: 0;
-}
-
-.badge-refs {
-  min-height: 0;
-}
-
-.badge-ref {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 6px;
-  padding: 0 0 0 7px;
-}
-
-.badge-ref-note {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.92em;
-}
-
-.badge-ref > .popover-item-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.badge-ref.badge-hidden > .popover-item-text,
-.badge-ref.badge-hidden > .codicon:not(.badge-eye) {
-  color: var(--vscode-disabledForeground);
-}
-
-.badge-eye {
-  flex: none;
-  width: 22px;
-  height: 22px;
-}
-
-.badge-rules-empty {
-  white-space: normal;
-}
-
+.stash-count-narrow,
 .badge-count-narrow {
   display: none;
-}
-
-.popover-rules {
-  max-height: 132px;
-  overflow: auto;
-}
-
-.popover-rule {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 6px;
-  padding: 0 0 0 7px;
-}
-
-.popover-rule-pattern {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--vscode-editor-font-family, monospace);
-}
-
-.popover-rule-count {
-  flex: none;
-  min-width: 2ch;
-  text-align: right;
-  color: var(--vscode-descriptionForeground);
-}
-
-.popover-rule .icon-button {
-  flex: none;
-  width: 22px;
-  height: 22px;
-}
-
-.popover-rule .icon-button:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 /* Narrow toolbars keep the icons and drop the labels. */
@@ -458,43 +57,33 @@ body:not(.hover-off) .popover-button.primary:not(:disabled):hover {
     display: inline;
   }
   /* The commit count goes; a running operation and an error stay. */
-  .toolbar .status:not(.busy, .error) {
+  .toolbar-status:not(.busy, .error) {
     display: none;
   }
 }
 
 .toolbar .repo {
-  font-weight: 600;
-}
-
-.repo-button {
-  max-width: 280px;
-  margin-left: -7px;
+  font-weight: var(--font-weight-strong);
 }
 
 .toolbar .repo[hidden] {
   display: none;
 }
 
+/* Its text where the repository name stands without the button: the toolbar's left padding. */
+.repo-button {
+  max-width: 280px;
+  margin-left: calc(-1 * var(--space-4) - 1px);
+}
+
 .repo-popover {
-  left: 8px;
+  left: var(--space-8);
   right: auto;
-  width: min(420px, calc(100vw - 16px));
 }
 
+/* Two lines: name and path. */
 .repo-row {
-  width: calc(100% - 12px);
-  padding: 3px 7px;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-}
-
-.repo-row:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
+  padding-block: var(--space-2);
 }
 
 .repo-row-text {
@@ -513,199 +102,58 @@ body:not(.hover-off) .popover-button.primary:not(:disabled):hover {
 }
 
 .repo-row-name {
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 
 .repo-row-path,
 .repo-row-head {
-  color: var(--vscode-descriptionForeground);
+  color: var(--color-muted);
 }
 
 .repo-row-path {
-  font-size: 0.9em;
+  font-size: var(--font-size-sm);
 }
 
 .repo-row-head {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--space-4);
   flex: none;
   max-width: 40%;
   min-width: 0;
 }
 
-.toolbar .status {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--vscode-descriptionForeground);
-}
-
-.toolbar .status.error {
-  color: var(--vscode-errorForeground);
-}
-
-/* A Strata operation is running: its label, after a spinner (codicon-loading). */
-.toolbar .status.busy {
-  color: var(--vscode-foreground);
-}
-
-.toolbar .status.busy::before,
-.banner-busy::before {
-  display: inline-block;
-  margin-right: 4px;
-  vertical-align: -2px;
-  font: normal normal normal 14px/1 codicon;
-  content: '\eb19';
-  animation: codicon-spin 1.5s steps(30) infinite;
-}
-
-body.vscode-reduce-motion .toolbar .status.busy::before,
-body.vscode-reduce-motion .banner-busy::before {
-  animation: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .toolbar .status.busy::before,
-  .banner-busy::before {
-    animation: none;
-  }
-}
-
-.icon-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--vscode-icon-foreground, var(--vscode-foreground));
-  cursor: pointer;
-}
-
-.icon-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
-/*
- * The operation in progress, or what one left behind, between the toolbar and the list: the
- * sentence first, the buttons at the end of the line, or on a line of their own when narrow.
- */
-.banner {
+/* The badge filter: the matching refs scroll; the pattern, the rules and the checkbox stay in view. */
+.badge-popover .badge-listed {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.badge-refs {
+  min-height: 0;
+}
+
+.badge-ref.badge-hidden > .list-row-text,
+.badge-ref.badge-hidden > .codicon:not(.icon-button) {
+  color: var(--color-disabled);
+}
+
+.popover-rules {
+  max-height: calc(6 * var(--control-height));
+  overflow: auto;
+}
+
+.popover-rule-pattern {
+  font-family: var(--font-mono);
+}
+
+.popover-rule-count {
   flex: none;
-  padding: 5px 8px 5px 16px;
-  border-bottom: 1px solid var(--vscode-inputValidation-infoBorder, var(--vscode-focusBorder));
-  background: var(--vscode-inputValidation-infoBackground, transparent);
-  color: var(--vscode-inputValidation-infoForeground, var(--vscode-foreground));
-  line-height: 18px;
-}
-
-.banner[hidden] {
-  display: none;
-}
-
-.banner.warning {
-  border-bottom-color: var(--vscode-inputValidation-warningBorder, var(--vscode-editorWarning-foreground));
-  background: var(--vscode-inputValidation-warningBackground, transparent);
-  color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
-}
-
-body.vscode-high-contrast .banner {
-  border-top: 1px solid var(--vscode-contrastBorder);
-  border-bottom-color: var(--vscode-contrastBorder);
-}
-
-.banner-icon.codicon {
-  flex: none;
-  align-self: flex-start;
-  margin-top: 1px;
-  font-size: 16px;
-  color: var(--vscode-notificationsInfoIcon-foreground, var(--vscode-foreground));
-}
-
-.banner.warning .banner-icon.codicon {
-  color: var(--vscode-notificationsWarningIcon-foreground, var(--vscode-editorWarning-foreground));
-}
-
-/* The icon and the sentences share the first line; the buttons take the rest of it or wrap below. */
-.banner-text {
-  flex: 1 1 260px;
-  min-width: 0;
-  margin-left: -6px;
-}
-
-.banner-more {
-  display: block;
-}
-
-.banner-link {
-  font-family: var(--vscode-editor-font-family);
-  font-size: 0.92em;
-}
-
-.banner-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.banner-button {
-  padding: 1px 8px;
-  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
-  border-radius: 2px;
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  font: inherit;
-  line-height: 18px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.banner-button.primary {
-  border-color: var(--vscode-button-border, transparent);
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-
-/* Held while an operation runs (banner-view.ts), which the action area says. */
-.banner-busy {
-  align-self: center;
-  white-space: nowrap;
-}
-
-.banner-button[aria-disabled='true'] {
-  opacity: 0.5;
-  cursor: default;
-}
-
-/* A held primary button keeps no fill: at half opacity it would still stand out from the others. */
-.banner-button.primary[aria-disabled='true'] {
-  border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
-  background: var(--vscode-button-secondaryBackground, transparent);
-  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-}
-
-body:not(.hover-off) .banner-button:not([aria-disabled='true']):hover {
-  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
-}
-
-body:not(.hover-off) .banner-button.primary:not([aria-disabled='true']):hover {
-  background: var(--vscode-button-hoverBackground);
-}
-
-.banner-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: 2px;
+  min-width: 2ch;
+  text-align: right;
+  color: var(--color-muted);
 }
 
 .viewport {
@@ -749,7 +197,8 @@ canvas.graph {
   grid-template-areas: 'graph subject author date hash';
   align-items: center;
   column-gap: var(--col-gap);
-  padding-right: 12px;
+  /* ROW_PADDING in main.ts. */
+  padding-right: var(--space-12);
   cursor: default;
   white-space: nowrap;
 }
@@ -769,10 +218,10 @@ canvas.graph {
   align-self: end;
   /* Down onto the subject line's top edge (above its glyphs), so the badges read as the subject's
      labels rather than something between two rows. Visual only: the band keeps its height. */
-  transform: translateY(4px);
+  transform: translateY(var(--space-4));
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
   /* Clipped like hidden, but a badge's menu outline (offset outside it) still shows. */
   overflow: clip;
@@ -786,12 +235,12 @@ canvas.graph {
 
 /* Like VS Code lists: hover never paints over the selection. */
 body:not(.hover-off) .row:not(.selected):hover {
-  background: var(--vscode-list-hoverBackground);
+  background: var(--color-hover);
   color: var(--vscode-list-hoverForeground, inherit);
 }
 
 body:not(.hover-off) .row:hover {
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
+  outline: var(--hover-outline);
   outline-offset: -1px;
 }
 
@@ -820,7 +269,7 @@ body.vscode-high-contrast .row.head {
 }
 
 .row.selected {
-  background: var(--vscode-list-inactiveSelectionBackground);
+  background: var(--color-selection-inactive);
   color: var(--vscode-list-inactiveSelectionForeground, inherit);
   /* High contrast themes have no selection background; they mark selection with a border, dotted until focused. */
   outline: 1px dotted var(--vscode-contrastActiveBorder, transparent);
@@ -828,7 +277,7 @@ body.vscode-high-contrast .row.head {
 }
 
 .scroller:focus-within .row.selected {
-  background: var(--vscode-list-activeSelectionBackground);
+  background: var(--color-selection);
   color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
@@ -838,25 +287,24 @@ body.vscode-high-contrast .row.head {
  */
 body.keyboard-nav .scroller:focus .row.selected,
 body.keyboard-nav .scroller:focus .row.cursor {
-  outline: 1px solid
-    var(--vscode-list-focusAndSelectionOutline, var(--vscode-list-focusOutline, var(--vscode-focusBorder)));
+  outline: 1px solid var(--vscode-list-focusAndSelectionOutline, var(--vscode-list-focusOutline, var(--color-focus)));
   outline-offset: -1px;
 }
 
 /* Focus reached the list with no row to mark (none selected, or it is scrolled away): the list shows it. */
 body.keyboard-nav .scroller:focus:not(:has(.row.selected, .row.cursor)) {
-  outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder));
+  outline: 1px solid var(--vscode-list-focusOutline, var(--color-focus));
   outline-offset: -1px;
 }
 
 .row.head .text {
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 
 .subject {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-4);
   min-width: 0;
 }
 
@@ -868,7 +316,7 @@ body.keyboard-nav .scroller:focus:not(:has(.row.selected, .row.cursor)) {
 
 .author,
 .date {
-  color: var(--vscode-descriptionForeground);
+  color: var(--color-muted);
 }
 
 .row.selected .author,
@@ -886,75 +334,33 @@ body.keyboard-nav .scroller:focus:not(:has(.row.selected, .row.cursor)) {
 }
 
 .hash {
-  font-family: var(--vscode-editor-font-family);
-  font-size: 0.92em;
-  color: var(--vscode-descriptionForeground);
-}
-
-.badge {
-  --badge-color: var(--badge-branch);
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  /* A badge left to shrink keeps at least its icon. */
-  flex: 0 1 auto;
-  min-width: 20px;
-  box-sizing: border-box;
-  max-width: 200px;
-  height: 12px;
-  /* A badge shrunk to its minimum keeps everything inside its own border. */
-  overflow: hidden;
-  padding: 0 4px 0 3px;
-  border: 1px solid var(--badge-color);
-  /* A callout: the square corner points down at the subject. */
-  border-radius: 6px 6px 6px 1px;
-  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
-  font-size: 9px;
-  line-height: 10px;
-}
-
-.badge .codicon {
-  flex: none;
-  font-size: 9px;
-  color: var(--badge-color);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
 }
 
 /*
- * Quiet until their row is hovered or selected, so the subjects lead; the current branch and its
- * upstream always keep their tone. High contrast themes keep every badge at full contrast.
+ * Ref chips in rows are quiet until their row is hovered or selected, so the subjects lead; the
+ * current branch and its upstream always keep their tone. High contrast themes keep every chip at
+ * full contrast.
  */
-body:not(.vscode-high-contrast) .row:not(.selected) .badge:not(.badge-head, .badge-tracked) {
-  border-color: color-mix(in srgb, var(--badge-color) 45%, transparent);
-  background: color-mix(in srgb, var(--badge-color) 7%, transparent);
-  color: var(--vscode-descriptionForeground);
+body:not(.vscode-high-contrast) .row:not(.selected) .chip:not(.chip-head, .badge-tracked, .chip-outline) {
+  --chip-edge: 45%;
+  --chip-tint: 7%;
+  --chip-icon: 60%;
+  color: var(--color-muted);
 }
 
-body:not(.vscode-high-contrast) .row:not(.selected) .badge:not(.badge-head, .badge-tracked) .codicon {
-  color: color-mix(in srgb, var(--badge-color) 60%, transparent);
-}
-
-body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-head) {
-  border-color: var(--badge-color);
-  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
+body:not(.vscode-high-contrast):not(.hover-off) .row:hover .chip:not(.chip-head, .chip-outline) {
+  --chip-edge: 100%;
+  --chip-tint: 16%;
+  --chip-icon: 100%;
   color: inherit;
-}
-
-body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-head) .codicon {
-  color: var(--badge-color);
-}
-
-.badge-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.badge-remote {
-  --badge-color: var(--badge-remote);
 }
 
 /* The current branch's upstream stands out by weight too, which high contrast themes keep. */
 .badge-tracked {
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 
 /*
@@ -962,15 +368,15 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-hea
  * "main | origin". The names give way before the branch name does.
  */
 .badge-remotes {
-  --badge-color: var(--badge-remote);
+  --chip-color: var(--badge-remote);
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-2);
   flex: 0 1000 auto;
   min-width: 0;
-  margin-left: 2px;
-  padding-left: 3px;
-  border-left: 1px solid color-mix(in srgb, var(--badge-color) 60%, transparent);
+  margin-left: var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 1px solid color-mix(in srgb, var(--chip-color) 60%, transparent);
   font-weight: normal;
 }
 
@@ -984,36 +390,45 @@ body.vscode-high-contrast .badge-remotes {
   border-left-color: var(--vscode-contrastBorder);
 }
 
+/* Each remote name is a menu target of its own. */
+.badge-remote-name {
+  padding: 0 1px;
+}
+
+.badge.badge-more {
+  flex: none;
+}
+
 /*
  * What an operation moved: a badge or a stash row pulses twice; under reduced motion it is
  * outlined as long as it is marked (LANDING_MS).
  */
 .badge.landed {
-  animation: landed-badge 1.2s ease-in-out;
+  animation: landed-badge var(--duration-landing) ease-in-out;
 }
 
 .row.landed {
-  animation: landed-row 1.2s ease-in-out;
+  animation: landed-row var(--duration-landing) ease-in-out;
 }
 
 @keyframes landed-badge {
   25%,
   75% {
-    box-shadow: 0 0 0 2px var(--vscode-focusBorder);
-    background: color-mix(in srgb, var(--badge-color) 45%, transparent);
+    box-shadow: 0 0 0 2px var(--color-focus);
+    background: color-mix(in srgb, var(--chip-color) 45%, transparent);
   }
 }
 
 @keyframes landed-row {
   25%,
   75% {
-    box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent);
+    box-shadow: inset 0 0 0 100px color-mix(in srgb, var(--color-focus) 28%, transparent);
   }
 }
 
 body.vscode-reduce-motion .landed {
   animation: none;
-  outline: 2px solid var(--vscode-focusBorder);
+  outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
 
@@ -1024,7 +439,7 @@ body.vscode-reduce-motion .badge.landed {
 @media (prefers-reduced-motion: reduce) {
   .landed {
     animation: none;
-    outline: 2px solid var(--vscode-focusBorder);
+    outline: 2px solid var(--color-focus);
     outline-offset: -2px;
   }
 
@@ -1033,14 +448,9 @@ body.vscode-reduce-motion .badge.landed {
   }
 }
 
-/* Each remote name is a menu target of its own. */
-.badge-remote-name {
-  padding: 0 1px;
-}
-
 /* The element a context menu is open on, while the menu is open, as in VS Code's own lists. */
 body.vscode-context-menu-visible .menu-target {
-  outline: 1px solid var(--vscode-focusBorder);
+  outline: var(--focus-ring);
   outline-offset: -1px;
 }
 
@@ -1049,95 +459,40 @@ body.vscode-context-menu-visible .badge.menu-target {
   outline-offset: 1px;
 }
 
-.badge-tag {
-  --badge-color: var(--badge-tag);
+/* An autostash left behind needs the user: its chip keeps the warning tone, like the current branch's. */
+.chip-stash.autostash {
+  --chip-color: var(--color-warning);
 }
 
-.badge-stash {
-  --badge-color: var(--badge-stash);
-}
-
-/* An autostash left behind needs the user: its badge keeps the warning tone, like the current branch's. */
-.badge-stash.autostash {
-  --badge-color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
-}
-
-body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash {
-  border-color: var(--badge-color);
-  background: color-mix(in srgb, var(--badge-color) 16%, transparent);
-  color: var(--badge-color);
-}
-
-body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codicon {
-  color: var(--badge-color);
+body:not(.vscode-high-contrast) .row:not(.selected) .chip-stash.autostash {
+  --chip-edge: 100%;
+  --chip-tint: 16%;
+  --chip-icon: 100%;
+  color: var(--chip-color);
 }
 
 .badge-autostash {
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 
 /*
- * Stash rows: always one line, the badge inline before the message rather than in a band, so they
+ * Stash rows: always one line, the chip inline before the message rather than in a band, so they
  * never read as commits with refs. The message is git's reflog subject, muted; what was typed
  * after "On <branch>:" is slanted.
  */
-.row.stash .badge {
-  flex: none;
-  height: 16px;
-  max-width: none;
-  gap: 3px;
-  padding: 0 5px 0 4px;
-  border-radius: 3px;
-  font-size: 11px;
-  line-height: 14px;
-}
-
-.row.stash .badge .codicon {
-  font-size: 11px;
-}
-
-.row.stash .subject {
-  gap: 6px;
-}
-
 .row.stash .hash {
   visibility: hidden;
 }
 
 .row.stash .text,
 .stash-note {
-  color: var(--vscode-descriptionForeground);
+  color: var(--color-muted);
 }
 
 /* Where the operation in progress stopped, and a rebase's target (banner.ts operationNotes). */
 .operation-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
   flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
-  padding: 0 4px;
-  border: 1px solid currentColor;
-  border-radius: 3px;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.85em;
-  line-height: 14px;
-  white-space: nowrap;
-}
-
-.operation-note.warning {
-  color: var(--vscode-list-warningForeground, var(--vscode-editorWarning-foreground));
-}
-
-.operation-note .codicon {
-  flex: none;
-  font-size: 12px;
-}
-
-.operation-note-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .stash-message {
@@ -1156,29 +511,11 @@ body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codi
   color: inherit;
 }
 
-.badge-more {
-  --badge-color: var(--vscode-descriptionForeground);
-  flex: none;
-  padding: 0 4px;
-  border-radius: 6px;
-}
-
-.badge-head {
-  --badge-color: var(--badge-head);
-  font-weight: 600;
-  background: color-mix(in srgb, var(--badge-color) 30%, transparent);
-}
-
 /*
- * Commit details unfold inline under the selected row, one layer below the list: darker than
- * the rows, which cast a shadow onto it. The left gutter is the graph column, where the canvas
- * keeps drawing the lines that run through.
+ * Commit details unfold inline under the selected row, on the sunken surface. The left gutter is
+ * the graph column, where the canvas keeps drawing the lines that run through.
  */
 .expansion {
-  --details-bg: color-mix(in srgb, var(--vscode-editor-background) 94%, #000);
-  --details-shadow: rgb(0 0 0 / 28%);
-  /* The list's hover color is too close to the darker details background in light themes. */
-  --details-hover: color-mix(in srgb, var(--vscode-list-hoverBackground) 94%, #000);
   position: absolute;
   left: 0;
   right: 0;
@@ -1186,33 +523,26 @@ body:not(.vscode-high-contrast) .row:not(.selected) .badge-stash.autostash .codi
   overflow: auto;
   /* A scrollbar coming and going must not change the width the layout was decided for. */
   scrollbar-gutter: stable;
-  padding: 8px 12px 12px calc(var(--graph-width, 40px) + var(--col-gap));
+  padding: var(--space-8) var(--space-12) var(--space-12) calc(var(--graph-width, 40px) + var(--col-gap));
   border-top: 1px solid transparent;
   border-bottom: 1px solid transparent;
-  background: var(--details-bg);
+  background: var(--surface-sunken);
+  --color-hover: var(--surface-sunken-hover);
   /* Inset shadows belong to the box, not its scrolled content, so they stay at the edges. */
   box-shadow:
-    inset 0 8px 8px -8px var(--details-shadow),
-    inset 0 -8px 8px -8px var(--details-shadow);
+    inset 0 8px 8px -8px var(--surface-sunken-shadow),
+    inset 0 -8px 8px -8px var(--surface-sunken-shadow);
   cursor: auto;
-}
-
-body.vscode-dark .expansion {
-  --details-bg: color-mix(in srgb, var(--vscode-editor-background) 72%, #000);
-  --details-shadow: rgb(0 0 0 / 75%);
-  --details-hover: var(--vscode-list-hoverBackground);
 }
 
 /* More below the visible part: a deeper bottom edge. The text itself is cut cleanly, not faded. */
 .expansion.more-below {
   box-shadow:
-    inset 0 8px 8px -8px var(--details-shadow),
-    inset 0 -14px 12px -10px var(--details-shadow);
+    inset 0 8px 8px -8px var(--surface-sunken-shadow),
+    inset 0 -14px 12px -10px var(--surface-sunken-shadow);
 }
 
 body.vscode-high-contrast .expansion {
-  --details-bg: var(--vscode-editor-background);
-  --details-hover: var(--vscode-list-hoverBackground);
   box-shadow: none;
   border-color: var(--vscode-contrastBorder);
 }
@@ -1227,12 +557,12 @@ body.vscode-high-contrast .expansion.more-below {
 
 .details-fold {
   position: absolute;
-  top: 4px;
-  right: 8px;
+  top: var(--space-4);
+  right: var(--space-8);
 }
 
 .expansion-loading {
-  color: var(--vscode-descriptionForeground);
+  color: var(--color-muted);
 }
 
 /*
@@ -1247,7 +577,7 @@ body.vscode-high-contrast .expansion.more-below {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  column-gap: 24px;
+  column-gap: var(--space-24);
 }
 
 .details-main {
@@ -1269,20 +599,22 @@ body.vscode-high-contrast .expansion.more-below {
   flex: 1 1 0;
   min-width: min(100%, 260px);
   box-sizing: border-box;
-  padding-left: 16px;
-  border-left: 1px solid var(--separator);
+  padding-left: var(--space-16);
+  border-left: var(--divider);
 }
 
-.details-layout:not(.stacked) .files-summary {
-  /* Room for the fold button. */
-  padding-right: 28px;
+/* Room for the fold button. */
+.details-layout:not(.stacked) .files-summary,
+.byline,
+.expansion .details-subject {
+  padding-right: calc(var(--control-height) + var(--space-4));
 }
 
 .details-layout.stacked .details-files {
-  margin-top: 10px;
-  padding: 8px 0 0;
+  margin-top: var(--space-12);
+  padding: var(--space-8) 0 0;
   border-left: none;
-  border-top: 1px solid var(--separator);
+  border-top: var(--divider);
 }
 
 /* Who and when, above the subject: one line; only the author gives way. */
@@ -1290,12 +622,10 @@ body.vscode-high-contrast .expansion.more-below {
   display: flex;
   align-items: center;
   min-width: 0;
-  margin-bottom: 2px;
-  /* Room for the fold button. */
-  padding-right: 28px;
+  margin-bottom: var(--space-2);
   white-space: nowrap;
-  font-size: 0.92em;
-  color: var(--vscode-descriptionForeground);
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
 }
 
 .byline-author {
@@ -1313,7 +643,7 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 .byline-stash {
-  color: var(--vscode-foreground);
+  color: var(--color-fg);
 }
 
 .byline-branch {
@@ -1323,39 +653,33 @@ body.vscode-high-contrast .expansion.more-below {
 }
 
 .byline-sep {
-  margin: 0 6px;
+  margin: 0 var(--space-4);
   opacity: 0.7;
 }
 
 .byline-hash {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  margin-left: -3px;
-  padding: 0 0 0 3px;
-  border: none;
-  border-radius: 3px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
+  gap: var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  padding-left: var(--space-2);
 }
 
 .hash-text {
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--font-mono);
 }
 
 /* Always takes its room, so showing the icon (or Copied) does not move the toggle after it. */
 .hash-icon.codicon {
-  width: 16px;
-  font-size: 12px;
+  width: var(--icon-size);
+  font-size: var(--icon-size-sm);
   visibility: hidden;
 }
 
 body:not(.hover-off) .byline-hash:hover,
 .byline-hash:focus-visible,
 .byline-hash.copied {
-  color: var(--vscode-foreground);
+  color: var(--color-fg);
 }
 
 body:not(.hover-off) .byline-hash:hover .hash-icon,
@@ -1364,38 +688,21 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   visibility: visible;
 }
 
-.byline-hash.copied .hash-icon {
-  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+.byline-hash.copied .hash-icon,
+.meta-copy.copied {
+  color: var(--color-success);
 }
 
 .byline-hash.copied .hash-text {
   font-family: var(--vscode-font-family);
 }
 
-.byline-toggle.codicon {
-  margin-left: 2px;
-  padding: 0 2px;
-  border: none;
-  border-radius: 3px;
-  background: none;
-  color: var(--vscode-icon-foreground, var(--vscode-foreground));
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.meta-copy.copied {
-  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
+.byline-toggle {
+  margin-left: var(--space-2);
 }
 
 /* The meta table clips its cells, so the ring goes inside. */
 .meta-parent:focus-visible {
-  outline-offset: -1px;
-}
-
-.byline-hash:focus-visible,
-.byline-toggle:focus-visible,
-.meta-copy:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }
 
@@ -1404,12 +711,10 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .expansion .details-subject {
-  margin: 0 0 6px;
-  /* Room for the fold button. */
-  padding-right: 28px;
-  font-size: 1em;
-  font-weight: 600;
-  line-height: 1.4;
+  margin: 0 0 var(--space-8);
+  font-size: inherit;
+  font-weight: var(--font-weight-strong);
+  line-height: var(--line-height);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -1437,9 +742,9 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 .meta-table {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  column-gap: 12px;
-  margin: 2px 0 6px;
-  font-size: 0.92em;
+  column-gap: var(--space-12);
+  margin: var(--space-2) 0 var(--space-8);
+  font-size: var(--font-size-sm);
 }
 
 .meta-table tr {
@@ -1452,7 +757,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   text-align: left;
   vertical-align: top;
   white-space: nowrap;
-  color: var(--vscode-descriptionForeground);
+  color: var(--color-muted);
 }
 
 .meta-table td {
@@ -1462,14 +767,11 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .meta-table code {
-  font-family: var(--vscode-editor-font-family);
+  font-family: var(--font-mono);
 }
 
-.meta-copy.codicon {
-  width: 20px;
-  height: 18px;
-  margin-left: 4px;
-  font-size: 12px;
+.meta-copy {
+  margin-left: var(--space-4);
   vertical-align: middle;
 }
 
@@ -1486,13 +788,13 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 .details-message,
 .column-ruler {
   /* Commit bodies are written in a fixed-width editor: tables, code and trailers line up. */
-  font-family: var(--vscode-editor-font-family);
-  font-size: 0.92em;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
 }
 
 .details-message {
   margin: 0;
-  line-height: 1.5;
+  line-height: var(--line-height-prose);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1503,32 +805,24 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .details-more {
-  margin-top: 2px;
+  margin-top: var(--space-2);
 }
 
 .files-summary {
-  margin: 0 0 4px;
-  color: var(--vscode-descriptionForeground);
+  margin: 0 0 var(--space-4);
+}
+
+.files-summary .link-button {
+  text-transform: none;
 }
 
 /* A stash's untracked files follow its changes. */
 .files + .files-summary {
-  margin-top: 10px;
+  margin-top: var(--space-12);
 }
 
 .files-base {
-  font-family: var(--vscode-editor-font-family);
-  font-size: 0.92em;
-}
-
-/* Visually hidden, still read by screen readers. */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
+  font-family: var(--font-mono);
 }
 
 .files {
@@ -1543,14 +837,14 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 
 /* Indent guides: a faint line per ancestor level, under that ancestor folder's chevron. */
 .files li {
-  --guide: var(--vscode-tree-inactiveIndentGuidesStroke, color-mix(in srgb, var(--vscode-foreground) 18%, transparent));
+  --guide: var(--vscode-tree-inactiveIndentGuidesStroke, color-mix(in srgb, var(--color-fg) 18%, transparent));
   background-image: repeating-linear-gradient(
     to right,
     transparent 0 11px,
     var(--guide) 11px 12px,
     transparent 12px 16px
   );
-  background-size: calc(var(--depth, 0) * 16px) 100%;
+  background-size: calc(var(--depth, 0) * var(--tree-indent)) 100%;
   background-repeat: no-repeat;
 }
 
@@ -1565,8 +859,8 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 
 .files.files-multicol {
   column-count: var(--cols);
-  column-gap: 24px;
-  width: min(100%, calc(var(--cols) * var(--tree-col-w) + (var(--cols) - 1) * 24px));
+  column-gap: var(--space-24);
+  width: min(100%, calc(var(--cols) * var(--tree-col-w) + (var(--cols) - 1) * var(--space-24)));
 }
 
 .files-multicol li {
@@ -1600,22 +894,20 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   position: static;
 }
 
-/* Tree rows: 16px per level; a folder's chevron sits where a file's status letter does. */
+/* Tree rows (.list-row): --tree-indent per level; a folder's chevron sits where a file's status letter does. */
+.files .list-row {
+  position: relative;
+  padding: 0 var(--space-4) 0 calc(var(--depth, 0) * var(--tree-indent) + var(--space-4));
+}
+
 .folder {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 22px;
-  padding: 0 6px 0 calc(var(--depth, 0) * 16px + 6px);
-  border-radius: 3px;
-  color: var(--vscode-foreground);
-  cursor: pointer;
+  color: var(--color-fg);
 }
 
 .folder-chevron {
-  width: 12px;
-  font-size: 12px;
-  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  width: var(--icon-size);
+  font-size: var(--icon-size);
+  color: var(--color-icon);
 }
 
 .folder-name {
@@ -1624,46 +916,11 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   white-space: nowrap;
 }
 
-body:not(.hover-off) .folder:hover {
-  background-color: var(--details-hover);
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
-  outline-offset: -1px;
-}
-
-.folder:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
-.file {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  /* Tall enough for the Old | diff | New control, so hovering does not shift the rows below. */
-  min-height: 22px;
-  box-sizing: border-box;
-  /* 16px per tree level, matching .folder. */
-  padding: 1px 6px 1px calc(var(--depth, 0) * 16px + 6px);
-  border-radius: 3px;
-  cursor: pointer;
-}
-body:not(.hover-off) .file:hover {
-  background-color: var(--details-hover);
-  outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
-  outline-offset: -1px;
-}
-
-.file:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
-}
-
 .file-status {
-  width: 12px;
+  width: var(--icon-size);
   text-align: center;
-  font-family: var(--vscode-editor-font-family);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-strong);
 }
 
 .status-A .file-status {
@@ -1692,15 +949,13 @@ body:not(.hover-off) .file:hover {
   flex: none;
   /* One segmented control: Old | diff | New. */
   border: 1px solid var(--vscode-widget-border, var(--vscode-contrastBorder, var(--vscode-panel-border)));
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 /*
  * Shown only where the pointer or keyboard focus is (a click focuses the row too, but not
- * visibly, so nothing stays behind after it). Hover rules in this
- * file apply only without .hover-off: when a click opens a diff the pointer can leave the
- * iframe without a pointerleave, which would leave a highlight stuck (see trackPointer).
+ * visibly, so nothing stays behind after it).
  */
 body:not(.hover-off) .file:hover .file-actions,
 .file:focus-visible .file-actions,
@@ -1712,15 +967,12 @@ body:not(.hover-off) .file:hover .file-actions,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 18px;
-  padding: 0 6px;
-  border: none;
-  background: transparent;
-  color: var(--vscode-foreground);
-  font: inherit;
-  font-size: 0.9em;
-  cursor: pointer;
+  min-width: var(--control-height);
+  height: var(--line-height);
+  padding: 0 var(--space-4);
+  border-radius: 0;
+  color: var(--color-fg);
+  font-size: var(--font-size-sm);
 }
 
 .file-action + .file-action {
@@ -1728,18 +980,19 @@ body:not(.hover-off) .file:hover .file-actions,
 }
 
 .file-action.codicon {
-  font-size: 14px;
+  padding: 0 var(--space-4);
+  font-size: var(--icon-size-sm);
 }
 
 .file-old,
 .file-dir {
-  color: var(--vscode-descriptionForeground);
+  color: var(--color-muted);
 }
 
 .file-path {
   display: flex;
   flex: 0 1 auto;
-  gap: 6px;
+  gap: var(--space-8);
   min-width: 0;
   white-space: nowrap;
 }
@@ -1762,23 +1015,19 @@ body:not(.hover-off) .file:hover .file-actions,
   text-overflow: ellipsis;
   direction: rtl;
   text-align: left;
-  font-size: 0.92em;
-}
-
-.file {
-  position: relative;
+  font-size: var(--font-size-sm);
 }
 
 /* An accent bar, not a background: a filled row reads as a stuck hover. Square, unlike the row. */
 .file.opened::before {
   content: '';
   position: absolute;
-  top: 2px;
-  bottom: 2px;
+  top: var(--space-2);
+  bottom: var(--space-2);
   /* At the row's own indent, not on the indent guides of its ancestors. */
-  left: calc(var(--depth, 0) * 16px + 1px);
+  left: calc(var(--depth, 0) * var(--tree-indent) + 1px);
   width: 2px;
-  background: var(--vscode-focusBorder);
+  background: var(--color-focus);
 }
 
 .empty {
@@ -1786,8 +1035,8 @@ body:not(.hover-off) .file:hover .file-actions,
   top: 0;
   left: 0;
   right: 0;
-  padding: 16px;
-  color: var(--vscode-descriptionForeground);
+  padding: var(--space-16);
+  color: var(--color-muted);
   text-align: center;
 }
 
@@ -1834,75 +1083,37 @@ body:not(.hover-off) .file:hover .file-actions,
   /* The tree is as wide as the list here: Old | diff | New float over the row instead of taking room. */
   .file-actions {
     position: absolute;
-    right: 4px;
-    background: var(--details-bg);
+    right: var(--space-4);
+    background: var(--surface-sunken);
   }
 }
 
-.file-staged {
-  flex: none;
-  padding: 0 4px;
-  border: 1px solid var(--separator);
-  border-radius: 3px;
-  font-size: 0.85em;
-  line-height: 14px;
-  color: var(--vscode-descriptionForeground);
-}
-
 /* The refs of the commit whose graph node the pointer rests on (ref-card.ts). */
-.ref-card {
-  position: fixed;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  max-width: min(360px, calc(100vw - 8px));
-  padding: 4px 8px;
-  box-sizing: border-box;
-  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent));
-  border-radius: 4px;
-  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
-  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
-  pointer-events: none;
-}
-
-.ref-card[hidden] {
-  display: none;
-}
-
 .ref-card-line {
-  --badge-color: var(--badge-branch);
+  --chip-color: var(--badge-branch);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-4);
   min-width: 0;
-  line-height: 18px;
   white-space: nowrap;
 }
 
 .ref-card-line .codicon {
   flex: none;
-  color: var(--badge-color);
+  color: var(--chip-color);
 }
 
-.ref-card-rule {
-  height: 1px;
-  margin: 3px -8px;
-  background: var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent));
-}
-
+/* On, First in, After: a key column and values of plain chips (ref-card.ts). */
 .ref-card-where {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  column-gap: 8px;
-  line-height: 18px;
+  column-gap: var(--space-8);
   white-space: nowrap;
 }
 
 .ref-card-key {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.92em;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
 }
 
 /* Chips wrap rather than squeeze each other; one longer than the line ends in an ellipsis. */
@@ -1910,36 +1121,20 @@ body:not(.hover-off) .file:hover .file-actions,
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  column-gap: 6px;
+  gap: var(--space-2) var(--space-4);
   min-width: 0;
-}
-
-/* Before .ref-card-remote and .ref-card-tag, which override its colour. */
-.ref-card-chip {
-  --badge-color: var(--badge-branch);
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.ref-card-chip .codicon {
-  flex: none;
-  font-size: 13px;
-  color: var(--badge-color);
 }
 
 .ref-card-remote {
-  --badge-color: var(--badge-remote);
+  --chip-color: var(--badge-remote);
 }
 
 .ref-card-tag {
-  --badge-color: var(--badge-tag);
+  --chip-color: var(--badge-tag);
 }
 
 .ref-card-head .ref-card-text {
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 
 .ref-card-text {
@@ -1951,11 +1146,11 @@ body:not(.hover-off) .file:hover .file-actions,
 .ref-card-note,
 .ref-card-more {
   flex: none;
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.92em;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
 }
 
 .ref-card-line.hidden-badge .ref-card-text,
 .ref-card-line.hidden-badge .codicon {
-  color: var(--vscode-disabledForeground);
+  color: var(--color-disabled);
 }
