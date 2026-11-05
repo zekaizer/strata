@@ -9,7 +9,7 @@ import { ScriptedUi } from './scripted-ui.ts';
 export const menu = (ctx: Record<string, unknown>) => ({ webview: 'strata.graph', ...ctx });
 
 export const commitMenu = (hash: string) =>
-  menu({ webviewSection: 'commit', strataHash: hash, strataSubject: '', strataIsHead: false, strataMerge: false });
+  menu({ webviewSection: 'commit', strataHash: hash, strataSubject: '', strataIsHead: false });
 
 /** A local branch badge; `name` need not exist (a stale menu). */
 export const branchMenu = (name: string, hash = git('rev-parse', 'HEAD')) =>

@@ -61,7 +61,7 @@ describe('context menu targets', () => {
     ]);
   });
 
-  it('describes a commit row by whether it is HEAD, a merge, and which refs it carries', async () => {
+  it('describes a commit row by whether it is HEAD and which refs it carries', async () => {
     const row = async (index: number) => {
       await panel.simulate({ kind: 'clickRow', index });
       return waitFor('row selected', async () => {
@@ -71,12 +71,10 @@ describe('context menu targets', () => {
     };
     const head = await row(0);
     assert.equal(head['strataIsHead'], true);
-    assert.equal(head['strataMerge'], false);
     assert.equal(head['strataHasRefs'], true);
     assert.equal(head['strataRefs'], 'refs/heads/main refs/remotes/origin/main');
     const merge = await row(order().indexOf(git('rev-parse', 'main~1^{/Merge cross}')));
     assert.equal(merge['strataIsHead'], false);
-    assert.equal(merge['strataMerge'], true);
     assert.equal(merge['strataHasRefs'], false);
     assert.equal(merge['strataRefs'], '');
   });

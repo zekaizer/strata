@@ -1336,7 +1336,6 @@ class App {
       strataHash: c.hash,
       strataSubject: c.subject,
       strataIsHead: c.hash === this.refs.head,
-      strataMerge: c.parents.length > 1,
       strataHasRefs: refs.length > 0,
       strataRefs: refs.join(' '),
     };

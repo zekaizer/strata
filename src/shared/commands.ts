@@ -12,7 +12,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataMerge', 'strataHasRefs'],
+  commit: ['strataIsHead', 'strataHasRefs'],
   stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],

@@ -10,8 +10,6 @@ export interface CommitContext {
   strataHash: string;
   strataSubject: string;
   strataIsHead: boolean;
-  /** More than one parent. */
-  strataMerge: boolean;
   strataHasRefs: boolean;
   /** Full names of the refs on the commit, space-separated, those collapsed into "+N" included. */
   strataRefs: string;
