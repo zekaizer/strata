@@ -21,6 +21,7 @@ describe('readRefs', () => {
       short: 'main',
       kind: 'branch',
       hash: git(dir, 'rev-parse', 'main'),
+      upstream: 'refs/remotes/origin/main',
     });
     assert.equal(byName.get('refs/remotes/origin/develop')!.kind, 'remote');
     assert.equal(byName.get('refs/remotes/origin/develop')!.short, 'origin/develop');
