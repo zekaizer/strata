@@ -7,9 +7,12 @@ import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark 
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
-import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
+import { hasChangedPaths, hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
+import { changingCommits, isPartialClone, isTracked, readPathOrigin } from '../git/path-history.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
+import { COMMIT_GRAPH_OFFER, DONE } from '../core/wording.ts';
+import { inFilter, isRepoPath, parsePathFilter, samePathFilter, type PathFilter } from '../core/path-filter.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader, type LogOptions } from '../git/log-reader.ts';
 import { findCommits, findExact, locateCommit } from '../git/find.ts';
@@ -33,6 +36,10 @@ const REFRESH_DEBOUNCE_MS = 400;
 const SLOW_FIRST_PAGE_MS = 2000;
 /** The commit-graph is updated this long after the history changed, so it does not compete with the first page. */
 const GRAPH_UPDATE_DELAY_MS = 3000;
+/** A path history not read to its end after this long suggests changed-path filters, which speed it up several times. */
+const SLOW_PATH_MS = 2000;
+/** A path history's page holds what has arrived after this long: a rare path's commits are spread over all of history. */
+const PATH_FLUSH_MS = 150;
 /** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
 const LARGE_PATCH_BYTES = 4 << 20;
 /** Each git query behind the ref card's On, First in and After lines is stopped after this; its line is left out. */
@@ -110,6 +117,16 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** Stops the find widget's search, and its locate query, in flight. */
   private search: AbortController | undefined;
   private locating: AbortController | undefined;
+  /** The path history being read: its tips, and the last commit served that changes its paths. */
+  private pathRead:
+    | {
+        generation: number;
+        tips: Set<string>;
+        oldest: string | undefined;
+        done: boolean;
+        slow: ReturnType<typeof setTimeout>;
+      }
+    | undefined;
   /** WHERE_BUDGET_MS; integration tests shorten it to see lines left out. */
   static whereBudgetMs = WHERE_BUDGET_MS;
 
@@ -120,7 +137,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.env = deps.env;
     this.send = deps.post;
     this.generation = deps.generation;
-    this.options = deps.options;
+    this.options = validOptions(deps.options);
     this.suggested = deps.suggested;
     this.onBusy = deps.busy;
     this.revealIn = deps.reveal;
@@ -257,19 +274,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     try {
       switch (m.type) {
         case 'loadMore':
-          if (m.generation === this.generation && this.reader) {
-            const started = performance.now();
-            const page = await this.reader.next(m.count).catch((e: unknown) => {
-              // A reset disposed the reader: that history is gone, and the graph is loading the next one.
-              if (m.generation === this.generation) throw e;
-            });
-            if (!page) break;
-            if (this.timedGeneration !== m.generation) {
-              this.timedGeneration = m.generation;
-              if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph();
-            }
-            if (m.generation === this.generation) this.post({ type: 'commits', generation: m.generation, ...page });
-          }
+          if (m.generation === this.generation && this.reader) await this.loadMore(m.generation, m.count);
           break;
         case 'select':
           if (m.generation === this.generation) {
@@ -282,14 +287,22 @@ export class RepoSession implements vscode.Disposable, FlowHost {
           if (m.generation === this.generation) await this.openFile(m);
           break;
         case 'setOptions': {
+          const options = validOptions(m.options);
           // Stash rows are interleaved in the webview: showing or hiding them reloads nothing.
           const reload =
-            m.options.firstParent !== this.options.firstParent ||
-            JSON.stringify(m.options.refs) !== JSON.stringify(this.options.refs);
-          this.options = m.options;
+            options.firstParent !== this.options.firstParent ||
+            JSON.stringify(options.refs) !== JSON.stringify(this.options.refs) ||
+            !samePathFilter(options.path, this.options.path);
+          this.options = options;
           if (reload) await this.reset();
           break;
         }
+        case 'openPathDiff':
+          if (m.generation === this.generation) await this.openPathDiff(m.hash, m.beside);
+          break;
+        case 'pathAction':
+          await this.pathAction(m.action, m.path);
+          break;
         case 'pickStash': {
           const hash = await pickStash(this.ui, this.stashes, m.shown, this.snapshot?.headBranch);
           if (hash) this.post({ type: 'reveal', hash });
@@ -375,7 +388,20 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const known = new Set(refs.refs.map((r) => r.name));
     const kept = this.options.refs?.filter((r) => known.has(r)) ?? [];
     this.options = { ...this.options, refs: kept.length > 0 ? kept : null };
+    const path = this.options.path;
     this.reader = new LogReader(this.view());
+    clearTimeout(this.pathRead?.slow);
+    this.pathRead = path
+      ? {
+          generation,
+          tips: tipsOf(refs, this.options.refs),
+          oldest: undefined,
+          done: false,
+          slow: setTimeout(() => {
+            if (this.pathRead?.generation === generation && !this.pathRead.done) void this.suggestCommitGraph(true);
+          }, SLOW_PATH_MS),
+        }
+      : undefined;
     this.post({
       type: 'reset',
       generation,
@@ -388,6 +414,83 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     });
     this.scheduleGraphUpdate();
     await Promise.all([this.syncRepoState(true), this.syncHead(generation, cwd, refs.headBranch)]);
+  }
+
+  /** Shows the history of `path` (null: of the whole repository), keeping the other options. */
+  async showPath(path: PathFilter | null): Promise<void> {
+    this.options = { ...this.options, path };
+    await this.reset();
+  }
+
+  /** Serves a page of the current history; a path history's also says which of its ref tips leave the paths alone. */
+  private async loadMore(generation: number, count: number): Promise<void> {
+    const reader = this.reader!;
+    const path = this.options.path;
+    const started = performance.now();
+    const page = await reader.next(count, path ? { flushAfterMs: PATH_FLUSH_MS } : {}).catch((e: unknown) => {
+      // A reset disposed the reader: that history is gone, and the graph is loading the next one.
+      if (generation === this.generation) throw e;
+    });
+    if (!page || generation !== this.generation) return;
+    if (this.timedGeneration !== generation) {
+      this.timedGeneration = generation;
+      if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph(path !== null);
+    }
+    const read = this.pathRead;
+    if (!path || read?.generation !== generation) {
+      this.post({ type: 'commits', generation, ...page });
+      return;
+    }
+    // Ref tips are kept for their badges, and merges that join kept lines for the graph, whether or
+    // not they change the paths.
+    const kept = page.commits.filter((c) => read.tips.has(c.hash) || c.parents.length > 1).map((c) => c.hash);
+    const changing = await changingCommits(this.api.git.path, this.cwd, kept, path, this.options.firstParent);
+    if (generation !== this.generation) return;
+    const unchanged = kept.filter((h) => !changing.has(h));
+    const skip = new Set(unchanged);
+    read.oldest = page.commits.findLast((c) => !skip.has(c.hash))?.hash ?? read.oldest;
+    this.post({ type: 'commits', generation, ...page, ...(unchanged.length > 0 ? { unchanged } : {}) });
+    if (page.done) {
+      read.done = true;
+      void this.sendPathOrigin(generation, path, read.oldest);
+    }
+  }
+
+  /** Tells the graph how the path history it has read to the end starts. */
+  private async sendPathOrigin(generation: number, path: PathFilter, oldest: string | undefined): Promise<void> {
+    const git = this.api.git.path;
+    const cwd = this.cwd;
+    try {
+      const origin =
+        oldest === undefined
+          ? { kind: 'never' as const, tracked: await isTracked(git, cwd, path) }
+          : await readPathOrigin(git, cwd, oldest, path, await isPartialClone(git, cwd));
+      if (generation === this.generation) this.post({ type: 'pathOrigin', generation, origin });
+    } catch {
+      // Without it the history simply has no note at its end.
+    }
+  }
+
+  /** Opens the change a commit of a one-file path history made to that file. */
+  private async openPathDiff(hash: string, beside: boolean): Promise<void> {
+    const path = this.options.path;
+    if (!isCommitId(hash) || !path) throw new Error('invalid commit id');
+    const details = await readCommitDetails(this.api.git.path, this.cwd, hash);
+    const file = details.files.find((f) => inFilter(f.path, path));
+    if (!file) throw new Error(`${shortOf(hash)} does not change ${path.paths[0]}`);
+    await this.openFileFromMenu(hash, details.base, file, 'primary', beside);
+  }
+
+  /** Opens or copies a path of the filter shown. */
+  private async pathAction(action: 'open' | 'copy', raw: string): Promise<void> {
+    const path = this.options.path?.paths.find((p) => p === raw);
+    if (path === undefined) throw new Error(`not in the path filter: ${raw}`);
+    if (action === 'copy') {
+      await vscode.env.clipboard.writeText(path);
+      this.notify(DONE.copied(path));
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.absolutePath(path)));
   }
 
   /** Sets `strata.head`, which picks the title bar's Pull and Push or Publish Branch. */
@@ -501,6 +604,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       firstParent: this.options.firstParent,
       refs: this.options.refs ?? undefined,
       heads: this.snapshot?.worktrees.flatMap((w) => (w.branch === undefined && w.head !== undefined ? [w.head] : [])),
+      paths: this.options.path?.paths,
     };
   }
 
@@ -886,39 +990,47 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (label === undefined) this.scheduleRefresh();
   }
 
-  /** Writes a commit-graph with progress, then reloads the history. */
-  async writeCommitGraph(): Promise<void> {
+  /**
+   * Writes a commit-graph with progress, then reloads the history. `changedPaths`: with the
+   * changed-path filters file and folder history need (several times longer to write).
+   */
+  async writeCommitGraph(changedPaths: boolean): Promise<void> {
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Strata: writing commit-graph for ${basename(this.cwd)}…`,
+        title: `Strata: writing commit-graph${changedPaths ? ' with changed-path filters' : ''} for ${basename(this.cwd)}…`,
       },
-      () => writeCommitGraph(this.api.git.path, this.cwd),
+      () => writeCommitGraph(this.api.git.path, this.cwd, changedPaths),
     );
     await this.reset();
   }
 
-  private async suggestCommitGraph(): Promise<void> {
+  /**
+   * Offers, once per repository and window, to write a commit-graph when history is slow; for a
+   * slow path history (`forPaths`), also changed-path filters, also into an existing commit-graph.
+   */
+  private async suggestCommitGraph(forPaths: boolean): Promise<void> {
     if (this.suggested.has(this.key)) return;
     const config = vscode.workspace.getConfiguration('strata');
     if (!config.get<boolean>('suggestCommitGraph', true)) return;
-    if (await hasCommitGraph(this.api.git.path, this.cwd)) return;
+    const git = this.api.git.path;
+    const graph = await hasCommitGraph(git, this.cwd);
+    if (graph && (!forPaths || (await hasChangedPaths(git, this.cwd)))) return;
     this.suggested.add(this.key);
-    const keep = 'Write and keep updated';
-    const write = 'Write once';
     const never = "Don't ask again";
-    const choice = await vscode.window.showInformationMessage(
-      `History of ${basename(this.cwd)} loads slowly because the repository has no commit-graph. ` +
-        'Writing one (git commit-graph write --reachable) makes the graph open in a fraction of the time. ' +
-        'Kept updated, it also covers new commits as they come in.',
-      keep,
-      write,
-      'Not now',
-      never,
-    );
-    if (choice === keep) await config.update('keepCommitGraphUpdated', true, vscode.ConfigurationTarget.Global);
-    if (choice === keep || choice === write) await this.writeCommitGraph();
+    const offer = graph
+      ? COMMIT_GRAPH_OFFER.filters(this.pathName())
+      : COMMIT_GRAPH_OFFER.graph(basename(this.cwd), forPaths);
+    const choice = await vscode.window.showInformationMessage(offer.message, ...offer.buttons, 'Not now', never);
+    if (choice === COMMIT_GRAPH_OFFER.keep)
+      await config.update('keepCommitGraphUpdated', true, vscode.ConfigurationTarget.Global);
+    if (choice !== undefined && offer.buttons.includes(choice)) await this.writeCommitGraph(forPaths);
     else if (choice === never) await config.update('suggestCommitGraph', false, vscode.ConfigurationTarget.Global);
+  }
+
+  /** The path whose history is shown, as offers name it. */
+  private pathName(): string {
+    return this.options.path?.paths[0] ?? basename(this.cwd);
   }
 
   dispose(): void {
@@ -927,6 +1039,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.stopFind();
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);
+    clearTimeout(this.pathRead?.slow);
     this.reader?.dispose();
     for (const d of this.disposables.splice(0)) d.dispose();
     for (const w of this.linked.values()) w.close();
@@ -934,15 +1047,20 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 }
 
-/** A repository-relative path as git prints it: '/'-separated, no empty, '.' or '..' segments. */
-export function isRepoPath(p: string): boolean {
-  return (
-    p.length > 0 &&
-    !p.includes('\0') &&
-    !p.includes('\\') &&
-    p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
-  );
+/** `o` with a path filter only when it is a valid one: options come from the webview and saved state. */
+export function validOptions(o: ViewOptions): ViewOptions {
+  return { ...o, path: parsePathFilter(o.path) ?? null };
 }
+
+/** Commits a path history keeps for their badges: the tips of the refs shown (branches and remote-tracking branches by default) and HEAD. */
+function tipsOf(snapshot: RefSnapshot, refs: string[] | null): Set<string> {
+  const shown = (r: Ref) => (refs ? refs.includes(r.name) : r.kind === 'branch' || r.kind === 'remote');
+  const tips = new Set(snapshot.refs.filter(shown).map((r) => r.hash));
+  if (snapshot.head !== undefined) tips.add(snapshot.head);
+  return tips;
+}
+
+const shortOf = (hash: string) => hash.slice(0, 7);
 
 /** runGit's output cap is the patch size limit; its error does not say so. */
 function readPatch(read: Promise<string>): Promise<string> {

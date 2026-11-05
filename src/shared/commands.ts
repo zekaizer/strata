@@ -20,7 +20,7 @@ export const SECTION_KEYS: Record<Section, readonly string[]> = {
   head: [],
   refs: [],
   worktree: ['strataLocked', 'strataPrunable', 'strataMain', 'strataShown'],
-  file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed'],
+  file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed', 'strataInFolder'],
 };
 
 export interface MenuPlacement {
@@ -67,6 +67,8 @@ export const COMMANDS = {
   'strata.file.copyPath': { title: 'Copy Path', menus: [file('2_copy@2')] },
   'strata.file.copyOldRelativePath': { title: 'Copy Old Relative Path', menus: [file('2_copy@3', 'strataRenamed')] },
   'strata.file.copyPatch': { title: 'Copy Patch', menus: [file('2_copy@4')] },
+  'strata.file.showHistory': { title: 'Show File History', menus: [file('3_history@1')] },
+  'strata.file.showFolderHistory': { title: 'Show Folder History', menus: [file('3_history@2', 'strataInFolder')] },
 
   'strata.stash.push': {
     title: 'Stash Changes...',

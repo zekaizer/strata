@@ -265,3 +265,34 @@ const menuDir = process.env['STRATA_MENU_SHOT_DIR'];
     });
   }
 });
+
+(shotDir ? describe : describe.skip)('tool: path history screenshots', () => {
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      // A file changed on a merged branch: dimmed tips, the merge's details with the file marked.
+      await vscode.commands.executeCommand(
+        'strata.showHistory',
+        vscode.Uri.file(join(workspaceRoot(), 'feature_search.txt')),
+      );
+      const p = await waitFor('path history', async () => {
+        const s = await panel.probe();
+        return s.done && s.options.path !== null && s;
+      });
+      const index = Number(Object.entries(p.rowHashes).find(([, h]) => h === git('rev-parse', 'feature/search'))?.[0]);
+      await panel.simulate({ kind: 'clickRow', index });
+      await waitFor('details', async () => (await panel.probe()).detailsShown !== undefined);
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await mkdir(shotDir!, { recursive: true });
+      await screenshot(join(shotDir!, `path-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.path-chip-main' });
+      await delay(500);
+      await screenshot(join(shotDir!, `path-popover-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.path-chip-clear' });
+      await waitFor('whole history', async () => (await panel.probe()).options.path === null);
+      panel.dispose();
+    });
+  }
+});

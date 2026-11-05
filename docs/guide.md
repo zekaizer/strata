@@ -166,6 +166,57 @@ to get started and the requirements.
   button's menu hides or shows the rows.
 - Use the refresh button after changing the repository outside VS Code.
 
+## File and folder history
+
+The graph can show only the commits that change a file or a folder, with the
+branches and lines around them:
+
+- Right-click files or folders in the Explorer, or changes in the Source
+  Control view, and choose **Show History in Commit Graph**. Several selected
+  together make one history.
+- Right-click an editor tab or inside an editor and choose **Show File History
+  in Commit Graph**, or run **Strata: Show File History in Commit Graph** from
+  the Command Palette for the file you are editing (also from a diff's tab).
+- Right-click a changed file in a commit's details and choose **Show File
+  History** or **Show Folder History** (its folder).
+
+With several repositories open, the history comes from the innermost one
+holding the file. Picking a repository's top folder shows its whole history.
+
+While a history is shown:
+
+- A chip in the toolbar names the file or folder. Click × on it, or **Show All
+  Files** in its menu, to see the whole graph again. Its menu also shows the full
+  path, how many commits change it, **Show History of** its folder, **Open File**
+  and **Copy Relative Path**.
+- The toolbar counts the commits that change the path. On large repositories
+  rows appear as git finds them and the count says `Searching history of …`.
+- Branch tips (and HEAD) that leave the path alone keep their rows, dimmed and in
+  italics with `no change to <name>`, so their badges stay where the branches
+  are. So do merges that only join other lines.
+- The branch filter and **First parent** still apply. With **First parent** on,
+  the history shows the merges that brought each change into the branch.
+- For a single file, hover a row and click **Diff** to open what that commit
+  changed in it, without opening the details. In the details, the file's row
+  is marked and its folders unfolded.
+- When the history starts where the file was renamed, a note under the last row
+  says so; **Include \<old path\>** adds the old name to the history (the chip
+  then says `+1`). In a partial clone only renames that kept the contents are
+  found, so that no file contents are downloaded.
+- A link in the details to a commit outside the history (a parent, the base)
+  shows the whole graph again with that commit selected.
+- Stashes are not shown as rows.
+
+The history follows git's merge simplification (`--simplify-merges`): a merge
+that took one side's version of the path is left out, and so is a change on a
+branch that was merged away without it, unless a branch still points to it.
+
+On a large repository the whole history of a rarely changed file takes as long
+as reading all of history. **Strata: Write Commit-Graph for Faster History**
+writes changed-path filters along with the commit-graph, which make file and
+folder history several times faster; when a file's history is slow to search,
+Strata offers to write them.
+
 ## Changing the repository
 
 Right-click a commit, a branch, remote branch or tag badge, or a stash row for
@@ -291,8 +342,11 @@ repository has a commit-graph file. Without one, git reads the whole history
 before showing the first commit (about 20 seconds on the Linux kernel). When
 that happens Strata offers to write a commit-graph; you can also run **Strata:
 Write Commit-Graph for Faster History** at any time. It runs
-`git commit-graph write --reachable`, the same thing `git maintenance` does, and
-only adds a cache file to the repository. Turn the offer off with the
+`git commit-graph write --reachable --changed-paths` and only adds a cache file
+to the repository. The changed-path
+filters make file and folder history faster; the offer after a slow first page
+writes the commit-graph without them, which is quicker, and a slow file history
+offers to add them. Turn the offer off with the
 `strata.suggestCommitGraph` setting.
 
 Finding commits reads the messages git stores, so it scans all history when few
@@ -310,7 +364,8 @@ only updates repositories that already have a commit-graph.
 
 - `strata.suggestCommitGraph` (default: `true`): Offer to write a commit-graph
   file when a repository without one takes long to show its first page of
-  history.
+  history, and changed-path filters when the history of a file or folder takes
+  long to search.
 - `strata.autoStash` (default: `gitConfig`): Which choice comes first when a
   switch would overwrite uncommitted changes: gitConfig and always put stashing
   them first, never letting git merge them into the target. Operations ask about

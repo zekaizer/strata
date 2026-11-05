@@ -49,7 +49,6 @@ export async function findCommits(
     // One more than the cap tells a capped search from one with exactly `cap` hits.
     `--max-count=${cap + 1}`,
     ...view,
-    '--',
   ];
   let pending: FindHit[] = [];
   let found = 0;
@@ -140,7 +139,7 @@ export async function locateCommit(opts: LogOptions & { hash: string; signal: Ab
   let position: number | undefined;
   let seen = 0;
   let rest = '';
-  await streamGit(git, cwd, ['rev-list', ...view, '--'], signal, (chunk, stop) => {
+  await streamGit(git, cwd, ['log', '--format=%H', ...view], signal, (chunk, stop) => {
     const lines = (rest + chunk).split('\n');
     rest = lines.pop()!;
     const i = lines.indexOf(hash);

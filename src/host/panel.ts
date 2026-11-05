@@ -6,6 +6,7 @@ import { GraphController, type SavedView } from './controller.ts';
 import type { RepoSession } from './session.ts';
 import type { FlowEnv, FlowHost } from './flow.ts';
 import { isCommandId } from '../shared/commands.ts';
+import type { PathFilter } from '../core/path-filter.ts';
 import { parseRepoKey, type RepoKey } from '../core/repos.ts';
 import { repoList } from './repositories.ts';
 
@@ -22,8 +23,9 @@ export class GraphPanel implements vscode.Disposable {
   readonly onDidReceiveMessage = this.messageEmitter.event;
   private readonly ready: Promise<ReadyInfo>;
   private controller: GraphController | undefined;
-  /** A repository chosen before the controller started: it shows that one first. */
+  /** A repository chosen before the controller started: it shows that one first, with `chosenPath`'s history. */
   private chosen: RepoKey | undefined;
+  private chosenPath: PathFilter | null | undefined;
 
   /** Where the webview's state is mirrored (workspace storage); set on activation. */
   static memento: vscode.Memento | undefined;
@@ -199,9 +201,29 @@ export class GraphPanel implements vscode.Disposable {
     return true;
   }
 
-  /** Writes a commit-graph for the shown repository and reloads. */
+  /**
+   * Shows the history of `path` (null: the whole history) in the repository whose root is `root`.
+   * Resolves false, showing nothing else, when no open repository has that root.
+   */
+  async showPath(root: unknown, path: PathFilter | null): Promise<boolean> {
+    const key = parseRepoKey(root, (await repoList()).keys());
+    if (key === undefined) return false;
+    if (this.controller) await this.controller.showPath(key, path);
+    else {
+      this.chosen = key;
+      this.chosenPath = path;
+    }
+    return true;
+  }
+
+  /** Shows the history of `path` in the shown repository. */
+  showPathHistory(path: PathFilter | null): Promise<void> {
+    return this.session().showPath(path);
+  }
+
+  /** Writes a commit-graph with changed-path filters for the shown repository and reloads. */
   writeCommitGraph(): Promise<void> {
-    return this.controller?.shown?.writeCommitGraph() ?? Promise.resolve();
+    return this.controller?.shown?.writeCommitGraph(true) ?? Promise.resolve();
   }
 
   /** Resolves once the webview has booted. */
@@ -298,8 +320,14 @@ export class GraphPanel implements vscode.Disposable {
         },
       );
       const chosen = this.chosen;
+      const path = this.chosenPath;
       this.chosen = undefined;
-      await this.controller.start(saved && { last: saved.last, views: saved.views, options: saved.options }, chosen);
+      this.chosenPath = undefined;
+      await this.controller.start(
+        saved && { last: saved.last, views: saved.views, options: saved.options },
+        chosen,
+        path,
+      );
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }

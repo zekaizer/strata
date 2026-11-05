@@ -7,6 +7,7 @@ import type { FindHit, FindQuery } from '../core/find.ts';
 
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
+import type { PathFilter, PathOrigin } from '../core/path-filter.ts';
 import type { RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry, StashShown } from '../core/stash.ts';
@@ -21,9 +22,11 @@ export interface ViewOptions {
   refs: string[] | null;
   /** Whether stashes are drawn as rows; changing it does not reload the history. */
   showStashes: boolean;
+  /** Only commits that change these paths (and the tips of the refs shown); null: the whole repository. */
+  path: PathFilter | null;
 }
 
-export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null, showStashes: true };
+export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null, showStashes: true, path: null };
 
 /** An open repository, as the repository switcher lists it. */
 export interface RepoItem {
@@ -121,7 +124,14 @@ export type HostToWebview =
    * when it changes.
    */
   | { type: 'repoState'; operation: OperationState | undefined; leftover: Leftover | undefined }
-  | { type: 'commits'; generation: number; commits: Commit[]; done: boolean }
+  /**
+   * A page of history; fewer commits than asked for and not done while a path history is still
+   * being searched. `unchanged`: commits in it that a path history keeps although they leave its paths alone (ref
+   * tips for their badges, merges that join the lines of other kept commits).
+   */
+  | { type: 'commits'; generation: number; commits: Commit[]; done: boolean; unchanged?: string[] }
+  /** How the path history, read to its end, starts. */
+  | { type: 'pathOrigin'; generation: number; origin: PathOrigin }
   | { type: 'details'; generation: number; details: CommitDetails }
   | { type: 'noRepository' }
   /** The panel was hidden behind another editor (VS Code knows; the webview's own events may not tell). */
@@ -160,6 +170,10 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
+  /** A row's Diff under a one-file path filter: opens the commit's change to that file. */
+  | { type: 'openPathDiff'; generation: number; hash: string; beside: boolean }
+  /** The path chip's Open File and Copy Relative Path, on a path of the filter. */
+  | { type: 'pathAction'; action: 'open' | 'copy'; path: string }
   /** The repository switcher opened: answered with `repositories`, with current branches. */
   | { type: 'listRepositories' }
   /** Shows the repository at `root`, an open one's root. */
@@ -247,6 +261,12 @@ export interface ProbeState {
   operationNotes: Record<string, string>;
   /** Text of the toolbar's ref filter button, e.g. "All". */
   refFilterButton: string;
+  /** Text of the toolbar's path chip ("session.ts +1"); empty while it is hidden. */
+  pathChip: string;
+  /** The note under a path history's last row, while it is shown. */
+  pathNote: string | undefined;
+  /** Rendered rows of commits a path history keeps although they leave its paths alone, by row index. */
+  unchangedRows: number[];
   /**
    * Accessible names of the shown buttons in the toolbar and the inline details, as a screen reader
    * reads them: aria-label, else the text and CSS-generated content (icon glyphs) of what is not

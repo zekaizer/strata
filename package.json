@@ -83,6 +83,18 @@
         "category": "Strata"
       },
       {
+        "command": "strata.showHistory",
+        "title": "Show History in Commit Graph",
+        "category": "Strata",
+        "icon": "$(strata-graph)"
+      },
+      {
+        "command": "strata.showFileHistory",
+        "title": "Show File History in Commit Graph",
+        "category": "Strata",
+        "icon": "$(strata-graph)"
+      },
+      {
         "command": "strata.file.openChanges",
         "title": "Open Changes",
         "category": "Strata"
@@ -120,6 +132,16 @@
       {
         "command": "strata.file.copyPatch",
         "title": "Copy Patch",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.showHistory",
+        "title": "Show File History",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.file.showFolderHistory",
+        "title": "Show Folder History",
         "category": "Strata"
       },
       {
@@ -488,6 +510,16 @@
           "group": "2_copy@4"
         },
         {
+          "command": "strata.file.showHistory",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
+          "group": "3_history@1"
+        },
+        {
+          "command": "strata.file.showFolderHistory",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataInFolder",
+          "group": "3_history@2"
+        },
+        {
           "command": "strata.stash.push",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataIsHead",
           "group": "1_worktree@1"
@@ -770,6 +802,14 @@
       ],
       "commandPalette": [
         {
+          "command": "strata.showHistory",
+          "when": "false"
+        },
+        {
+          "command": "strata.showFileHistory",
+          "when": "strata.repositories && activeEditor"
+        },
+        {
           "command": "strata.openInGraph",
           "when": "false"
         },
@@ -811,6 +851,14 @@
         },
         {
           "command": "strata.file.copyPatch",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.showHistory",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.showFolderHistory",
           "when": "false"
         },
         {
@@ -1087,6 +1135,34 @@
           "when": "activeWebviewPanelId == 'strata.graph'",
           "group": "9_output@1"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "strata.showHistory",
+          "when": "strata.repositories",
+          "group": "strata@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "strata.showFileHistory",
+          "when": "strata.repositories",
+          "group": "strata@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "strata.showFileHistory",
+          "when": "strata.repositories",
+          "group": "strata@1"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "strata.showHistory",
+          "when": "scmProvider == git",
+          "group": "strata@1"
+        }
       ]
     },
     "icons": {
@@ -1104,7 +1180,7 @@
         "strata.suggestCommitGraph": {
           "type": "boolean",
           "default": true,
-          "description": "Offer to write a commit-graph file when a repository without one takes long to show its first page of history."
+          "description": "Offer to write a commit-graph file when a repository without one takes long to show its first page of history, and changed-path filters when the history of a file or folder takes long to search."
         },
         "strata.autoStash": {
           "type": "string",

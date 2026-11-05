@@ -269,6 +269,128 @@ export function large(count = 5000, seed = 1): RepoBuilder {
   return b;
 }
 
+/**
+ * One file's history across branches: src/session.ts renamed to src/auth/session.ts, changed on
+ * main, on a merged feature branch (resolved by hand in the merge), on an unmerged feature branch,
+ * on a branch merged and deleted, and cherry-picked onto a release branch. The tips of main,
+ * origin/main and feature/sso leave it unchanged.
+ */
+export function paths(): RepoBuilder {
+  const b = new RepoBuilder();
+  const mira = 'Mira Okafor <mira@example.com>';
+  const jonas = 'Jonas Feld <jonas@example.com>';
+  const priya = 'Priya Raman <priya@example.com>';
+  const lena = 'Lena Wu <lena@example.com>';
+  const session = (...lines: string[]) => `${lines.join('\n')}\n`;
+  const v1 = ['export const ttl = 60;'];
+  b.commit('main', 'Initial project layout', {
+    author: mira,
+    files: {
+      'README.md': '# quillboard\n',
+      'src/session.ts': session(...v1),
+      'src/app.ts': 'app\n',
+      'package.json': '{}\n',
+    },
+  });
+  b.commit('main', 'Add routing', { author: jonas, files: { 'src/app.ts': 'app\nroutes\n' } });
+  const v2 = [...v1, 'export function load() {}'];
+  b.commit('main', 'Persist sessions in local storage', { author: mira, files: { 'src/session.ts': session(...v2) } });
+  b.commit('main', 'Document local setup', { author: priya, files: { 'docs/setup.md': 'setup\n' } });
+  b.commit('main', 'Move session handling under src/auth', {
+    author: jonas,
+    files: {
+      'src/session.ts': null,
+      'src/auth/session.ts': session(...v2),
+      'src/auth/index.ts': "export * from './session';\n",
+    },
+  });
+  const fork = b.commit('main', 'Header layout', { author: lena, files: { 'src/app.ts': 'app\nroutes\nheader\n' } });
+
+  b.commit('feature/refresh-token', 'Refresh tokens before they expire', {
+    parents: [fork],
+    author: priya,
+    files: { 'src/auth/session.ts': session(...v2, 'export function refresh() {}') },
+  });
+  b.commit('feature/refresh-token', 'Retry requests after refresh', {
+    author: priya,
+    files: { 'src/api/client.ts': 'retry\n' },
+  });
+  b.commit('feature/refresh-token', 'Add jitter to refresh timer', {
+    author: priya,
+    files: { 'src/auth/session.ts': session(...v2, 'export function refresh() {} // jitter') },
+  });
+
+  b.commit('main', 'Board view skeleton', { author: lena, files: { 'src/ui/board.ts': 'board\n' } });
+  b.commit('main', 'Use seconds for session TTL', {
+    author: mira,
+    files: { 'src/auth/session.ts': session(...v2, 'export const ttlSeconds = 3600;') },
+  });
+  b.commit('main', 'Drag and drop cards', { author: lena, files: { 'src/ui/board.ts': 'board\ndnd\n' } });
+  // Both sides changed the file; the resolution differs from each.
+  const v3 = [...v2, 'export const ttlSeconds = 3600;', 'export function refresh() {} // jitter'];
+  b.commit('main', "Merge branch 'feature/refresh-token'", {
+    parents: [b.tip('main'), b.tip('feature/refresh-token')],
+    author: mira,
+    files: { 'src/auth/session.ts': session(...v3) },
+  });
+  const release = b.commit('main', 'Board columns', {
+    author: lena,
+    files: { 'src/ui/board.ts': 'board\ndnd\ncolumns\n' },
+  });
+
+  b.commit('feature/sso', 'SSO provider config', {
+    parents: [release],
+    author: jonas,
+    files: { 'src/auth/sso.ts': 'sso\n' },
+  });
+  const sso = b.commit('feature/sso', 'Create sessions from SSO assertions', {
+    author: jonas,
+    files: { 'src/auth/session.ts': session(...v3, 'export function fromSso() {}') },
+  });
+  b.commit('feature/sso', 'SAML response parsing', { author: jonas, files: { 'src/auth/sso.ts': 'sso\nsaml\n' } });
+
+  const theme = b.commit('main', 'Dark theme tokens', {
+    parents: [release],
+    author: lena,
+    files: { 'src/ui/theme.ts': 'dark\n' },
+  });
+  const cleared = session(...v3, 'export function clear() {}');
+  b.commit('fix/logout', 'Clear session on logout in every tab', {
+    parents: [theme],
+    author: priya,
+    files: { 'src/auth/session.ts': cleared },
+  });
+  b.commit('main', 'High contrast tokens', { author: lena, files: { 'src/ui/theme.ts': 'dark\nhc\n' } });
+  b.commit('main', "Merge branch 'fix/logout'", {
+    parents: [b.tip('main'), b.tip('fix/logout')],
+    author: mira,
+    files: { 'src/auth/session.ts': cleared },
+  });
+
+  b.commit('release/2.x', 'Changelog for 2.1', {
+    parents: [release],
+    author: mira,
+    files: { 'CHANGELOG.md': '2.1\n' },
+  });
+  const picked = b.commit('release/2.x', 'Clear session on logout in every tab', {
+    author: priya,
+    files: { 'src/auth/session.ts': cleared },
+  });
+  b.tag('v2.1.0', picked, 'Release 2.1.0');
+
+  b.commit('main', 'Request timeouts', { author: jonas, files: { 'src/api/client.ts': 'timeouts\n' } });
+  const nav = b.commit('main', 'Board keyboard navigation', {
+    author: lena,
+    files: { 'src/ui/board.ts': 'board\ndnd\ncolumns\na11y\n' },
+  });
+  b.commit('main', 'Bump dependencies', { author: priya, files: { 'package.json': '{"deps":1}\n' } });
+  b.remote('origin');
+  b.ref('refs/remotes/origin/main', nav);
+  b.ref('refs/remotes/origin/feature/sso', sso);
+  b.deleteRef('fix/logout');
+  return b;
+}
+
 export const scenarios = {
   linear,
   branchy,
@@ -278,6 +400,7 @@ export const scenarios = {
   refs,
   'clock-skew': clockSkew,
   messages,
+  paths,
   large: () => large(),
 } as const;
 

@@ -43,7 +43,9 @@ and identities, so object ids are identical on every machine. Scenarios:
 `linear`, `branchy` (criss-cross, unmerged branch), `stashes` (branchy with
 two stashes on one base, one on HEAD, a displaced autostash and one on a commit
 no ref reaches), `octopus`, `multi-root`, `refs` (annotated/lightweight tags,
-remotes, ahead/behind), `clock-skew`, `large` (5000 seeded random commits).
+remotes, ahead/behind), `clock-skew`, `paths` (one file renamed, changed on
+merged, unmerged and cherry-picked branches, with branch tips that leave it
+unchanged), `large` (5000 seeded random commits).
 `test/fixtures/stashes.ts` writes stashes with git plumbing, so integration
 tests add the same ones to the `branchy` workspace and drop them afterwards.
 
