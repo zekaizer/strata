@@ -45,8 +45,12 @@ const REFRESH_DEBOUNCE_MS = 400;
 const SLOW_FIRST_PAGE_MS = 2000;
 /** The commit-graph is updated this long after the history changed, so it does not compete with the first page. */
 const GRAPH_UPDATE_DELAY_MS = 3000;
-/** A path history not read to its end after this long suggests changed-path filters, which speed it up several times. */
-const SLOW_PATH_MS = 2000;
+/**
+ * A path history not read to its end after this long suggests a commit-graph with changed-path
+ * filters: its first row comes only when git has walked all history, which they make several
+ * times faster.
+ */
+const SLOW_PATH_MS = 500;
 /** A search with no answer after this long suggests a commit-graph: without one, git reads all history first. */
 const SLOW_FIND_MS = 500;
 /** A path history's page holds what has arrived after this long: a rare path's commits are spread over all of history. */

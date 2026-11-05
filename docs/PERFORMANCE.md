@@ -151,9 +151,28 @@ Without it a frequently changed file's first row would come in 35 ms with a
 plain commit-graph (`kernel/sched.c`), but the whole history takes the same
 time, and the branch badges would lose their commits. With changed-path
 filters the whole history is done in 0.12-0.2 s, so Strata offers them when a
-path history is not done after 2 s, and **Write Commit-Graph for Faster
+path history is not done after 500 ms, and **Write Commit-Graph for Faster
 History** writes them. Until the history is complete the toolbar says
 `Searching history of …` with a spinner, and clearing the filter stops git.
+
+Streaming the commits that change the path first, without
+`--simplify-by-decoration`, and adding the dimmed branch tips afterwards was
+measured and not adopted (`git log --format=%H`, git alone, median of 3, first
+line / exit, ms; A as now, B without `--simplify-by-decoration`):
+
+| Path             | A, no commit-graph | B, no commit-graph | A, commit-graph | B, commit-graph | A, filters |
+| ---------------- | -----------------: | -----------------: | --------------: | --------------: | ---------: |
+| `LICENSE`        |        1,238/1,254 |        1,198/1,210 |         570/583 |         517/526 |    110/120 |
+| `kernel/sched.c` |        1,297/1,315 |        1,223/1,248 |         653/668 |      **35**/606 |    111/121 |
+| `drivers/gpio/`  |        1,400/1,422 |        1,321/1,348 |         766/782 |      **44**/732 |    170/183 |
+
+Without a commit-graph B gains nothing: the topological walk itself takes
+0.7 s before anything prints. With one but no filters it shows a frequently
+changed path's first rows early, but the history is done no sooner, a rare
+path gains nothing, and the tip rows would then arrive mostly above the rows
+already shown, moving them down while the user reads them. Changed-path
+filters make the whole history faster than B's first row on a rare path, so
+the offer is the way to a fast path history.
 
 ## Known limits
 
