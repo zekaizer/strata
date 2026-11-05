@@ -11,7 +11,7 @@ import { patchStats } from '../core/patch.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader, type LogOptions } from '../git/log-reader.ts';
 import { findCommits, findExact, locateCommit } from '../git/find.ts';
-import type { FindQuery } from '../core/find.ts';
+import type { FindHit, FindQuery } from '../core/find.ts';
 import { readCommitPatch, readFilePatch, readStashPatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
@@ -452,9 +452,10 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const search = new AbortController();
     this.search = search;
     const live = () => !search.signal.aborted && generation === this.generation;
-    let exact = hashPrefix === undefined ? undefined : await findExact(this.api.git.path, this.cwd, hashPrefix);
-    if (!live()) return;
+    let exact: FindHit[] | undefined;
     try {
+      exact = hashPrefix === undefined ? undefined : await findExact(this.api.git.path, this.cwd, hashPrefix);
+      if (!live()) return;
       await findCommits(
         { ...this.view(), query: { text, author, hashPrefix }, cap: FIND_CAP, signal: search.signal },
         (batch) => {
