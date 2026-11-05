@@ -4,6 +4,7 @@ import { resolveStashChoices } from '../../src/core/autostash.ts';
 import {
   conflictsInProgress,
   dirtySection,
+  alreadyReverted,
   HISTORY_DONE,
   mainlinePick,
   mergeConfirmation,
@@ -178,6 +179,10 @@ describe('wording of history operations', () => {
       'Reset \'main\' to abc1234. Your uncommitted changes are in stash@{0} ("x")',
     );
     assert.equal(HISTORY_DONE.aborted('cherryPick'), 'Aborted the cherry pick');
+    assert.equal(
+      alreadyReverted('abc1234', "'main'"),
+      "abc1234 is already reverted on 'main': there is nothing to undo.",
+    );
   });
 
   it('says when restoring stashed changes only partly worked, or not at all', () => {

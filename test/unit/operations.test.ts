@@ -246,6 +246,16 @@ describe('operations', () => {
     assert.equal(show('HEAD'), 'f.txt\ng.txt\nh.txt', "topic's commits, relative to side");
   });
 
+  it('fails a revert of an already reverted commit as nothing to commit, leaving no revert in progress', async () => {
+    const d = repo();
+    const main1 = head(d);
+    await op(d, { kind: 'revert', commit: main1 });
+    const reverted = head(d);
+    await assert.rejects(op(d, { kind: 'revert', commit: main1 }), { kind: 'nothingToCommit' });
+    assert.equal(await readOperationState('git', d), undefined);
+    assert.equal(head(d), reverted);
+  });
+
   it('pushes, stashes, applies, pops, drops, branches from and restores a stash', async () => {
     const d = repo();
     appendFileSync(join(d, 'f.txt'), 'one\n');

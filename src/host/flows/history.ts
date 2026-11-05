@@ -7,6 +7,7 @@ import {
   abortConfirmation,
   alreadyBased,
   alreadyContains,
+  alreadyReverted,
   dirtySection,
   type Confirmation,
   type HistoryFetch,
@@ -392,7 +393,11 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
       },
       [h.expect],
     ),
-  );
+  ).catch((e: unknown) => {
+    if (kind !== 'revert' || !(e instanceof GitOpError) || e.kind !== 'nothingToCommit') throw e;
+    void host.ui.notify('info', alreadyReverted(c.short, h.name));
+    return undefined;
+  });
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
   await finishWithRestore(host, r, {

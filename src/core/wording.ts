@@ -541,6 +541,9 @@ export function pickConfirmation<B extends string>(
 }
 
 export const alreadyContains = (into: string, what: string): string => `${into} already contains ${what}.`;
+/** A revert of `short` on `onto` found nothing to undo. */
+export const alreadyReverted = (short: string, onto: string): string =>
+  `${short} is already reverted on ${onto}: there is nothing to undo.`;
 export const alreadyBased = (branch: string, onto: string): string => `${branch} is already based on ${onto}.`;
 
 /** The reset modes in the order offered: git's default first. */

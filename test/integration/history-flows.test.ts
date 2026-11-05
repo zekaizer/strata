@@ -713,6 +713,37 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), merge, 'nothing reverted');
   });
 
+  it('says a commit or a merge is already reverted, and gives back the changes stashed for it', async () => {
+    const main = git('rev-parse', 'main');
+    git('revert', '--no-edit', main);
+    const reverted = git('rev-parse', 'HEAD');
+    await reload(panel());
+    await run('strata.revert', commitMenu(main));
+    assert.deepEqual(ui.of('notify').at(-1), {
+      kind: 'notify',
+      level: 'info',
+      message: `${short(main)} is already reverted on 'main': there is nothing to undo.`,
+      actions: [],
+    });
+    assert.equal(git('rev-parse', 'HEAD'), reverted);
+
+    ui.clear();
+    const { merge } = await mergedSide();
+    git('revert', '--no-edit', '-m', '1', merge);
+    const again = git('rev-parse', 'HEAD');
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Revert');
+    await run('strata.revert', commitMenu(merge));
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      `${short(merge)} is already reverted on 'main': there is nothing to undo.`,
+    );
+    assert.equal(git('rev-parse', 'HEAD'), again);
+    assert.equal(read('NOTES.md'), 'mine\n');
+    assert.equal(git('stash', 'list'), '');
+    assert.equal(api().contextValue('strata.operation'), '');
+  });
+
   it('keeps uncommitted changes of a hard reset in a stash it never pops, and undoes the reset', async () => {
     const before = git('rev-parse', 'main');
     const target = git('rev-parse', 'main~2');
