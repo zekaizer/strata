@@ -735,6 +735,15 @@ class App {
       case 'editMessage':
         this.openEditor(m.draft);
         break;
+      case 'editEffects':
+        if (this.editor?.draft.head !== m.head) break;
+        this.editor.draft = { ...this.editor.draft, effects: m.effects };
+        this.saveState();
+        {
+          const effects = this.expansion.querySelector('.tidy-effects');
+          if (effects) effects.textContent = ` · ${m.effects}`;
+        }
+        break;
       case 'editEnded':
         if (!this.editor) break;
         if (m.applied) {
@@ -2955,7 +2964,7 @@ class App {
     field.rows = Math.min(12, Math.max(6, ed.text.split('\n').length + 1));
     const count = el('span', 'tidy-count');
     const status = el('div', 'tidy-note tidy-status');
-    status.append(count, el('span', 'tidy-effects', ` · ${draft.effects}`));
+    status.append(count, el('span', 'tidy-effects', ` · ${draft.effects ?? 'Checking what else saving rewrites…'}`));
     const save = el('button', 'button primary', squash ? `Squash ${draft.commits.length} Commits` : 'Save Message');
     const cancel = el('button', 'button', 'Cancel');
     const keys = el('span', 'tidy-keys', `${isMac ? '⌘' : 'Ctrl'}+Enter to save · Esc to cancel`);

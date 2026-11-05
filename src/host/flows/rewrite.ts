@@ -29,7 +29,6 @@ import {
   writeTodo,
 } from '../../git/rewrite.ts';
 import { runGit } from '../../git/run.ts';
-import type { MessageDraft } from '../../shared/protocol.ts';
 import { finish, finishWithWarning, headRef, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import { changes, execAutostash, finishRestoring, runMovingUntracked } from './changes.ts';
 import { head, moveUndo, runStoppable, type Head } from './history.ts';
@@ -78,34 +77,47 @@ async function lineTo(host: FlowHost, h: Head, oldest: string): Promise<readonly
   return undefined;
 }
 
-/**
- * Plans `edit` on HEAD's line and reads what it touches: which rewritten commits a remote has,
- * and which local branches and tags are on them. Resolves undefined, having said why, when the
- * edit cannot be carried out.
- */
-async function prepare(host: FlowHost, edit: Edit, line?: readonly LineCommit[]): Promise<Prepared | undefined> {
+/** An edit planned on HEAD's line as it is now, before reading what else it touches. */
+type Planned = Omit<Prepared, 'fates' | 'facts'>;
+
+/** Plans `edit` on HEAD's line; resolves undefined, having said why, when it cannot be carried out. */
+async function plan(host: FlowHost, edit: Edit, line?: readonly LineCommit[]): Promise<Planned | undefined> {
   const h = await head(host);
   const n = named(edit);
   const read = line ?? (await lineTo(host, h, n.oldest));
   if (!read) return undefined;
-  const plan = planOf(edit, read);
-  if (typeof plan === 'string') {
+  const planned = planOf(edit, read);
+  if (typeof planned === 'string') {
     const [short] = (await shortIds(host, [n.newest])).values();
-    void host.ui.notify('info', rewriteRefused(plan, short ?? n.newest, h.name));
+    void host.ui.notify('info', rewriteRefused(planned, short ?? n.newest, h.name));
     return undefined;
   }
-  const made = inPlace(plan, read) ? chain(plan, read) : undefined;
-  const rewritten = new Set(plan.steps.map((s) => s.commit));
+  const made = inPlace(planned, read) ? chain(planned, read) : undefined;
+  const short = await shortIds(
+    host,
+    planned.steps.map((st) => st.commit),
+  );
+  return { edit, h, line: read, plan: planned, made, short };
+}
+
+/**
+ * Reads what a planned edit touches besides HEAD's branch: which rewritten commits a remote has,
+ * and which local branches and tags are on them. Without a commit-graph this takes a few hundred
+ * milliseconds on a large repository (refs on other lines are walked back to the commits' date).
+ */
+async function survey(host: FlowHost, p: Planned): Promise<Prepared> {
+  const { edit, h, plan: planned, made, short } = p;
+  const n = named(edit);
+  const rewritten = new Set(planned.steps.map((st) => st.commit));
   const ref = headRef(h.branch);
   // Branches checked out in other worktrees, as the graph last read them.
   const elsewhere = new Set(host.refs.worktrees.flatMap((w) => (w.branch === undefined ? [] : [w.branch])));
-  const [unpushed, having, upstream, short] = await Promise.all([
-    readUnpushed(host.git, host.cwd, plan.base),
-    readRefsHaving(host.git, host.cwd, plan.steps[0]!.commit),
+  const [unpushed, having, upstream] = await Promise.all([
+    readUnpushed(host.git, host.cwd, planned.base),
+    readRefsHaving(host.git, host.cwd, planned.steps[0]!.commit),
     h.branch === undefined ? undefined : readUpstream(host.git, host.cwd, h.branch),
-    shortIds(host, [...rewritten]),
   ]);
-  const pushed = read.filter((c) => rewritten.has(c.hash) && !unpushed.has(c.hash));
+  const pushed = p.line.filter((c) => rewritten.has(c.hash) && !unpushed.has(c.hash));
   const remote =
     pushed[0] && ((await readRemoteHaving(host.git, host.cwd, pushed[0].hash, upstream?.ref)) ?? 'a remote branch');
   const fates = refFates(
@@ -115,7 +127,7 @@ async function prepare(host: FlowHost, edit: Edit, line?: readonly LineCommit[])
     rewritten,
     made,
   );
-  const at = new Map(read.map((c, i) => [c.hash, i]));
+  const at = new Map(p.line.map((c, i) => [c.hash, i]));
   const s = (hash: string) => short.get(hash) ?? hash.slice(0, 7);
   const count = at.get(n.oldest)! - at.get(n.newest)! + 1;
   const what = {
@@ -133,20 +145,28 @@ async function prepare(host: FlowHost, edit: Edit, line?: readonly LineCommit[])
     moves: fates.moves.map((m) => m.ref.short),
     stays: fates.stays.map((st) => ({ name: st.ref.short, why: st.why })),
   };
-  return { edit, h, line: read, plan, made, fates, facts, short };
+  return { ...p, fates, facts };
 }
 
-/** Edit Message... and Squash Selected Commits...: opens the inline editor on `oldest`..`newest`. */
+/** Plans `edit` and reads what it touches; undefined when it cannot be carried out. */
+async function prepare(host: FlowHost, edit: Edit, line?: readonly LineCommit[]): Promise<Prepared | undefined> {
+  const p = await plan(host, edit, line);
+  return p && survey(host, p);
+}
+
+/**
+ * Edit Message... and Squash Selected Commits...: opens the inline editor on `oldest`..`newest` as
+ * soon as the edit is planned, then tells it what saving rewrites.
+ */
 export async function openEditor(host: FlowHost, kind: 'reword' | 'squash', oldest: string, newest: string) {
   const h = await head(host);
   const line = await lineTo(host, h, oldest);
   if (!line) return;
   const first = line[line.length - 1]!;
+  // Planned with a placeholder: an empty message is refused at Save, not when opening.
   const edit: Edit =
-    kind === 'reword'
-      ? { kind, commit: oldest, message: first.message }
-      : { kind, oldest, newest, message: first.message };
-  const p = await prepare(host, edit, line);
+    kind === 'reword' ? { kind, commit: oldest, message: 'x' } : { kind, oldest, newest, message: 'x' };
+  const p = await plan(host, edit, line);
   if (!p) return;
   const from = line.findIndex((c) => c.hash === newest);
   const commits = line
@@ -158,14 +178,8 @@ export async function openEditor(host: FlowHost, kind: 'reword' | 'squash', olde
       subject: c.message.split('\n')[0] ?? '',
       message: c.message,
     }));
-  const draft: MessageDraft = {
-    kind,
-    head: h.hash,
-    commits,
-    message: cleanMessage(first.message),
-    effects: rewriteEffects(p.facts),
-  };
-  host.openEditor(draft);
+  host.openEditor({ kind, head: h.hash, commits, message: cleanMessage(first.message), effects: undefined });
+  host.editEffects(h.hash, rewriteEffects((await survey(host, p)).facts));
 }
 
 /** Save in the message editor: the edit, unless HEAD moved since it opened at `opened`. Resolves whether it was applied. */

@@ -53,8 +53,8 @@ export interface MessageDraft {
   commits: { hash: string; short: string; subject: string; message: string }[];
   /** What it opens with: the message of the (oldest) commit. */
   message: string;
-  /** What saving rewrites and moves (rewriteEffects). */
-  effects: string;
+  /** What saving rewrites and moves (rewriteEffects); undefined until the host has read it (editEffects). */
+  effects: string | undefined;
 }
 
 /**
@@ -130,6 +130,8 @@ export type HostToWebview =
   | { type: 'find' }
   /** Opens the inline message editor (Edit Message..., Squash Selected Commits...). */
   | { type: 'editMessage'; draft: MessageDraft }
+  /** What saving the editor opened at HEAD `head` rewrites and moves, read after it opened. */
+  | { type: 'editEffects'; head: string; effects: string }
   /** Save in the message editor ended: `applied` closes it; otherwise it stays open with its text. */
   | { type: 'editEnded'; applied: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */

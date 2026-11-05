@@ -988,6 +988,10 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.post({ type: 'editMessage', draft });
   }
 
+  editEffects(head: string, effects: string): void {
+    this.post({ type: 'editEffects', head, effects });
+  }
+
   editEnded(applied: boolean): void {
     this.post({ type: 'editEnded', applied });
   }

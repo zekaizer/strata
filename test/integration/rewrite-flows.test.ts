@@ -221,9 +221,9 @@ describe('tidying recent commits', () => {
   it('edits a message in the inline editor and saves it', async () => {
     const [a] = await three();
     await run('strata.editMessage', commitMenu(a));
-    const opened = await waitFor('the editor', async () => {
+    const opened = await waitFor('the editor, then what saving rewrites', async () => {
       const p = await panel().probe();
-      return p.editor?.shown && p;
+      return p.editor?.shown && p.editor.status.includes('pushed') && p;
     });
     assert.equal(opened.selected, a);
     const ed = opened.editor;

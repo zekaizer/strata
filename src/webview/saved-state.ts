@@ -82,7 +82,7 @@ export function savedDraft(raw: unknown): { draft: MessageDraft; text: string } 
     (d['kind'] === 'reword' || d['kind'] === 'squash') &&
     isString(d['head']) &&
     isString(d['message']) &&
-    isString(d['effects']) &&
+    (d['effects'] === undefined || isString(d['effects'])) &&
     Array.isArray(commits) &&
     commits.length > 0 &&
     commits.every(

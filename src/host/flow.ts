@@ -107,6 +107,8 @@ export interface FlowHost extends RunnerHost {
   folderUri(path: string): vscode.Uri;
   /** Opens the inline message editor in the graph. */
   openEditor(draft: MessageDraft): void;
+  /** Tells the message editor opened at HEAD `head` what saving rewrites (rewriteEffects). */
+  editEffects(head: string, effects: string): void;
   /** Tells the message editor how its Save ended: applied closes it. */
   editEnded(applied: boolean): void;
 }
