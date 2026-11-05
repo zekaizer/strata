@@ -56,7 +56,7 @@ describe('operation banner', () => {
     });
     assert.equal(s.banner?.label, 'Rebase in progress');
     assert.equal(s.banner.warning, true);
-    assert.deepEqual(s.banner.buttons, ['Resolve...', 'Continue', 'Abort...']);
+    assert.deepEqual(s.banner.buttons, ['Resolve...', 'Continue', 'Skip...', 'Abort...']);
     assert.match(s.announced, /^Rebasing 'strata-topic' onto 'strata-onto' stopped at 1 of 2/);
     assert.equal(s.alerted, '', 'VS Code already says the toast the host shows for a stop');
   });
@@ -83,7 +83,7 @@ describe('operation banner', () => {
       s.banner?.text,
       'Conflicts resolved. Continue finishes "Topic one" and replays the remaining 1 commit.',
     );
-    assert.deepEqual(s.banner.buttons, ['Continue', 'Abort...']);
+    assert.deepEqual(s.banner.buttons, ['Continue', 'Skip...', 'Abort...']);
     assert.equal(s.focused, 'banner-button', 'Abort..., not the primary Continue');
   });
 

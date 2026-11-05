@@ -151,8 +151,17 @@ operation is stopped, Continue, Abort and Skip.
   dropped stash. It only moves the branch the operation moved,
   and asks first if that branch moved since.
 - When an operation stops at conflicts, Strata says where and in which files;
-  **Resolve...** opens them, and other changes wait until you continue or
-  abort. If bringing back stashed changes conflicts, the stash is kept and
+  **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
+  leaves the stopped commit out, and other changes (except Fetch) wait until
+  you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`
+  or `break` of a rebase you started with `git rebase -i`) says so. A cherry
+  pick or revert of several commits that you ended with `git commit` instead
+  of `git cherry-pick --continue` still shows as in progress, with Continue
+  for the remaining commits and Abort. Strata never opens an editor for a
+  commit message: before continuing a rebase whose remaining steps would
+  (`reword`, `squash`, `fixup -c`, `merge` without `-C`), it offers to type
+  `git rebase --continue` into a terminal for you, or to continue with the
+  messages git prepares, unedited. If bringing back stashed changes conflicts, the stash is kept and
   Strata says where it is. Abort and Skip name the changes you made while the
   operation was stopped that git would throw away (any change during a rebase;
   staged ones during a merge, cherry pick or revert), and keep them in a stash

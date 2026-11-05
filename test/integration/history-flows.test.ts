@@ -18,6 +18,24 @@ const branchWith = (branch: string, from: string, file: string, content: string)
   git('add', file);
   git('commit', '--quiet', '-m', `${file}: ${content.trim()}`);
 };
+/** A commit on HEAD writing `file`; resolves its id. */
+const commitFile = (file: string, content: string) => {
+  write(file, content);
+  git('add', file);
+  git('commit', '--quiet', '-m', `${file}: ${content.trim()}`);
+  return git('rev-parse', 'HEAD');
+};
+/** Runs `git rebase -i onto` from the command line with `todo` as its todo list. */
+const rebaseInteractive = (onto: string, todo: string[]) => {
+  const dir = mkdtempSync(join(tmpdir(), 'strata-todo-'));
+  const file = join(dir, 'todo');
+  writeFileSync(file, `${todo.join('\n')}\n`);
+  spawnSync('git', ['rebase', '-i', onto], {
+    cwd: workspaceRoot(),
+    env: { ...process.env, GIT_SEQUENCE_EDITOR: `cp '${file}'`, GIT_EDITOR: 'true' },
+  });
+  rmSync(dir, { recursive: true });
+};
 
 describe('history operations', () => {
   const { api, panel, ui } = flowSuite();
@@ -113,7 +131,7 @@ describe('history operations', () => {
       kind: 'notify',
       level: 'warning',
       message: 'Rebase stopped at 1 of 1 ("main.txt: topic") with conflicts in 1 file (main.txt).',
-      actions: ['Resolve...', 'Abort Rebase...'],
+      actions: ['Resolve...', 'Skip...', 'Abort Rebase...'],
     });
     assert.equal(api().contextValue('strata.operation'), 'rebase');
     await waitFor('rebase reported', async () => (await panel().probe()).operation?.kind === 'rebase');
@@ -285,6 +303,65 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), tip);
   });
 
+  it('reports a Continue that stops at the next edit as a stop, then finishes with the next Continue', async () => {
+    git('switch', '--quiet', '--create', 'strata-topic', 'main');
+    const [a, b, c] = [commitFile('a.txt', 'a\n'), commitFile('b.txt', 'b\n'), commitFile('c.txt', 'c\n')];
+    rebaseInteractive('main', [`edit ${a}`, `edit ${b}`, `pick ${c}`]);
+    await reload(panel());
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.deepEqual(ui.of('notify').at(-1), {
+      kind: 'notify',
+      level: 'warning',
+      message: 'Rebase stopped at 2 of 3 ("b.txt: b"): Continue replays the remaining 1 commit.',
+      actions: ['Continue', 'Abort Rebase...'],
+    });
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.equal(ui.of('notify').at(-1)?.message, 'Finished the rebase');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('rev-parse', 'HEAD'), c);
+  });
+
+  it('before continuing a rebase that would edit commit messages, offers the terminal or keeping them', async () => {
+    git('switch', '--quiet', '--create', 'strata-topic', 'main');
+    const [a, b, c] = [commitFile('a.txt', 'a\n'), commitFile('b.txt', 'b\n'), commitFile('c.txt', 'c\n')];
+    rebaseInteractive('main', [`edit ${a}`, `reword ${b}`, `fixup -c ${c}`]);
+    await reload(panel());
+
+    ui.clear();
+    await run('strata.operation.continue');
+    const asked = ui.first('confirm');
+    assert.equal(asked.message, 'Continuing this rebase edits commit messages.');
+    assert.equal(
+      asked.detail,
+      `git opens an editor for reword ${b.slice(0, 7)} and fixup -c ${c.slice(0, 7)}, which Strata can't show. ` +
+        'Continue in a terminal to edit them there, or continue here with the messages git prepares, unedited.',
+    );
+    assert.deepEqual(asked.buttons, ['Continue in Terminal', 'Continue Anyway']);
+    assert.equal(api().contextValue('strata.operation'), 'rebase', 'cancelled');
+
+    const terminals = vscode.window.terminals.length;
+    ui.press('Continue in Terminal');
+    await run('strata.operation.continue');
+    const terminal = await waitFor(
+      'a terminal',
+      () => vscode.window.terminals.length > terminals && vscode.window.terminals.at(-1),
+    );
+    assert.equal(terminal.name, 'Strata git');
+    terminal.dispose();
+    assert.equal(api().contextValue('strata.operation'), 'rebase', 'typed, not run');
+
+    ui.press('Continue Anyway');
+    await run('strata.operation.continue');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('log', '-1', '--format=%s'), 'c.txt: c', "fixup -c's message, unedited");
+  });
+
   it('undoes a rebase that stopped and then finished with Skip, back to where it started', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
@@ -439,6 +516,50 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), 'Unmerged experiment');
     assert.equal(readFileSync(join(workspaceRoot(), 'NOTES.md'), 'utf8'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
+  });
+
+  /** A cherry pick of three commits from the command line, stopped at the second, which `git commit` then committed. */
+  const pickedPastCommit = async () => {
+    git('switch', '--quiet', '--create', 'strata-src', 'main~1');
+    const commits = [
+      commitFile('one.txt', 'one\n'),
+      commitFile('main.txt', 'picked\n'),
+      commitFile('three.txt', 'three\n'),
+    ];
+    git('switch', '--quiet', 'main');
+    assert.notEqual(spawnSync('git', ['cherry-pick', ...commits], { cwd: workspaceRoot() }).status, 0);
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    git('commit', '--quiet', '--no-edit');
+    await reload(panel());
+    return git('rev-parse', 'HEAD');
+  };
+
+  it('takes a cherry pick stopped between commits for one in progress, and Continue picks the rest', async () => {
+    await pickedPastCommit();
+    assert.equal(api().contextValue('strata.operation'), 'cherryPick');
+    const s = await waitFor('between banner', async () => {
+      const p = await panel().probe();
+      return p.banner?.state === 'sequencerBetween' && p;
+    });
+    assert.equal(
+      s.banner?.text,
+      "Cherry picking onto 'main' stopped between commits. Continue cherry picks the remaining 1 commit.",
+    );
+    assert.deepEqual(s.banner.buttons, ['Continue', 'Abort...']);
+    await run('strata.operation.continue');
+    assert.equal(git('log', '-1', '--format=%s'), 'three.txt: three');
+    assert.equal(git('log', '-1', '--skip=1', '--format=%s'), 'main.txt: picked');
+    assert.equal(api().contextValue('strata.operation'), '');
+  });
+
+  it('aborts a cherry pick stopped between commits, keeping the commits made', async () => {
+    const head = await pickedPastCommit();
+    ui.press('Abort Cherry Pick');
+    await run('strata.operation.abort');
+    assert.equal(ui.first('confirm').message, 'Abort the cherry pick?');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('rev-parse', 'HEAD'), head);
   });
 
   it('restores the stash of a cherry pick that stopped once Continue finishes it', async () => {
@@ -641,6 +762,26 @@ describe('history operations', () => {
   afterEach(() => {
     for (const dir of origins.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
+  it('fetches while a rebase is stopped', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'strata-origin-'));
+    origins.push(dir);
+    execFileSync('git', ['init', '--quiet', '--bare', dir]);
+    git('remote', 'add', 'origin', dir);
+    git('push', '--quiet', 'origin', 'main');
+    git('update-ref', '-d', 'refs/remotes/origin/main');
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    await reload(panel());
+    ui.press('Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    ui.clear();
+    await run('strata.fetch');
+    assert.deepEqual(ui.of('confirm'), [], 'not held');
+    assert.equal(git('rev-parse', 'refs/remotes/origin/main'), git('rev-parse', 'main'));
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+  });
+
   /** strata-deep: `n` empty commits on main, with HEAD on it. */
   const deep = (n: number) => {
     const main = git('rev-parse', 'main');

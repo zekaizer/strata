@@ -17,11 +17,13 @@ import {
   IN_THE_WAY_OF,
   mainlinePick,
   mergeConfirmation,
+  messageEditsConfirmation,
   type MergeParents,
   opName,
   pickConfirmation,
   quote,
   rebaseConfirmation,
+  rebaseContinues,
   RESET_MODES,
   resetConfirmation,
   resetPick,
@@ -55,9 +57,9 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readAbortTarget, readOperationState } from '../../git/state.ts';
+import { readAbortTarget, readMessageEdits, readOperationState } from '../../git/state.ts';
 import { createStash } from '../../git/stash.ts';
-import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import { finish, headRef, notify, run, typeInTerminal, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 import type { TargetOf } from '../target.ts';
 import {
@@ -204,17 +206,18 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
     held && stashLabel(held.index, held.message),
     reason,
   );
-  const skips = state.kind === 'cherryPick' || state.kind === 'revert';
-  const actions =
-    state.conflictCount > 0
-      ? ['Resolve...', abortButton(state.kind)]
-      : [...(skips ? ['Skip...'] : []), abortButton(state.kind)];
+  const skip = state.kind === 'merge' ? [] : ['Skip...'];
+  // No Skip at a rebase stop without conflicts: at an edit git made the commit already, and --skip keeps it.
+  const next = state.kind === 'rebase' ? ['Continue'] : skip;
+  const actions = [...(state.conflictCount > 0 ? ['Resolve...', ...skip] : next), abortButton(state.kind)];
   notify(host, 'warning', message, actions, (a) =>
     a === 'Resolve...'
       ? resolveConflicts(host, state.conflicts)
-      : a === 'Skip...'
-        ? skipCommit(host)
-        : abortOperation(host),
+      : a === 'Continue'
+        ? continueOperation(host)
+        : a === 'Skip...'
+          ? skipCommit(host)
+          : abortOperation(host),
   );
 }
 
@@ -526,18 +529,24 @@ async function settle(
     }),
   );
   if (!r) return;
-  const [after, stash, still] = await Promise.all([
-    readHead(host.git, host.cwd),
-    kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
-    // A rebase's Continue exits 0 when it stops at its next edit.
+  // A rebase's Continue or Skip exits 0 when it stops at its next edit or break.
+  const [still, stash] = await Promise.all([
     started === undefined ? undefined : readOperationState(host.git, host.cwd),
+    kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
   ]);
+  const keptIn = stash && stashLabel(stash.index, stash.message);
+  if (still) {
+    const where = keptIn === undefined ? '' : ` Your uncommitted changes are in ${keptIn}.`;
+    await stopped(host, still, `Continue ${rebaseContinues(still.step)}.${where}`);
+    return;
+  }
+  const after = await readHead(host.git, host.cwd);
   const undo =
-    started === undefined || still !== undefined
+    started === undefined
       ? undefined
       : moveUndo(host, opName(state.kind), { branch: state.branch, hash: started }, after.hash);
   await finishWithRestore(host, r, {
-    message: done(stash && stashLabel(stash.index, stash.message)),
+    message: done(keptIn),
     focus: after.hash,
     ...(undo ? { undo } : {}),
   });
@@ -562,6 +571,16 @@ export async function continueOperation(host: FlowHost): Promise<void> {
     return;
   }
   const op: Operation = { kind: 'continue', operation: state.kind };
+  // Strata runs git with GIT_EDITOR=true, which keeps the messages as they are.
+  const edits = state.kind === 'rebase' ? await readMessageEdits(host.git, host.cwd) : [];
+  if (edits.length > 0) {
+    const answer = await host.ui.confirm(messageEditsConfirmation(edits));
+    if (answer === undefined) return;
+    if (answer === 'terminal') {
+      typeInTerminal(host, op, host.cwd);
+      return;
+    }
+  }
   const started = await readAbortTarget(host.git, host.cwd, state.kind);
   await settle(host, state, HISTORY_DOING.continuing(state.kind), op, () => HISTORY_DONE.continued(state.kind), {
     started,

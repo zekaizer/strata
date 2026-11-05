@@ -659,6 +659,26 @@ export function stoppedMessage(
   ].join(' ');
 }
 
+/** Continue of a rebase whose `steps` (messageEdits) have git open the commit message editor. */
+export function messageEditsConfirmation(steps: readonly string[]): Confirmation<'terminal' | 'continue'> {
+  return {
+    message: 'Continuing this rebase edits commit messages.',
+    detail:
+      `git opens an editor for ${fileList(steps)}, which Strata can't show. ` +
+      'Continue in a terminal to edit them there, or continue here with the messages git prepares, unedited.',
+    buttons: [
+      { id: 'terminal', label: 'Continue in Terminal' },
+      { id: 'continue', label: 'Continue Anyway' },
+    ],
+  };
+}
+
+/** What Continue of a rebase stopped at `step` does next. */
+export function rebaseContinues(step: { current: number; total: number } | undefined): string {
+  const remaining = step ? step.total - step.current : 0;
+  return remaining > 0 ? `replays the remaining ${plural(remaining, 'commit')}` : 'completes the rebase';
+}
+
 export const abortButton = (kind: OperationKind): string => `Abort ${OP_TITLE[kind]}...`;
 
 /** Continue while files still have conflicts. */

@@ -57,6 +57,7 @@ describe('the banner of a stopped operation', () => {
     assert.deepEqual(actions(b), [
       ['Resolve...', 'strata.resolveConflicts', {}],
       ['Continue', 'strata.operation.continue', {}],
+      ['Skip...', 'strata.operation.skip', {}],
       ['Abort...', 'strata.operation.abort', {}],
     ]);
   });
@@ -82,7 +83,7 @@ describe('the banner of a stopped operation', () => {
     assert.equal(text(b), 'Conflicts resolved. Continue finishes "Add lexer" and replays the remaining 1 commit.');
     assert.deepEqual(
       actions(b)?.map(([label]) => label),
-      ['Continue', 'Abort...'],
+      ['Continue', 'Skip...', 'Abort...'],
     );
     const last = { ...resolved, step: { current: 4, total: 4 } };
     assert.equal(
@@ -96,6 +97,11 @@ describe('the banner of a stopped operation', () => {
     const b = bannerOf(edit, undefined, facts(false));
     assert.equal(b?.state, 'rebaseStopped');
     assert.equal(text(b), 'Rebase stopped at 2 of 4 ("Add lexer"). Continue replays the remaining 2 commits.');
+    // git's --skip at an edit stop keeps the commit it already made.
+    assert.deepEqual(
+      actions(b)?.map(([label]) => label),
+      ['Continue', 'Abort...'],
+    );
   });
 
   it('names a stopped merge by its source and the branch it goes into', () => {
@@ -129,6 +135,25 @@ describe('the banner of a stopped operation', () => {
     assert.deepEqual(
       actions(b)?.map(([label]) => label),
       ['Skip...', 'Abort...'],
+    );
+  });
+
+  it('offers Continue and Abort for a cherry pick or revert stopped between commits', () => {
+    const between = { ...pick, applying: undefined, conflicts: [], conflictCount: 0, remaining: 2 };
+    const b = bannerOf(between, undefined, facts());
+    assert.equal(b?.state, 'sequencerBetween');
+    assert.equal(b.warning, false);
+    assert.equal(
+      text(b),
+      "Cherry picking onto 'main' stopped between commits. Continue cherry picks the remaining 2 commits.",
+    );
+    assert.deepEqual(
+      actions(b)?.map(([label]) => label),
+      ['Continue', 'Abort...'],
+    );
+    assert.equal(
+      text(bannerOf({ ...between, kind: 'revert', remaining: 0 }, undefined, facts())),
+      "Reverting on 'main' stopped between commits. Continue finishes the revert.",
     );
   });
 

@@ -12,6 +12,12 @@ export interface OperationState {
   step: { current: number; total: number } | undefined;
   /** The commit being applied: the rebase stop, or CHERRY_PICK_HEAD / REVERT_HEAD / MERGE_HEAD. */
   applying: string | undefined;
+  /**
+   * A cherry pick or revert of several commits stopped between them (the stopped commit was
+   * committed or reset outside it, leaving no CHERRY_PICK_HEAD or REVERT_HEAD): how many commits
+   * Continue still applies. Skip has nothing to skip there.
+   */
+  remaining?: number;
   /** Unmerged paths, at most CONFLICTS_SHOWN of them. */
   conflicts: string[];
   conflictCount: number;

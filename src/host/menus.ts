@@ -122,7 +122,8 @@ async function blocked(host: FlowHost): Promise<boolean> {
 
 /**
  * A command that changes the repository; failures are shown by the graph, which refreshes when it
- * was outdated. Only `whileStopped` commands (the ways out of a stop) run while one is pending.
+ * was outdated. Only `whileStopped` commands (the ways out of a stop, and Fetch, which leaves HEAD,
+ * the index and the work tree alone) run while one is pending.
  */
 const write =
   (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>, opts: { whileStopped?: true } = {}) =>
@@ -231,10 +232,13 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.showStashes': () => {
     panel().showStashes();
   },
-  'strata.fetch': write((host, ctx) => {
-    const t = optionalTarget(ctx, ['remoteBranch'], host);
-    return fetchRemote(host, t && remoteBranch(t.ref.name, host.refs.remotes)?.remote);
-  }),
+  'strata.fetch': write(
+    (host, ctx) => {
+      const t = optionalTarget(ctx, ['remoteBranch'], host);
+      return fetchRemote(host, t && remoteBranch(t.ref.name, host.refs.remotes)?.remote);
+    },
+    { whileStopped: true },
+  ),
   'strata.pull': write((host) => pull(host)),
   'strata.push': write((host, ctx) =>
     push(host, optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch),

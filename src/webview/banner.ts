@@ -1,5 +1,5 @@
 import type { Leftover, OperationKind, OperationState } from '../core/repo-state.ts';
-import { fileList, plural } from '../core/wording.ts';
+import { fileList, plural, rebaseContinues } from '../core/wording.ts';
 import type { CommandId } from '../shared/commands.ts';
 
 /** Which of the banner's sentences shows (design §7.2); "Resolved" and "Stopped" have no conflicts left. */
@@ -14,6 +14,7 @@ export type BannerState =
   | 'sequencerResolved'
   | 'sequencerStopped'
   | 'sequencerEmpty'
+  | 'sequencerBetween'
   | 'leftover'
   | 'leftoverResolved'
   | 'pending'
@@ -155,8 +156,7 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
     case 'rebase': {
       const step = op.step;
       const at = step ? ` at ${step.current} of ${step.total}` : '';
-      const remaining = step ? step.total - step.current : 0;
-      const rest = remaining > 0 ? `replays the remaining ${plural(remaining, 'commit')}` : 'completes the rebase';
+      const rest = rebaseContinues(step);
       if (kind === 'stop') {
         const what: BannerPart[] =
           op.applying === undefined
@@ -177,7 +177,7 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
               ? [' Your uncommitted changes are held by git and come back when the rebase finishes or is aborted.']
               : []),
           ],
-          [RESOLVE, CONTINUE, ABORT],
+          [RESOLVE, CONTINUE, SKIP, ABORT],
         );
       }
       const finishes: BannerPart[] =
@@ -186,10 +186,11 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
         return banner(
           'rebaseResolved',
           ['Conflicts resolved. Continue finishes ', ...finishes, ` and ${rest}.`],
-          [CONTINUE, ABORT],
+          [CONTINUE, SKIP, ABORT],
         );
       const what: BannerPart[] =
         subject !== undefined ? [` ("${subject}")`] : op.applying !== undefined ? [' (', short(op.applying), ')'] : [];
+      // No Skip: at an edit's stop git made the commit already, and --skip keeps it.
       return banner('rebaseStopped', [`Rebase stopped${at}`, ...what, `. Continue ${rest}.`], [CONTINUE, ABORT]);
     }
     case 'merge': {
@@ -225,6 +226,19 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
           [...doing, ' has nothing left to commit: its changes are already there. Skip leaves it out.'],
           [SKIP, ABORT],
         );
+      if (op.remaining !== undefined && !conflicted) {
+        const rest =
+          op.remaining > 0
+            ? `${pick ? 'cherry picks' : 'reverts'} the remaining ${plural(op.remaining, 'commit')}`
+            : `finishes the ${noun}`;
+        return banner(
+          'sequencerBetween',
+          [
+            `${pick ? 'Cherry picking onto' : 'Reverting on'} ${quote(op.branch)} stopped between commits. Continue ${rest}.`,
+          ],
+          [CONTINUE, ABORT],
+        );
+      }
       if (kind === 'resolved')
         return banner(
           'sequencerResolved',
