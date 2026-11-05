@@ -496,6 +496,11 @@ export const DONE = {
   copiedHash: (short: string): string => `Copied the commit hash of ${short}`,
   copiedShortHash: (short: string): string => `Copied ${short}`,
   copiedSubject: (short: string): string => `Copied the subject of ${short}`,
+  worktreeRemoved: (name: string): string => `Removed worktree ${refName(name)}`,
+  worktreesPruned: (names: readonly string[]): string =>
+    names.length === 1
+      ? `Pruned worktree ${refName(names[0]!)}, whose folder is gone`
+      : `Pruned ${plural(names.length, 'worktree')} whose folders are gone`,
 };
 
 /** Progress labels: what is running. `to` is named as in a sentence (a quoted branch or a short id). */
@@ -506,7 +511,34 @@ export const DOING = {
   renaming: (branch: string): string => `Renaming ${refName(branch)}`,
   deletingBranch: (branch: string): string => `Deleting branch ${refName(branch)}`,
   deletingTag: (tag: string): string => `Deleting tag ${refName(tag)}`,
+  removingWorktree: (name: string): string => `Removing worktree ${refName(name)}`,
+  pruningWorktrees: 'Pruning worktrees',
 };
+
+/**
+ * Remove Worktree: `changes` uncommitted (untracked files included), which `git worktree remove`
+ * refuses without --force; `branch`: short name, undefined when detached; `locked`: its reason ('' none).
+ */
+export function removeWorktreeConfirmation(w: {
+  name: string;
+  path: string;
+  branch: string | undefined;
+  changes: number;
+  locked: string | undefined;
+}): Confirmation<'remove'> {
+  return {
+    message: `Remove worktree ${refName(w.name)}?`,
+    detail: [
+      `Its folder ${w.path} is deleted.`,
+      ...(w.changes > 0 ? [`Its ${plural(w.changes, 'uncommitted change')}, untracked files included, are lost.`] : []),
+      ...(w.locked === undefined ? [] : [`It is locked${w.locked === '' ? '' : `: ${w.locked}`}.`]),
+      w.branch === undefined
+        ? 'Commits only its detached HEAD reaches leave the graph.'
+        : `Branch ${refName(w.branch)} stays.`,
+    ].join('\n'),
+    buttons: [{ id: 'remove', label: w.changes > 0 || w.locked !== undefined ? 'Remove Anyway' : 'Remove Worktree' }],
+  };
+}
 
 /** Type in Terminal could not quote the command for the terminal's shell; `line` is quoted for a POSIX shell. */
 export const commandUnquotable = (line: string): string =>

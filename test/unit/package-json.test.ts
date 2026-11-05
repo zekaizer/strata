@@ -181,15 +181,20 @@ describe('graph title bar', () => {
 });
 
 describe('worktree menu', () => {
-  it('opens and copies a worktree, or only copies the path of one whose folder is gone', () => {
+  it('opens, copies and removes a worktree; prunes one whose folder is gone', () => {
     assert.deepEqual(refActions('worktree', {}), [
       'strata.worktree.openNewWindow',
       'strata.worktree.openCurrentWindow',
       'strata.worktree.reveal',
       'strata.worktree.copyPath',
+      'strata.worktree.remove',
     ]);
     assert.deepEqual(refActions('worktree', { strataShown: true, strataMain: true })[0], 'strata.worktree.show');
-    assert.deepEqual(refActions('worktree', { strataPrunable: true }), ['strata.worktree.copyPath']);
+    assert.ok(!refActions('worktree', { strataMain: true }).includes('strata.worktree.remove'));
+    assert.deepEqual(refActions('worktree', { strataPrunable: true }), [
+      'strata.worktree.copyPath',
+      'strata.worktree.prune',
+    ]);
   });
 
   it('hides Reveal in a remote window, whose files are on another machine', () => {

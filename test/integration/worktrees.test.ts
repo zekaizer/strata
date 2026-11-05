@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WorktreeInfo } from '../../src/core/worktrees.ts';
@@ -114,5 +114,52 @@ describe('other worktrees', () => {
       { kind: 'openFolder', path: login, how: 'thisWindow' },
     ]);
     assert.equal(await vscode.env.clipboard.readText(), login);
+  });
+
+  it('removes a worktree with changes after saying they are lost, keeping its branch', async () => {
+    const login = add('strata-login', 'feature/login');
+    writeFileSync(join(login, 'notes.txt'), 'draft\n');
+    await listed('the added worktree', login, () => true);
+    ui.press('Remove Anyway');
+    await run('strata.worktree.remove', worktreeMenu(login));
+    assert.deepEqual(ui.first('confirm'), {
+      kind: 'confirm',
+      message: "Remove worktree 'strata-login'?",
+      detail: [
+        `Its folder ${login} is deleted.`,
+        'Its 1 uncommitted change, untracked files included, are lost.',
+        "Branch 'feature/login' stays.",
+      ].join('\n'),
+      buttons: ['Remove Anyway'],
+    });
+    made = [];
+    await listed('its removal', login);
+    assert.ok(!existsSync(login));
+    assert.ok(git('branch', '--list', 'feature/login'));
+  });
+
+  it('removes a locked worktree only once asked, and leaves it when cancelled', async () => {
+    const login = add('strata-login', 'feature/login');
+    git('worktree', 'lock', '--reason', 'on usb disk', login);
+    await listed('the lock', login, (w) => w.state.kind === 'locked');
+    await run('strata.worktree.remove', worktreeMenu(login));
+    assert.match(ui.first('confirm').detail, /It is locked: on usb disk\./);
+    assert.ok(existsSync(login), 'cancelled');
+    ui.clear();
+    ui.press('Remove Anyway');
+    await run('strata.worktree.remove', worktreeMenu(login));
+    made = [];
+    await listed('its removal', login);
+  });
+
+  it('prunes a worktree whose folder is gone', async () => {
+    const gone = add('gone', 'wip/experiment');
+    rmSync(gone, { recursive: true, force: true });
+    made = [];
+    await panel().simulate({ kind: 'click', selector: '.codicon-refresh' });
+    await listed('the prunable worktree', gone, (w) => w.state.kind === 'prunable');
+    await run('strata.worktree.prune', worktreeMenu(gone));
+    await listed('its pruning', gone);
+    assert.equal(git('worktree', 'list', '--porcelain').includes(gone), false);
   });
 });

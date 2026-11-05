@@ -324,6 +324,18 @@
         "category": "Strata"
       },
       {
+        "command": "strata.worktree.remove",
+        "title": "Remove Worktree...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.worktree.prune",
+        "title": "Prune Worktrees",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.operation.continue",
         "title": "Continue Operation",
         "category": "Strata",
@@ -721,6 +733,16 @@
           "group": "2_copy@2"
         },
         {
+          "command": "strata.worktree.remove",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && !strataMain && !strataPrunable",
+          "group": "9_remove@1"
+        },
+        {
+          "command": "strata.worktree.prune",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && strataPrunable",
+          "group": "9_remove@1"
+        },
+        {
           "command": "strata.stash.apply",
           "when": "webviewId == 'strata.graph' && webviewSection == 'stash' && !strataLeftover",
           "group": "1_apply@1"
@@ -929,6 +951,14 @@
         },
         {
           "command": "strata.worktree.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.remove",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.prune",
           "when": "false"
         },
         {

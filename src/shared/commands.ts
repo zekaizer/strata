@@ -238,6 +238,16 @@ export const COMMANDS = {
     menus: [{ section: 'worktree', group: '2_copy@1', when: '!strataPrunable && !remoteName' }],
   },
   'strata.worktree.copyPath': { title: 'Copy Worktree Path', menus: [{ section: 'worktree', group: '2_copy@2' }] },
+  'strata.worktree.remove': {
+    title: 'Remove Worktree...',
+    menus: [{ section: 'worktree', group: '9_remove@1', when: '!strataMain && !strataPrunable' }],
+    writes: 'whileStopped',
+  },
+  'strata.worktree.prune': {
+    title: 'Prune Worktrees',
+    menus: [{ section: 'worktree', group: '9_remove@1', when: 'strataPrunable' }],
+    writes: 'whileStopped',
+  },
 
   'strata.operation.continue': {
     title: 'Continue Operation',

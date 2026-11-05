@@ -35,6 +35,7 @@ import {
 } from './flows/history.ts';
 import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
+import { pruneWorktrees, removeWorktree } from './flows/worktree.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
 import { repoList } from './repositories.ts';
@@ -306,6 +307,9 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.worktree.openCurrentWindow': (ctx) => openWorktree(worktreeArg(ctx), 'thisWindow'),
   'strata.worktree.reveal': (ctx) => openWorktree(worktreeArg(ctx), 'reveal'),
   'strata.worktree.copyPath': copy((ctx) => panel().flowHost().folderUri(worktreeArg(ctx).path).fsPath, DONE.copied),
+
+  'strata.worktree.remove': on(['worktree'], (host, t) => removeWorktree(host, t.worktree)),
+  'strata.worktree.prune': write((host) => pruneWorktrees(host)),
 
   'strata.undo': write(undoLast),
   'strata.showOutput': () => {
