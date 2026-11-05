@@ -9,8 +9,10 @@ import {
   fileList,
   gitFailure,
   gitTooOld,
+  HISTORY_DONE,
   resetConfirmation,
   signInConfirmation,
+  skipConfirmation,
   undoGone,
   undoMovedConfirmation,
   undone,
@@ -107,6 +109,27 @@ describe('wording', () => {
     assert.match(
       abortConfirmation('cherryPick', undefined, '9f8e7d6', false).detail,
       /^HEAD goes back to 9f8e7d6 as before the cherry pick\./,
+    );
+  });
+
+  it('names the uncommitted changes an Abort or Skip would discard, and offers to stash them', () => {
+    const a = abortConfirmation('merge', 'main', '9f8e7d6', false, ['a.ts']);
+    assert.equal(
+      a.detail,
+      "'main' goes back to 9f8e7d6 as before the merge. Conflict resolutions you've made are discarded. Your uncommitted changes in 1 file (a.ts) would be discarded: Stash Changes & Abort keeps them in the stash list; Discard Changes & Abort throws them away.",
+    );
+    const s = skipConfirmation(c('abc1234', 'Add lexer'), "'topic'", ['a.ts', 'b.ts']);
+    assert.match(
+      s.detail,
+      /^Its changes won't be in 'topic'\. Your uncommitted changes in 2 files \(a\.ts and b\.ts\)/,
+    );
+    assert.deepEqual(s.buttons, [
+      { id: 'stash', label: 'Stash Changes & Skip' },
+      { id: 'discard', label: 'Discard Changes & Skip' },
+    ]);
+    assert.equal(
+      HISTORY_DONE.skipped('abc1234', 'stash@{0} ("x")'),
+      'Skipped abc1234. Your uncommitted changes are in stash@{0} ("x")',
     );
   });
 });

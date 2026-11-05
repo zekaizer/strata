@@ -135,7 +135,10 @@ operation is stopped, Continue, Abort and Skip.
 - When an operation stops at conflicts, Strata says where and in which files;
   **Resolve...** opens them, and other changes wait until you continue or
   abort. If bringing back stashed changes conflicts, the stash is kept and
-  Strata says where it is.
+  Strata says where it is. Abort and Skip name the changes you made while the
+  operation was stopped that git would throw away (any change during a rebase;
+  staged ones during a merge, cherry pick or revert), and keep them in a stash
+  it never pops, unless you discard them.
 - Every git command Strata runs is logged in the **Strata** output channel
   (**Show Git Output**). Sign-in problems offer to type the same command into
   a terminal for you to run there.

@@ -40,6 +40,7 @@ const OP_NAME: Record<OperationKind, string> = {
   cherryPick: 'cherry pick',
   revert: 'revert',
 };
+export const opName = (kind: OperationKind): string => OP_NAME[kind];
 const OP_TITLE: Record<OperationKind, string> = {
   rebase: 'Rebase',
   merge: 'Merge',
@@ -151,21 +152,39 @@ export function deleteBranchConfirmation(
   };
 }
 
+/** The sentence and buttons for uncommitted changes an Abort or Skip (`verb`) would discard (`paths`). */
+function discardedChanges(
+  verb: 'Abort' | 'Skip',
+  paths: readonly string[],
+): { line: string; buttons: { id: 'stash' | 'discard'; label: string }[] } {
+  return {
+    line: `Your uncommitted changes in ${plural(paths.length, 'file')} (${fileList(paths)}) would be discarded: Stash Changes & ${verb} keeps them in the stash list; Discard Changes & ${verb} throws them away.`,
+    buttons: [
+      { id: 'stash', label: `Stash Changes & ${verb}` },
+      { id: 'discard', label: `Discard Changes & ${verb}` },
+    ],
+  };
+}
+
+/** `discards`: paths with uncommitted changes the abort would throw away (readDiscardedByAbort). */
 export function abortConfirmation(
   op: OperationKind,
   branch: string | undefined,
   back: string,
   autostash: boolean,
-): Confirmation<'abort'> {
+  discards: readonly string[] = [],
+): Confirmation<'abort' | 'stash' | 'discard'> {
   const name = branch === undefined ? 'HEAD' : `'${branch}'`;
+  const discarded = discards.length > 0 ? discardedChanges('Abort', discards) : undefined;
   return {
     message: `Abort the ${OP_NAME[op]}?`,
     detail: [
       `${name} goes back to ${back} as before the ${OP_NAME[op]}.`,
       "Conflict resolutions you've made are discarded.",
+      ...(discarded ? [discarded.line] : []),
       ...(autostash ? ['Your stashed changes are restored.'] : []),
     ].join(' '),
-    buttons: [{ id: 'abort', label: `Abort ${OP_TITLE[op]}` }],
+    buttons: discarded ? discarded.buttons : [{ id: 'abort', label: `Abort ${OP_TITLE[op]}` }],
   };
 }
 
@@ -557,11 +576,17 @@ export function stillConflicted(paths: readonly string[], count: number): Confir
   };
 }
 
-export function skipConfirmation(c: CommitRef, branch: string): Confirmation<'skip'> {
+/** `discards`: paths with uncommitted changes the skip would throw away (readDiscardedByAbort). */
+export function skipConfirmation(
+  c: CommitRef,
+  branch: string,
+  discards: readonly string[] = [],
+): Confirmation<'skip' | 'stash' | 'discard'> {
+  const discarded = discards.length > 0 ? discardedChanges('Skip', discards) : undefined;
   return {
     message: `Skip ${c.short} "${c.subject}"?`,
-    detail: `Its changes won't be in ${branch}.`,
-    buttons: [{ id: 'skip', label: 'Skip Commit' }],
+    detail: [`Its changes won't be in ${branch}.`, ...(discarded ? [discarded.line] : [])].join(' '),
+    buttons: discarded ? discarded.buttons : [{ id: 'skip', label: 'Skip Commit' }],
   };
 }
 
@@ -630,8 +655,10 @@ export const HISTORY_DONE = {
   reset: (branch: string, short: string, stash: string | undefined): string =>
     `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
   continued: (kind: OperationKind): string => `Finished the ${OP_NAME[kind]}`,
-  aborted: (kind: OperationKind): string => `Aborted the ${OP_NAME[kind]}`,
-  skipped: (short: string): string => `Skipped ${short}`,
+  aborted: (kind: OperationKind, stash?: string): string =>
+    `Aborted the ${OP_NAME[kind]}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
+  skipped: (short: string, stash?: string): string =>
+    `Skipped ${short}${stash === undefined ? '' : `. Your uncommitted changes are in ${stash}`}`,
   fetchedHistory: {
     deepen: `Fetched ${MORE_HISTORY} more commits of history`,
     unshallow: 'Fetched the full history',

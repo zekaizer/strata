@@ -1,9 +1,11 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import { readDiscardedByAbort } from '../../src/git/facts.ts';
 import { readOperationState, readWorktree } from '../../src/git/state.ts';
+import { createStash } from '../../src/git/stash.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -122,5 +124,60 @@ describe('repository state', () => {
     const rs = await readOperationState('git', r);
     assert.equal(rs?.kind, 'revert');
     assert.equal(rs.branch, 'topic');
+  });
+
+  /** Edits made while stopped: other.txt unstaged, new.txt added (staged), next to f.txt's conflict. */
+  const editWhileStopped = (d: string) => {
+    writeFileSync(join(d, 'other.txt'), 'edited\n');
+    writeFileSync(join(d, 'new.txt'), 'new\n');
+    run(d, 'add', 'new.txt');
+  };
+  const state = async (d: string) => {
+    const s = await readOperationState('git', d);
+    assert.ok(s);
+    return s;
+  };
+
+  it('names the changes Abort would discard: a rebase all of them, a merge or pick only staged ones', async () => {
+    const r = repo();
+    run(r, 'checkout', '--quiet', 'topic');
+    stop(r, 'rebase', 'main');
+    editWhileStopped(r);
+    assert.deepEqual(await readDiscardedByAbort('git', r, await state(r)), ['new.txt', 'other.txt']);
+    run(r, 'rebase', '--abort');
+    assert.equal(readFileSync(join(r, 'other.txt'), 'utf8'), 'o\n', 'git discarded the unstaged edit');
+    assert.equal(existsSync(join(r, 'new.txt')), false, 'git discarded the added file');
+
+    const m = repo();
+    stop(m, 'merge', 'topic');
+    editWhileStopped(m);
+    assert.equal(run(m, 'diff', '--cached', '--name-only', '--', 'g.txt'), 'g.txt', 'the merge staged g.txt');
+    assert.deepEqual(await readDiscardedByAbort('git', m, await state(m)), ['new.txt']);
+    run(m, 'merge', '--abort');
+    assert.equal(readFileSync(join(m, 'other.txt'), 'utf8'), 'edited\n', 'git kept the unstaged edit');
+    assert.equal(existsSync(join(m, 'new.txt')), false);
+
+    const c = repo();
+    stop(c, 'cherry-pick', 'topic~1');
+    assert.deepEqual(await readDiscardedByAbort('git', c, await state(c)), [], 'nothing of the user is at stake');
+    editWhileStopped(c);
+    assert.deepEqual(await readDiscardedByAbort('git', c, await state(c)), ['new.txt']);
+  });
+
+  it('stashes changes next to unmerged files, which git stash push refuses, leaving them in place', async () => {
+    const d = repo();
+    run(d, 'checkout', '--quiet', 'topic');
+    stop(d, 'rebase', 'main');
+    editWhileStopped(d);
+    const status = run(d, 'status', '--porcelain');
+    const stash = await createStash('git', d, ['new.txt', 'other.txt'], 'On topic: kept');
+    assert.equal(run(d, 'status', '--porcelain'), status, 'index and work tree untouched');
+    run(d, 'stash', 'store', '--message', 'On topic: kept', stash);
+    assert.equal(run(d, 'stash', 'list', '--format=%gs'), 'On topic: kept');
+    assert.equal(run(d, 'stash', 'show', '--name-only', 'stash@{0}'), 'new.txt\nother.txt');
+    run(d, 'rebase', '--abort');
+    run(d, 'stash', 'apply', '--index', '--quiet');
+    assert.equal(run(d, 'status', '--porcelain'), 'A  new.txt\n M other.txt');
+    assert.equal(readFileSync(join(d, 'other.txt'), 'utf8'), 'edited\n');
   });
 });

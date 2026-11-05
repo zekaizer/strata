@@ -1,5 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import type { OperationState } from '../core/repo-state.ts';
 import type { CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
 import { readStashList } from './stash.ts';
@@ -134,6 +135,41 @@ export const readConfigBool = (git: string, cwd: string, key: string): Promise<b
 /** Paths with unresolved conflicts. */
 export const readUnmerged = async (git: string, cwd: string): Promise<string[]> =>
   (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--'])).split('\0').filter((p) => p !== '');
+
+const paths = (out: string) => out.split('\0').filter((p) => p !== '');
+
+/**
+ * Paths whose uncommitted changes Abort or Skip of the stopped operation `state` throws away,
+ * besides its conflicts and the paths its own step changes: staged changes, and for a rebase
+ * (which resets hard) unstaged ones too. Merge, cherry pick and revert reset with --merge, which
+ * keeps unstaged changes.
+ */
+export async function readDiscardedByAbort(git: string, cwd: string, state: OperationState): Promise<string[]> {
+  const diff = (args: string[]) => runGit(git, cwd, ['diff', '--name-only', '-z', '--no-renames', ...args, '--']);
+  const step = (c: string) =>
+    state.kind === 'merge'
+      ? diff([`HEAD...${c}`])
+      : runGit(git, cwd, [
+          'diff-tree',
+          '-r',
+          '--root',
+          '-m',
+          '--first-parent',
+          '--no-commit-id',
+          '--name-only',
+          '-z',
+          '--no-renames',
+          c,
+        ]);
+  const [staged, unstaged, unmerged, own] = await Promise.all([
+    diff(['--cached', 'HEAD']).then(paths),
+    state.kind === 'rebase' ? diff([]).then(paths) : [],
+    readUnmerged(git, cwd),
+    state.applying === undefined ? [] : step(state.applying).then(paths),
+  ]);
+  const kept = new Set([...unmerged, ...own]);
+  return [...new Set([...staged.filter((p) => !kept.has(p)), ...unstaged.filter((p) => !unmerged.includes(p))])].sort();
+}
 
 /** The stash commit `hash` now: n in stash@{n} and its reflog subject; undefined once it is gone. */
 export async function readStash(
