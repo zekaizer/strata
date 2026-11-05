@@ -1,7 +1,8 @@
 # Performance
 
 Measurements of the first page of history and of graph layout on the Linux
-kernel. Reproduce with `npm run perf -- <repo>` (git and layout) and
+kernel, and of file history on zephyr. Reproduce with `npm run perf -- <repo>`
+(git and layout), `node scripts/perf-path.ts <clone>` (file history) and
 `STRATA_PERF_REPO=<repo> npm run perf:e2e` (VS Code end to end).
 
 ## Setup
@@ -119,6 +120,40 @@ Code's own git extension, which scans the 70,000-file checkout when the window
 opens (the spread between runs follows it). Going far down costs the same
 loading and layout as scrolling there: pages of 10,000 commits, with progress
 in the toolbar and the widget.
+
+## File and folder history
+
+Measured with `node scripts/perf-path.ts <clone> 5` on a
+`git clone --mirror --shared` of zephyr (156,302 commits from branches, remotes
+and HEAD, 231 refs), git 2.56.0, Node 22.23, 28 × Ryzen 9 9955HX, page cache
+warm, median of 5 runs after one warm-up. The script reads the history as the
+graph does: `LogReader` with paths (pages of 300 then 1000, flushed after
+150 ms) and the check of each page's ref tips and merges
+(`git log --no-walk -- <paths>`, 3-6 ms per history in total).
+
+| Path (commits changing it)      | No commit-graph first / all | Commit-graph first / all | With changed-path filters first / all |
+| ------------------------------- | --------------------------: | -----------------------: | ------------------------------------: |
+| `LICENSE` (6)                   |            1,252 / 1,268 ms |             664 / 679 ms |                      **126 / 126 ms** |
+| `include/zephyr/kernel.h` (235) |            1,500 / 1,522 ms |             814 / 834 ms |                      **122 / 122 ms** |
+| `kernel/sched.c` (474)          |            1,363 / 1,383 ms |             646 / 666 ms |                      **118 / 129 ms** |
+| `drivers/gpio/` (1,939)         |            1,599 / 1,624 ms |             824 / 855 ms |                      **172 / 199 ms** |
+
+Writing the commit-graph took 1.0 s, with changed-path filters 5.6 s.
+Paths reach git as `:(literal)` pathspecs, so a `*` or `:` in a file name is
+not magic; git still uses the filters for them (interleaved runs against
+`--literal-pathspecs`: 159-165 ms both, git 2.56; same on git 2.34.1). A rerun
+under a load average of 5-7 was 15-30 % slower in every column alike.
+
+The first row comes about as late as the last: keeping the branch tips that
+leave the path alone (`--simplify-by-decoration`) makes git simplify merges
+over the whole walk before it prints anything (it implies `--simplify-merges`).
+Without it a frequently changed file's first row would come in 35 ms with a
+plain commit-graph (`kernel/sched.c`), but the whole history takes the same
+time, and the branch badges would lose their commits. With changed-path
+filters the whole history is done in 0.12-0.2 s, so Strata offers them when a
+path history is not done after 2 s, and **Write Commit-Graph for Faster
+History** writes them. Until the history is complete the toolbar says
+`Searching history of …` with a spinner, and clearing the filter stops git.
 
 ## Known limits
 

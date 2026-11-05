@@ -39,6 +39,8 @@
   history.
 - Find commits by message, hash, branch name or author (<kbd>Ctrl</kbd>+<kbd>F</kbd>)
   and step through them in the graph.
+- Show the history of a file or folder from the Explorer, an editor or a
+  commit's changed files: the graph keeps only the commits that change it.
 - **HEAD** in the toolbar jumps to the checked-out commit; rest the pointer on
   a commit's node for a card with all of its refs, the branches holding it, the
   first tag that has it and the tag it comes after.
