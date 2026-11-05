@@ -675,6 +675,11 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .badge:not(.badge-hea
   --badge-color: var(--badge-remote);
 }
 
+/* The current branch's upstream stands out by weight too, which high contrast themes keep. */
+.badge-tracked {
+  font-weight: 600;
+}
+
 /*
  * Remote-tracking branches of the same name on the same commit, inside the local branch's badge:
  * "main | origin". The names give way before the branch name does.

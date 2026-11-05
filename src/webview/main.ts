@@ -123,6 +123,8 @@ const BADGE_MIN_TEXT = 'abc…';
 interface BadgeChrome {
   /** Border, padding and icon of each look, and the font of its text. */
   look: Record<Badge['look'], { chrome: number; font: string }>;
+  /** The current branch's upstream: a remote look with its own font. */
+  tracked: { chrome: number; font: string };
   /** A branch's remote section without its names, and the names' font. */
   remotes: { chrome: number; font: string };
   max: number;
@@ -1556,10 +1558,10 @@ class App {
 
   private badgeWidth(b: Badge, c: BadgeChrome): number {
     const names = remoteNames(b);
-    const key = `${b.look}\0${b.text}\0${names}`;
+    const key = `${b.look}\0${b.tracked}\0${b.text}\0${names}`;
     let width = this.badgeWidths.get(key);
     if (width === undefined) {
-      const look = c.look[b.look];
+      const look = b.tracked ? c.tracked : c.look[b.look];
       const remotes = b.remotes.length > 0 ? c.remotes.chrome + this.textWidth(names, c.remotes.font) : 0;
       width = Math.ceil(Math.min(c.max, look.chrome + this.textWidth(b.text, look.font) + remotes));
       this.badgeWidths.set(key, width);
@@ -1571,12 +1573,12 @@ class App {
   private measureBadgeChrome(): BadgeChrome {
     const band = el('div', 'refs');
     band.style.cssText = 'position: absolute; visibility: hidden; top: 0; left: 0';
-    const empty = (look: Badge['look'], remotes: Badge['remotes'] = []) =>
+    const empty = (look: Badge['look'], remotes: Badge['remotes'] = [], tracked = false) =>
       renderBadge({
         look,
         text: '',
         title: '',
-        tracked: false,
+        tracked,
         refs: [],
         remotes,
         also: [],
@@ -1586,8 +1588,9 @@ class App {
     const withRemote = empty('branch', [
       { text: '', context: { webviewSection: 'refs', strataHash: '', strataRefs: '' } },
     ]);
-    for (const [, e] of looks) e.style.minWidth = '0';
-    band.append(...looks.map(([, e]) => e), withRemote);
+    const tracked = empty('remote', [], true);
+    for (const e of [...looks.map(([, e]) => e), tracked]) e.style.minWidth = '0';
+    band.append(...looks.map(([, e]) => e), tracked, withRemote);
     document.body.append(band);
     const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.badge-text, .badge-remote-names') ?? e).font;
     const segment = withRemote.querySelector<HTMLElement>('.badge-remotes')!;
@@ -1596,6 +1599,7 @@ class App {
       look: Object.fromEntries(
         looks.map(([look, e]) => [look, { chrome: e.getBoundingClientRect().width, font: text(e) }]),
       ) as BadgeChrome['look'],
+      tracked: { chrome: tracked.getBoundingClientRect().width, font: text(tracked) },
       remotes: {
         // With the badge's own gap before it.
         chrome:
