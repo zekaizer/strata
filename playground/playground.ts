@@ -9,10 +9,12 @@
 //   &page=components: the design system gallery (gallery.ts) instead of the webview
 //   &worktrees=1: other worktrees (branchy): feature/search locked, feature/login, wip/experiment
 //     prunable, and one detached on "Prepare criss-cross"; with &repos=N the first is open here
+//   &path=src/auth/session.ts[,older]: the history of those paths (repo=paths); &pathSlow=1: still searching it
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
+import { parsePathFilter } from '../src/core/path-filter.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import type { WorktreeInfo } from '../src/core/worktrees.ts';
 import {
@@ -47,7 +49,7 @@ const params = new URLSearchParams(location.search);
 const theme = (params.get('theme') ?? 'dark') as ThemeKind;
 const repo = params.get('repo') ?? 'branchy';
 const selectRow = params.get('select');
-/** `open=filter` opens the ref filter popover, `open=badges` the badge filter, for screenshots. */
+/** `open=filter` opens the ref filter popover, `open=badges` the badge filter, `open=path` the path chip's. */
 const openPopover = params.get('open');
 const menuAt = params.get('menu');
 const busy = params.get('busy');
@@ -76,7 +78,9 @@ let generation = 1;
 const queried: Partial<ViewOptions> = {
   ...(params.has('firstParent') ? { firstParent: params.get('firstParent') === '1' } : {}),
   ...(params.has('showStashes') ? { showStashes: params.get('showStashes') !== '0' } : {}),
+  ...(params.has('path') ? { path: parsePathFilter({ paths: params.get('path')!.split(',') }) ?? null } : {}),
 };
+const pathSlow = params.get('pathSlow') === '1';
 let options: ViewOptions = { ...DEFAULT_OPTIONS, ...queried };
 let visible: Commit[] = [];
 let badgeRules: BadgeRule[] = (params.get('badgeRules') ?? '')
@@ -116,6 +120,7 @@ function repositories(): RepoItem[] {
 
 /** Commits reachable from the selected refs (in the original order), like git log <refs> [--first-parent]. */
 function select(d: PlaygroundData, o: ViewOptions): Commit[] {
+  if (o.path) return d.paths?.[o.path.paths.join(',')]?.commits ?? [];
   const byHash = new Map(d.commits.map((c) => [c.hash, c]));
   const starts = o.refs
     ? d.refs.refs.filter((r) => o.refs!.includes(r.name)).map((r) => r.hash)
@@ -171,17 +176,33 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       break;
     case 'setOptions': {
       // Like the host: showing or hiding stash rows reloads nothing.
-      const reload = m.options.firstParent !== options.firstParent || String(m.options.refs) !== String(options.refs);
+      const reload =
+        m.options.firstParent !== options.firstParent ||
+        String(m.options.refs) !== String(options.refs) ||
+        JSON.stringify(m.options.path) !== JSON.stringify(options.path);
       options = m.options;
       if (reload) reset();
       break;
     }
     case 'loadMore': {
       if (!data) return;
-      const commits = visible.slice(offset, offset + m.count);
+      const history = options.path ? data.paths?.[options.path.paths.join(',')] : undefined;
+      // Still searching: three commits found, the rest never comes.
+      const commits = visible.slice(offset, pathSlow ? Math.min(3, offset + m.count) : offset + m.count);
       offset += commits.length;
-      toWebview({ type: 'commits', generation, commits, done: offset >= visible.length });
-      const popover = { filter: '.ref-filter-button', badges: '.badge-filter-button' }[openPopover ?? ''];
+      const done = !pathSlow && offset >= visible.length;
+      if (!pathSlow || commits.length > 0)
+        toWebview({
+          type: 'commits',
+          generation,
+          commits,
+          done,
+          ...(history ? { unchanged: history.unchanged.filter((h) => commits.some((c) => c.hash === h)) } : {}),
+        });
+      if (history && done) toWebview({ type: 'pathOrigin', generation, origin: history.origin });
+      const popover = { filter: '.ref-filter-button', badges: '.badge-filter-button', path: '.path-chip-main' }[
+        openPopover ?? ''
+      ];
       if (popover !== undefined && offset === commits.length) {
         setTimeout(() => {
           toWebview({ type: 'simulate', action: { kind: 'click', selector: popover } });

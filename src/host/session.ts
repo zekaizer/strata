@@ -11,6 +11,7 @@ import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/comm
 import { changingCommits, isPartialClone, isTracked, readPathOrigin } from '../git/path-history.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
+import { DONE } from '../core/wording.ts';
 import { inFilter, isRepoPath, parsePathFilter, samePathFilter, type PathFilter } from '../core/path-filter.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader, type LogOptions } from '../git/log-reader.ts';
@@ -289,6 +290,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         case 'openPathDiff':
           if (m.generation === this.generation) await this.openPathDiff(m.hash, m.beside);
           break;
+        case 'pathAction':
+          await this.pathAction(m.action, m.path);
+          break;
         case 'pickStash': {
           const hash = await pickStash(this.ui, this.stashes, m.shown, this.snapshot?.headBranch);
           if (hash) this.post({ type: 'reveal', hash });
@@ -451,6 +455,18 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const file = details.files.find((f) => inFilter(f.path, path));
     if (!file) throw new Error(`${shortOf(hash)} does not change ${path.paths[0]}`);
     await this.openFileFromMenu(hash, details.base, file, 'primary', beside);
+  }
+
+  /** Opens or copies a path of the filter shown. */
+  private async pathAction(action: 'open' | 'copy', raw: string): Promise<void> {
+    const path = this.options.path?.paths.find((p) => p === raw);
+    if (path === undefined) throw new Error(`not in the path filter: ${raw}`);
+    if (action === 'copy') {
+      await vscode.env.clipboard.writeText(path);
+      this.notify(DONE.copied(path));
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(this.absolutePath(path)));
   }
 
   /** Sets `strata.head`, which picks the title bar's Pull and Push or Publish Branch. */

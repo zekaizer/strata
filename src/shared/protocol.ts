@@ -126,7 +126,8 @@ export type HostToWebview =
   | { type: 'repoState'; operation: OperationState | undefined; leftover: Leftover | undefined }
   /**
    * A page of history; fewer commits than asked for and not done while a path history is still
-   * being searched. `unchanged`: ref tips in it that a path history keeps only for their badges.
+   * being searched. `unchanged`: commits in it that a path history keeps although they leave its paths alone (ref
+   * tips for their badges, merges that join the lines of other kept commits).
    */
   | { type: 'commits'; generation: number; commits: Commit[]; done: boolean; unchanged?: string[] }
   /** How the path history, read to its end, starts. */
@@ -171,6 +172,8 @@ export type WebviewToHost =
   | { type: 'setOptions'; options: ViewOptions }
   /** A row's Diff under a one-file path filter: opens the commit's change to that file. */
   | { type: 'openPathDiff'; generation: number; hash: string; beside: boolean }
+  /** The path chip's Open File and Copy Relative Path, on a path of the filter. */
+  | { type: 'pathAction'; action: 'open' | 'copy'; path: string }
   /** The repository switcher opened: answered with `repositories`, with current branches. */
   | { type: 'listRepositories' }
   /** Shows the repository at `root`, an open one's root. */
@@ -258,6 +261,12 @@ export interface ProbeState {
   operationNotes: Record<string, string>;
   /** Text of the toolbar's ref filter button, e.g. "All". */
   refFilterButton: string;
+  /** Text of the toolbar's path chip ("session.ts +1"); empty while it is hidden. */
+  pathChip: string;
+  /** The note under a path history's last row, while it is shown. */
+  pathNote: string | undefined;
+  /** Rendered rows of commits a path history keeps although they leave its paths alone, by row index. */
+  unchangedRows: number[];
   /**
    * Accessible names of the shown buttons in the toolbar and the inline details, as a screen reader
    * reads them: aria-label, else the text and CSS-generated content (icon glyphs) of what is not

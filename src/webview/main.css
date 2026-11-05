@@ -1254,3 +1254,128 @@ body:not(.hover-off) .file:hover .file-actions,
   background: var(--vscode-editor-findMatchHighlightBackground);
   outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
 }
+
+/*
+ * The path chip: an active .tool-button holding two inline buttons, the name (which opens its
+ * popover) and × (which clears the filter).
+ */
+.path-chip {
+  gap: 0;
+  padding: 0;
+}
+
+.path-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+  height: 100%;
+  padding: 0 var(--space-2) 0 var(--space-4);
+}
+
+.path-chip-clear.inline-button.codicon {
+  height: 100%;
+  color: inherit;
+}
+
+@container toolbar (max-width: 420px) {
+  .path-chip {
+    max-width: 120px;
+  }
+}
+
+/* Its lines start where the rows' text does. */
+.path-popover .popover-header {
+  padding: var(--space-2) var(--space-8) var(--space-4);
+}
+
+.path-popover-path {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* A commit a path history keeps although it leaves the paths alone: a ref tip, a joining merge. */
+.row.unchanged :is(.text, .author, .date, .hash) {
+  color: var(--color-disabled);
+}
+
+.row.unchanged .text {
+  font-style: italic;
+}
+
+.path-note {
+  flex: 0 1000 auto;
+  min-width: 0;
+  margin-left: var(--space-8);
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row.selected .path-note,
+.row.selected.unchanged :is(.text, .author, .date, .hash) {
+  color: inherit;
+}
+
+/* A path history row's Diff: on the hovered and the selected row only. */
+.row-diff {
+  display: none;
+  flex: none;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: var(--space-8);
+  padding: 0 var(--space-4);
+  font-size: var(--font-size-sm);
+}
+
+.row-diff .codicon {
+  font-size: var(--icon-size-sm);
+}
+
+body:not(.hover-off) .row:hover .row-diff,
+.row.selected .row-diff {
+  display: inline-flex;
+}
+
+/* A changed file of the path filter: the accent bar of the opened file, on a selection tint. */
+.file.in-filter {
+  background-color: var(--color-selection-inactive);
+  box-shadow: inset 2px 0 0 var(--color-focus);
+}
+
+/* Under a path history's last row: the rename it starts with. */
+.path-origin {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  box-sizing: border-box;
+  border-top: 1px dashed var(--color-border);
+  line-height: var(--line-height);
+  color: var(--color-muted);
+}
+
+.path-origin[hidden] {
+  display: none;
+}
+
+.path-origin-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.path-origin-icon {
+  vertical-align: text-bottom;
+}
+
+.path-origin code {
+  color: var(--color-fg);
+  font-family: var(--font-mono);
+}

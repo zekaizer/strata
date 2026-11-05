@@ -1222,3 +1222,28 @@ export const REF_ACTIONS = {
   kind: { branch: 'branch', remote: 'remote branch', tag: 'tag' } as Record<RefKind, string>,
   actionsFor: (name: string): string => `Actions for ${refName(name)}`,
 };
+
+/** What the graph says about the history of a file or folder. */
+export const PATH_HISTORY = {
+  /** The toolbar status while the history is read: `n` commits that change `path` found so far. */
+  searching: (path: string, n: number): string =>
+    n === 0 ? `Searching history of ${path}…` : `Searching history of ${path}: ${plural(n, 'commit')} so far`,
+  /** The toolbar status once all of it is read. */
+  found: (path: string, n: number): string =>
+    n === 0 ? `No commit changes ${path}` : `${plural(n, 'commit')} change${n === 1 ? 's' : ''} ${path}`,
+  notTracked: (path: string): string => `${path} is not tracked by git`,
+  /** The chip popover's line under the full path: what was found, and the rename the history starts with. */
+  summary: (n: number, done: boolean, renamed: { from: string; short: string } | undefined): string =>
+    !done
+      ? `Searching: ${plural(n, 'commit')} so far.`
+      : `${n === 0 ? 'No commit changes' : `${plural(n, 'commit')} change${n === 1 ? 's' : ''}`} it.${
+          renamed ? ` Renamed from ${renamed.from} in ${renamed.short}.` : ''
+        }`,
+  /** Note on a commit kept although it leaves the paths alone (a ref tip, a joining merge). */
+  unchanged: (name: string): string => `no change to ${name}`,
+  include: (path: string): string => `Include ${path}`,
+  folderHistory: (folder: string): string => `Show History of ${folder}`,
+  /** A partial clone's history that starts where the path was added: renames that changed the content were not looked for. */
+  exactOnly:
+    'Renames that change the file are not looked for in a partial clone: its contents are downloaded on demand.',
+} as const;

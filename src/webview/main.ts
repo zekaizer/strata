@@ -15,6 +15,8 @@ import {
   type FindQuery,
   type OutOfView,
 } from '../core/find.ts';
+import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
+import { PATH_HISTORY } from '../core/wording.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
@@ -66,6 +68,7 @@ import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { RepoSwitcher } from './repo-switcher.ts';
+import { PathChip } from './path-filter.ts';
 import { parseSaved, remember, savedOptions, viewOf, type RepoView, type SavedState } from './saved-state.ts';
 import { savedState, vscode } from './vscode.ts';
 import { ping, startWorker } from './worker-client.ts';
@@ -247,6 +250,13 @@ class App {
   private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
   private readonly badgeFilter: BadgeFilter;
+  private readonly pathChip: PathChip;
+  /** Commits a path history keeps although they leave its paths alone: ref tips, joining merges. */
+  private unchanged = new Set<string>();
+  /** How the path history starts, once it is read to its end. */
+  private pathOrigin: PathOrigin | undefined;
+  /** Under the last row of a path history: where it starts, and the older name to include. */
+  private readonly originNote = el('div', 'path-origin');
   /** The refs of the commit whose graph node the pointer rests on, and where it is. */
   private readonly refCard = new RefCard((hash) => {
     vscode.postMessage({ type: 'whereIs', generation: this.generation, hash });
@@ -398,6 +408,20 @@ class App {
         this.relist();
       },
     });
+    this.pathChip = new PathChip(this.toolbar, {
+      onClear: () => {
+        this.setOptions({ ...this.options, path: null });
+      },
+      onFolder: (folder) => {
+        this.setOptions({ ...this.options, path: { paths: [folder] } });
+      },
+      onOpen: (path) => {
+        vscode.postMessage({ type: 'pathAction', action: 'open', path });
+      },
+      onCopy: (path) => {
+        vscode.postMessage({ type: 'pathAction', action: 'copy', path });
+      },
+    });
     this.stashButton.append(
       codicon('git-stash'),
       el('span', 'tool-label stash-count'),
@@ -454,6 +478,7 @@ class App {
       this.findButton,
       this.headButton,
       this.stashButton,
+      this.pathChip.element,
       this.refFilter.button,
       this.badgeFilter.button,
       this.firstParentButton,
@@ -467,7 +492,9 @@ class App {
     this.expansion.setAttribute('role', 'region');
     this.expansion.setAttribute('aria-label', 'Commit details');
     this.empty.hidden = true;
-    this.sizer.append(this.rowsLayer, this.expansion, this.empty);
+    this.originNote.hidden = true;
+    this.originNote.setAttribute('role', 'note');
+    this.sizer.append(this.rowsLayer, this.expansion, this.empty, this.originNote);
     this.scroller.append(this.sizer);
     this.viewport.append(this.scroller, this.canvas, this.findWidget.element);
     // Ctrl+F (Cmd+F) anywhere in the graph; the strata.find key binding covers focus outside it.
@@ -634,6 +661,7 @@ class App {
         if (m.generation !== this.generation) return;
         this.loading = false;
         this.done = m.done;
+        for (const h of m.unchanged ?? []) this.unchanged.add(h);
         this.appendRows(interleave(m.commits, this.commits.length, this.anchors));
         if (this.commitIndex)
           for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
@@ -657,6 +685,13 @@ class App {
         this.updateBanner();
         this.applyRestore();
         this.syncJump();
+        this.queueRender();
+        break;
+      case 'pathOrigin':
+        if (m.generation !== this.generation) return;
+        this.pathOrigin = m.origin;
+        this.renderOriginNote();
+        this.updateStatus();
         this.queueRender();
         break;
       case 'details':
@@ -712,6 +747,7 @@ class App {
         document.body.classList.add('hover-off');
         this.refFilter.close();
         this.badgeFilter.close();
+        this.pathChip.close();
         break;
       case 'noRepository':
         this.generation = -1;
@@ -730,6 +766,8 @@ class App {
         this.badgeRules = [];
         this.applyBadgeRules();
         this.refFilter.update(this.refs, null);
+        this.pathChip.update(null, '');
+        this.originNote.hidden = true;
         this.operation = undefined;
         this.operationNotes.clear();
         this.leftover = undefined;
@@ -828,6 +866,9 @@ class App {
     this.worktrees = this.worktreesShown();
     this.updateHeadButton();
     this.options = options;
+    this.unchanged = new Set();
+    this.pathOrigin = undefined;
+    this.renderOriginNote();
     this.refsByHash = new Map();
     for (const r of refs.refs) {
       const list = this.refsByHash.get(r.hash) ?? [];
@@ -997,7 +1038,8 @@ class App {
 
   private setStashes(stashes: StashEntry[]): void {
     this.stashes = stashes;
-    this.anchors = this.options.showStashes ? anchoredAt(stashes) : new Map();
+    // A path history leaves stashes out: their bases are rarely in it.
+    this.anchors = this.options.showStashes && !this.options.path ? anchoredAt(stashes) : new Map();
     this.updateStashButton();
   }
 
@@ -1014,11 +1056,13 @@ class App {
     const shown = (s: StashEntry): StashShown =>
       !this.options.showStashes
         ? 'hidden'
-        : this.indexOf(s.hash) >= 0
-          ? 'drawn'
-          : this.done || this.unreachable(s)
-            ? 'notInView'
-            : 'notLoaded';
+        : this.options.path
+          ? 'notInView'
+          : this.indexOf(s.hash) >= 0
+            ? 'drawn'
+            : this.done || this.unreachable(s)
+              ? 'notInView'
+              : 'notLoaded';
     return Object.fromEntries(this.stashes.map((s) => [s.hash, shown(s)]));
   }
 
@@ -1802,6 +1846,7 @@ class App {
   }
 
   private updateOptionControls(): void {
+    this.pathChip.update(this.options.path, this.pathSummary());
     this.firstParentButton.setAttribute('aria-pressed', String(this.options.firstParent));
     this.firstParentButton.classList.toggle('active', this.options.firstParent);
     this.refFilter.update(this.refs, this.options.refs);
@@ -1830,6 +1875,22 @@ class App {
       this.status.textContent = `${busy}…`;
       return;
     }
+    const path = this.options.path;
+    if (path) {
+      const shown = path.paths[0];
+      const origin = this.pathOrigin;
+      const changing = this.commits.length - this.unchanged.size;
+      this.status.textContent = !this.done
+        ? PATH_HISTORY.searching(shown, changing)
+        : origin?.kind === 'never' && !origin.tracked
+          ? PATH_HISTORY.notTracked(shown)
+          : PATH_HISTORY.found(shown, changing);
+      this.status.title = this.status.textContent;
+      // Searching spins like a running operation: it can take seconds on large histories.
+      this.status.classList.toggle('busy', !this.done);
+      this.pathChip.update(path, this.pathSummary());
+      return;
+    }
     const n = this.commits.length.toLocaleString();
     const total = this.jump?.total;
     if (total !== undefined) {
@@ -1837,6 +1898,40 @@ class App {
       return;
     }
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
+  }
+
+  /** What the path chip's popover says about the history found. */
+  private pathSummary(): string {
+    const o = this.pathOrigin;
+    const renamed = o?.kind === 'renamed' ? { from: o.from, short: shortHash(o.hash) } : undefined;
+    return PATH_HISTORY.summary(this.commits.length - this.unchanged.size, this.done, renamed);
+  }
+
+  /** The note under a path history's last row: the rename it starts with, or why renames were not looked for. */
+  private renderOriginNote(): void {
+    const origin = this.pathOrigin;
+    const path = this.options.path;
+    const note = this.originNote;
+    note.replaceChildren();
+    note.hidden = true;
+    if (!path || !origin || origin.kind === 'never' || (origin.kind === 'added' && !origin.exactOnly)) return;
+    note.hidden = false;
+    const text = el('span', 'path-origin-text');
+    text.append(codicon(origin.kind === 'renamed' ? 'arrow-swap' : 'info', 'path-origin-icon'), ' ');
+    note.append(text);
+    const at = el('code', 'path-origin-hash', shortHash(origin.hash));
+    if (origin.kind === 'added') {
+      text.append('History starts at ', at, `, which added ${isFolder(path.paths[0]) ? 'files to ' : ''}`);
+      text.append(el('code', undefined, path.paths[0]), `. ${PATH_HISTORY.exactOnly}`);
+      return;
+    }
+    text.append('History starts at ', at, ', which renamed ', el('code', undefined, origin.from), ' to ');
+    text.append(el('code', undefined, origin.to), '.');
+    const include = el('button', 'button path-origin-include', PATH_HISTORY.include(origin.from));
+    include.addEventListener('click', () => {
+      this.setOptions({ ...this.options, path: withPath(path, origin.from) });
+    });
+    note.append(include);
   }
 
   /** Height of the space open under the selected row. */
@@ -2005,7 +2100,22 @@ class App {
 
   /** The list's height must be right before scrollTop is set, or the browser clamps it. */
   private syncSizer(): void {
-    this.sizer.style.height = `${this.geometry.total() + this.gapHeight()}px`;
+    const total = this.geometry.total() + this.gapHeight();
+    this.originNote.style.top = `${total}px`;
+    this.sizer.style.height = `${total + (this.originNote.hidden ? 0 : this.originNote.offsetHeight)}px`;
+  }
+
+  /**
+   * Selects a commit a link in the details names. A path history may leave it out: then the whole
+   * history is shown again, with that commit selected.
+   */
+  private follow(hash: string): void {
+    if (!this.options.path || this.indexOf(hash) >= 0) {
+      this.selectHash(hash);
+      return;
+    }
+    this.restore = { selectedHash: hash, expanded: this.expanded, reveal: true };
+    this.setOptions({ ...this.options, path: null });
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
@@ -2176,6 +2286,7 @@ class App {
     let text: string | undefined;
     if (this.commits.length === 0) {
       if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
+      else if (this.done && this.options.path) text = `${PATH_HISTORY.found(this.options.path.paths[0], 0)}.`;
       else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
     }
     this.empty.hidden = text === undefined;
@@ -2244,10 +2355,16 @@ class App {
       row.append(band);
     }
     if (c.hash === this.refs.head) row.classList.add('head');
+    const path = this.options.path;
+    const unchanged = path !== null && this.unchanged.has(c.hash);
+    if (unchanged) row.classList.add('unchanged');
 
     const search = this.search?.matchSet.has(c.hash) ? this.search : undefined;
     const subject = el('span', 'subject');
     subject.append(marked('text', c.subject, search?.query.text));
+    const pathNote = unchanged ? PATH_HISTORY.unchanged(pathName(path.paths[0])) : undefined;
+    if (pathNote) subject.append(el('span', 'path-note', pathNote));
+    else if (path && path.paths.every((p) => !isFolder(p))) subject.append(this.rowDiff(c.hash));
     const note = this.operationNotes.get(c.hash);
     if (note) {
       const e = el(
@@ -2277,6 +2394,7 @@ class App {
     const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length, this.worktrees));
     const said = [
       c.subject,
+      pathNote,
       refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
       hidden.length > 0 ? `Hidden: ${hidden.map((r) => r.short).join(', ')}` : undefined,
       note?.text,
@@ -2285,6 +2403,21 @@ class App {
     row.setAttribute('aria-label', said.filter((t) => t).join('. '));
     this.markMenuTarget(row, i);
     return row;
+  }
+
+  /** A path history row's Diff, shown on hover: the commit's change to the filter's file. */
+  private rowDiff(hash: string): HTMLElement {
+    const b = el('button', 'inline-button row-diff');
+    b.append(codicon('git-compare'), el('span', undefined, 'Diff'));
+    b.tabIndex = -1;
+    b.title = 'Open changes · Alt: to the side';
+    b.setAttribute('aria-label', 'Open changes');
+    // The list's click handler selects rows by position; this click is the button's alone.
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      vscode.postMessage({ type: 'openPathDiff', generation: this.generation, hash, beside: e.altKey });
+    });
+    return b;
   }
 
   /**
@@ -2583,7 +2716,17 @@ class App {
     this.placeExpansion();
     this.layoutDetails();
     this.onExpansionResize();
+    this.showFilteredFile();
     this.queueRender();
+  }
+
+  /** Scrolls the details to the first changed file of the path filter, when it is out of their view. */
+  private showFilteredFile(): void {
+    const hit = this.expansion.querySelector<HTMLElement>('.file.in-filter');
+    if (!hit) return;
+    const pane = this.expansion.getBoundingClientRect();
+    const box = hit.getBoundingClientRect();
+    if (box.bottom > pane.bottom) this.expansion.scrollTop += box.bottom - pane.bottom + box.height;
   }
 
   /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
@@ -2680,7 +2823,7 @@ class App {
         link.title = p;
         link.setAttribute('aria-label', `Select parent ${shortHash(p)}: ${subject}`);
         link.addEventListener('click', () => {
-          this.selectHash(p);
+          this.follow(p);
         });
         row(d.parents.length > 1 ? `${ordinal(i + 1)} parent` : 'Parent', link);
       });
@@ -2761,7 +2904,9 @@ class App {
   /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
   private filesSummaryLine(d: CommitDetails): HTMLElement {
     const s = filesSummary(d);
-    const line = el('div', 'section-title files-summary', s.text);
+    const path = this.options.path;
+    const inPath = path ? d.files.filter((f) => inFilter(f.path, path)).length : 0;
+    const line = el('div', 'section-title files-summary', path ? `${s.text} · ${inPath} in filter` : s.text);
     if (s.root) line.append(' · root commit');
     if (s.base !== undefined) line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, this.baseLink(s.base));
     return line;
@@ -2773,7 +2918,7 @@ class App {
     base.title = target;
     base.setAttribute('aria-label', `Select base commit ${shortHash(target)}`);
     base.addEventListener('click', () => {
-      this.selectHash(target);
+      this.follow(target);
     });
     return base;
   }
@@ -2912,6 +3057,13 @@ class App {
       }
     };
     add(buildFileTree([...files]), 0);
+    // Folders holding a file of the path filter are open.
+    const path = this.options.path;
+    if (path)
+      for (const f of files.filter((c) => inFilter(c.path, path)))
+        for (const key of [...this.foldedFolders])
+          if (key.startsWith(`${label}:`) && f.path.startsWith(`${key.slice(label.length + 1)}/`))
+            this.foldedFolders.delete(key);
     list.addEventListener('keydown', (e) => {
       this.onTreeKey(list, e);
     });
@@ -2988,6 +3140,7 @@ class App {
     const menu = fileMenuContext(source, f, views);
     li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
+    if (this.options.path && inFilter(f.path, this.options.path)) li.classList.add('in-filter');
     li.append(el('span', 'file-status', f.status));
     const label = el('span', 'file-path');
     // The folder is the tree around it; a rename also shows where the file came from.
@@ -3239,6 +3392,11 @@ class App {
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       refFilterButton: this.refFilter.button.textContent,
+      pathChip: this.pathChip.element.hidden ? '' : this.pathChip.element.textContent,
+      pathNote: this.originNote.hidden ? undefined : this.originNote.textContent,
+      unchangedRows: [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.unchanged')].map((r) =>
+        Number(r.dataset['index']),
+      ),
       buttonNames: {
         toolbar: [...this.toolbar.querySelectorAll<HTMLElement>(':scope > button:not([hidden])')].map(accessibleName),
         details: [...this.expansion.querySelectorAll<HTMLElement>('button')].map(accessibleName),
