@@ -71,6 +71,11 @@ export type HostToWebview =
   | { type: 'openBadgeFilter'; pattern: string }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
+  /**
+   * Go to HEAD from the command palette, or after headNotShown: `include` first adds the current
+   * branch to the branch filter, or shows every branch with HEAD detached.
+   */
+  | { type: 'goToHead'; include?: true }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -125,6 +130,8 @@ export type WebviewToHost =
   | { type: 'switchRepository'; root: string }
   /** Replaces the repository's badge rules. */
   | { type: 'setBadgeRules'; rules: BadgeRule[] }
+  /** Go to HEAD found HEAD outside the branch filter: answered with goToHead (include) on request. */
+  | { type: 'headNotShown'; branch: string | undefined; hash: string }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
   | { type: 'pickStash'; shown: Record<string, StashShown> }
   /** Runs a command of the table from a keyboard shortcut or a button, with the element's menu context. */
@@ -217,6 +224,8 @@ export interface ProbeState {
   hoverSuppressed: boolean;
   /** Width of the commit list in CSS px. */
   listWidth: number;
+  /** Height of the commit list's visible part in CSS px. */
+  listHeight: number;
   /** Height in px of the details expanded under the selected row; 0 when collapsed. */
   expandedHeight: number;
   /** Top offset in px of each rendered row within the list, by row index. */

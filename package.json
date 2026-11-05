@@ -333,6 +333,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.goToHead",
+        "title": "Go to HEAD",
+        "category": "Strata"
+      },
+      {
         "command": "strata.resolveConflicts",
         "title": "Resolve Conflicts...",
         "category": "Strata"
@@ -865,6 +870,10 @@
         },
         {
           "command": "strata.showStashes",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.goToHead",
           "when": "activeWebviewPanelId == 'strata.graph'"
         },
         {

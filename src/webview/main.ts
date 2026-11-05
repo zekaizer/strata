@@ -66,6 +66,8 @@ interface Restore extends RepoView {
   reveal?: boolean | undefined;
   /** Loaded commits past which a restore stops looking; default RESTORE_SEARCH_LIMIT. */
   searchLimit?: number | undefined;
+  /** Go to HEAD: the selection is HEAD, centred when far away; not finding it offers to show it. */
+  head?: boolean | undefined;
 }
 
 /** Details that take longer than this are reported as not coming (the extension host went away). */
@@ -157,6 +159,7 @@ class App {
   /** A pointer press on a node closes its card until the pointer leaves that node. */
   private cardDismissed: string | undefined;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
+  private readonly headButton = el('button', 'tool-button head-button');
   /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
   private readonly stashButton = el('button', 'tool-button stash-button');
   /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
@@ -308,6 +311,11 @@ class App {
     this.stashButton.addEventListener('click', () => {
       this.pickStash();
     });
+    this.headButton.append(el('span', 'codicon codicon-target'), el('span', 'tool-label', 'HEAD'));
+    this.headButton.addEventListener('click', () => {
+      this.goToHead();
+    });
+    this.updateHeadButton();
     this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
     this.firstParentButton.addEventListener('click', () => {
@@ -327,6 +335,7 @@ class App {
       this.switcher.button,
       this.status,
       el('span', 'spacer'),
+      this.headButton,
       this.stashButton,
       this.refFilter.button,
       this.badgeFilter.button,
@@ -533,6 +542,9 @@ class App {
       case 'pickStash':
         this.pickStash();
         break;
+      case 'goToHead':
+        this.goToHead(m.include === true);
+        break;
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
         this.markOpenedFile(m.path);
@@ -551,6 +563,7 @@ class App {
         this.refFilter.close();
         this.badgeFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+        this.updateHeadButton();
         this.refsByHash = new Map();
         this.badgeRules = [];
         this.applyBadgeRules();
@@ -648,6 +661,7 @@ class App {
     this.generation = generation;
     this.repo = repo;
     this.refs = refs;
+    this.updateHeadButton();
     this.options = options;
     this.refsByHash = new Map();
     for (const r of refs.refs) {
@@ -716,9 +730,10 @@ class App {
         // Reveal it only when no scroll position is being restored with it. Older saved states have no
         // `expanded`; a selection then meant visible details.
         this.select(index, {
-          reveal: r.reveal === true || (r.scrollTop === undefined && !r.keepScroll),
+          reveal: r.head !== true && (r.reveal === true || (r.scrollTop === undefined && !r.keepScroll)),
           expand: r.expanded ?? true,
         });
+        if (r.head === true) this.revealCentred(index);
         r.selectedHash = undefined;
       } else if (searchable) {
         this.loadMore(NEXT_PAGE);
@@ -727,6 +742,12 @@ class App {
         const missing = r.selectedHash;
         r.selectedHash = undefined;
         this.updateStatus();
+        if (r.head === true && this.options.refs !== null) {
+          this.restore = undefined;
+          this.announce('HEAD is not in the graph: the branch filter leaves it out');
+          vscode.postMessage({ type: 'headNotShown', branch: this.refs.headBranch, hash: missing });
+          return;
+        }
         const stash = this.stashes.find((s) => s.hash === missing);
         this.announce(`${stash ? `stash@{${stash.index}}` : shortHash(missing)} is not in this view`);
       }
@@ -834,6 +855,63 @@ class App {
     this.stashButton.querySelector('.stash-count-narrow')!.textContent = `${n}${hidden > 0 ? '•' : ''}`;
     this.stashButton.title = `${label}. Show Stashes`;
     this.stashButton.setAttribute('aria-label', this.stashButton.title);
+  }
+
+  private updateHeadButton(): void {
+    const head = this.refs.head;
+    this.headButton.disabled = head === undefined;
+    this.headButton.title =
+      head === undefined
+        ? 'Go to HEAD: nothing is checked out yet'
+        : `Go to HEAD (${this.refs.headBranch ?? `detached at ${shortHash(head)}`})`;
+    this.headButton.setAttribute('aria-label', this.headButton.title);
+  }
+
+  /**
+   * Selects HEAD's row as the keyboard would, loading further history until it shows up, and
+   * centres it when it was out of view. With `include`, HEAD's branch joins the branch filter
+   * first (all branches with HEAD detached), which reloads the history.
+   */
+  private goToHead(include = false): void {
+    const head = this.refs.head;
+    if (head === undefined) return;
+    this.selections++;
+    this.clearActionError();
+    this.scroller.focus({ preventScroll: true });
+    // The keyboard's focus outline marks the row.
+    document.body.classList.add('keyboard-nav');
+    const restore: Restore = { selectedHash: head, head: true, expanded: this.expanded };
+    if (include && this.options.refs !== null) {
+      const branch = this.refs.headBranch;
+      this.restore = restore;
+      this.setOptions({
+        ...this.options,
+        refs: branch === undefined ? null : [...new Set([...this.options.refs, `refs/heads/${branch}`])],
+      });
+      return;
+    }
+    const index = this.indexOf(head);
+    if (index >= 0) {
+      this.restore = undefined;
+      this.select(index, { reveal: false });
+      this.revealCentred(index);
+      return;
+    }
+    this.restore = restore;
+    this.status.textContent = 'Looking for HEAD…';
+    this.applyRestore();
+  }
+
+  /** Scrolls row `index` to the middle of the list unless it is in view already. */
+  private revealCentred(index: number): void {
+    const top = this.rowTop(index);
+    const height = this.geometry.height(index);
+    const view = this.scroller.clientHeight;
+    if (top >= this.scroller.scrollTop && top + height <= this.scroller.scrollTop + view) return;
+    this.syncSizer();
+    this.scroller.scrollTop = Math.max(0, top - (view - height) / 2);
+    this.saveState();
+    this.queueRender();
   }
 
   /** Opens Show Stashes, telling the host which stash rows are drawn and why the others are not. */
@@ -2367,6 +2445,7 @@ class App {
         : undefined,
       hoverSuppressed: document.body.classList.contains('hover-off'),
       listWidth: this.scroller.clientWidth,
+      listHeight: this.scroller.clientHeight,
       menuContexts: {
         files: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map(
           (li) => JSON.parse(li.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,

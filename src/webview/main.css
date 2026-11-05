@@ -91,6 +91,11 @@ body:not(.hover-off) .byline-toggle:active,
   background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
+.tool-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .tool-button:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
@@ -449,7 +454,8 @@ body:not(.hover-off) .badge-eye:hover {
 @container toolbar (max-width: 420px) {
   .first-parent-button .tool-label,
   .stash-button .tool-label,
-  .badge-filter-button .tool-label {
+  .badge-filter-button .tool-label,
+  .head-button .tool-label {
     display: none;
   }
   .stash-count-narrow,

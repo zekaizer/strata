@@ -220,6 +220,17 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         case 'setBadgeRules':
           await this.setBadgeRules(parseRules(m.rules));
           break;
+        case 'headNotShown': {
+          const at = m.branch ?? `detached at ${m.hash.slice(0, 7)}`;
+          const action = m.branch === undefined ? 'Show All Branches' : `Show ${m.branch} Too`;
+          const clicked = await this.ui.notify(
+            'info',
+            `HEAD (${at}) is not in the graph: the branch filter leaves it out.`,
+            action,
+          );
+          if (clicked === action) this.post({ type: 'goToHead', include: true });
+          break;
+        }
         case 'refresh':
           await this.reset();
           break;

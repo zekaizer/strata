@@ -251,6 +251,9 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.showStashes': () => {
     panel().showStashes();
   },
+  'strata.goToHead': () => {
+    panel().goToHead();
+  },
   'strata.fetch': write((host) => fetchRemote(host, undefined)),
   'strata.fetchRemote': on(['remoteBranch'], (host, t) => {
     const remote = remoteBranch(t.ref.name, host.refs.remotes)?.remote;

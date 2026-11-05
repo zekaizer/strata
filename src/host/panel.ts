@@ -149,6 +149,10 @@ export class GraphPanel implements vscode.Disposable {
     return this.session().copyStashPatch(hash);
   }
 
+  goToHead(): void {
+    this.post({ type: 'goToHead' });
+  }
+
   showStashes(): void {
     this.session().showStashes();
   }

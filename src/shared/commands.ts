@@ -248,6 +248,7 @@ export const COMMANDS = {
   'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
   'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
   'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '1_stash@3' } },
+  'strata.goToHead': { title: 'Go to HEAD', palette: true },
 
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
