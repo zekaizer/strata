@@ -1,5 +1,6 @@
 import { DOING, DONE, removeWorktreeConfirmation } from '../../core/wording.ts';
 import type { WorktreeInfo } from '../../core/worktrees.ts';
+import { readWorktrees } from '../../git/facts.ts';
 import { runGit } from '../../git/run.ts';
 import { finish, run, type FlowHost } from '../flow.ts';
 
@@ -21,10 +22,14 @@ export async function removeWorktree(host: FlowHost, w: WorktreeInfo): Promise<v
   await finish(host, { message: DONE.worktreeRemoved(w.name), quiet: true });
 }
 
-/** Forgets the worktrees whose folders are gone (`git worktree prune`). */
-export async function pruneWorktrees(host: FlowHost): Promise<void> {
-  const gone = host.refs.worktrees.filter((w) => w.state.kind === 'prunable').map((w) => w.name);
-  const ran = await run(host, DOING.pruningWorktrees, (exec) => exec({ kind: 'pruneWorktrees' }));
-  if (ran === undefined) return;
+/** Forgets the worktrees whose folders are gone (`git worktree prune`). Resolves whether it ran. */
+export async function pruneWorktrees(host: FlowHost): Promise<boolean> {
+  const gone = (await readWorktrees(host.git, host.cwd)).filter((w) => w.state.kind === 'prunable').map((w) => w.name);
+  const ran = await run(host, DOING.pruningWorktrees, async (exec) => {
+    await exec({ kind: 'pruneWorktrees' });
+    return true;
+  });
+  if (ran === undefined) return false;
   await finish(host, { message: DONE.worktreesPruned(gone), quiet: true });
+  return true;
 }

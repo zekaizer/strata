@@ -309,7 +309,9 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.worktree.copyPath': copy((ctx) => panel().flowHost().folderUri(worktreeArg(ctx).path).fsPath, DONE.copied),
 
   'strata.worktree.remove': on(['worktree'], (host, t) => removeWorktree(host, t.worktree)),
-  'strata.worktree.prune': write((host) => pruneWorktrees(host)),
+  'strata.worktree.prune': write(async (host) => {
+    await pruneWorktrees(host);
+  }),
 
   'strata.undo': write(undoLast),
   'strata.showOutput': () => {

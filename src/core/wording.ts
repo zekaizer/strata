@@ -1,6 +1,7 @@
 import type { DirtyFacts, StashChoice, StashOp } from './autostash.ts';
 import { MORE_HISTORY, type MergeMode, type ResetMode } from './operations.ts';
 import type { RefKind } from './refs.ts';
+import type { WorktreeInfo } from './worktrees.ts';
 import type { OperationKind } from './repo-state.ts';
 
 /** A commit as confirmations name it. */
@@ -453,8 +454,25 @@ export const renameInput = (branch: string, remote: string | undefined): { title
   ].join(' '),
 });
 
-export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
-  `${refName(branch)} is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
+/** `where`: the worktree, or only its path when git named one the worktree list no longer has. */
+export function checkedOutElsewhere(branch: string, where: WorktreeInfo | string | undefined): string {
+  if (where === undefined || typeof where === 'string')
+    return `${refName(branch)} is checked out in another worktree${where === undefined ? '' : ` (${where})`}.`;
+  const state =
+    where.state.kind === 'locked'
+      ? ` It is locked${where.state.reason === undefined ? '' : `: ${where.state.reason}`}.`
+      : where.state.kind === 'prunable'
+        ? ' Its folder is gone; pruning the worktree frees the branch.'
+        : '';
+  return `${refName(branch)} is checked out in worktree ${refName(where.name)} (${where.path}).${state}`;
+}
+
+/** The buttons of checkedOutElsewhere: the worktree open in this window, in another, or pruned before `verb` again. */
+export const ELSEWHERE = {
+  show: 'Show in Graph',
+  open: 'Open Worktree in New Window',
+  prune: (verb: 'Checkout' | 'Delete' | 'Rename'): string => `Prune and ${verb}`,
+};
 
 /** `done`: what the operation did; `paths`: the conflicted files; `stash`: stashLabel(), which git kept. */
 export const popConflicted = (done: string, paths: readonly string[], stash: string): string =>

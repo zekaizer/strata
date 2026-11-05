@@ -5,7 +5,9 @@ import type { Operation } from '../../core/operations.ts';
 import { pathConflict, refNameProblem } from '../../core/ref-name.ts';
 import type { Ref, RefKind } from '../../core/refs.ts';
 import { remoteBranch } from '../../core/remote-branch.ts';
-import { holders } from '../../core/worktrees.ts';
+import { holders, samePath, type WorktreeInfo } from '../../core/worktrees.ts';
+import { repoList } from '../repositories.ts';
+import { pruneWorktrees } from './worktree.ts';
 import { COMMANDS, refActions, type Section } from '../../shared/commands.ts';
 import {
   checkedOutElsewhere,
@@ -14,6 +16,7 @@ import {
   deleteBranchConfirmation,
   DOING,
   DONE,
+  ELSEWHERE,
   IN_THE_WAY_OF,
   leaveBehindConfirmation,
   migrateConflicted,
@@ -67,6 +70,8 @@ interface SwitchTo {
   op: (migrate: boolean) => Operation;
   done: string;
   undo?: Undo;
+  /** Runs the switch again from the start, after pruning the worktree that held `branch`. */
+  again?: Again;
 }
 
 /** Moves HEAD, minding commits only HEAD reaches and uncommitted changes the target touches. */
@@ -105,7 +110,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     );
   } catch (e) {
     if (e instanceof GitOpError && e.kind === 'checkedOutElsewhere' && s.branch !== undefined) {
-      notify(host, 'error', checkedOutElsewhere(s.branch, checkedOutPath(e.stderr)), [], () => undefined);
+      await refuseElsewhere(host, s.branch, checkedOutPath(e.stderr), s.again);
       return;
     }
     throw e;
@@ -121,19 +126,57 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   else await finishRestoring(host, restored, done);
 }
 
+/** What a refusal offers to do once the worktree holding the branch is pruned. */
+interface Again {
+  verb: 'Checkout' | 'Delete' | 'Rename';
+  run: () => Promise<void>;
+}
+
 /**
  * A branch checked out in another worktree cannot be checked out or deleted here, and renaming it
  * would silently re-point that worktree's HEAD: says where it is. Resolves whether it is free.
  */
-async function notElsewhere(host: FlowHost, ref: Ref): Promise<boolean> {
+async function notElsewhere(host: FlowHost, ref: Ref, again: Again): Promise<boolean> {
   const holder = holders(await readWorktrees(host.git, host.cwd)).get(ref.name);
   if (holder === undefined) return true;
-  void host.ui.notify('error', checkedOutElsewhere(ref.short, holder.path));
+  await refuseElsewhere(host, ref.short, holder, again);
   return false;
 }
 
+/**
+ * Says `branch` is checked out in another worktree (`where`: or a path git named), offering to
+ * show or open that worktree, or for one whose folder is gone, to prune it and run `again`.
+ */
+async function refuseElsewhere(
+  host: FlowHost,
+  branch: string,
+  where: WorktreeInfo | string | undefined,
+  again: Again | undefined,
+): Promise<void> {
+  const w =
+    typeof where === 'string'
+      ? ((await readWorktrees(host.git, host.cwd).catch(() => [])).find((x) => samePath(x.path, where)) ?? where)
+      : where;
+  if (w === undefined || typeof w === 'string') {
+    notify(host, 'error', checkedOutElsewhere(branch, w), [], () => undefined);
+    return;
+  }
+  const shown = (await repoList()).keys().some((k) => samePath(w.path, k));
+  const prune = again && ELSEWHERE.prune(again.verb);
+  const actions = w.state.kind === 'prunable' ? (prune ? [prune] : []) : [shown ? ELSEWHERE.show : ELSEWHERE.open];
+  const menu = { webview: 'strata.graph', webviewSection: 'worktree', strataWorktree: w.path };
+  notify(host, 'error', checkedOutElsewhere(branch, w), actions, async (action) => {
+    if (action === ELSEWHERE.show) await vscode.commands.executeCommand('strata.worktree.show', menu);
+    else if (action === ELSEWHERE.open) await host.ui.openFolder(host.folderUri(w.path), 'newWindow');
+    else if (action === prune && again) {
+      if (await pruneWorktrees(host)) await again.run();
+    }
+  });
+}
+
 export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
-  if (!(await notElsewhere(host, ref))) return;
+  const again = { verb: 'Checkout', run: () => checkoutBranch(host, ref) } as const;
+  if (!(await notElsewhere(host, ref, again))) return;
   const tip = await readCommit(host.git, host.cwd, ref.name);
   await switchTo(host, {
     to: refName(ref.short),
@@ -142,6 +185,7 @@ export async function checkoutBranch(host: FlowHost, ref: Ref): Promise<void> {
     expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }],
     op: (migrate) => ({ kind: 'switch', branch: ref.short, migrate }),
     done: DONE.switched(ref.short),
+    again,
   });
 }
 
@@ -180,7 +224,8 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
       return;
     }
   }
-  if (!(await notElsewhere(host, local))) return;
+  const again = { verb: 'Checkout', run: () => checkoutRemote(host, ref) } as const;
+  if (!(await notElsewhere(host, local, again))) return;
   const [tip, behind] = await Promise.all([
     readCommit(host.git, host.cwd, local.name),
     countCommits(host.git, host.cwd, [`${local.name}..${ref.name}`]),
@@ -192,6 +237,7 @@ export async function checkoutRemote(host: FlowHost, ref: Ref): Promise<void> {
     expect: [{ rev: local.name, hash: tip.hash, name: refName(rb.branch) }],
     op: (migrate) => ({ kind: 'switch', branch: rb.branch, migrate }),
     done: DONE.switched(rb.branch, behind > 0 ? { count: behind, upstream: ref.short } : undefined),
+    again,
   });
 }
 
@@ -293,7 +339,7 @@ export async function createTag(host: FlowHost, at: string): Promise<void> {
 }
 
 export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
-  if (!(await notElsewhere(host, ref))) return;
+  if (!(await notElsewhere(host, ref, { verb: 'Rename', run: () => renameBranch(host, ref) }))) return;
   const [tip, upstream] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
     readUpstream(host.git, host.cwd, ref.short),
@@ -335,7 +381,8 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
 }
 
 export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
-  if (!(await notElsewhere(host, ref))) return;
+  const again = { verb: 'Delete', run: () => deleteBranch(host, ref) } as const;
+  if (!(await notElsewhere(host, ref, again))) return;
   const [tip, unmerged, upstream, config] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
     readUnmergedCommits(host.git, host.cwd, ref.short),
@@ -354,7 +401,7 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
     });
   } catch (e) {
     if (e instanceof GitOpError && e.kind === 'checkedOutElsewhere') {
-      notify(host, 'error', checkedOutElsewhere(ref.short, checkedOutPath(e.stderr)), [], () => undefined);
+      await refuseElsewhere(host, ref.short, checkedOutPath(e.stderr), again);
       return;
     }
     throw e;

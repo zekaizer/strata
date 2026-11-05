@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { WorktreeInfo } from '../../src/core/worktrees.ts';
 import * as vscode from 'vscode';
-import { flowSuite, menu, run } from './flow-helpers.ts';
+import { branchMenu, flowSuite, menu, run } from './flow-helpers.ts';
 import { git, waitFor } from './helpers.ts';
 
 const IDENTITY = {
@@ -99,6 +99,11 @@ describe('other worktrees', () => {
       /Branch feature\/login, in worktree strata-login\./,
     );
     assert.match(p.rowLabels[git('rev-parse', 'cross/x')] ?? '', /Worktree bisect, detached; branch cross\/x\./);
+    const tip = git('rev-parse', 'feature/login');
+    const index = Number(Object.entries(p.rowHashes).find(([, h]) => h === tip)?.[0]);
+    await panel().simulate({ kind: 'hoverNode', index });
+    const card = await waitFor('the ref card', async () => (await panel().probe()).refCard);
+    assert.equal(card.lines[0], 'feature/login · in worktree strata-login');
   });
 
   const worktreeMenu = (path: string) => menu({ webviewSection: 'worktree', strataWorktree: path, strataHash: '' });
@@ -160,6 +165,44 @@ describe('other worktrees', () => {
     await listed('the prunable worktree', gone, (w) => w.state.kind === 'prunable');
     await run('strata.worktree.prune', worktreeMenu(gone));
     await listed('its pruning', gone);
+    assert.equal(git('worktree', 'list', '--porcelain').includes(gone), false);
+  });
+
+  it('offers to open the worktree that has the branch a checkout is refused for', async () => {
+    const login = add('strata-login', 'feature/login');
+    await listed('the added worktree', login, () => true);
+    ui.click('Open Worktree in New Window');
+    await run('strata.checkout', branchMenu('feature/login', git('rev-parse', 'feature/login')));
+    assert.deepEqual(ui.first('notify'), {
+      kind: 'notify',
+      level: 'error',
+      message: `'feature/login' is checked out in worktree 'strata-login' (${login}).`,
+      actions: ['Open Worktree in New Window'],
+    });
+    await waitFor('the worktree opened', () => ui.of('openFolder').length > 0);
+    assert.deepEqual(ui.of('openFolder'), [{ kind: 'openFolder', path: login, how: 'newWindow' }]);
+  });
+
+  it('prunes the worktree whose folder is gone, then deletes the branch it held', async () => {
+    git('branch', 'strata-held', 'feature/login');
+    const gone = add('gone', 'strata-held');
+    rmSync(gone, { recursive: true, force: true });
+    made = [];
+    await panel().simulate({ kind: 'click', selector: '.codicon-refresh' });
+    await listed('the prunable worktree', gone, (w) => w.state.kind === 'prunable');
+    const click = ui.later();
+    void run('strata.deleteBranch', branchMenu('strata-held', git('rev-parse', 'strata-held')));
+    const press = await click;
+    assert.deepEqual(ui.first('notify'), {
+      kind: 'notify',
+      level: 'error',
+      message:
+        `'strata-held' is checked out in worktree 'gone' (${gone}). ` +
+        'Its folder is gone; pruning the worktree frees the branch.',
+      actions: ['Prune and Delete'],
+    });
+    await press('Prune and Delete');
+    assert.equal(git('branch', '--list', 'strata-held'), '');
     assert.equal(git('worktree', 'list', '--porcelain').includes(gone), false);
   });
 });
