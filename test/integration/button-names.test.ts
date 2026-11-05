@@ -18,7 +18,14 @@ describe('button names', () => {
 
   it('names every toolbar button in words, the ref filter by what it filters', async () => {
     const { toolbar } = (await panel.probe()).buttonNames;
-    assert.deepEqual(toolbar, ['Go to HEAD (main)', 'Filter refs: All', 'Hidden badges', 'First parent', 'Refresh']);
+    assert.deepEqual(toolbar, [
+      'Find Commit (Ctrl+F)',
+      'Go to HEAD (main)',
+      'Filter refs: All',
+      'Hidden badges',
+      'First parent',
+      'Refresh',
+    ]);
   });
 
   it('names the buttons of the inline details in words', async () => {

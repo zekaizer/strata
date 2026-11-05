@@ -74,7 +74,7 @@ body:not(.hover-off) :is(.tool-button, .icon-button, .inline-button):not(:disabl
   outline-offset: -1px;
 }
 
-body:not(.hover-off) :is(.tool-button:not(.active), .icon-button, .inline-button):not(:disabled):active,
+body:not(.hover-off) :is(.tool-button:not(.active), .icon-button:not(.active), .inline-button):not(:disabled):active,
 .tool-button[aria-expanded='true']:not(.active) {
   background: var(--color-toolbar-active);
 }
@@ -90,15 +90,15 @@ body:not(.hover-off) :is(.tool-button:not(.active), .icon-button, .inline-button
 }
 
 /* A toggle that is on. */
-.tool-button.active,
-body:not(.hover-off) .tool-button.active:hover {
+:is(.tool-button, .icon-button).active,
+body:not(.hover-off) :is(.tool-button, .icon-button).active:hover {
   background: var(--vscode-inputOption-activeBackground);
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   color: var(--vscode-inputOption-activeForeground, var(--color-fg));
 }
 
 /* The focus ring would land on the 1px active border, which is nearly the same color. */
-.tool-button.active:focus-visible {
+:is(.tool-button, .icon-button).active:focus-visible {
   outline-offset: 1px;
 }
 
@@ -324,6 +324,79 @@ body:not(.hover-off) .list-row.clickable:hover {
 
 .popover.wide {
   width: min(420px, calc(100vw - 2 * var(--space-8)));
+}
+
+/* One line: a field, a .popover-summary and icon buttons side by side (the find widget). */
+.popover.bar {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  width: auto;
+  max-height: none;
+}
+
+.popover.bar > .field {
+  flex: 1 1 200px;
+  width: 200px;
+  min-width: 60px;
+}
+
+.popover.bar > .popover-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0 var(--space-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Work in progress along the popover's bottom edge: a bar filled to the share done (its width), or
+ * .indeterminate, running without a known end.
+ */
+.popover-progress {
+  position: absolute;
+  right: var(--space-4);
+  bottom: 0;
+  left: var(--space-4);
+  height: var(--space-2);
+  overflow: hidden;
+}
+
+.popover-progress[hidden] {
+  display: none;
+}
+
+.popover-progress-bar {
+  width: 0;
+  height: 100%;
+  background: var(--color-progress);
+}
+
+.popover-progress.indeterminate .popover-progress-bar {
+  width: 20%;
+  animation: popover-progress var(--duration-progress) ease-in-out infinite;
+}
+
+@keyframes popover-progress {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(500%);
+  }
+}
+
+body.vscode-reduce-motion .popover-progress.indeterminate .popover-progress-bar {
+  width: 100%;
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover-progress.indeterminate .popover-progress-bar {
+    width: 100%;
+    animation: none;
+  }
 }
 
 .popover[hidden],

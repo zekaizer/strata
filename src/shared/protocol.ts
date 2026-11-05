@@ -3,6 +3,7 @@
 import type { BadgeRule } from '../core/badge-rules.ts';
 import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
+import type { FindHit, FindQuery } from '../core/find.ts';
 
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
@@ -81,6 +82,36 @@ export type HostToWebview =
   | { type: 'headReached'; generation: number; hash: string; reached: boolean }
   /** The answer to whereIs. */
   | { type: 'where'; generation: number; hash: string; where: Where }
+  /**
+   * Commits search `id` found, in the graph's order, after those of its earlier messages. `exact`,
+   * in the first message only: the commits a hash prefix query names, whether the view has them or not.
+   */
+  | {
+      type: 'findHits';
+      generation: number;
+      id: number;
+      hits: FindHit[];
+      exact?: FindHit[];
+      done: boolean;
+      /** More commits match than the search hands out. */
+      capped: boolean;
+    }
+  /**
+   * The answer to locate: `position` is the commit's index in the view's order (stashes not
+   * counted), undefined when the view leaves it out; `reachedBy` then names the refs that reach it.
+   */
+  | {
+      type: 'located';
+      generation: number;
+      id: number;
+      hash: string;
+      position: number | undefined;
+      reachedBy: string[];
+    }
+  /** The user clicked the action notShown offered for commit `hash`. */
+  | { type: 'showNotShown'; hash: string }
+  /** Find Commit... from the Command Palette or its key: opens the find widget. */
+  | { type: 'find' }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -145,6 +176,20 @@ export type WebviewToHost =
    * query in flight, unanswered; `hash` undefined (the card closed) only stops it.
    */
   | { type: 'whereIs'; generation: number; hash: string | undefined }
+  /**
+   * Searches the history shown for `query`, answered with findHits. A newer find, findStop or reset
+   * stops the search in flight.
+   */
+  | { type: 'find'; generation: number; id: number; query: FindQuery }
+  /** The find widget closed: stops its search and locate in flight. */
+  | { type: 'findStop' }
+  /**
+   * Find went to commit `hash`, which the view leaves out: the host says `message` and offers
+   * `action`, answering showNotShown when it is clicked.
+   */
+  | { type: 'notShown'; hash: string; message: string; action: string | undefined }
+  /** Where commit `hash` is in the history shown: answered with located. A newer locate stops this one. */
+  | { type: 'locate'; generation: number; id: number; hash: string }
   /** Go to HEAD found HEAD outside the branch filter: answered with goToHead (include) on request. */
   | { type: 'headNotShown'; branch: string | undefined; hash: string }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
@@ -211,6 +256,26 @@ export interface ProbeState {
   badgeFilter: BadgeFilterProbe;
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;
+  /**
+   * The find widget: whether it is open, its input, its count, whether its progress bar shows, how
+   * many matches it has and whether its search ended; and of the rendered rows, the marked text by row index, the matching rows'
+   * indexes and the texts of the marked badges.
+   */
+  find: {
+    open: boolean;
+    input: string;
+    count: string;
+    progress: boolean;
+    matches: number;
+    done: boolean;
+    marks: Record<number, string[]>;
+    hitRows: number[];
+    badges: string[];
+    /** Marked text in the open details. */
+    detailsMarks: string[];
+    /** While the match list shows: the text of its headings, rows and notes, in order. */
+    list: string[] | undefined;
+  };
   /** The repository's badge rules as the host last sent them. */
   badgeRules: BadgeRule[];
   /** Label of the toolbar's stash count button; empty while it is hidden. */

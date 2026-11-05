@@ -50,6 +50,11 @@ const menuAt = params.get('menu');
 const busy = params.get('busy');
 const bannerState = params.get('banner');
 const land = params.get('land');
+/**
+ * `find=<text>` opens the find widget with that text typed; `findList=1` shows the match list.
+ */
+const findText = params.get('find');
+const findList = params.get('findList') === '1';
 if (params.get('reduceMotion') === '1') document.body.classList.add('vscode-reduce-motion');
 
 for (const [k, v] of Object.entries(themes[theme])) document.documentElement.style.setProperty(k, v);
@@ -187,6 +192,13 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         }, 50);
       }
       if (busy !== null && offset === commits.length) toWebview({ type: 'busy', label: busy });
+      if (findText !== null && offset === commits.length) {
+        setTimeout(() => {
+          toWebview({ type: 'find' });
+          toWebview({ type: 'simulate', action: { kind: 'type', selector: '.find-input', text: findText } });
+          if (findList) toWebview({ type: 'simulate', action: { kind: 'click', selector: '.find-toggle' } });
+        }, 50);
+      }
       if (land !== null && offset === commits.length && generation === 2) {
         // The view had the branch elsewhere; the reset that follows the "operation" focuses where it is now.
         const moved = data.refs.refs.find((r) => r.short === land);
@@ -244,6 +256,48 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       const { hash } = m;
       const where = hash === undefined || params.get('where') === 'pending' ? undefined : data?.where[hash];
       if (hash !== undefined && where) toWebview({ type: 'where', generation, hash, where });
+      break;
+    }
+    case 'find': {
+      // Subjects only (the playground has no bodies), in the history's order, in one batch.
+      const { text, author, hashPrefix } = m.query;
+      const has = (s: string, part: string | undefined) =>
+        part === undefined || s.toLowerCase().includes(part.toLowerCase());
+      const hit = (c: Commit) => ({ hash: c.hash, subject: c.subject, author: c.author, authorTime: c.authorTime });
+      const hits = visible.filter((c) => (text === '' || has(c.subject, text)) && has(c.author, author)).map(hit);
+      const exact =
+        hashPrefix === undefined
+          ? undefined
+          : (data?.commits ?? []).filter((c) => c.hash.startsWith(hashPrefix)).map(hit);
+      setTimeout(() => {
+        toWebview({
+          type: 'findHits',
+          generation,
+          id: m.id,
+          hits,
+          ...(exact ? { exact } : {}),
+          done: true,
+          capped: false,
+        });
+      }, 30);
+      break;
+    }
+    case 'locate': {
+      const position = visible.findIndex((c) => c.hash === m.hash);
+      toWebview({
+        type: 'located',
+        generation,
+        id: m.id,
+        hash: m.hash,
+        position: position < 0 ? undefined : position,
+        reachedBy:
+          position < 0
+            ? (data?.refs.refs
+                .filter((r) => r.kind === 'tag')
+                .map((r) => r.name)
+                .slice(0, 1) ?? [])
+            : [],
+      });
       break;
     }
     case 'setBadgeRules':

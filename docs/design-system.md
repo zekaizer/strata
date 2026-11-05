@@ -64,6 +64,7 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
 | A text input                                           | `.field`                                              |
 | A checkbox                                             | `input.checkbox` inside a `label.list-row.clickable`  |
 | A dialog opened from the toolbar                       | `.popover` and its parts                              |
+| A one-line dialog over the list (find)                 | `.popover.bar`, `.popover-progress` for progress      |
 | A heading over a group of rows                         | `.section-title`                                      |
 | A row in any list (popover, file tree)                 | `.list-row`                                           |
 | A ref, a stash, a short label (status, "staged")       | `.chip`                                               |
@@ -136,6 +137,7 @@ All tokens are custom properties on `:root` in `tokens.css`.
 | `--divider`               | `1px solid --color-border`                                            | Rules between sections                   |
 | `--duration-spin`         | 1.5s                                                                  | The busy spinner                         |
 | `--duration-landing`      | 1.2s                                                                  | The pulse on what an operation moved     |
+| `--duration-progress`     | 2s                                                                    | One run of an indeterminate progress bar |
 
 ### Colors
 
@@ -157,6 +159,7 @@ All tokens are custom properties on `:root` in `tokens.css`.
 | `--color-danger`             | `--vscode-errorForeground`                                                  | Errors                                 |
 | `--color-warning`            | `--vscode-list-warningForeground`, else `--vscode-editorWarning-foreground` | Warnings, autostash                    |
 | `--color-success`            | `--vscode-testing-iconPassed`, else `--vscode-charts-green`                 | "Copied"                               |
+| `--color-progress`           | `--vscode-progressBar-background`, else the focus color                     | Progress bars                          |
 | `--badge-branch`             | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | Branch chips                           |
 | `--badge-remote`             | `--vscode-scmGraph-historyItemRemoteRefColor`, else charts purple           | Remote chips                           |
 | `--badge-tag`                | `--vscode-charts-yellow`                                                    | Tag chips                              |
@@ -180,7 +183,7 @@ outline. A tool button that toggles is `.active` when on; one that opens a popov
 | Class             | Looks                                         | States beyond the common ones                                                       |
 | ----------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `.tool-button`    | Icon and `.tool-label`, no box until hovered  | `.active` (toggle on: input option colors), `[aria-expanded='true']` (popover open) |
-| `.icon-button`    | 22×22, icon only                              |                                                                                     |
+| `.icon-button`    | 22×22, icon only                              | `.active` (toggle on: input option colors)                                          |
 | `.inline-button`  | No box until hovered, inside a line of text   | `.inline-button.codicon`: a small icon (`--icon-size-sm`)                           |
 | `.button`         | Push button, secondary colors                 | `[aria-disabled='true']` holds it while keeping focus                               |
 | `.button.primary` | Push button, primary colors                   | Disabled or held: drops its fill                                                    |
@@ -217,6 +220,11 @@ sunken surface get its hover color through `--color-hover`. The file tree indent
 - `.popover-section`: stays in view below the list, ruled off across the whole popover.
 
 Text lines up at `--space-4 + --space-8` from the popover's edge in every part.
+
+`.popover.bar` is a one-line popover (the find widget): a `.field` that takes the room, a
+`.popover-summary` and `.icon-button`s side by side. `.popover-progress` (holding a
+`.popover-progress-bar`) runs along any popover's bottom edge: its bar's width is the share done,
+or `.indeterminate` runs without a known end (`--duration-progress`, still under reduced motion).
 
 ### Chip
 

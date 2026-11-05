@@ -1154,3 +1154,98 @@ body:not(.hover-off) .file:hover .file-actions,
 .ref-card-line.hidden-badge .codicon {
   color: var(--color-disabled);
 }
+
+/*
+ * Find widget (.popover.bar): over the top right of the list, clear of its scrollbar. Matches are
+ * marked with the editor's find colors; the current one (the selected row) more strongly.
+ */
+.find-widget {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-16);
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-4);
+  max-width: calc(100% - 2 * var(--space-16));
+}
+
+.find-widget[hidden] {
+  display: none;
+}
+
+.find-widget > .popover {
+  position: relative;
+  inset: auto;
+  max-width: 100%;
+}
+
+.find-widget > .popover.bar {
+  width: auto;
+}
+
+.find-list {
+  max-height: min(420px, 60vh);
+}
+
+.find-row .list-row-text {
+  min-width: 0;
+}
+
+.find-row .list-row-note {
+  font-variant-numeric: tabular-nums;
+}
+
+.find-count {
+  min-width: 64px;
+}
+
+.find-count.problem {
+  color: var(--color-danger);
+}
+
+.find-input.problem {
+  border-color: var(--vscode-inputValidation-errorBorder, var(--color-danger));
+}
+
+/* Narrow lists: the count gives up width before the field does. */
+@container list (max-width: 420px) {
+  .find-widget {
+    right: var(--space-4);
+    max-width: calc(100% - 2 * var(--space-4));
+  }
+
+  .find-row .list-row-note {
+    display: none;
+  }
+
+  .find-count {
+    min-width: 0;
+  }
+}
+
+.find-mark {
+  border-radius: var(--radius-sm);
+  background: var(--vscode-editor-findMatchHighlightBackground);
+  color: inherit;
+  outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
+  outline-offset: -1px;
+}
+
+.row.selected .find-mark,
+.row.cursor .find-mark,
+.find-row.current .find-mark {
+  background: var(--vscode-editor-findMatchBackground);
+  outline-color: var(--vscode-editor-findMatchBorder, transparent);
+}
+
+/* The message matches only in its body: the row is tinted instead. */
+.row.find-body-hit:not(.selected) {
+  background: var(--vscode-editor-findRangeHighlightBackground);
+}
+
+.badge.find-match .chip-text {
+  background: var(--vscode-editor-findMatchHighlightBackground);
+  outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
+}

@@ -190,3 +190,27 @@ const menuDir = process.env['STRATA_MENU_SHOT_DIR'];
     panel.dispose();
   });
 });
+
+(shotDir ? describe : describe.skip)('tool: find screenshots', () => {
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      await waitFor('history', async () => (await panel.probe()).done);
+      await panel.simulate({ kind: 'click', selector: '.find-button' });
+      await panel.simulate({ kind: 'type', selector: '.find-input', text: 'search' });
+      await waitFor('matches', async () => (await panel.probe()).find.done);
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await mkdir(shotDir!, { recursive: true });
+      await screenshot(join(shotDir!, `find-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.find-toggle' });
+      await waitFor('list', async () => (await panel.probe()).find.list !== undefined);
+      await delay(300);
+      await screenshot(join(shotDir!, `find-list-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.find-toggle' });
+      await panel.simulate({ kind: 'click', selector: '.find-widget .codicon-close' });
+      panel.dispose();
+    });
+  }
+});

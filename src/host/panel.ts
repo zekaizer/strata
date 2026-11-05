@@ -158,6 +158,11 @@ export class GraphPanel implements vscode.Disposable {
     this.post({ type: 'goToHead' });
   }
 
+  /** Opens the graph's find widget. */
+  find(): void {
+    this.post({ type: 'find' });
+  }
+
   showStashes(): void {
     this.session().showStashes();
   }

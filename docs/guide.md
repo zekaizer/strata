@@ -121,6 +121,36 @@ to get started and the requirements.
   loading more history if needed. When the branch filter leaves it out, Strata
   says so and offers to add the current branch to the filter (or to show all
   branches with HEAD detached).
+- To find commits, click the magnifier in the toolbar, press
+  <kbd>Ctrl</kbd>+<kbd>F</kbd> (<kbd>Cmd</kbd>+<kbd>F</kbd> on macOS) in the
+  graph or run **Strata: Find Commit...**. Text selected in the details fills it
+  in, so a hash in a message is one key away. Type:
+  - plain text, found in commit messages (subject and body), ignoring case and
+    taken literally (no patterns);
+  - 4 to 40 hex digits, also read as a commit hash (or its start);
+  - `author:ada` or `author:"Ada Lovelace"`, the author's name or email; with
+    text too, a commit must match both.
+
+  The search covers the history the graph shows (its branch filter and **First
+  parent**). Matching text is marked in the rows, and the badges of branches
+  and tags whose names match; a match that only has the text in its body is
+  tinted. The widget counts the matches ("3 of 21", "+" while more may come; it
+  stops at 10,000) and marks the selected one more strongly. <kbd>Enter</kbd>
+  and <kbd>Shift</kbd>+<kbd>Enter</kbd>, or the arrows, go to the next and
+  previous match from the selection. A match further down than the history
+  loaded so far is found first, then the history loads down to it, with
+  progress in the toolbar; <kbd>Esc</kbd> stops it, and <kbd>Esc</kbd> again
+  closes the widget. The list button opens the matches as a list: the commit a
+  hash names, the branches and tags whose names match, then the commits in graph
+  order (**Show N more…** for the rest); click one to go to it. When an author's
+  name has your text, the list offers to search `author:` for it.
+
+  A commit the graph does not show, because the branch filter or **First
+  parent** leaves it out or only a tag reaches it, gets **Not in view**, and a
+  notification says why. When showing another branch or all parents would show
+  it, the notification offers that (**Show feature Too**, **Show All
+  Parents**). The search runs again when the graph reloads.
+
 - With stashes in the repository, the toolbar counts them and how many are not
   in the graph (their commit is not loaded yet, filtered out, or on no branch).
   Click it for **Show Stashes**: pick one to select it and open its details,
@@ -248,6 +278,11 @@ Write Commit-Graph for Faster History** at any time. It runs
 `git commit-graph write --reachable`, the same thing `git maintenance` does, and
 only adds a cache file to the repository. Turn the offer off with the
 `strata.suggestCommitGraph` setting.
+
+Finding commits reads the messages git stores, so it scans all history when few
+commits match: about a second on a repository of 150,000 commits, with or
+without a commit-graph. Common text shows its first matches at once with a
+commit-graph; without one, git again reads all history first.
 
 New commits (your own, fetched or rebased) are not in the commit-graph until it
 is written again. With `strata.keepCommitGraphUpdated` turned on (or **Write and
