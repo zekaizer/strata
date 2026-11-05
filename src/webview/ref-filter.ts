@@ -1,6 +1,6 @@
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { codicon, el } from './format.ts';
-import { dismissable, keepingFocus } from './popover.ts';
+import { dismissable, keepingFocus, placeUnder } from './popover.ts';
 
 const GROUPS: { kind: Ref['kind']; label: string; icon: string }[] = [
   { kind: 'branch', label: 'Branches', icon: 'git-branch' },
@@ -75,6 +75,9 @@ export class RefFilter {
     dismissable(this.popover, this.button, () => {
       this.close();
     });
+    window.addEventListener('resize', () => {
+      if (!this.popover.hidden) placeUnder(this.popover, this.button);
+    });
     this.updateLabel();
   }
 
@@ -108,6 +111,7 @@ export class RefFilter {
       this.popover.hidden = false;
       this.button.setAttribute('aria-expanded', 'true');
       this.renderList();
+      placeUnder(this.popover, this.button);
       this.search.focus();
     } else {
       this.close();

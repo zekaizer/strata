@@ -22,6 +22,23 @@ export function dismissable(popover: HTMLElement, button: HTMLElement, close: ()
   });
 }
 
+/** Space kept between a popover and the window's sides, in px. */
+const MARGIN = 8;
+
+/**
+ * Places an open popover under `button`, left edges aligned, moved left as far as it must go to
+ * stay MARGIN px inside the window.
+ */
+export function placeUnder(popover: HTMLElement, button: HTMLElement): void {
+  const origin = popover.offsetParent?.getBoundingClientRect().left ?? 0;
+  const left = Math.max(
+    MARGIN,
+    Math.min(button.getBoundingClientRect().left, innerWidth - MARGIN - popover.offsetWidth),
+  );
+  popover.style.left = `${left - origin}px`;
+  popover.style.right = 'auto';
+}
+
 /**
  * Rebuilds parts of a popover, then puts focus back on the control that had it, by its
  * `data-focus` key `<row>|<control>`: rebuilding would otherwise drop keyboard focus to <body>. A
