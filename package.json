@@ -1347,6 +1347,7 @@
     "test:integration": "npm run build && node test/fixtures/cli.ts branchy multi-repo && node scripts/xvfb.mjs -- vscode-test --label stable && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable && node scripts/xvfb.mjs -- vscode-test --label multi && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable multi",
     "test:integration:min": "npm run build && node test/fixtures/cli.ts branchy multi-repo && node scripts/xvfb.mjs -- vscode-test --label min && node scripts/xvfb.mjs -- node scripts/restart-test.mjs 1.90.0 && node scripts/xvfb.mjs -- vscode-test --label multi-min && node scripts/xvfb.mjs -- node scripts/restart-test.mjs 1.90.0 multi",
     "test:integration:multi": "npm run build && node test/fixtures/cli.ts multi-repo && node scripts/xvfb.mjs -- vscode-test --label multi && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable multi",
+    "test:isolation": "node scripts/git-isolation.ts npm run test:unit",
     "test": "npm run check && npm run test:integration",
     "playground": "node scripts/build.mjs --playground",
     "shot": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
