@@ -13,6 +13,7 @@ import {
   pushTagPick,
   REMOTE_DONE,
   tagExistsOnRemote,
+  upstreamGone,
 } from '../../src/core/wording.ts';
 
 describe('wording of remote operations', () => {
@@ -37,6 +38,10 @@ describe('wording of remote operations', () => {
     );
     assert.equal(ffOnly.detail, 'pull.ff is "only", so git would not merge.');
     assert.equal(noUpstream('topic'), "'topic' has no upstream branch.");
+    assert.equal(
+      upstreamGone('topic', 'origin/topic'),
+      "'origin/topic', the upstream of 'topic', is gone from its remote. Publish the branch again, or unset its upstream.",
+    );
     assert.equal(NO_REMOTE, 'This repository has no remote.');
   });
 

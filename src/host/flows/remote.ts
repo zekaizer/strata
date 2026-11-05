@@ -19,6 +19,7 @@ import {
   REMOTE_DOING,
   REMOTE_DONE,
   tagExistsOnRemote,
+  upstreamGone,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -92,7 +93,13 @@ export async function pull(host: FlowHost): Promise<void> {
     return;
   }
   const fetch: Operation = { kind: 'fetch', remote: upstream.remote, ref: `refs/heads/${upstream.remoteBranch}` };
-  if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch))) return;
+  try {
+    if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch))) return;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'noRemoteRef')) throw e;
+    goneUpstream(host, branch, upstream.name);
+    return;
+  }
   const tracking = upstream.ref ?? (await fetched(host));
   const [ahead, behind] = await Promise.all([
     countCommits(host.git, host.cwd, [`${tracking}..HEAD`]),
@@ -126,6 +133,16 @@ export async function pull(host: FlowHost): Promise<void> {
   );
   if (answer === 'rebase') await rebaseOnto();
   else if (answer === 'merge') await merge(host, src, 'whenDirty');
+}
+
+/** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */
+function goneUpstream(host: FlowHost, branch: string, upstream: string): void {
+  notify(host, 'info', upstreamGone(branch, upstream), ['Publish Branch...', 'Unset Upstream'], async (a) => {
+    if (a === 'Publish Branch...') return publish(host, branch);
+    const op: Operation = { kind: 'unsetUpstream', branch };
+    if (await run(host, REMOTE_DOING.unsettingUpstream(branch), (exec) => exec(op)))
+      await finish(host, { message: REMOTE_DONE.upstreamUnset(branch) });
+  });
 }
 
 /** Pushes `branch` to its upstream (or where push.default and pushRemote say), or publishes it. */

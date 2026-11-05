@@ -114,7 +114,9 @@ operation is stopped, Continue, Abort and Skip.
 - **Remotes:** Fetch, Pull (fast-forward, merge or rebase, following
   `pull.rebase`), Push and Publish Branch. Pull and Push follow the branch's
   configured upstream, also one given by URL (as a fork's pull request
-  checkout sets) or one a single-branch clone doesn't fetch. A rejected push
+  checkout sets) or one a single-branch clone doesn't fetch. When the remote
+  deleted the upstream, Pull says so and offers to publish the branch again
+  or unset its upstream. A rejected push
   says how many commits the remote has that your branch doesn't, and offers a
   force push with lease when `git.allowForcePush` is on. Delete Remote Branch, on a
   remote branch badge, says which commits no other branch or tag has and which

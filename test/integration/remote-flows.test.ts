@@ -138,6 +138,42 @@ describe('remote operations', () => {
     assert.equal(tracked('origin/strata-url'), '');
   });
 
+  it('says when the upstream is gone from the remote, and unsets it on request', async () => {
+    await publish();
+    git('switch', '--quiet', 'strata-pub');
+    remote('update-ref', '-d', 'refs/heads/strata-pub');
+    ui.click('Unset Upstream');
+    await run('strata.pull');
+    await waitFor('the upstream unset', () => {
+      try {
+        git('config', '--get', 'branch.strata-pub.merge');
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    const said = ui.of('notify');
+    assert.equal(
+      said.at(-1)?.message,
+      "'origin/strata-pub', the upstream of 'strata-pub', is gone from its remote. Publish the branch again, or unset its upstream.",
+    );
+    assert.deepEqual(said.at(-1)?.actions, ['Publish Branch...', 'Unset Upstream']);
+    assert.deepEqual(errors(), []);
+  });
+
+  it('says a pruned upstream is gone, and publishes the branch again on request', async () => {
+    await publish();
+    git('switch', '--quiet', 'strata-pub');
+    remote('update-ref', '-d', 'refs/heads/strata-pub');
+    git('fetch', '--quiet', '--prune', 'origin');
+    await reload(panel());
+    ui.click('Publish Branch...');
+    await run('strata.pull');
+    await waitFor('published again', () => remote('branch', '--list', 'strata-pub') !== '');
+    assert.match(ui.first('notify').message, /is gone from its remote/);
+    assert.deepEqual(errors(), []);
+  });
+
   it('pulls from an upstream that is a local branch', async () => {
     git('branch', 'strata-feat', 'main');
     git('branch', '--track', 'strata-loc', 'strata-feat');

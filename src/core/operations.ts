@@ -22,6 +22,7 @@ export type Operation =
   /** Adds a config value (Undo of a deletion puts back the branch's configuration). */
   | { kind: 'configAdd'; key: string; value: string }
   | { kind: 'deleteBranch'; name: string }
+  | { kind: 'unsetUpstream'; branch: string }
   | { kind: 'deleteTag'; name: string }
   /** `ref`: a commit id, or a ref name that git reads as the ref meant (the merge message names it). */
   | { kind: 'merge'; ref: string; mode: MergeMode; autostash: boolean }
@@ -107,6 +108,8 @@ export function argv(op: Operation): string[] {
     case 'deleteBranch':
       // Strata confirms with the exact commits that become unreachable; -d's merged check is narrower.
       return ['branch', '--delete', '--force', op.name];
+    case 'unsetUpstream':
+      return ['branch', '--unset-upstream', op.branch];
     case 'deleteTag':
       return ['tag', '--delete', op.name];
     case 'merge':
