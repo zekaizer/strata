@@ -14,6 +14,8 @@ const HAND_WRITTEN: ReadonlySet<string> = new Set([
   'strata.switchRepository',
   'strata.openInGraph',
   'strata.showActive',
+  'strata.showHistory',
+  'strata.showFileHistory',
 ]);
 
 /**

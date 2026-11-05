@@ -216,6 +216,11 @@ export class GraphPanel implements vscode.Disposable {
     return true;
   }
 
+  /** Shows the history of `path` in the shown repository. */
+  showPathHistory(path: PathFilter | null): Promise<void> {
+    return this.session().showPath(path);
+  }
+
   /** Writes a commit-graph for the shown repository and reloads. */
   writeCommitGraph(): Promise<void> {
     return this.controller?.shown?.writeCommitGraph() ?? Promise.resolve();

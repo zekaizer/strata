@@ -3670,6 +3670,7 @@ function fileMenuContext(source: FileSource, f: FileChange, views: FileView[]): 
     strataHasOld: views.includes('before'),
     strataHasNew: views.includes('after'),
     strataRenamed: f.oldPath !== undefined,
+    strataInFolder: f.path.includes('/'),
   };
 }
 

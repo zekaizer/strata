@@ -67,4 +67,22 @@ describe('ways into the graph', () => {
     await run(item.command as string);
     await showing(await panel(), alpha);
   });
+
+  it('shows a file history in the innermost repository holding the file', async () => {
+    const file = vscode.Uri.file(join(gamma, 'gamma.txt'));
+    // What Source Control passes for a change: its resource state.
+    await run('strata.showHistory', { resourceUri: file });
+    const p = await panel();
+    await waitFor('gamma.txt history in gamma', async () => {
+      const s = await p.probe();
+      return s.repo === gamma && s.done && s.options.path?.paths[0] === 'gamma.txt' && s.pathChip === 'gamma.txt';
+    });
+    // From the palette: the active editor's file, in beta.
+    await vscode.window.showTextDocument(vscode.Uri.file(join(beta, 'beta.txt')));
+    await run('strata.showFileHistory');
+    await waitFor('beta.txt history in beta', async () => {
+      const s = await p.probe();
+      return s.repo === beta && s.done && s.options.path?.paths[0] === 'beta.txt';
+    });
+  });
 });
