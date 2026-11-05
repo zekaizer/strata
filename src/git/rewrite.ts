@@ -88,14 +88,35 @@ export interface RefHaving {
   hash: string;
 }
 
-/** Local branches and tags that have commit `oldest`: at it, at a newer one, or branched off after it. */
+/** Clock skew between a commit and its descendants that readRefsHaving allows for. */
+const SKEW_S = 24 * 60 * 60;
+
+/**
+ * Local branches and tags that have commit `oldest`: at it, at a newer one, or branched off after
+ * it. Only refs at a commit made after `oldest` (less SKEW_S) can have it, and `--contains` over
+ * those alone stays fast without a commit-graph, where over every tag it walks most of history.
+ */
 export async function readRefsHaving(git: string, cwd: string, oldest: string): Promise<RefHaving[]> {
+  const [since, list] = await Promise.all([
+    runGit(git, cwd, ['show', '--no-patch', '--format=%ct', oldest, '--']).then((s) => Number(s.trim()) - SKEW_S),
+    runGit(git, cwd, [
+      'for-each-ref',
+      '--format=%(refname)%00%(committerdate:unix)%00%(*committerdate:unix)',
+      'refs/heads',
+      'refs/tags',
+    ]),
+  ]);
+  const candidates = list
+    .split('\n')
+    .map((l) => l.split('\0'))
+    .filter(([name, date, peeled]) => name && Number(peeled || date) >= since)
+    .map(([name]) => name!);
+  if (candidates.length === 0) return [];
   const out = await runGit(git, cwd, [
     'for-each-ref',
     `--contains=${oldest}`,
     '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(*objectname)',
-    'refs/heads',
-    'refs/tags',
+    ...candidates,
   ]);
   return out
     .split('\n')
