@@ -559,6 +559,7 @@ class App {
         this.generation = -1;
         this.noRepository = true;
         this.switcher.setShown(undefined, 'No git repository');
+        this.showRepoControls(false);
         this.status.classList.remove('error');
         // The list says what to do; the toolbar's name already says there is no repository.
         this.status.textContent = '';
@@ -686,6 +687,7 @@ class App {
     this.shownLanes = 1;
     this.textWidths = { author: 0, dateFull: 0, dateShort: 0 };
     this.noRepository = false;
+    this.showRepoControls(true);
     this.done = false;
     this.selected = -1;
     this.updateOptionControls();
@@ -857,6 +859,12 @@ class App {
     this.stashButton.querySelector('.stash-count-narrow')!.textContent = `${n}${hidden > 0 ? '•' : ''}`;
     this.stashButton.title = `${label}. Show Stashes`;
     this.stashButton.setAttribute('aria-label', this.stashButton.title);
+  }
+
+  /** The toolbar buttons that act on a repository; without one, Refresh stays. */
+  private showRepoControls(shown: boolean): void {
+    for (const b of [this.headButton, this.refFilter.button, this.badgeFilter.button, this.firstParentButton])
+      b.hidden = !shown;
   }
 
   private updateHeadButton(): void {

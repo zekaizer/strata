@@ -260,7 +260,7 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-descriptionForeground);
 }
 
-.stash-button[hidden] {
+.tool-button[hidden] {
   display: none;
 }
 
@@ -472,7 +472,6 @@ body:not(.hover-off) .popover-button.primary:not(:disabled):hover {
   margin-left: -7px;
 }
 
-.repo-button[hidden],
 .toolbar .repo[hidden] {
   display: none;
 }
