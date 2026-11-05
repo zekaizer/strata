@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { addBranchyStashes } from '../../fixtures/stashes.ts';
 import { delay, git, screenshot, setTheme, strata, THEMES, waitFor, workspaceRoot, type ThemeId } from '../helpers.ts';
-import { gitRetry, setIdentity, snapshotRepo } from '../repo-snapshot.ts';
+import { gitRetry, gitSettled, setIdentity, snapshotRepo } from '../repo-snapshot.ts';
 
 const themeIds = Object.keys(THEMES) as ThemeId[];
 const themesDir = process.env['STRATA_CAPTURE_THEMES'];
@@ -107,6 +107,7 @@ after(() => setTheme('dark'));
     await gitRetry('add', 'other.txt');
     await gitRetry('commit', '--quiet', '-m', 'Topic two');
     await gitRetry('rebase', 'strata-onto').catch(() => undefined);
+    await gitSettled();
   });
   after(() => restore());
 
