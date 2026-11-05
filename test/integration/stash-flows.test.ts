@@ -48,6 +48,29 @@ describe('stash operations', () => {
     }
   });
 
+  it('pops staged changes back staged, and unstaged when they no longer apply to the index', async () => {
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), `${notes()}staged\n`);
+    git('add', 'NOTES.md');
+    ui.type('');
+    await run('strata.stash.push');
+    await run('strata.stash.pop', stashMenu(git('rev-parse', 'refs/stash')));
+    assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'staged again');
+    assert.equal(git('stash', 'list'), '');
+
+    git('stash', 'push', '--quiet');
+    const stash = git('rev-parse', 'refs/stash');
+    writeFileSync(join(workspaceRoot(), 'NOTES.md'), `first\n${notes()}`);
+    git('commit', '--quiet', '-am', 'Prepend a line');
+    await run('strata.stash.pop', stashMenu(stash));
+    assert.equal(git('diff', '--cached', '--name-only'), '');
+    assert.match(notes(), /^first\n[\s\S]*staged\n$/);
+    assert.equal(git('stash', 'list'), '');
+    assert.deepEqual(
+      ui.of('notify').filter((n) => n.level !== 'info'),
+      [],
+    );
+  });
+
   it('stashes, pops, drops and brings a dropped stash back with Undo', async () => {
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'mine\n');
     ui.type('my work');

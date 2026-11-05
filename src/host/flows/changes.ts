@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { resolveStashChoices, type DirtyFacts, type StashChoices, type StashOp } from '../../core/autostash.ts';
 import { untrackedInTheWay } from '../../core/git-error.ts';
 import type { Operation } from '../../core/operations.ts';
-import type { Worktree } from '../../core/repo-state.ts';
+import { parseStatus, type Worktree } from '../../core/repo-state.ts';
 import {
   autostashRefused,
   dirtySection,
@@ -83,23 +83,34 @@ export type Restored =
 const trackedStatus = (host: FlowHost) =>
   runGit(host.git, host.cwd, ['status', '--porcelain=v2', '-z', '--untracked-files=no']);
 
-/** Pops (or applies) the stash commit `hash`, resolving its index right before. */
+/**
+ * Pops (or applies) the stash commit `hash`, resolving its index right before. Staged changes come
+ * back staged, or unstaged when git refuses that (they no longer apply to the index).
+ */
 export async function restore(host: FlowHost, exec: Exec, hash: string, pop = true): Promise<Restored> {
   const stash = await readStash(host.git, host.cwd, hash);
   // The user popped it by hand meanwhile.
   if (!stash) return { kind: 'none' };
   const before = await trackedStatus(host);
-  let error: unknown;
-  try {
-    await exec(pop ? { kind: 'stashPop', index: stash.index } : { kind: 'stashApply', index: stash.index });
-  } catch (e) {
-    if (!(e instanceof GitOpError)) throw e;
-    error = e;
-  }
-  if (error === undefined) return { kind: 'restored' };
-  if ((await readUnmerged(host.git, host.cwd)).length > 0) return { kind: 'conflicted', stash };
-  if ((await trackedStatus(host)) !== before) return { kind: 'partial', stash };
-  return { kind: 'refused', stash, reason: gitFailure((error as GitOpError).message).split('\n')[0]! };
+  const attempt = async (withIndex: boolean): Promise<GitOpError | undefined> => {
+    try {
+      await exec({ kind: pop ? 'stashPop' : 'stashApply', index: stash.index, withIndex });
+      return undefined;
+    } catch (e) {
+      if (!(e instanceof GitOpError)) throw e;
+      return e;
+    }
+  };
+  const judge = async (error: GitOpError | undefined): Promise<Restored> => {
+    if (error === undefined) return { kind: 'restored' };
+    if ((await readUnmerged(host.git, host.cwd)).length > 0) return { kind: 'conflicted', stash };
+    if ((await trackedStatus(host)) !== before) return { kind: 'partial', stash };
+    return { kind: 'refused', stash, reason: gitFailure(error.message).split('\n')[0]! };
+  };
+  // A refused --index unstages what is staged now, so it is tried only with nothing staged.
+  if (parseStatus(before).staged > 0) return judge(await attempt(false));
+  const r = await judge(await attempt(true));
+  return r.kind === 'refused' ? judge(await attempt(false)) : r;
 }
 
 /**

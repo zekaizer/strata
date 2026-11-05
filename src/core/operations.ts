@@ -44,7 +44,9 @@ export type Operation =
       untracked: 'none' | 'unignored' | 'all';
       paths?: readonly string[];
     }
-  | { kind: 'stashApply' | 'stashPop' | 'stashDrop'; index: number }
+  /** `withIndex`: staged changes come back staged (git refuses when they no longer apply to the index). */
+  | { kind: 'stashApply' | 'stashPop'; index: number; withIndex: boolean }
+  | { kind: 'stashDrop'; index: number }
   | { kind: 'stashBranch'; name: string; index: number }
   | { kind: 'stashStore'; commit: string; message: string }
   /**
@@ -152,9 +154,9 @@ export function argv(op: Operation): string[] {
         ...(op.paths === undefined ? [] : ['--', ...op.paths.map((p) => `:(literal)${p}`)]),
       ];
     case 'stashApply':
-      return ['stash', 'apply', stash(op.index)];
+      return ['stash', 'apply', ...(op.withIndex ? ['--index'] : []), stash(op.index)];
     case 'stashPop':
-      return ['stash', 'pop', stash(op.index)];
+      return ['stash', 'pop', ...(op.withIndex ? ['--index'] : []), stash(op.index)];
     case 'stashDrop':
       return ['stash', 'drop', stash(op.index)];
     case 'stashBranch':

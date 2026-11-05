@@ -138,6 +138,19 @@ describe('history operations', () => {
     assert.equal(read('NOTES.md'), 'staged\n');
   });
 
+  it('gives staged changes back staged after a cherry pick stashed around them', async () => {
+    branchWith('strata-pick', 'main~1', 'pick.txt', 'picked\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', commitMenu(git('rev-parse', 'strata-pick')));
+    assert.equal(read('pick.txt'), 'picked\n');
+    assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'staged again');
+    assert.equal(git('stash', 'list'), '');
+  });
+
   it('merges the clicked branch when a tag has the same name', async () => {
     branchWith('strata-rel', 'main', 'tagged.txt', 'tagged\n');
     git('tag', 'strata-rel');

@@ -107,7 +107,9 @@ operation is stopped, Continue, Abort and Skip.
   choose, and reverted, which undoes the commits it brought in from its other
   parents.
 - **Stashes:** Stash Changes (optionally with untracked files), Apply, Pop,
-  Drop, Create Branch from Stash and Copy Patch. Apply, Pop and Create Branch
+  Drop, Create Branch from Stash and Copy Patch. Apply and Pop bring staged
+  changes back staged, unless they no longer apply to the index or you have
+  staged changes of your own. Apply, Pop and Create Branch
   from Stash change nothing when files the stash's untracked part adds already
   exist in your work tree, and name those files so you can move them away
   first.
