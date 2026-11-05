@@ -762,6 +762,26 @@ describe('history operations', () => {
   afterEach(() => {
     for (const dir of origins.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
+  it('fetches while a rebase is stopped', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'strata-origin-'));
+    origins.push(dir);
+    execFileSync('git', ['init', '--quiet', '--bare', dir]);
+    git('remote', 'add', 'origin', dir);
+    git('push', '--quiet', 'origin', 'main');
+    git('update-ref', '-d', 'refs/remotes/origin/main');
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    await reload(panel());
+    ui.press('Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    ui.clear();
+    await run('strata.fetch');
+    assert.deepEqual(ui.of('confirm'), [], 'not held');
+    assert.equal(git('rev-parse', 'refs/remotes/origin/main'), git('rev-parse', 'main'));
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+  });
+
   /** strata-deep: `n` empty commits on main, with HEAD on it. */
   const deep = (n: number) => {
     const main = git('rev-parse', 'main');
