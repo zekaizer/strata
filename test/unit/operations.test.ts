@@ -221,6 +221,31 @@ describe('operations', () => {
     assert.equal(run(d, 'status', '--porcelain', '--untracked-files=no'), '');
   });
 
+  it('cherry-picks and reverts a merge relative to the parent given', async () => {
+    const d = repo();
+    run(d, 'switch', '--quiet', '--create', 'side', 'main~1');
+    writeFileSync(join(d, 'h.txt'), 'h\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'side1');
+    run(d, 'switch', '--quiet', 'topic');
+    run(d, 'merge', '--quiet', '--no-ff', '--no-edit', 'side');
+    const merge = head(d);
+    const show = (rev: string) => run(d, 'ls-tree', '--name-only', rev);
+
+    run(d, 'switch', '--quiet', 'main');
+    await op(d, { kind: 'cherryPick', commit: merge, mainline: 1 });
+    assert.equal(show('HEAD'), 'f.txt\nh.txt', 'side1 only: topic is parent 1');
+    assert.equal(run(d, 'cat-file', '-p', 'HEAD:f.txt'), 'main');
+
+    run(d, 'switch', '--quiet', 'topic');
+    await op(d, { kind: 'revert', commit: merge, mainline: 1 });
+    assert.equal(show('HEAD'), show(`${merge}^1`), "side1's changes undone");
+
+    run(d, 'switch', '--quiet', '--create', 'from-side', 'side');
+    await op(d, { kind: 'cherryPick', commit: merge, mainline: 2 });
+    assert.equal(show('HEAD'), 'f.txt\ng.txt\nh.txt', "topic's commits, relative to side");
+  });
+
   it('pushes, stashes, applies, pops, drops, branches from and restores a stash', async () => {
     const d = repo();
     appendFileSync(join(d, 'f.txt'), 'one\n');
