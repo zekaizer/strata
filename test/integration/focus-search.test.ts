@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
-import { snapshotRepo } from './repo-snapshot.ts';
+import { setIdentity, snapshotRepo } from './repo-snapshot.ts';
 
 /** First page, and the page loaded after it (FIRST_PAGE, NEXT_PAGE in src/webview/main.ts). */
 const FIRST_PAGE = 300;
@@ -14,6 +14,7 @@ describe('selection after an operation', () => {
 
   before(async () => {
     restore = await snapshotRepo();
+    await setIdentity();
     // A long history, so the search for a commit has pages to load.
     const stream = Array.from(
       { length: 1500 },
