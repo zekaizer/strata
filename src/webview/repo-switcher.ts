@@ -1,5 +1,6 @@
 import type { RepoItem } from '../shared/protocol.ts';
 import { el } from './format.ts';
+import { dismissable } from './popover.ts';
 
 /** Above this many repositories the popover has a search box. */
 const SEARCH_FROM = 8;
@@ -60,22 +61,8 @@ export class RepoSwitcher {
     this.popover.setAttribute('aria-label', 'Show repository');
     this.popover.append(this.search, this.list);
     host.append(this.popover);
-    window.addEventListener('blur', () => {
-      if (!this.popover.hidden) this.close();
-    });
-    this.popover.addEventListener('focusout', (e) => {
-      const next = e.relatedTarget as Node | null;
-      if (next && !this.popover.contains(next) && !this.button.contains(next)) this.close();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this.popover.hidden) {
-        this.close();
-        this.button.focus();
-      }
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (!this.popover.hidden && !this.popover.contains(e.target as Node) && !this.button.contains(e.target as Node))
-        this.close();
+    dismissable(this.popover, this.button, () => {
+      this.close();
     });
   }
 

@@ -1,6 +1,7 @@
 import { addRule, isPattern, matcher, ruleCounts, type BadgeRule } from '../core/badge-rules.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import { el } from './format.ts';
+import { dismissable } from './popover.ts';
 
 const GROUPS: { kind: Ref['kind']; label: string; icon: string }[] = [
   { kind: 'branch', label: 'Branches', icon: 'git-branch' },
@@ -124,25 +125,8 @@ export class RefFilter {
     this.stashes.hidden = true;
     this.popover.append(this.search, this.patternActions, actions, this.list, this.badges, this.stashes);
     host.append(this.popover);
-    // Leaving the webview (focus to an editor) closes it, like a click outside.
-    window.addEventListener('blur', () => {
-      if (!this.popover.hidden) this.close();
-    });
-    // Tabbing out of the popover closes it, like a click outside.
-    this.popover.addEventListener('focusout', (e) => {
-      const next = e.relatedTarget as Node | null;
-      if (next && !this.popover.contains(next) && !this.button.contains(next)) this.close();
-    });
-    // Escape closes the popover even when focus has left it.
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this.popover.hidden) {
-        this.close();
-        this.button.focus();
-      }
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (!this.popover.hidden && !this.popover.contains(e.target as Node) && !this.button.contains(e.target as Node))
-        this.close();
+    dismissable(this.popover, this.button, () => {
+      this.close();
     });
     this.updateLabel();
   }
