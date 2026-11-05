@@ -386,6 +386,22 @@ describe('remote operations', () => {
     assert.equal(git('tag', '--list', 'strata-v1'), 'strata-v1');
   });
 
+  it("fetches a remote branch badge's remote, and every remote from the title bar", async () => {
+    await publish();
+    const second = join(root, 'second.git');
+    execFileSync('git', ['init', '--quiet', '--bare', second]);
+    git('remote', 'add', 'second', second);
+    // By URL: a push to a remote by name would update its remote-tracking ref itself.
+    git('push', '--quiet', bare, 'main:refs/heads/strata-o');
+    git('push', '--quiet', second, 'main:refs/heads/strata-s');
+    await reload(panel());
+    await run('strata.fetchRemote', remoteMenu('origin/strata-pub'));
+    assert.notEqual(tracked('origin/strata-o'), '');
+    assert.equal(tracked('second/strata-s'), '', 'the other remote is left alone');
+    await run('strata.fetch');
+    assert.notEqual(tracked('second/strata-s'), '');
+  });
+
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {
     git('push', '--quiet', '--set-upstream', 'origin', 'main');
     git('update-ref', 'refs/heads/main', 'main~1');

@@ -104,7 +104,7 @@ operation is stopped, Continue, Abort and Skip.
   Rename, Delete and Copy Name. Deleting a branch says which commits no other branch
   or tag has. Push Tag pushes a tag to a remote (you pick one when there are
   several), and says so when the remote already has a different tag of that
-  name. Delete Tag from Remote deletes it there and keeps your local tag;
+  name. Delete Remote Tag deletes it there and keeps your local tag;
   that can't be undone.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
@@ -119,7 +119,8 @@ operation is stopped, Continue, Abort and Skip.
   from Stash change nothing when files the stash's untracked part adds already
   exist in your work tree, and name those files so you can move them away
   first.
-- **Remotes:** Fetch, Pull (fast-forward, merge or rebase, following
+- **Remotes:** Fetch From All Remotes (Fetch Remote on a remote branch badge
+  fetches just its remote), Pull (fast-forward, merge or rebase, following
   `pull.rebase`), Push and Publish Branch. Pull and Push follow the branch's
   configured upstream, also one given by URL (as a fork's pull request
   checkout sets) or one a single-branch clone doesn't fetch. When the remote

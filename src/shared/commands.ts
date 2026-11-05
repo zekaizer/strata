@@ -136,28 +136,32 @@ export const COMMANDS = {
 
   'strata.push': {
     title: 'Push',
-    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataUpstream' }],
+    menus: [{ section: 'branch', group: '3_remote@2', when: 'strataUpstream' }],
     palette: true,
     titleBar: { group: '1_sync@2' },
     writes: true,
   },
   'strata.publish': {
     title: 'Publish Branch...',
-    menus: [{ section: 'branch', group: '3_remote@1', when: '!strataUpstream' }],
+    menus: [{ section: 'branch', group: '3_remote@2', when: '!strataUpstream' }],
     writes: true,
   },
   'strata.pull': {
     title: 'Pull',
-    menus: [{ section: 'branch', group: '3_remote@2', when: 'strataIsCurrent && strataUpstream' }],
+    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataIsCurrent && strataUpstream' }],
     palette: true,
     titleBar: { group: '1_sync@1' },
     writes: true,
   },
   'strata.fetch': {
-    title: 'Fetch',
-    menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
+    title: 'Fetch From All Remotes',
     palette: true,
     titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
+    writes: 'whileStopped',
+  },
+  'strata.fetchRemote': {
+    title: 'Fetch Remote',
+    menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
     writes: 'whileStopped',
   },
   'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
@@ -165,7 +169,7 @@ export const COMMANDS = {
   'strata.copyRefName': {
     title: 'Copy Name',
     menus: [
-      { section: 'branch', group: '5_copy@1' },
+      { section: 'branch', group: '4_edit@2' },
       { section: 'remoteBranch', group: '5_copy@1' },
       { section: 'tag', group: '5_copy@1' },
     ],
@@ -177,7 +181,7 @@ export const COMMANDS = {
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
   'strata.deleteRemoteTag': {
-    title: 'Delete Tag from Remote...',
+    title: 'Delete Remote Tag...',
     menus: [{ section: 'tag', group: '9_delete@2' }],
     writes: true,
   },

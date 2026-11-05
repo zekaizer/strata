@@ -64,7 +64,13 @@ describe('package.json commands', () => {
       const spec: CommandSpec = COMMANDS[id];
       assert.equal(byId.get(id)?.enablement, spec.writes && expected[String(spec.writes) as keyof typeof expected], id);
     }
-    for (const id of ['strata.operation.continue', 'strata.operation.abort', 'strata.operation.skip', 'strata.fetch'])
+    for (const id of [
+      'strata.operation.continue',
+      'strata.operation.abort',
+      'strata.operation.skip',
+      'strata.fetch',
+      'strata.fetchRemote',
+    ])
       assert.equal(byId.get(id)?.enablement, '!strata.busy', `${id} runs while an operation is stopped`);
   });
 
@@ -92,8 +98,8 @@ describe('package.json activation', () => {
 describe('ref actions (keyboard access to badges)', () => {
   it('lists what the menu of that badge would show, from the same table', () => {
     assert.deepEqual(refActions('branch', { strataIsCurrent: true, strataUpstream: true }), [
-      'strata.push',
       'strata.pull',
+      'strata.push',
       'strata.renameBranch',
       'strata.copyRefName',
     ]);
@@ -110,7 +116,7 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.checkout',
       'strata.merge',
       'strata.rebase',
-      'strata.fetch',
+      'strata.fetchRemote',
       'strata.copyRefName',
       'strata.deleteRemoteBranch',
     ]);

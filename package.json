@@ -197,9 +197,15 @@
       },
       {
         "command": "strata.fetch",
-        "title": "Fetch",
+        "title": "Fetch From All Remotes",
         "category": "Strata",
         "icon": "$(repo-fetch)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.fetchRemote",
+        "title": "Fetch Remote",
+        "category": "Strata",
         "enablement": "!strata.busy"
       },
       {
@@ -233,7 +239,7 @@
       },
       {
         "command": "strata.deleteRemoteTag",
-        "title": "Delete Tag from Remote...",
+        "title": "Delete Remote Tag...",
         "category": "Strata",
         "enablement": "!strata.busy && !strata.operation"
       },
@@ -501,20 +507,20 @@
         {
           "command": "strata.push",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataUpstream",
-          "group": "3_remote@1"
+          "group": "3_remote@2"
         },
         {
           "command": "strata.publish",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataUpstream",
-          "group": "3_remote@1"
+          "group": "3_remote@2"
         },
         {
           "command": "strata.pull",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent && strataUpstream",
-          "group": "3_remote@2"
+          "group": "3_remote@1"
         },
         {
-          "command": "strata.fetch",
+          "command": "strata.fetchRemote",
           "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
           "group": "3_remote@1"
         },
@@ -531,7 +537,7 @@
         {
           "command": "strata.copyRefName",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
-          "group": "5_copy@1"
+          "group": "4_edit@2"
         },
         {
           "command": "strata.copyRefName",
@@ -701,6 +707,10 @@
         {
           "command": "strata.fetch",
           "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.fetchRemote",
+          "when": "false"
         },
         {
           "command": "strata.pushTag",

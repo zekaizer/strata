@@ -242,9 +242,11 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.showStashes': () => {
     panel().showStashes();
   },
-  'strata.fetch': write((host, ctx) => {
-    const t = optionalTarget(ctx, ['remoteBranch'], host);
-    return fetchRemote(host, t && remoteBranch(t.ref.name, host.refs.remotes)?.remote);
+  'strata.fetch': write((host) => fetchRemote(host, undefined)),
+  'strata.fetchRemote': on(['remoteBranch'], (host, t) => {
+    const remote = remoteBranch(t.ref.name, host.refs.remotes)?.remote;
+    if (remote === undefined) throw new Error(`no remote of ${t.ref.short}`);
+    return fetchRemote(host, remote);
   }),
   'strata.pull': write((host) => pull(host)),
   'strata.push': write((host, ctx) =>
