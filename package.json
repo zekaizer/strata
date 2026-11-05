@@ -90,61 +90,61 @@
         "command": "strata.stash.push",
         "title": "Stash Changes...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.pushUntracked",
         "title": "Stash Changes (Include Untracked)...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.checkout",
         "title": "Checkout",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.checkoutDetached",
         "title": "Checkout (Detached)",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.createBranch",
         "title": "Create Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.createTag",
         "title": "Create Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.cherryPick",
         "title": "Cherry Pick",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.revert",
         "title": "Revert",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.merge",
         "title": "Merge into Current Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.rebase",
         "title": "Rebase Current Branch onto This...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.commit.copyHash",
@@ -175,44 +175,53 @@
         "command": "strata.reset",
         "title": "Reset Current Branch to Here...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.push",
         "title": "Push",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "icon": "$(repo-push)",
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.publish",
         "title": "Publish Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "icon": "$(cloud-upload)",
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.pull",
         "title": "Pull",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "icon": "$(repo-pull)",
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.fetch",
-        "title": "Fetch",
+        "title": "Fetch From All Remotes",
         "category": "Strata",
         "icon": "$(repo-fetch)",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.fetchRemote",
+        "title": "Fetch Remote",
+        "category": "Strata",
         "enablement": "!strata.busy"
       },
       {
         "command": "strata.pushTag",
         "title": "Push Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.renameBranch",
         "title": "Rename Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.copyRefName",
@@ -223,25 +232,25 @@
         "command": "strata.deleteBranch",
         "title": "Delete Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.deleteTag",
         "title": "Delete Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.deleteRemoteTag",
-        "title": "Delete Tag from Remote...",
+        "title": "Delete Remote Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.deleteRemoteBranch",
         "title": "Delete Remote Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.operation.continue",
@@ -267,19 +276,19 @@
         "command": "strata.stash.apply",
         "title": "Apply Stash",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.pop",
         "title": "Pop Stash",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.branch",
         "title": "Create Branch from Stash...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.copyPatch",
@@ -290,7 +299,7 @@
         "command": "strata.stash.drop",
         "title": "Drop Stash...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.showStashes",
@@ -316,7 +325,7 @@
         "command": "strata.undo",
         "title": "Undo Last Operation",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.showOutput",
@@ -385,6 +394,11 @@
         },
         {
           "command": "strata.checkout",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataBranch",
+          "group": "2_checkout@1"
+        },
+        {
+          "command": "strata.checkout",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
           "group": "1_checkout@1"
         },
@@ -396,7 +410,7 @@
         {
           "command": "strata.checkoutDetached",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "2_checkout@1"
+          "group": "2_checkout@2"
         },
         {
           "command": "strata.checkoutDetached",
@@ -406,7 +420,7 @@
         {
           "command": "strata.createBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "2_checkout@2"
+          "group": "2_checkout@3"
         },
         {
           "command": "strata.createBranch",
@@ -416,22 +430,22 @@
         {
           "command": "strata.createTag",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "2_checkout@3"
+          "group": "2_checkout@4"
         },
         {
           "command": "strata.cherryPick",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "3_apply@1"
+          "group": "3_pick@1"
         },
         {
           "command": "strata.revert",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
-          "group": "3_apply@2"
+          "group": "3_pick@2"
         },
         {
           "command": "strata.merge",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "3_apply@3"
+          "group": "4_integrate@1"
         },
         {
           "command": "strata.merge",
@@ -446,7 +460,7 @@
         {
           "command": "strata.rebase",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "3_apply@4"
+          "group": "4_integrate@2"
         },
         {
           "command": "strata.rebase",
@@ -481,7 +495,7 @@
         {
           "command": "strata.refActions",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataHasRefs",
-          "group": "7_refs@1"
+          "group": "2_checkout@5"
         },
         {
           "command": "strata.refActions",
@@ -491,25 +505,25 @@
         {
           "command": "strata.reset",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && !strataIsHead",
-          "group": "6_reset@1"
+          "group": "9_reset@1"
         },
         {
           "command": "strata.push",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataUpstream",
-          "group": "3_remote@1"
+          "group": "3_remote@2"
         },
         {
           "command": "strata.publish",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataUpstream",
-          "group": "3_remote@1"
+          "group": "3_remote@2"
         },
         {
           "command": "strata.pull",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent && strataUpstream",
-          "group": "3_remote@2"
+          "group": "3_remote@1"
         },
         {
-          "command": "strata.fetch",
+          "command": "strata.fetchRemote",
           "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
           "group": "3_remote@1"
         },
@@ -526,7 +540,7 @@
         {
           "command": "strata.copyRefName",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
-          "group": "5_copy@1"
+          "group": "4_edit@2"
         },
         {
           "command": "strata.copyRefName",
@@ -687,7 +701,7 @@
         },
         {
           "command": "strata.publish",
-          "when": "false"
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.head == 'branch'"
         },
         {
           "command": "strata.pull",
@@ -696,6 +710,10 @@
         {
           "command": "strata.fetch",
           "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.fetchRemote",
+          "when": "false"
         },
         {
           "command": "strata.pushTag",
@@ -786,27 +804,32 @@
         {
           "command": "strata.stash.push",
           "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "3_stash@1"
+          "group": "1_stash@1"
         },
         {
           "command": "strata.stash.pushUntracked",
           "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "3_stash@2"
+          "group": "1_stash@2"
         },
         {
           "command": "strata.push",
-          "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "1_sync@2"
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation && strata.head == 'tracking'",
+          "group": "navigation@5"
+        },
+        {
+          "command": "strata.publish",
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation && strata.head == 'branch'",
+          "group": "navigation@5"
         },
         {
           "command": "strata.pull",
-          "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "1_sync@1"
+          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation && strata.head == 'tracking'",
+          "group": "navigation@4"
         },
         {
           "command": "strata.fetch",
-          "when": "activeWebviewPanelId == 'strata.graph' && !strata.operation",
-          "group": "navigation@1"
+          "when": "activeWebviewPanelId == 'strata.graph'",
+          "group": "navigation@3"
         },
         {
           "command": "strata.operation.continue",
@@ -826,12 +849,12 @@
         {
           "command": "strata.showStashes",
           "when": "activeWebviewPanelId == 'strata.graph'",
-          "group": "3_stash@3"
+          "group": "1_stash@3"
         },
         {
           "command": "strata.undo",
           "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo",
-          "group": "4_undo@1"
+          "group": "3_undo@1"
         },
         {
           "command": "strata.showOutput",

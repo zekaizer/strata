@@ -12,7 +12,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataHasRefs'],
+  commit: ['strataIsHead', 'strataHasRefs', 'strataBranch'],
   stash: ['strataLeftover'],
   branch: ['strataIsCurrent', 'strataUpstream'],
   remoteBranch: [],
@@ -37,8 +37,12 @@ export interface CommandSpec {
   palette?: string | true;
   /** In the graph tab's title bar: an icon in `navigation`, or an overflow group. */
   titleBar?: { group: string; when?: string; icon?: string };
-  /** Changes the repository: disabled while another operation runs. */
-  writes?: true;
+  /**
+   * Changes the repository: disabled while another operation runs, and while one is stopped
+   * unless `whileStopped` (the ways out of a stop, and writes that leave HEAD, the index and the
+   * work tree alone).
+   */
+  writes?: true | 'whileStopped';
 }
 
 const file = (group: string, when?: string): MenuPlacement => ({ section: 'file', group, ...(when ? { when } : {}) });
@@ -47,6 +51,9 @@ const commit = (group: string, when?: string): MenuPlacement => ({
   group,
   ...(when ? { when } : {}),
 });
+
+/** Title-bar Pull and Push: on a branch with an upstream (`strata.head`), and no operation stopped. */
+const SYNC = "!strata.operation && strata.head == 'tracking'";
 
 export const COMMANDS = {
   'strata.file.openChanges': { title: 'Open Changes', menus: [file('1_open@1', 'strataHasDiff')] },
@@ -62,19 +69,20 @@ export const COMMANDS = {
     title: 'Stash Changes...',
     menus: [commit('1_worktree@1', 'strataIsHead')],
     palette: true,
-    titleBar: { group: '3_stash@1' },
+    titleBar: { group: '1_stash@1' },
     writes: true,
   },
   'strata.stash.pushUntracked': {
     title: 'Stash Changes (Include Untracked)...',
     menus: [commit('1_worktree@2', 'strataIsHead')],
     palette: true,
-    titleBar: { group: '3_stash@2' },
+    titleBar: { group: '1_stash@2' },
     writes: true,
   },
   'strata.checkout': {
     title: 'Checkout',
     menus: [
+      commit('2_checkout@1', 'strataBranch'),
       { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent' },
       { section: 'remoteBranch', group: '1_checkout@1' },
     ],
@@ -82,25 +90,25 @@ export const COMMANDS = {
   },
   'strata.checkoutDetached': {
     title: 'Checkout (Detached)',
-    menus: [commit('2_checkout@1', '!strataIsHead'), { section: 'tag', group: '1_checkout@1' }],
+    menus: [commit('2_checkout@2', '!strataIsHead'), { section: 'tag', group: '1_checkout@1' }],
     writes: true,
   },
   'strata.createBranch': {
     title: 'Create Branch...',
-    menus: [commit('2_checkout@2'), { section: 'head', group: '1_checkout@1' }],
+    menus: [commit('2_checkout@3'), { section: 'head', group: '1_checkout@1' }],
     writes: true,
   },
-  'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
+  'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@4')], writes: true },
   'strata.cherryPick': {
     title: 'Cherry Pick',
-    menus: [commit('3_apply@1', '!strataIsHead')],
+    menus: [commit('3_pick@1', '!strataIsHead')],
     writes: true,
   },
-  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2')], writes: true },
+  'strata.revert': { title: 'Revert', menus: [commit('3_pick@2')], writes: true },
   'strata.merge': {
     title: 'Merge into Current Branch...',
     menus: [
-      commit('3_apply@3', '!strataIsHead'),
+      commit('4_integrate@1', '!strataIsHead'),
       { section: 'branch', group: '2_apply@1', when: '!strataIsCurrent' },
       { section: 'remoteBranch', group: '2_apply@1' },
     ],
@@ -109,7 +117,7 @@ export const COMMANDS = {
   'strata.rebase': {
     title: 'Rebase Current Branch onto This...',
     menus: [
-      commit('3_apply@4', '!strataIsHead'),
+      commit('4_integrate@2', '!strataIsHead'),
       { section: 'branch', group: '2_apply@2', when: '!strataIsCurrent' },
       { section: 'remoteBranch', group: '2_apply@2' },
     ],
@@ -121,46 +129,52 @@ export const COMMANDS = {
   'strata.commit.copyPatch': { title: 'Copy Patch', menus: [commit('5_copy@4')] },
   'strata.refActions': {
     title: 'Branch and Tag Actions...',
-    menus: [commit('7_refs@1', 'strataHasRefs'), { section: 'refs', group: '1_refs@1' }],
+    menus: [commit('2_checkout@5', 'strataHasRefs'), { section: 'refs', group: '1_refs@1' }],
   },
   'strata.reset': {
     title: 'Reset Current Branch to Here...',
-    menus: [commit('6_reset@1', '!strataIsHead')],
+    menus: [commit('9_reset@1', '!strataIsHead')],
     writes: true,
   },
 
   'strata.push': {
     title: 'Push',
-    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataUpstream' }],
+    menus: [{ section: 'branch', group: '3_remote@2', when: 'strataUpstream' }],
     palette: true,
-    titleBar: { group: '1_sync@2' },
+    titleBar: { group: 'navigation@5', when: SYNC, icon: '$(repo-push)' },
     writes: true,
   },
   'strata.publish': {
     title: 'Publish Branch...',
-    menus: [{ section: 'branch', group: '3_remote@1', when: '!strataUpstream' }],
+    menus: [{ section: 'branch', group: '3_remote@2', when: '!strataUpstream' }],
+    palette: "strata.head == 'branch'",
+    titleBar: { group: 'navigation@5', when: "!strata.operation && strata.head == 'branch'", icon: '$(cloud-upload)' },
     writes: true,
   },
   'strata.pull': {
     title: 'Pull',
-    menus: [{ section: 'branch', group: '3_remote@2', when: 'strataIsCurrent && strataUpstream' }],
+    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataIsCurrent && strataUpstream' }],
     palette: true,
-    titleBar: { group: '1_sync@1' },
+    titleBar: { group: 'navigation@4', when: SYNC, icon: '$(repo-pull)' },
     writes: true,
   },
   'strata.fetch': {
-    title: 'Fetch',
-    menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
+    title: 'Fetch From All Remotes',
     palette: true,
-    titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
-    writes: true,
+    titleBar: { group: 'navigation@3', icon: '$(repo-fetch)' },
+    writes: 'whileStopped',
+  },
+  'strata.fetchRemote': {
+    title: 'Fetch Remote',
+    menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
+    writes: 'whileStopped',
   },
   'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
   'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
   'strata.copyRefName': {
     title: 'Copy Name',
     menus: [
-      { section: 'branch', group: '5_copy@1' },
+      { section: 'branch', group: '4_edit@2' },
       { section: 'remoteBranch', group: '5_copy@1' },
       { section: 'tag', group: '5_copy@1' },
     ],
@@ -172,7 +186,7 @@ export const COMMANDS = {
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
   'strata.deleteRemoteTag': {
-    title: 'Delete Tag from Remote...',
+    title: 'Delete Remote Tag...',
     menus: [{ section: 'tag', group: '9_delete@2' }],
     writes: true,
   },
@@ -186,19 +200,19 @@ export const COMMANDS = {
     title: 'Continue Operation',
     palette: 'strata.operation',
     titleBar: { group: 'navigation@1', when: 'strata.operation', icon: '$(check)' },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.operation.abort': {
     title: 'Abort Operation...',
     palette: 'strata.operation',
     titleBar: { group: 'navigation@2', when: 'strata.operation', icon: '$(discard)' },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.operation.skip': {
     title: 'Skip Commit...',
     palette: "strata.operation && strata.operation != 'merge'",
     titleBar: { group: '2_operation@1', when: "strata.operation && strata.operation != 'merge'" },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.stash.apply': {
     title: 'Apply Stash',
@@ -217,7 +231,7 @@ export const COMMANDS = {
   },
   'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
   'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
-  'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '3_stash@3' } },
+  'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '1_stash@3' } },
 
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
@@ -226,7 +240,7 @@ export const COMMANDS = {
   'strata.undo': {
     title: 'Undo Last Operation',
     palette: 'strata.canUndo',
-    titleBar: { group: '4_undo@1', when: 'strata.canUndo' },
+    titleBar: { group: '3_undo@1', when: 'strata.canUndo' },
     writes: true,
   },
   'strata.showOutput': { title: 'Show Git Output', palette: true, titleBar: { group: '9_output@1' } },
@@ -268,7 +282,9 @@ export function manifestCommands(): ManifestCommand[] {
       title: spec.title,
       category: 'Strata',
       ...(spec.titleBar?.icon ? { icon: spec.titleBar.icon } : {}),
-      ...(spec.writes ? { enablement: '!strata.busy' } : {}),
+      ...(spec.writes
+        ? { enablement: spec.writes === 'whileStopped' ? '!strata.busy' : '!strata.busy && !strata.operation' }
+        : {}),
     };
   });
 }

@@ -5,7 +5,7 @@ import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../co
 import { isCommitId } from '../git/details.ts';
 import { readGitVersion, readUnmerged } from '../git/facts.ts';
 import { readOperationState } from '../git/state.ts';
-import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
+import { COMMAND_IDS, COMMANDS, type CommandId, type CommandSpec } from '../shared/commands.ts';
 import { isRepoPath } from './controller.ts';
 import { fail, undoLast, type FlowEnv, type FlowHost } from './flow.ts';
 import {
@@ -36,7 +36,7 @@ import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, 
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
-import { parseTarget, type TargetKind, type TargetOf } from './target.ts';
+import { parseBranchTarget, parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
 /** A context menu argument: the clicked element's data-vscode-context (set by the webview) plus the webview id. */
 type MenuArg = Record<string, unknown> | undefined;
@@ -104,7 +104,8 @@ async function gitCanWrite(host: FlowHost): Promise<boolean> {
 
 /**
  * While an operation is stopped or files are unmerged, other writes wait: says why and offers
- * the way on. Resolves true when the write must not run.
+ * the way on. Resolves true when the write must not run. A stop also disables those writes
+ * (enablement), but the `strata.operation` key lags one git started outside Strata.
  */
 async function blocked(host: FlowHost): Promise<boolean> {
   const state = await readOperationState(host.git, host.cwd);
@@ -122,21 +123,18 @@ async function blocked(host: FlowHost): Promise<boolean> {
 
 /**
  * A command that changes the repository; failures are shown by the graph, which refreshes when it
- * was outdated. Only `whileStopped` commands (the ways out of a stop, and Fetch, which leaves HEAD,
- * the index and the work tree alone) run while one is pending.
+ * was outdated. Only commands the table marks `whileStopped` run while an operation is pending.
  */
-const write =
-  (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>, opts: { whileStopped?: true } = {}) =>
-  async (ctx: MenuArg) => {
-    const host = panel().flowHost();
-    if (!(await gitCanWrite(host))) return;
-    try {
-      if (!opts.whileStopped && (await blocked(host))) return;
-      await flow(host, ctx);
-    } catch (e) {
-      await fail(host, e);
-    }
-  };
+const write = (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>) => async (ctx: MenuArg, id: CommandId) => {
+  const host = panel().flowHost();
+  if (!(await gitCanWrite(host))) return;
+  try {
+    if ((COMMANDS[id] as CommandSpec).writes !== 'whileStopped' && (await blocked(host))) return;
+    await flow(host, ctx);
+  } catch (e) {
+    await fail(host, e);
+  }
+};
 
 /** The menu target of a command that also runs from the palette or title bar (no menu context there). */
 const optionalTarget = <K extends TargetKind>(ctx: MenuArg, kinds: readonly K[], host: FlowHost) =>
@@ -153,7 +151,13 @@ const stashHash = (ctx: MenuArg): string => {
 const on = <K extends TargetKind>(kinds: readonly K[], flow: (host: FlowHost, t: TargetOf<K>) => Promise<void>) =>
   write((host, ctx) => flow(host, parseTarget(ctx, kinds, host.refs)));
 
-type Handlers = Record<CommandId, (ctx: MenuArg) => unknown>;
+/** A write command on a menu target of one of `kinds`, a commit row naming a branch being that branch. */
+const onBranch = <K extends TargetKind>(
+  kinds: readonly K[],
+  flow: (host: FlowHost, t: TargetOf<K | 'branch'>) => Promise<void>,
+) => write((host, ctx) => flow(host, parseBranchTarget(ctx, kinds, host.refs)));
+
+type Handlers = Record<CommandId, (ctx: MenuArg, id: CommandId) => unknown>;
 
 const handlers = (env: FlowEnv): Handlers => ({
   'strata.file.openChanges': open('diff', false),
@@ -187,9 +191,11 @@ const handlers = (env: FlowEnv): Handlers => ({
     if (!(await atShallowEdge(panel().flowHost(), hash))) await panel().copyCommitPatch(hash);
   },
 
-  'strata.checkout': on(['branch', 'remoteBranch'], (host, t) =>
-    t.kind === 'branch' ? checkoutBranch(host, t.ref) : checkoutRemote(host, t.ref),
-  ),
+  'strata.checkout': write((host, ctx) => {
+    const t = parseBranchTarget(ctx, ['branch', 'remoteBranch', 'commit'], host.refs);
+    if (t.kind === 'commit') throw new Error('no branch to check out');
+    return t.kind === 'branch' ? checkoutBranch(host, t.ref) : checkoutRemote(host, t.ref);
+  }),
   'strata.checkoutDetached': on(['commit', 'tag'], (host, t) =>
     checkoutDetached(host, t.kind === 'commit' ? t.hash : t.ref.name),
   ),
@@ -211,14 +217,18 @@ const handlers = (env: FlowEnv): Handlers => ({
     return refActionsOf(host, (str(ctx?.['strataRefs']) ?? '').split(' ').filter(Boolean));
   },
 
-  'strata.merge': on(['commit', 'branch', 'remoteBranch'], async (host, t) => merge(host, await sourceOf(host, t))),
-  'strata.rebase': on(['commit', 'branch', 'remoteBranch'], async (host, t) => rebase(host, await sourceOf(host, t))),
+  'strata.merge': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
+    merge(host, await sourceOf(host, t)),
+  ),
+  'strata.rebase': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
+    rebase(host, await sourceOf(host, t)),
+  ),
   'strata.cherryPick': on(['commit'], (host, t) => pick(host, 'cherryPick', t.hash)),
   'strata.revert': on(['commit'], (host, t) => pick(host, 'revert', t.hash)),
   'strata.reset': on(['commit'], (host, t) => reset(host, t.hash)),
-  'strata.operation.continue': write(continueOperation, { whileStopped: true }),
-  'strata.operation.abort': write(abortOperation, { whileStopped: true }),
-  'strata.operation.skip': write(skipCommit, { whileStopped: true }),
+  'strata.operation.continue': write(continueOperation),
+  'strata.operation.abort': write(abortOperation),
+  'strata.operation.skip': write(skipCommit),
   'strata.stash.push': write((host) => stashPush(host, false)),
   'strata.stash.pushUntracked': write((host) => stashPush(host, true)),
   'strata.stash.apply': on(['stash'], (host, t) => restoreStash(host, t.hash, false)),
@@ -232,18 +242,21 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.showStashes': () => {
     panel().showStashes();
   },
-  'strata.fetch': write(
-    (host, ctx) => {
-      const t = optionalTarget(ctx, ['remoteBranch'], host);
-      return fetchRemote(host, t && remoteBranch(t.ref.name, host.refs.remotes)?.remote);
-    },
-    { whileStopped: true },
-  ),
+  'strata.fetch': write((host) => fetchRemote(host, undefined)),
+  'strata.fetchRemote': on(['remoteBranch'], (host, t) => {
+    const remote = remoteBranch(t.ref.name, host.refs.remotes)?.remote;
+    if (remote === undefined) throw new Error(`no remote of ${t.ref.short}`);
+    return fetchRemote(host, remote);
+  }),
   'strata.pull': write((host) => pull(host)),
   'strata.push': write((host, ctx) =>
     push(host, optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch),
   ),
-  'strata.publish': on(['branch'], (host, t) => publish(host, t.ref.short)),
+  'strata.publish': write((host, ctx) => {
+    const branch = optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch;
+    // Detached since the title bar showed it: Push says there is no branch.
+    return branch === undefined ? push(host, undefined) : publish(host, branch);
+  }),
   'strata.pushTag': on(['tag'], (host, t) => pushTag(host, t.ref.short)),
   'strata.resolveConflicts': async () => {
     const host = panel().flowHost();
@@ -261,9 +274,9 @@ const handlers = (env: FlowEnv): Handlers => ({
 });
 
 /** VS Code 1.90 shows the error of a handler that throws as it is; every failure goes through `fail` instead. */
-const guarded = (env: FlowEnv, handler: (ctx: MenuArg) => unknown) => async (ctx: MenuArg) => {
+const guarded = (env: FlowEnv, id: CommandId, handler: Handlers[CommandId]) => async (ctx: MenuArg) => {
   try {
-    await handler(ctx);
+    await handler(ctx, id);
   } catch (e) {
     await fail(env, e);
   }
@@ -271,5 +284,5 @@ const guarded = (env: FlowEnv, handler: (ctx: MenuArg) => unknown) => async (ctx
 
 export function registerCommands(env: FlowEnv): vscode.Disposable[] {
   const all = handlers(env);
-  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, guarded(env, all[id])));
+  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, guarded(env, id, all[id])));
 }

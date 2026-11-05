@@ -17,7 +17,7 @@ import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
 import { DEFAULT_OPTIONS, type HostToWebview, type ViewOptions, type WebviewToHost } from '../shared/protocol.ts';
 import { setContext } from './context.ts';
-import { readUnmerged } from '../git/facts.ts';
+import { readUnmerged, readUpstream } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { GitApi, GitRepository } from './git-api.ts';
 
@@ -227,7 +227,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     if (!repo) {
       this.post({ type: 'noRepository' });
       this.repoState = undefined;
-      await setContext('strata.operation', '');
+      await Promise.all([setContext('strata.operation', ''), setContext('strata.head', '')]);
       return;
     }
     const cwd = repo.rootUri.fsPath;
@@ -260,7 +260,16 @@ export class GraphController implements vscode.Disposable, FlowHost {
       ...(focus === undefined ? {} : { focus }),
     });
     this.scheduleGraphUpdate();
-    await this.syncRepoState(true);
+    await Promise.all([this.syncRepoState(true), this.syncHead(generation, cwd, refs.headBranch)]);
+  }
+
+  /** Sets `strata.head`, which picks the title bar's Pull and Push or Publish Branch. */
+  private async syncHead(generation: number, cwd: string, branch: string | undefined): Promise<void> {
+    // readUpstream, not the snapshot: for-each-ref has no upstream given by URL or not fetched.
+    const upstream =
+      branch === undefined ? undefined : await readUpstream(this.api.git.path, cwd, branch).catch(() => undefined);
+    if (generation !== this.generation) return;
+    await setContext('strata.head', branch === undefined ? 'detached' : upstream ? 'tracking' : 'branch');
   }
 
   /** Tells the graph and the `strata.operation` context key which operation is in progress; `force` even if unchanged. */

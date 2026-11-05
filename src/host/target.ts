@@ -51,3 +51,14 @@ export function parseTarget<K extends TargetKind>(ctx: unknown, kinds: readonly 
   if (!ref) throw new Outdated(staleTarget(name.slice(expected.prefix.length)));
   return { kind, ref } as TargetOf<K>;
 }
+
+/** Like parseTarget, but a commit row that names a local branch (`strataBranch`) is that branch's target. */
+export function parseBranchTarget<K extends TargetKind>(
+  ctx: unknown,
+  kinds: readonly K[],
+  refs: RefSnapshot,
+): TargetOf<K | 'branch'> {
+  const t = parseTarget<K | 'branch'>(ctx, kinds, refs);
+  const branch = t.kind === 'commit' ? str((ctx as Record<string, unknown>)['strataBranch']) : undefined;
+  return branch ? parseTarget({ webviewSection: 'branch', strataRef: branch }, ['branch'], refs) : t;
+}

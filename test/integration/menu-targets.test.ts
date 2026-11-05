@@ -73,10 +73,30 @@ describe('context menu targets', () => {
     assert.equal(head['strataIsHead'], true);
     assert.equal(head['strataHasRefs'], true);
     assert.equal(head['strataRefs'], 'refs/heads/main refs/remotes/origin/main');
+    assert.equal(head['strataBranch'], '', 'the current branch is no other branch to check out');
+    const login = await row(order().indexOf(git('rev-parse', 'feature/login')));
+    assert.equal(login['strataBranch'], 'refs/heads/feature/login');
     const merge = await row(order().indexOf(git('rev-parse', 'main~1^{/Merge cross}')));
     assert.equal(merge['strataIsHead'], false);
     assert.equal(merge['strataHasRefs'], false);
     assert.equal(merge['strataRefs'], '');
+  });
+
+  it('names the one local branch besides the current one that a row could act on, and none of several', async () => {
+    await gitRetry('branch', 'strata-sibling', 'main');
+    await gitRetry('branch', 'strata-other', 'feature/login');
+    await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
+    const contextOf = async (rev: string) => {
+      const index = order().indexOf(git('rev-parse', rev));
+      await panel.simulate({ kind: 'clickRow', index });
+      return waitFor('row selected', async () => {
+        const s = await panel.probe();
+        const ctx = s.menuContexts.selectedRow;
+        return s.selected === order()[index] && String(ctx?.['strataRefs']).includes('strata-') && ctx;
+      });
+    };
+    assert.equal((await contextOf('main'))['strataBranch'], 'refs/heads/strata-sibling');
+    assert.equal((await contextOf('feature/login'))['strataBranch'], '');
   });
 
   it('outlines what a right-clicked remote name opens a menu for, until the menu closes', async () => {

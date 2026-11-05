@@ -57,12 +57,21 @@ describe('package.json commands', () => {
     for (const id of commandsOn(row('stash'))) assert.match(id, /^strata\.stash\./, `${id} on stash rows`);
   });
 
-  it('disables every command that changes the repository while another one runs', () => {
+  it('disables every command that changes the repository while another one runs or is stopped', () => {
     const byId = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
+    const expected = { true: '!strata.busy && !strata.operation', whileStopped: '!strata.busy' };
     for (const id of COMMAND_IDS) {
       const spec: CommandSpec = COMMANDS[id];
-      assert.equal(byId.get(id)?.enablement, spec.writes ? '!strata.busy' : undefined, id);
+      assert.equal(byId.get(id)?.enablement, spec.writes && expected[String(spec.writes) as keyof typeof expected], id);
     }
+    for (const id of [
+      'strata.operation.continue',
+      'strata.operation.abort',
+      'strata.operation.skip',
+      'strata.fetch',
+      'strata.fetchRemote',
+    ])
+      assert.equal(byId.get(id)?.enablement, '!strata.busy', `${id} runs while an operation is stopped`);
   });
 
   it("decides a menu's visibility only from context keys its own section carries", () => {
@@ -78,6 +87,87 @@ describe('package.json commands', () => {
   });
 });
 
+describe('commit row menu', () => {
+  /** The row menu's items for these flags, one array per separator-delimited group, in VS Code's order. */
+  const groups = (flags: Record<string, unknown>) => {
+    const by = new Map<string, string[]>();
+    for (const id of refActions('commit', flags)) {
+      const spec: CommandSpec = COMMANDS[id];
+      const group = spec.menus!.find((m) => m.section === 'commit')!.group.split('@')[0]!;
+      by.set(group, [...(by.get(group) ?? []), id]);
+    }
+    return [...by.values()];
+  };
+
+  it('groups checkout and refs, pick, integrate and copy, with Reset last on its own', () => {
+    assert.deepEqual(groups({ strataBranch: 'refs/heads/topic', strataHasRefs: true }), [
+      ['strata.checkout', 'strata.checkoutDetached', 'strata.createBranch', 'strata.createTag', 'strata.refActions'],
+      ['strata.cherryPick', 'strata.revert'],
+      ['strata.merge', 'strata.rebase'],
+      ['strata.commit.copyHash', 'strata.commit.copyShortHash', 'strata.commit.copySubject', 'strata.commit.copyPatch'],
+      ['strata.reset'],
+    ]);
+  });
+});
+
+describe('graph title bar', () => {
+  const items = pkg.contributes.menus['editor/title'] ?? [];
+  /** Evaluates `key == 'v'`, `key != 'v'`, `key` and `!key` terms joined by &&, as the title bar's clauses use. */
+  const holds = (when: string, ctx: Record<string, string | boolean>) =>
+    when.split('&&').every((term) => {
+      const t = term.trim();
+      const cmp = /^([\w.]+) (==|!=) '([^']*)'$/.exec(t);
+      if (cmp) return (ctx[cmp[1]!] === cmp[3]) === (cmp[2] === '==');
+      assert.match(t, /^!?[\w.]+$/, `unsupported when clause term: ${t}`);
+      return t.startsWith('!') ? !ctx[t.slice(1)] : Boolean(ctx[t]);
+    });
+  const order = (g: string) => {
+    const [name = '', at = '0'] = g.split('@');
+    return [name, Number(at)] as const;
+  };
+  /** The icons (navigation) and the overflow menu, in VS Code's order. */
+  const bar = (state: Record<string, string | boolean>) => {
+    const ctx = { activeWebviewPanelId: 'strata.graph', 'strata.operation': '', ...state };
+    const shown = items
+      .filter((m) => m.command.startsWith('strata.') && holds(m.when ?? '', ctx))
+      .map((m) => ({ id: m.command, at: order((m as { group?: string }).group ?? '') }))
+      .sort((a, b) => a.at[0].localeCompare(b.at[0]) || a.at[1] - b.at[1]);
+    return {
+      icons: shown.filter((m) => m.at[0] === 'navigation').map((m) => m.id),
+      overflow: shown.filter((m) => m.at[0] !== 'navigation').map((m) => m.id),
+    };
+  };
+
+  it('shows Fetch, Pull and Push as icons on a branch with an upstream, Publish Branch on one without', () => {
+    assert.deepEqual(bar({ 'strata.head': 'tracking' }).icons, ['strata.fetch', 'strata.pull', 'strata.push']);
+    assert.deepEqual(bar({ 'strata.head': 'branch' }).icons, ['strata.fetch', 'strata.publish']);
+    assert.deepEqual(bar({ 'strata.head': 'detached' }).icons, ['strata.fetch']);
+  });
+
+  it('shows Continue, Abort and Fetch while an operation is stopped', () => {
+    const stopped = bar({ 'strata.head': 'tracking', 'strata.operation': 'rebase', 'strata.canUndo': true });
+    assert.deepEqual(stopped.icons, ['strata.operation.continue', 'strata.operation.abort', 'strata.fetch']);
+    assert.deepEqual(stopped.overflow, [
+      'strata.stash.push',
+      'strata.stash.pushUntracked',
+      'strata.showStashes',
+      'strata.operation.skip',
+      'strata.undo',
+      'strata.showOutput',
+    ]);
+  });
+
+  it('keeps the stash commands, Undo and Show Git Output in the overflow menu', () => {
+    assert.deepEqual(bar({ 'strata.head': 'tracking', 'strata.canUndo': true }).overflow, [
+      'strata.stash.push',
+      'strata.stash.pushUntracked',
+      'strata.showStashes',
+      'strata.undo',
+      'strata.showOutput',
+    ]);
+  });
+});
+
 describe('package.json activation', () => {
   it('activates after startup too, to replace a graph an extension host restart left behind', () => {
     // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.
@@ -89,8 +179,8 @@ describe('package.json activation', () => {
 describe('ref actions (keyboard access to badges)', () => {
   it('lists what the menu of that badge would show, from the same table', () => {
     assert.deepEqual(refActions('branch', { strataIsCurrent: true, strataUpstream: true }), [
-      'strata.push',
       'strata.pull',
+      'strata.push',
       'strata.renameBranch',
       'strata.copyRefName',
     ]);
@@ -107,7 +197,7 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.checkout',
       'strata.merge',
       'strata.rebase',
-      'strata.fetch',
+      'strata.fetchRemote',
       'strata.copyRefName',
       'strata.deleteRemoteBranch',
     ]);

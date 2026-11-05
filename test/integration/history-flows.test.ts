@@ -106,6 +106,18 @@ describe('history operations', () => {
     assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-ahead'");
   });
 
+  it("merges the branch of a commit row, naming it in the merge commit's message", async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    ui.press('Create Merge Commit');
+    await run('strata.merge', {
+      ...commitMenu(git('rev-parse', 'strata-ahead')),
+      strataBranch: 'refs/heads/strata-ahead',
+    });
+    assert.equal(git('log', '-1', '--format=%s'), "Merge branch 'strata-ahead'");
+  });
+
   it('offers fast-forward or a merge commit with uncommitted changes too', async () => {
     branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
     git('switch', '--quiet', 'main');

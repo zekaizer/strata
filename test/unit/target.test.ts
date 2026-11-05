@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { RefSnapshot } from '../../src/core/refs.ts';
-import { Outdated, parseTarget } from '../../src/host/target.ts';
+import { Outdated, parseBranchTarget, parseTarget } from '../../src/host/target.ts';
 
 const hash = 'a'.repeat(40);
 const refs: RefSnapshot = {
@@ -46,6 +46,20 @@ describe('menu targets', () => {
     assert.throws(
       () => parseTarget(menu({ webviewSection: 'branch', strataRef: 'refs/heads/gone' }), ['branch'], refs),
       (e: unknown) => e instanceof Outdated && e.message === "'gone' no longer exists; the graph has been refreshed.",
+    );
+  });
+
+  it('takes a commit row that names one local branch as that branch', () => {
+    const row = (strataBranch: string) => menu({ webviewSection: 'commit', strataHash: hash, strataBranch });
+    assert.deepEqual(parseBranchTarget(row('refs/heads/main'), ['commit', 'branch'], refs), {
+      kind: 'branch',
+      ref: refs.refs[0],
+    });
+    assert.deepEqual(parseBranchTarget(row(''), ['commit', 'branch'], refs), { kind: 'commit', hash });
+    assert.throws(() => parseBranchTarget(row('refs/tags/v1'), ['commit', 'branch'], refs));
+    assert.throws(
+      () => parseBranchTarget(row('refs/heads/gone'), ['commit', 'branch'], refs),
+      (e: unknown) => e instanceof Outdated,
     );
   });
 });

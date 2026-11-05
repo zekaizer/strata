@@ -88,10 +88,18 @@ page, so it opens quickly even on very large repositories.
 
 Right-click a commit, a branch, remote branch or tag badge, or a stash row for
 what you can do with it; **Branch and Tag Actions...** in a commit's menu
-offers the same for its badges from the keyboard. The graph tab's title bar
-and the Command Palette have Fetch, Pull, Push, the stash commands, **Show
-Stashes...**, **Undo Last Operation** and **Show Git Output**, and, while an
-operation is stopped, Continue, Abort and Skip.
+offers the same for its badges from the keyboard. On the row of a commit one
+local branch points at (besides the current one), Checkout, Merge and Rebase
+act on that branch, so a merge commit names it, and **Checkout (Detached)**
+checks out the commit; with several branches there, the row acts on the
+commit and you pick a branch from its badge.
+
+The graph tab's title bar has buttons for **Fetch From All Remotes**, and
+Pull and Push (or **Publish Branch...** when the current branch has no
+upstream); while an operation is stopped, for Continue, Abort and Fetch. Its
+**...** menu has the stash commands, **Show Stashes...**, Skip (while
+stopped), **Undo Last Operation** and **Show Git Output**. The Command
+Palette has them too.
 
 - **Branches and tags:** Checkout (a remote branch checks out its local
   branch, or creates one that tracks it; when the local branch of that name
@@ -100,7 +108,7 @@ operation is stopped, Continue, Abort and Skip.
   Rename, Delete and Copy Name. Deleting a branch says which commits no other branch
   or tag has. Push Tag pushes a tag to a remote (you pick one when there are
   several), and says so when the remote already has a different tag of that
-  name. Delete Tag from Remote deletes it there and keeps your local tag;
+  name. Delete Remote Tag deletes it there and keeps your local tag;
   that can't be undone.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
@@ -115,7 +123,8 @@ operation is stopped, Continue, Abort and Skip.
   from Stash change nothing when files the stash's untracked part adds already
   exist in your work tree, and name those files so you can move them away
   first.
-- **Remotes:** Fetch, Pull (fast-forward, merge or rebase, following
+- **Remotes:** Fetch From All Remotes (Fetch Remote on a remote branch badge
+  fetches just its remote), Pull (fast-forward, merge or rebase, following
   `pull.rebase`), Push and Publish Branch. Pull and Push follow the branch's
   configured upstream, also one given by URL (as a fork's pull request
   checkout sets) or one a single-branch clone doesn't fetch. When the remote
@@ -157,8 +166,8 @@ operation is stopped, Continue, Abort and Skip.
   and asks first if that branch moved since.
 - When an operation stops at conflicts, Strata says where and in which files;
   **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
-  leaves the stopped commit out, and other changes (except Fetch) wait until
-  you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`
+  leaves the stopped commit out, and other changes (except Fetch) are
+  disabled until you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`
   or `break` of a rebase you started with `git rebase -i`) says so. A cherry
   pick or revert of several commits that you ended with `git commit` instead
   of `git cherry-pick --continue` still shows as in progress, with Continue
