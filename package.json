@@ -358,6 +358,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.find",
+        "title": "Find Commit...",
+        "category": "Strata"
+      },
+      {
         "command": "strata.resolveConflicts",
         "title": "Resolve Conflicts...",
         "category": "Strata"
@@ -897,6 +902,10 @@
           "when": "activeWebviewPanelId == 'strata.graph'"
         },
         {
+          "command": "strata.find",
+          "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
           "command": "strata.resolveConflicts",
           "when": "false"
         },
@@ -1013,7 +1022,15 @@
           "description": "When the history of a repository that has a commit-graph changes (commits, fetches, rebases, branch changes), add the new commits to the commit-graph in the background (git commit-graph write --reachable --split). Repositories without a commit-graph are left alone."
         }
       }
-    }
+    },
+    "keybindings": [
+      {
+        "command": "strata.find",
+        "key": "ctrl+f",
+        "mac": "cmd+f",
+        "when": "activeWebviewPanelId == 'strata.graph'"
+      }
+    ]
   },
   "scripts": {
     "build": "node scripts/build.mjs",

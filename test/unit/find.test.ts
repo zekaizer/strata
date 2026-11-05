@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { matchRanges, matchRefs, parseFindQuery } from '../../src/core/find.ts';
+import { matchCount, matchRanges, matchRefs, nextMatch, parseFindQuery } from '../../src/core/find.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
 
 describe('parseFindQuery', () => {
@@ -102,5 +102,58 @@ describe('matchRanges', () => {
 
   it('finds nothing for an empty needle', () => {
     assert.deepEqual(matchRanges('abc', ''), []);
+  });
+});
+
+describe('nextMatch', () => {
+  // Loaded rows: a0..a9 at 0..9; x and y are not loaded yet.
+  const pos = (h: string) => (h.startsWith('a') ? Number(h.slice(1)) : undefined);
+  const matches = ['a2', 'a5', 'a8', 'x', 'y'];
+  const next = (current: string | undefined, from: number, back = false, done = true) =>
+    nextMatch(matches, pos, { current, from }, back, done);
+
+  it('steps through the matches from the current one', () => {
+    assert.equal(next('a5', 5), 'a8');
+    assert.equal(next('a8', 8), 'x');
+    assert.equal(next('x', 99), 'y');
+    assert.equal(next('a5', 5, true), 'a2');
+  });
+
+  it('wraps around once the search is done, and waits for more otherwise', () => {
+    assert.equal(next('y', 99), 'a2');
+    assert.equal(next('y', 99, false, false), undefined);
+    assert.equal(next('a2', 2, true), 'y');
+  });
+
+  it('goes to the nearest match below or above a row that is not one', () => {
+    assert.equal(next(undefined, 3), 'a5');
+    assert.equal(next(undefined, 3, true), 'a2');
+    assert.equal(next(undefined, -1), 'a2');
+    assert.equal(next(undefined, 9), 'x', 'the first one not loaded yet');
+    assert.equal(next(undefined, 1, true), 'y', 'wraps to the last');
+  });
+
+  it('counts a match listed first but further down by where it is', () => {
+    const exactFirst = ['x', 'a2', 'a5'];
+    assert.equal(nextMatch(exactFirst, pos, { current: undefined, from: 3 }, false, true), 'a5');
+    assert.equal(nextMatch(exactFirst, pos, { current: undefined, from: 6 }, false, true), 'x');
+    assert.equal(nextMatch(exactFirst, pos, { current: 'x', from: 99 }, false, true), 'a2');
+  });
+
+  it('has nowhere to go without matches', () => {
+    assert.equal(nextMatch([], pos, { current: undefined, from: 0 }, false, true), undefined);
+  });
+});
+
+describe('matchCount', () => {
+  it('says where the current match is among all', () => {
+    assert.equal(matchCount(21, 3, false), '3 of 21');
+    assert.equal(matchCount(21, undefined, false), '? of 21');
+    assert.equal(matchCount(10_000, 7, true), '7 of 10,000+');
+  });
+
+  it('says when nothing matched, or nothing yet', () => {
+    assert.equal(matchCount(0, undefined, false), 'No results');
+    assert.equal(matchCount(0, undefined, true), 'Searching…');
   });
 });

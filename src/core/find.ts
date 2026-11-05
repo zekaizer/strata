@@ -44,3 +44,45 @@ export function matchRanges(text: string, needle: string): [number, number][] {
   const re = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
   return Array.from(text.matchAll(re), (m) => [m.index, m.index + m[0].length]);
 }
+
+/**
+ * The match ↓ (or ↑ with `back`) goes to. `matches` in the order the widget counts them; `pos` is a
+ * match's index in the loaded history, undefined when not loaded yet (it is then further down than
+ * everything loaded). From `current`, a match, it steps through `matches`; from elsewhere, from
+ * index `from` (a fraction between rows), to the nearest match below or above. Past the last match
+ * it wraps around once the search is `done`; undefined when there is nowhere to go yet.
+ */
+export function nextMatch(
+  matches: readonly string[],
+  pos: (hash: string) => number | undefined,
+  at: { current: string | undefined; from: number },
+  back: boolean,
+  done: boolean,
+): string | undefined {
+  if (matches.length === 0) return undefined;
+  const i = at.current === undefined ? -1 : matches.indexOf(at.current);
+  if (i >= 0) {
+    const j = i + (back ? -1 : 1);
+    if (j >= 0 && j < matches.length) return matches[j];
+    return back ? matches.at(-1) : done ? matches[0] : undefined;
+  }
+  const key = (h: string) => pos(h) ?? Infinity;
+  // Ties (matches not loaded yet) keep the order of `matches`.
+  let best: string | undefined;
+  for (const m of matches) {
+    const k = key(m);
+    if (
+      back ? k < at.from && (best === undefined || k > key(best)) : k > at.from && (best === undefined || k < key(best))
+    )
+      best = m;
+  }
+  if (best !== undefined) return best;
+  if (back) return matches.at(-1);
+  return done ? matches[0] : undefined;
+}
+
+/** The widget's count: "3 of 21", "? of 21+" (more may come), "No results", "Searching…". */
+export function matchCount(total: number, ordinal: number | undefined, more: boolean): string {
+  if (total === 0) return more ? 'Searching…' : 'No results';
+  return `${ordinal === undefined ? '?' : ordinal.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}${more ? '+' : ''}`;
+}

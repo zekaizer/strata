@@ -43,6 +43,8 @@ export interface CommandSpec {
    * work tree alone).
    */
   writes?: true | 'whileStopped';
+  /** A key binding while the graph is the active editor: `key`, and `mac` on macOS. */
+  key?: { key: string; mac: string };
 }
 
 const file = (group: string, when?: string): MenuPlacement => ({ section: 'file', group, ...(when ? { when } : {}) });
@@ -249,6 +251,8 @@ export const COMMANDS = {
   'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
   'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '1_stash@3' } },
   'strata.goToHead': { title: 'Go to HEAD', palette: true },
+  /** The graph handles Ctrl+F itself while it has focus; the key binding covers the rest of its tab. */
+  'strata.find': { title: 'Find Commit...', palette: true, key: { key: 'ctrl+f', mac: 'cmd+f' } },
 
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
@@ -331,6 +335,21 @@ export function manifestMenus(): Record<'webview/context' | 'editor/title' | 'co
     });
   }
   return { 'webview/context': context, 'editor/title': title, commandPalette: palette };
+}
+
+interface ManifestKeybinding {
+  command: string;
+  key: string;
+  mac: string;
+  when: string;
+}
+
+/** contributes.keybindings entries of the table's commands. */
+export function manifestKeybindings(): ManifestKeybinding[] {
+  return COMMAND_IDS.flatMap((id) => {
+    const key = (COMMANDS[id] as CommandSpec).key;
+    return key ? [{ command: id, ...key, when: ACTIVE }] : [];
+  });
 }
 
 /** Evaluates a menu's extra when-clause (`flag && !flag`, the only form the table uses) against a context's flags. */

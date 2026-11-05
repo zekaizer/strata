@@ -3,6 +3,15 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
+import {
+  matchCount,
+  matchRanges,
+  matchRefs,
+  nextMatch,
+  parseFindQuery,
+  type FindHit,
+  type FindQuery,
+} from '../core/find.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
@@ -37,6 +46,7 @@ import { lanesUsed } from './lanes.ts';
 import { BadgeFilter } from './badge-filter.ts';
 import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
+import { FindWidget, type FindCount } from './find.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
@@ -71,6 +81,35 @@ interface Restore extends RepoView {
   centre?: boolean | undefined;
   /** The selection is HEAD: not finding it under a branch filter offers to show it. */
   head?: boolean | undefined;
+  /** Commits each further page loads while looking; default NEXT_PAGE. */
+  page?: number | undefined;
+}
+
+/** The find widget's search: what it asked the host, and what the host found so far. */
+interface Search {
+  id: number;
+  query: FindQuery;
+  hits: FindHit[];
+  /** The commits a hash prefix names, whether the view has them or not; first among the matches. */
+  exact: FindHit[];
+  /** What ↑ and ↓ step through: `exact`, then `hits` (graph order), without repeats. */
+  matches: string[];
+  matchSet: Set<string>;
+  /** Full names of the refs whose short names contain the text: their badges are marked. */
+  refs: Set<string>;
+  done: boolean;
+  capped: boolean;
+  /** The user typed the query: its first hits show a match. */
+  typed: boolean;
+}
+
+/** Going to a match the list has not loaded: asking where it is, then loading down to it. */
+interface Jump {
+  id: number;
+  hash: string;
+  /** Commits to load to reach it (its index + 1), once the host said where it is. */
+  total?: number;
+  restore?: Restore;
 }
 
 /** Details that take longer than this are reported as not coming (the extension host went away). */
@@ -96,6 +135,10 @@ const LANDING_MS = 2000;
 
 /** Restoring a selection loads at most this many commits looking for it. */
 const RESTORE_SEARCH_LIMIT = 5000;
+/** Commits a page loads while the list loads up to a match far down. */
+const FIND_PAGE = 10_000;
+/** Chromium's limit on an element's height, which the list cannot grow past (docs/PERFORMANCE.md). */
+const MAX_LIST_PX = 33_500_000;
 
 /**
  * Old and New are words: no icon says "this file before / after the commit" without being read as
@@ -154,6 +197,16 @@ class App {
   /** A view saved before views were kept per repository: the first repository shown restores it. */
   private unkeyed: RepoView | undefined;
   private restore: Restore | undefined;
+  private readonly findWidget: FindWidget;
+  private readonly findButton = el('button', 'icon-button codicon codicon-search find-button');
+  private search: Search | undefined;
+  /** Numbers find and locate requests; replies to older ones are dropped. */
+  private findRequests = 0;
+  /** ↓ (false) or ↑ (true) asked for before the search's first hits arrived. */
+  private pendingStep: boolean | undefined;
+  private jump: Jump | undefined;
+  /** Index of each loaded commit in `commits`, built when the find widget first needs it. */
+  private commitIndex: Map<string, number> | undefined;
   /** Go to HEAD under a branch filter, until the host says whether the filter's refs reach HEAD. */
   private headQuery: { generation: number; restore: Restore } | undefined;
   private options: ViewOptions = DEFAULT_OPTIONS;
@@ -319,6 +372,23 @@ class App {
     this.stashButton.addEventListener('click', () => {
       this.pickStash();
     });
+    this.findWidget = new FindWidget({
+      onQuery: (input) => {
+        this.runQuery(input);
+      },
+      onStep: (back) => {
+        this.step(back);
+      },
+      onStop: () => this.stopJump(),
+      onClose: () => {
+        this.closeFind();
+      },
+    });
+    this.findButton.title = `Find Commit (${isMac ? '⌘F' : 'Ctrl+F'})`;
+    this.findButton.setAttribute('aria-label', this.findButton.title);
+    this.findButton.addEventListener('click', () => {
+      this.openFind();
+    });
     this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'));
     this.headButton.addEventListener('click', () => {
       this.goToHead();
@@ -343,6 +413,7 @@ class App {
       this.switcher.button,
       this.status,
       el('span', 'spacer'),
+      this.findButton,
       this.headButton,
       this.stashButton,
       this.refFilter.button,
@@ -360,7 +431,14 @@ class App {
     this.empty.hidden = true;
     this.sizer.append(this.rowsLayer, this.expansion, this.empty);
     this.scroller.append(this.sizer);
-    this.viewport.append(this.scroller, this.canvas);
+    this.viewport.append(this.scroller, this.canvas, this.findWidget.element);
+    // Ctrl+F (Cmd+F) anywhere in the graph; the strata.find key binding covers focus outside it.
+    document.addEventListener('keydown', (e) => {
+      if (!(isMac ? e.metaKey : e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'f') return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.openFind();
+    });
     this.announcer.setAttribute('role', 'status');
     this.announcer.setAttribute('aria-live', 'polite');
     this.alert.setAttribute('role', 'alert');
@@ -518,6 +596,8 @@ class App {
         this.loading = false;
         this.done = m.done;
         this.appendRows(interleave(m.commits, this.commits.length, this.anchors));
+        if (this.commitIndex)
+          for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
         this.commits.push(...m.commits);
         this.measureTexts(m.commits);
         this.worker?.postMessage({
@@ -537,6 +617,7 @@ class App {
         // Subjects the banner names may have arrived.
         this.updateBanner();
         this.applyRestore();
+        this.syncJump();
         this.queueRender();
         break;
       case 'details':
@@ -556,6 +637,15 @@ class App {
         break;
       case 'goToHead':
         this.goToHead(m.include === true);
+        break;
+      case 'find':
+        this.openFind();
+        break;
+      case 'findHits':
+        this.onFindHits(m);
+        break;
+      case 'located':
+        this.onLocated(m);
         break;
       case 'headReached': {
         const q = this.headQuery;
@@ -654,6 +744,8 @@ class App {
   ): void {
     this.bannerNotified = result?.notified === true;
     const focus = result?.focus;
+    // The reload restores the selection itself; the history the jump was loading is gone.
+    this.stopJump();
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
     // scroll position too when the history itself is the same view. A row of a stash that is gone
     // hands both to the row that takes its place.
@@ -707,6 +799,7 @@ class App {
     this.setStashes(stashes);
     this.updateBanner();
     this.commits = [];
+    this.commitIndex = undefined;
     this.list = [];
     this.geometry.clear();
     this.rows = [];
@@ -724,6 +817,8 @@ class App {
     this.loading = false;
     this.loadMore(FIRST_PAGE);
     this.collapse();
+    // The widget stays open and searches the new history.
+    if (this.search) this.runQuery(this.findWidget.value, false);
     this.queueRender();
   }
 
@@ -767,7 +862,7 @@ class App {
         if (r.centre === true) this.revealCentred(index);
         r.selectedHash = undefined;
       } else if (searchable) {
-        this.loadMore(NEXT_PAGE);
+        this.loadMore(r.page ?? NEXT_PAGE);
       } else {
         // Not in this view (filters, first parent): say so instead of leaving "Looking for…".
         const missing = r.selectedHash;
@@ -889,8 +984,15 @@ class App {
 
   /** The toolbar buttons that act on a repository; without one, Refresh stays. */
   private showRepoControls(shown: boolean): void {
-    for (const b of [this.headButton, this.refFilter.button, this.badgeFilter.button, this.firstParentButton])
+    for (const b of [
+      this.findButton,
+      this.headButton,
+      this.refFilter.button,
+      this.badgeFilter.button,
+      this.firstParentButton,
+    ])
       b.hidden = !shown;
+    if (!shown) this.closeFind();
   }
 
   private updateHeadButton(): void {
@@ -943,6 +1045,229 @@ class App {
     }
     this.restore = restore;
     this.applyRestore();
+  }
+
+  /**
+   * Opens the find widget (Ctrl+F, its button, Find Commit...). Text selected in the details, such
+   * as a hash in the message, replaces what it had.
+   */
+  private openFind(): void {
+    if (this.findButton.hidden) return;
+    const sel = getSelection();
+    const picked =
+      sel && !sel.isCollapsed && this.expansion.contains(sel.anchorNode) ? sel.toString().trim() : undefined;
+    this.findWidget.open(picked && !picked.includes('\n') ? picked : undefined);
+  }
+
+  private closeFind(): void {
+    if (!this.findWidget.isOpen && !this.search) return;
+    this.stopJump();
+    const searched = this.search !== undefined;
+    this.search = undefined;
+    this.pendingStep = undefined;
+    this.findWidget.hide();
+    if (searched) vscode.postMessage({ type: 'findStop' });
+    this.scroller.focus({ preventScroll: true });
+    this.queueRender();
+  }
+
+  /**
+   * Searches the history shown for what the widget holds; nothing for a blank query. A query the
+   * user `typed` shows its first match; one searched again after a reload leaves the selection.
+   */
+  private runQuery(input: string, typed = true): void {
+    this.stopJump();
+    const query = parseFindQuery(input);
+    this.pendingStep = undefined;
+    if (!query) {
+      if (this.search) vscode.postMessage({ type: 'findStop' });
+      this.search = undefined;
+    } else {
+      const id = ++this.findRequests;
+      this.search = {
+        id,
+        query,
+        hits: [],
+        exact: [],
+        matches: [],
+        matchSet: new Set(),
+        refs: new Set(query.author === undefined ? matchRefs(this.refs, query.text).map((r) => r.name) : []),
+        done: false,
+        capped: false,
+        typed,
+      };
+      if (this.generation >= 0) vscode.postMessage({ type: 'find', generation: this.generation, id, query });
+    }
+    this.updateFindCount();
+    this.queueRender();
+  }
+
+  private onFindHits(m: Extract<HostToWebview, { type: 'findHits' }>): void {
+    const search = this.search;
+    if (!search || m.id !== search.id || m.generation !== this.generation) return;
+    const first = search.matches.length === 0;
+    for (const h of [...(m.exact ?? []), ...m.hits]) {
+      if (search.matchSet.has(h.hash)) continue;
+      search.matchSet.add(h.hash);
+      search.matches.push(h.hash);
+    }
+    search.exact.push(...(m.exact ?? []));
+    search.hits.push(...m.hits);
+    search.done = m.done;
+    search.capped = m.capped;
+    if (this.pendingStep !== undefined && (search.matches.length > 0 || m.done)) {
+      const back = this.pendingStep;
+      this.pendingStep = undefined;
+      this.step(back);
+    } else if (first && search.typed && search.matches.length > 0 && !this.isMatch(this.selectedHash())) {
+      // As in an editor, the first match at or below the selection is shown while typing, if loaded.
+      const below = nextMatch(
+        search.matches,
+        (h) => this.position(h),
+        { current: undefined, from: this.selectionPosition() - 0.5 },
+        false,
+        false,
+      );
+      const loaded = [below, ...search.matches].find((h) => h !== undefined && this.position(h) !== undefined);
+      if (loaded !== undefined) this.goToMatch(loaded);
+    }
+    this.updateFindCount();
+    this.queueRender();
+  }
+
+  /** ↓ (↑ with `back`): the next match from the selection, loading history down to it if needed. */
+  private step(back: boolean): void {
+    const search = this.search;
+    if (!search) return;
+    if (search.matches.length === 0 && !search.done) {
+      this.pendingStep = back;
+      return;
+    }
+    const selected = this.selectedHash();
+    const target = nextMatch(
+      search.matches,
+      (h) => this.position(h),
+      { current: this.isMatch(selected) ? selected : undefined, from: this.selectionPosition() },
+      back,
+      search.done,
+    );
+    if (target !== undefined) this.goToMatch(target);
+  }
+
+  /** Selects match `hash` and centres it; one not loaded yet is located first, then loaded down to. */
+  private goToMatch(hash: string): void {
+    this.stopJump();
+    const index = this.indexOf(hash);
+    if (index >= 0) {
+      this.selections++;
+      this.restore = undefined;
+      this.headQuery = undefined;
+      this.select(index, { reveal: false });
+      this.revealCentred(index);
+      return;
+    }
+    const id = ++this.findRequests;
+    this.jump = { id, hash };
+    vscode.postMessage({ type: 'locate', generation: this.generation, id, hash });
+    this.findWidget.setProgress(undefined);
+    this.updateFindCount();
+  }
+
+  private onLocated(m: Extract<HostToWebview, { type: 'located' }>): void {
+    const jump = this.jump;
+    if (!jump || m.id !== jump.id || m.generation !== this.generation) return;
+    if (m.position === undefined) {
+      this.stopJump();
+      this.findWidget.setCount({ text: 'Not in view', problem: true });
+      this.announce(`${shortHash(m.hash)} is not in this view`);
+      return;
+    }
+    if (m.position >= MAX_LIST_PX / ROW_HEIGHT) {
+      this.stopJump();
+      this.findWidget.setCount({ text: 'Below the list limit', problem: true });
+      this.announce(
+        `${shortHash(m.hash)} is ${m.position.toLocaleString()} commits down, further than the list can show`,
+      );
+      return;
+    }
+    const restore: Restore = {
+      selectedHash: m.hash,
+      centre: true,
+      expanded: this.expanded,
+      searchLimit: m.position + 1 + NEXT_PAGE,
+      page: FIND_PAGE,
+    };
+    this.selections++;
+    this.headQuery = undefined;
+    this.restore = restore;
+    jump.total = m.position + 1;
+    jump.restore = restore;
+    this.applyRestore();
+    this.syncJump();
+  }
+
+  /** Ends the jump once its restore found the match, gave up or was replaced (a click, a reload). */
+  private syncJump(): void {
+    const jump = this.jump;
+    if (!jump?.restore) return;
+    if (this.restore === jump.restore) {
+      this.findWidget.setProgress(this.commits.length / jump.total!);
+      this.updateStatus();
+      return;
+    }
+    this.jump = undefined;
+    this.findWidget.setProgress(null);
+    this.updateFindCount();
+    this.updateStatus();
+  }
+
+  /** Stops going to a match (Escape); false when no jump was in progress. */
+  private stopJump(): boolean {
+    const jump = this.jump;
+    if (!jump) return false;
+    if (jump.restore && this.restore === jump.restore) this.restore = undefined;
+    this.jump = undefined;
+    this.findWidget.setProgress(null);
+    this.updateFindCount();
+    this.updateStatus();
+    return true;
+  }
+
+  private updateFindCount(): void {
+    const search = this.search;
+    let count: FindCount = { text: '' };
+    if (search) {
+      const selected = this.selectedHash();
+      const at = this.isMatch(selected) ? search.matches.indexOf(selected!) + 1 : undefined;
+      const jumping = this.jump && search.matches.indexOf(this.jump.hash) + 1;
+      const total = search.matches.length;
+      const more = !search.done || search.capped;
+      count = jumping
+        ? { text: `Going to ${matchCount(total, jumping, more)}…` }
+        : { text: matchCount(total, at, more), problem: total === 0 && !more };
+    }
+    this.findWidget.setCount(count);
+    this.findWidget.setStepping((search?.matches.length ?? 0) > 0);
+  }
+
+  private isMatch(hash: string | undefined): boolean {
+    return hash !== undefined && this.search?.matchSet.has(hash) === true;
+  }
+
+  /** Index of a loaded commit in the history; undefined when not loaded. */
+  private position(hash: string): number | undefined {
+    this.commitIndex ??= new Map(this.commits.map((c, i) => [c.hash, i]));
+    return this.commitIndex.get(hash);
+  }
+
+  /** Where the selection is among the loaded commits: a stash row half a commit above its commit; -1 for none. */
+  private selectionPosition(): number {
+    if (this.selected < 0) return -1;
+    for (let i = this.selected; i < this.list.length; i++) {
+      const row = this.list[i]!;
+      if (row.kind === 'commit') return this.position(row.commit.hash)! - (i === this.selected ? 0 : 0.5);
+    }
+    return this.commits.length - 0.5;
   }
 
   /** Says that the branch filter leaves HEAD, commit `hash`, out; the host offers to add its branch. */
@@ -1290,6 +1615,11 @@ class App {
       return;
     }
     const n = this.commits.length.toLocaleString();
+    const total = this.jump?.total;
+    if (total !== undefined) {
+      this.status.textContent = `Loading history: ${n} of ${total.toLocaleString()} commits · Esc to stop`;
+      return;
+    }
     this.status.textContent = this.done ? `${n} commits` : `${n}+ commits${this.loading ? ' · loading…' : ''}`;
   }
 
@@ -1348,6 +1678,7 @@ class App {
       this.revealExpansion = this.expanded;
     }
     this.saveState();
+    this.updateFindCount();
     this.queueRender();
   }
 
@@ -1365,6 +1696,7 @@ class App {
     this.clearActionError();
     this.restore = undefined;
     this.headQuery = undefined;
+    this.syncJump();
     this.select(index, opts);
   }
 
@@ -1508,7 +1840,7 @@ class App {
       if (this.expanded) this.userCollapse();
       else this.expand();
     } else if (e.key === 'Escape') {
-      this.userCollapse();
+      if (!this.stopJump()) this.userCollapse();
     }
   }
 
@@ -1682,6 +2014,7 @@ class App {
       band.append(
         ...badges.map((b) => {
           const e = renderBadge(b);
+          if (b.refs.some((name) => this.search?.refs.has(name))) e.classList.add('find-match');
           const refs = b.context.webviewSection === 'head' ? ['HEAD'] : b.refs;
           if (refs.some((name) => this.landing?.refs.has(name))) this.markLanded(e);
           return e;
@@ -1691,8 +2024,9 @@ class App {
     }
     if (c.hash === this.refs.head) row.classList.add('head');
 
+    const search = this.search?.matchSet.has(c.hash) ? this.search : undefined;
     const subject = el('span', 'subject');
-    subject.append(el('span', 'text', c.subject));
+    subject.append(marked('text', c.subject, search?.query.text));
     const note = this.operationNotes.get(c.hash);
     if (note) {
       const e = el(
@@ -1706,10 +2040,16 @@ class App {
     row.append(
       el('span', 'graph-spacer'),
       subject,
-      el('span', 'author', c.author),
+      marked('author', c.author, search?.query.author),
       this.dateCell(c.authorTime),
-      el('span', 'hash', shortHash(c.hash)),
+      marked('hash', shortHash(c.hash), search?.exact.some((h) => h.hash === c.hash) ? shortHash(c.hash) : undefined),
     );
+    if (search) {
+      row.classList.add('find-hit');
+      // A message matching only in its body has nothing to mark in the subject.
+      if (search.query.text !== '' && !subject.querySelector('mark') && !row.querySelector('.hash mark'))
+        row.classList.add('find-body-hit');
+    }
     // On the node the ref card stands in for the row's tooltip.
     if (this.refCard.hash !== c.hash) row.title = commitTitle(c);
     // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
@@ -2637,6 +2977,24 @@ class App {
       },
       badgeFilter: this.badgeFilter.probe(),
       refCard: this.refCard.probe(),
+      find: {
+        open: this.findWidget.isOpen,
+        input: this.findWidget.value,
+        count: this.findWidget.element.querySelector('.find-count')?.textContent ?? '',
+        progress: !this.findWidget.element.querySelector<HTMLElement>('.popover-progress')!.hidden,
+        matches: this.search?.matches.length ?? 0,
+        done: this.search?.done ?? false,
+        marks: Object.fromEntries(
+          [...this.rowsLayer.querySelectorAll<HTMLElement>('.row:has(mark)')].map((r) => [
+            Number(r.dataset['index']),
+            [...r.querySelectorAll('mark')].map((m) => m.textContent),
+          ]),
+        ),
+        hitRows: [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.find-hit')].map((r) =>
+          Number(r.dataset['index']),
+        ),
+        badges: [...this.rowsLayer.querySelectorAll('.badge.find-match')].map((b) => b.textContent),
+      },
       badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
@@ -2895,6 +3253,18 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
 }
 
 /** A badge; it and each remote name in it carry their own menu context. */
+/** A `className` span of `text`, with each occurrence of `needle` (any case) in a <mark>. */
+function marked(className: string, text: string, needle: string | undefined): HTMLElement {
+  const e = el('span', className);
+  let at = 0;
+  for (const [start, end] of needle === undefined ? [] : matchRanges(text, needle)) {
+    e.append(text.slice(at, start), el('mark', 'find-mark', text.slice(start, end)));
+    at = end;
+  }
+  e.append(text.slice(at));
+  return e;
+}
+
 function renderBadge(b: Badge): HTMLElement {
   const e =
     b.look === 'more' ? el('span', 'chip badge-more', b.text) : chip(b.look, BADGE_ICON[b.look], b.text, b.title);

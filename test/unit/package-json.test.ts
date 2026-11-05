@@ -25,6 +25,13 @@ describe('package.json commands', () => {
     assert.equal(text, syncManifest(text));
   });
 
+  it('binds Find Commit... to Ctrl+F (Cmd+F) only while the graph is the active editor', () => {
+    const keys = (JSON.parse(text) as { contributes: { keybindings: unknown[] } }).contributes.keybindings;
+    assert.deepEqual(keys, [
+      { command: 'strata.find', key: 'ctrl+f', mac: 'cmd+f', when: "activeWebviewPanelId == 'strata.graph'" },
+    ]);
+  });
+
   it('drops the contributions of a command the table no longer has', () => {
     const stale = JSON.parse(text) as typeof pkg;
     stale.contributes.commands.push({ command: 'strata.stash.clear' });

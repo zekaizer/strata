@@ -249,6 +249,22 @@ export interface ProbeState {
   badgeFilter: BadgeFilterProbe;
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;
+  /**
+   * The find widget: whether it is open, its input, its count, whether its progress bar shows, how
+   * many matches it has and whether its search ended; and of the rendered rows, the marked text by row index, the matching rows'
+   * indexes and the texts of the marked badges.
+   */
+  find: {
+    open: boolean;
+    input: string;
+    count: string;
+    progress: boolean;
+    matches: number;
+    done: boolean;
+    marks: Record<number, string[]>;
+    hitRows: number[];
+    badges: string[];
+  };
   /** The repository's badge rules as the host last sent them. */
   badgeRules: BadgeRule[];
   /** Label of the toolbar's stash count button; empty while it is hidden. */
