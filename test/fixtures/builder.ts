@@ -11,7 +11,8 @@ interface CommitSpec {
   /** Seconds since the builder epoch; decides committer and author dates. */
   time: number;
   author: string;
-  files: Record<string, string>;
+  /** New contents by path; null deletes the file. */
+  files: Record<string, string | null>;
 }
 
 const SCRATCH = 'refs/strata-fixture/scratch';
@@ -37,7 +38,7 @@ export class RepoBuilder {
   commit(
     branch: string,
     message: string,
-    opts: { parents?: Mark[]; files?: Record<string, string>; author?: string; time?: number } = {},
+    opts: { parents?: Mark[]; files?: Record<string, string | null>; author?: string; time?: number } = {},
   ): Mark {
     const ref = qualify(branch);
     const tip = this.refs.get(ref);
@@ -63,6 +64,12 @@ export class RepoBuilder {
       parents: [tip, ...others],
       files: {},
     });
+  }
+
+  /** Deletes a ref, leaving its commits reachable only from the others. */
+  deleteRef(name: string): this {
+    this.refs.delete(qualify(name));
+    return this;
   }
 
   /** Creates or moves a ref (branch, remote-tracking branch, ...) to `target`. */
@@ -122,9 +129,13 @@ export class RepoBuilder {
       const base = first === undefined ? new Map<string, string>() : trees[first - 1]!;
       const tree = new Map(base);
       for (const p of rest) for (const [path, content] of trees[p - 1]!) if (!tree.has(path)) tree.set(path, content);
-      for (const [path, content] of Object.entries(c.files)) tree.set(path, content);
+      for (const [path, content] of Object.entries(c.files)) {
+        if (content === null) tree.delete(path);
+        else tree.set(path, content);
+      }
       trees.push(tree);
       // fast-import starts from the first parent's tree; write only what differs from it.
+      for (const path of base.keys()) if (!tree.has(path)) out.push(`D ${path}\n`);
       for (const [path, content] of tree) {
         if (base.get(path) !== content) out.push(`M 100644 inline ${path}\n${data(content)}`);
       }

@@ -117,6 +117,17 @@ describe('fixture repositories', () => {
     assert.ok(count(repos.large, '--max-parents=0') > 1);
   });
 
+  it('paths: a rename, a hand-resolved merge and a deleted merged branch', () => {
+    const d = repos.paths;
+    const renames = git(d, 'log', '-M', '--diff-filter=R', '--name-status', '--format=', 'main');
+    assert.equal(renames, 'R100\tsrc/session.ts\tsrc/auth/session.ts');
+    const merge = git(d, 'log', '--merges', '--format=%H', '--grep=refresh-token', 'main');
+    for (const parent of [1, 2])
+      assert.notEqual(git(d, 'diff', `${merge}^${parent}`, merge, '--name-only', '--', 'src/auth/session.ts'), '');
+    assert.equal(git(d, 'for-each-ref', '--format=%(refname)', 'refs/heads/fix'), '');
+    assert.equal(git(d, 'diff', 'main', 'origin/main', '--name-only'), 'package.json');
+  });
+
   it('rejects unknown branches', () => {
     assert.throws(() => new RepoBuilder().tip('nope'), /unknown branch/);
   });
