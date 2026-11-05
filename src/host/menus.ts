@@ -5,7 +5,7 @@ import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../co
 import { isCommitId } from '../git/details.ts';
 import { readGitVersion, readUnmerged } from '../git/facts.ts';
 import { readOperationState } from '../git/state.ts';
-import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
+import { COMMAND_IDS, COMMANDS, type CommandId, type CommandSpec } from '../shared/commands.ts';
 import { isRepoPath } from './controller.ts';
 import { fail, undoLast, type FlowEnv, type FlowHost } from './flow.ts';
 import {
@@ -271,5 +271,11 @@ const guarded = (env: FlowEnv, handler: (ctx: MenuArg) => unknown) => async (ctx
 
 export function registerCommands(env: FlowEnv): vscode.Disposable[] {
   const all = handlers(env);
-  return COMMAND_IDS.map((id) => vscode.commands.registerCommand(id, guarded(env, all[id])));
+  return COMMAND_IDS.map((id) => {
+    const spec: CommandSpec = COMMANDS[id];
+    const handler = all[id];
+    // enablement (!strata.busy) does not stop executeCommand, which the banner's buttons use.
+    const run = spec.writes ? (ctx: MenuArg) => (env.runner.refuseWhileBusy() ? undefined : handler(ctx)) : handler;
+    return vscode.commands.registerCommand(id, guarded(env, run));
+  });
 }

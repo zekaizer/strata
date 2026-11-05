@@ -311,7 +311,8 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-foreground);
 }
 
-.toolbar .status.busy::before {
+.toolbar .status.busy::before,
+.banner-busy::before {
   display: inline-block;
   margin-right: 4px;
   vertical-align: -2px;
@@ -320,12 +321,14 @@ body:not(.hover-off) .popover-item:hover {
   animation: codicon-spin 1.5s steps(30) infinite;
 }
 
-body.vscode-reduce-motion .toolbar .status.busy::before {
+body.vscode-reduce-motion .toolbar .status.busy::before,
+body.vscode-reduce-motion .banner-busy::before {
   animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .toolbar .status.busy::before {
+  .toolbar .status.busy::before,
+  .banner-busy::before {
     animation: none;
   }
 }
@@ -437,11 +440,22 @@ body.vscode-high-contrast .banner {
   color: var(--vscode-button-foreground);
 }
 
-body:not(.hover-off) .banner-button:hover {
+/* Held while an operation runs (banner-view.ts), which the action area says. */
+.banner-busy {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.banner-button[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+body:not(.hover-off) .banner-button:not([aria-disabled='true']):hover {
   background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
 }
 
-body:not(.hover-off) .banner-button.primary:hover {
+body:not(.hover-off) .banner-button.primary:not([aria-disabled='true']):hover {
   background: var(--vscode-button-hoverBackground);
 }
 

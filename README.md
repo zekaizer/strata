@@ -91,7 +91,8 @@ what you can do with it; **Branch and Tag Actions...** in a commit's menu
 offers the same for its badges from the keyboard. The graph tab's title bar
 and the Command Palette have Fetch, Pull, Push, the stash commands, **Show
 Stashes...**, **Undo Last Operation** and **Show Git Output**, and, while an
-operation is stopped, Continue, Abort and Skip.
+operation is stopped, Continue, Abort and Skip. While an operation runs, the
+toolbar and the banner say which, and the other commands wait for it.
 
 - **Branches and tags:** Checkout (a remote branch checks out its local
   branch, or creates one that tracks it; when the local branch of that name

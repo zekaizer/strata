@@ -226,9 +226,21 @@ export interface ProbeState {
   alerted: string;
   /** Rendered elements marked as moved by the last operation: a badge's refs or "stash:<hash>", and how they show it. */
   landed: { refs: string; animation: string; outline: string }[];
-  /** The banner above the list: its state, region name, sentence, look, buttons and the commits it links. */
+  /**
+   * The banner above the list: its state, region name, sentence, look, buttons and the commits it
+   * links; `busy` is the running operation it shows instead of usable buttons.
+   */
   banner:
-    { state: string; label: string; text: string; warning: boolean; buttons: string[]; links: string[] } | undefined;
+    | {
+        state: string;
+        label: string;
+        text: string;
+        warning: boolean;
+        buttons: string[];
+        links: string[];
+        busy: string | undefined;
+      }
+    | undefined;
   /** The toolbar's status text. */
   status: string;
   /** The list's aria-busy. */

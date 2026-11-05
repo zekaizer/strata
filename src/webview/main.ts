@@ -417,7 +417,11 @@ class App {
         break;
       case 'busy':
         this.busyLabel = m.label;
-        if (m.label !== undefined) this.selectionsAtBusy = this.selections;
+        this.banner.setBusy(m.label);
+        if (m.label !== undefined) {
+          this.selectionsAtBusy = this.selections;
+          this.announce(`${m.label}…`);
+        }
         if (m.label === undefined) this.scroller.removeAttribute('aria-busy');
         else this.scroller.setAttribute('aria-busy', 'true');
         // An error shown meanwhile stays until the next action.
@@ -2265,6 +2269,7 @@ class App {
             warning: this.banner.element.classList.contains('warning'),
             buttons: [...this.banner.element.querySelectorAll('.banner-button')].map((b) => b.textContent),
             links: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-link')].map((b) => b.title),
+            busy: this.banner.element.querySelector('.banner-busy')?.textContent ?? undefined,
           },
       status: this.status.textContent,
       listBusy: this.scroller.getAttribute('aria-busy') === 'true',

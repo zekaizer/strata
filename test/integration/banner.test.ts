@@ -2,11 +2,14 @@ import * as assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
+import type { StrataTestApi } from '../../src/extension.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
 import { gitRetry, setIdentity, snapshotRepo } from './repo-snapshot.ts';
+import { ScriptedUi } from './scripted-ui.ts';
 
 describe('operation banner', () => {
+  let api: StrataTestApi;
   let panel: GraphPanel;
   let restore: () => Promise<void>;
   const write = (content: string) => {
@@ -21,7 +24,8 @@ describe('operation banner', () => {
   before(async () => {
     restore = await snapshotRepo();
     await setIdentity();
-    panel = (await strata()).show();
+    api = await strata();
+    panel = api.show();
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
     // strata-topic's first commit conflicts with strata-onto.
@@ -72,6 +76,40 @@ describe('operation banner', () => {
     await vscode.window.tabGroups.close(tab);
     await panel.simulate({ kind: 'click', selector: '.banner-link' });
     await waitFor('commit selected', async () => (await panel.probe()).selected === git('rev-parse', 'strata-topic~1'));
+  });
+
+  it('holds its buttons while an operation runs, saying what runs, and the host ignores them meanwhile', async () => {
+    const host = panel.flowHost();
+    const ui = new ScriptedUi();
+    const sent: string[] = [];
+    const sub = panel.onDidReceiveMessage((m) => {
+      if (m.type === 'menuCommand') sent.push(m.command);
+    });
+    api.setUi(ui);
+    try {
+      await host.runner.run(host, 'Continuing rebase', false, async () => {
+        const s = await waitFor('banner busy', async () => {
+          const p = await panel.probe();
+          return p.banner?.busy !== undefined && p;
+        });
+        assert.equal(s.banner?.busy, 'Continuing rebase…');
+        assert.equal(s.announced, 'Continuing rebase…');
+        await panel.simulate({ kind: 'click', selector: '.banner-button:last-child' });
+        await panel.probe();
+        assert.deepEqual(sent, [], 'a held button sends nothing');
+        // A click the webview sent before it heard of the operation.
+        await vscode.commands.executeCommand('strata.operation.abort');
+        assert.deepEqual(ui.asked, [], 'nothing asked for a command that cannot run now');
+      });
+    } finally {
+      api.setUi(undefined);
+      sub.dispose();
+    }
+    const s = await waitFor('banner free', async () => {
+      const p = await panel.probe();
+      return p.banner?.busy === undefined && p;
+    });
+    assert.deepEqual(s.banner?.buttons, ['Resolve...', 'Continue', 'Skip...', 'Abort...']);
   });
 
   it('says what Continue does once the conflict is resolved, and keeps focus on the button that had it', async () => {
