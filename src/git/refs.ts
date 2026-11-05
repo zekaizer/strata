@@ -1,4 +1,5 @@
 import type { Ref, RefKind, RefSnapshot } from '../core/refs.ts';
+import { configuredUpstream, readBranchConfigs } from './facts.ts';
 import { runGit } from './run.ts';
 
 const PREFIXES: [string, RefKind][] = [
@@ -14,7 +15,7 @@ const PREFIXES: [string, RefKind][] = [
 export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
   const format =
     '%(refname)%00%(objecttype)%00%(objectname)%00%(*objecttype)%00%(*objectname)%00%(symref)%00%(upstream)';
-  const [list, headBranch, head, remotes] = await Promise.all([
+  const [list, headBranch, head, remotes, config] = await Promise.all([
     runGit(git, cwd, ['for-each-ref', `--format=${format}`, 'refs/heads', 'refs/remotes', 'refs/tags']),
     // Exit status 1 means detached HEAD.
     runGit(git, cwd, ['symbolic-ref', '--quiet', '--short', 'HEAD']).then(
@@ -27,6 +28,7 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
       () => undefined,
     ),
     runGit(git, cwd, ['remote']).then((s) => s.split('\n').filter(Boolean)),
+    readBranchConfigs(git, cwd),
   ]);
   const refs: Ref[] = [];
   // Ref names cannot contain NUL or newline, so one ref per line is unambiguous.
@@ -46,12 +48,15 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
     if (target.type !== 'commit') continue;
     const match = PREFIXES.find(([p]) => name.startsWith(p));
     if (!match) continue;
+    const short = name.slice(match[0].length);
+    const tracks = match[1] === 'branch' && configuredUpstream(config.get(short) ?? [], short) !== undefined;
     refs.push({
       name,
-      short: name.slice(match[0].length),
+      short,
       kind: match[1],
       hash: target.hash,
       ...(upstream ? { upstream } : {}),
+      ...(tracks ? { tracks: true } : {}),
     });
   }
   return { head, headBranch, refs, remotes };

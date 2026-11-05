@@ -424,7 +424,7 @@ export async function refActionsOf(host: FlowHost, names: readonly string[]): Pr
     section === 'branch'
       ? {
           strataIsCurrent: ref.short === host.refs.headBranch,
-          strataUpstream: (await readUpstream(host.git, host.cwd, ref.short)) !== undefined,
+          strataUpstream: ref.tracks === true,
         }
       : {};
   const id = await host.ui.pick({

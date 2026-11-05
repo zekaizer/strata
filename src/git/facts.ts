@@ -285,11 +285,9 @@ export async function readUpstream(git: string, cwd: string, branch: string): Pr
     runGit(git, cwd, ['for-each-ref', '--format=%(upstream)%00%(upstream:short)', `refs/heads/${branch}`]),
     readBranchConfig(git, cwd, branch),
   ]);
-  // As git reads them: the last remote, the first merge.
-  const remote = config.findLast(([k]) => k === `branch.${branch}.remote`)?.[1];
-  const merge = config.find(([k]) => k === `branch.${branch}.merge`)?.[1];
-  if (!remote || !merge?.startsWith('refs/heads/')) return undefined;
-  const remoteBranch = merge.slice('refs/heads/'.length);
+  const configured = configuredUpstream(config, branch);
+  if (!configured) return undefined;
+  const { remote, remoteBranch } = configured;
   const [ref = '', short = ''] = out.trim().split('\0');
   if (ref !== '') return { ref, name: short, remote, remoteBranch };
   // git takes a name no remote is configured under for a URL.
@@ -327,15 +325,40 @@ export const readMergeBase = (git: string, cwd: string, a: string, b: string): P
  * repeat): the section `branch -D` drops. Global, system and included files keep theirs.
  */
 export async function readBranchConfig(git: string, cwd: string, branch: string): Promise<[string, string][]> {
+  return (await readBranchConfigs(git, cwd)).get(branch) ?? [];
+}
+
+/** readBranchConfig for every branch at once, by branch name. */
+export async function readBranchConfigs(git: string, cwd: string): Promise<Map<string, [string, string][]>> {
   const out = (await optional(runGit(git, cwd, ['config', '--local', '-z', '--get-regexp', '^branch\\.']))) ?? '';
-  const prefix = `branch.${branch}.`;
-  return out
-    .split('\0')
-    .map((entry): [string, string] => {
-      const nl = entry.indexOf('\n');
-      return nl < 0 ? [entry, ''] : [entry.slice(0, nl), entry.slice(nl + 1)];
-    })
-    .filter(([key]) => key.startsWith(prefix) && !key.slice(prefix.length).includes('.'));
+  const byBranch = new Map<string, [string, string][]>();
+  for (const entry of out.split('\0')) {
+    const nl = entry.indexOf('\n');
+    const [key, value] = nl < 0 ? [entry, ''] : [entry.slice(0, nl), entry.slice(nl + 1)];
+    // Variable names have no dots, branch names may; `branch.autoSetupMerge` has no branch.
+    const dot = key.lastIndexOf('.');
+    if (dot <= 'branch'.length) continue;
+    const branch = key.slice('branch.'.length, dot);
+    const entries = byBranch.get(branch);
+    if (entries) entries.push([key, value]);
+    else byBranch.set(branch, [[key, value]]);
+  }
+  return byBranch;
+}
+
+/**
+ * The upstream `git pull` takes from `branch`'s config (readBranchConfig entries), whether or not a
+ * remote-tracking branch stands for it; undefined without one.
+ */
+export function configuredUpstream(
+  config: readonly [string, string][],
+  branch: string,
+): { remote: string; remoteBranch: string } | undefined {
+  // As git reads them: the last remote, the first merge.
+  const remote = config.findLast(([k]) => k === `branch.${branch}.remote`)?.[1];
+  const merge = config.find(([k]) => k === `branch.${branch}.merge`)?.[1];
+  if (!remote || !merge?.startsWith('refs/heads/')) return undefined;
+  return { remote, remoteBranch: merge.slice('refs/heads/'.length) };
 }
 
 /**

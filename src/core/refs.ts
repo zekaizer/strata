@@ -8,8 +8,13 @@ export interface Ref {
   kind: RefKind;
   /** Commit the ref points at (annotated tags are peeled). */
   hash: string;
-  /** A local branch's upstream, full name (refs/remotes/origin/main); absent without one. */
+  /** A local branch's upstream remote-tracking branch, full name (refs/remotes/origin/main); absent without one. */
   upstream?: string;
+  /**
+   * A local branch with an upstream configured, as `git pull` reads it; true also for a URL remote
+   * or a branch the remote's refspec leaves out, which have no `upstream`.
+   */
+  tracks?: true;
 }
 
 export interface RefSnapshot {
