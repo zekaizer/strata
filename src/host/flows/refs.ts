@@ -43,11 +43,11 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { finish, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import { finish, finishWithWarning, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import {
   changes,
   execAutostash,
-  reportRestore,
+  finishRestoring,
   resolveConflicts,
   runMovingUntracked,
   stashAround,
@@ -111,17 +111,14 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     throw e;
   }
   if (restored === undefined) return;
-  await finish(host, { message: s.done, focus: s.commit, ...(s.undo ? { undo: s.undo } : {}) });
-  await reportRestore(host, s.done, restored);
-  // Since git 2.55 a conflicting switch --merge keeps the changes in a stash, reported above.
-  if (choice === 'migrate' && restored.kind === 'none') {
-    // switch --merge exits 0 even when it leaves conflicts.
-    const paths = await readUnmerged(host.git, host.cwd);
-    if (paths.length > 0)
-      notify(host, 'warning', migrateConflicted(s.done, paths.length), ['Resolve...'], () =>
-        resolveConflicts(host, paths),
-      );
-  }
+  const done = { message: s.done, focus: s.commit, ...(s.undo ? { undo: s.undo } : {}) };
+  // switch --merge exits 0 even when it leaves conflicts; since git 2.55 it keeps the changes in a stash then.
+  const migrated = choice === 'migrate' && restored.kind === 'none' ? await readUnmerged(host.git, host.cwd) : [];
+  if (migrated.length > 0)
+    await finishWithWarning(host, { ...done, warning: migrateConflicted(s.done, migrated) }, ['Resolve...'], () =>
+      resolveConflicts(host, migrated),
+    );
+  else await finishRestoring(host, restored, done);
 }
 
 /**

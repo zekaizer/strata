@@ -67,7 +67,7 @@ import type { TargetOf } from '../target.ts';
 import {
   changes,
   execAutostash,
-  reportRestore,
+  finishRestoring,
   resolveConflicts,
   restore,
   runMovingUntracked,
@@ -252,16 +252,6 @@ async function runStoppable(
   }
 }
 
-/** The usual feedback, then how the stashed changes came back when that did not simply work. */
-async function finishWithRestore(
-  host: FlowHost,
-  restored: Restored,
-  done: { message: string; focus: string; undo?: Undo },
-): Promise<void> {
-  await finish(host, done);
-  await reportRestore(host, done.message, restored);
-}
-
 /** `via`: a pull merges as git pull would, asking only about uncommitted changes. */
 export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 'menu'): Promise<void> {
   const [h, from] = await Promise.all([head(host), readCommit(host.git, host.cwd, src.rev)]);
@@ -328,7 +318,7 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 
   const after = await readHead(host.git, host.cwd);
   if (after.hash === h.hash) throw new Error(`git did not merge ${src.name}; see the output.`);
   const fastForwarded = after.hash === from.hash;
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: fastForwarded ? HISTORY_DONE.fastForwarded(h.name, from.short) : HISTORY_DONE.merged(src.name, h.name),
     focus: after.hash,
     undo: moveUndo(host, 'merge', h, after.hash),
@@ -376,7 +366,7 @@ export async function rebase(
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: HISTORY_DONE.rebased(h.name, onto.name, counts.replay),
     focus: after.hash,
     undo: moveUndo(host, 'rebase', h, after.hash),
@@ -439,7 +429,7 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
   });
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: kind === 'cherryPick' ? HISTORY_DONE.picked(c.short, h.name) : HISTORY_DONE.reverted(c.short),
     focus: after.hash,
     undo: moveUndo(host, kind === 'cherryPick' ? 'cherry pick' : 'revert', h, after.hash),
@@ -579,7 +569,7 @@ async function settle(
     started === undefined
       ? undefined
       : moveUndo(host, opName(state.kind), { branch: state.branch, hash: started }, after.hash);
-  await finishWithRestore(host, r, {
+  await finishRestoring(host, r, {
     message: done(keptIn),
     focus: after.hash,
     ...(undo ? { undo } : {}),

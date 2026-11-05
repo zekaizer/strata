@@ -135,11 +135,40 @@ export async function finish(host: FlowHost, r: { message: string; focus?: strin
   host.setUndo(r.undo);
   host.done(r.message);
   const undo = r.undo;
-  if (undo)
-    notify(host, 'info', r.message, ['Undo'], async () => {
-      // A newer operation replaced this one's Undo.
-      if (host.lastUndo === undo) await undoLast(host);
-    });
+  if (undo) notify(host, 'info', r.message, ['Undo'], () => undoIfLatest(host, undo));
+}
+
+/**
+ * After an operation ran but left something to settle (stashed changes that did not come back):
+ * reload the graph at `focus` and show `warning` alone, with `actions` and Undo when it has one.
+ */
+export async function finishWithWarning(
+  host: FlowHost,
+  r: { warning: string; focus?: string; undo?: Undo },
+  actions: string[],
+  then: (action: string) => Promise<void> | void,
+): Promise<void> {
+  await host.refresh(r.focus);
+  host.setUndo(r.undo);
+  warnWithUndo(host, r.warning, r.undo, actions, then);
+}
+
+/** A warning about an operation that finished (finishWithWarning), with Undo when it has one. */
+export function warnWithUndo(
+  host: FlowHost,
+  warning: string,
+  undo: Undo | undefined,
+  actions: string[],
+  then: (action: string) => Promise<void> | void,
+): void {
+  notify(host, 'warning', warning, [...actions, ...(undo ? ['Undo'] : [])], (a) =>
+    a === 'Undo' && undo ? undoIfLatest(host, undo) : then(a),
+  );
+}
+
+async function undoIfLatest(host: FlowHost, undo: Undo): Promise<void> {
+  // A newer operation replaced this one's Undo.
+  if (host.lastUndo === undo) await undoLast(host);
 }
 
 /** Where failures are shown: a graph (which refresh when what it showed is outdated), or just the Ui. */

@@ -6,6 +6,8 @@ import {
   STASH_DONE,
   stashBranchDirty,
   stashBranchInput,
+  stashConflicted,
+  stashPartial,
   stashPushInput,
 } from '../../src/core/wording.ts';
 
@@ -18,6 +20,21 @@ describe('wording of stash operations', () => {
     });
     assert.equal(stashPushInput(1, 0, true).prompt, 'Message (optional). Stashes 1 changed file and untracked files.');
     assert.equal(stashPushInput(0, 0, true).prompt, 'Message (optional). Stashes untracked files.');
+  });
+
+  it('says an Apply or Pop that did not fully restore the stash applied it, and whether the stash was kept', () => {
+    assert.equal(
+      stashConflicted('stash@{0} ("x")', ['src/a.ts'], true),
+      'Applied stash@{0} ("x") with conflicts in src/a.ts; the stash was kept.',
+    );
+    assert.equal(
+      stashConflicted('stash@{0} ("x")', ['src/a.ts'], false),
+      'Applied stash@{0} ("x") with conflicts in src/a.ts.',
+    );
+    assert.equal(
+      stashPartial('stash@{0} ("x")', true),
+      'Applied part of stash@{0} ("x"): git could not restore some files; the stash was kept.',
+    );
   });
 
   it('says what dropping a stash loses and how Undo brings it back', () => {

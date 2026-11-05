@@ -423,15 +423,23 @@ export function deleteTagConfirmation(tag: string, at: CommitRef): Confirmation<
 export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
   `'${branch}' is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
 
-/** `done`: what the operation did; `paths`: the first of `count` conflicted files; `stash`: stashLabel(). */
-export const popConflicted = (done: string, paths: readonly string[], count: number, stash: string): string =>
-  `${done}, but restoring your stashed changes conflicted in ${plural(count, 'file')} (${fileList(paths)}). Your changes are safe in ${stash}.`;
+/** `done`: what the operation did; `paths`: the conflicted files; `stash`: stashLabel(), which git kept. */
+export const popConflicted = (done: string, paths: readonly string[], stash: string): string =>
+  `${done}; restoring your stashed changes conflicted in ${fileList(paths)}. They stay in ${stash}.`;
+
+/** Apply or Pop of stash `label` (stashLabel) that conflicted in `paths`; git keeps a popped stash then. */
+export const stashConflicted = (label: string, paths: readonly string[], pop: boolean): string =>
+  `Applied ${label} with conflicts in ${fileList(paths)}${pop ? '; the stash was kept' : ''}.`;
+
+/** Apply or Pop of stash `label` that git could restore only in part. */
+export const stashPartial = (label: string, pop: boolean): string =>
+  `Applied part of ${label}: git could not restore some files${pop ? '; the stash was kept' : ''}.`;
 
 /** A stash as messages name it: its number goes stale with the next push, its message does not. */
 export const stashLabel = (index: number, message: string): string => `stash@{${index}} ("${message}")`;
 
-export const migrateConflicted = (done: string, count: number): string =>
-  `${done}; your changes conflicted in ${plural(count, 'file')}.`;
+export const migrateConflicted = (done: string, paths: readonly string[]): string =>
+  `${done}; your changes conflicted in ${fileList(paths)}.`;
 
 /** What a finished operation did, for the status bar and the Undo notification. */
 export const DONE = {
@@ -840,11 +848,11 @@ export const HISTORY_DOING = {
 
 /** Restoring stashed changes after `done` applied only part of them (git kept the stash). */
 export const popPartial = (done: string, stash: string): string =>
-  `${done}, but only part of your stashed changes came back (git could not restore some files). The rest is safe in ${stash}.`;
+  `${done}; only part of your stashed changes came back. The rest stays in ${stash}.`;
 
 /** git refused to restore stashed changes after `done`; nothing was applied. */
 export const popRefused = (done: string, reason: string, stash: string): string =>
-  `${done}, but git could not restore your stashed changes: ${reason} They're safe in ${stash}.`;
+  `${done}; git could not restore your stashed changes: ${reason} They stay in ${stash}.`;
 
 /** Why git did not apply its autostash, for popRefused: local changes to `paths` (none known: unnamed). */
 export const autostashRefused = (paths: readonly string[]): string =>

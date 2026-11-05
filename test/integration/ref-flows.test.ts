@@ -253,7 +253,7 @@ describe('ref operations', () => {
     assert.equal(git('branch', '--show-current'), 'feature/search');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0} (\"On main: Strata autostash: switch to 'feature/search'\").",
+      "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash@{0} (\"On main: Strata autostash: switch to 'feature/search'\").",
     );
     assert.equal(
       git('stash', 'list', '--format=%gs'),
@@ -371,11 +371,11 @@ describe('ref operations', () => {
       // git 2.55 keeps the changes in a stash when merging them conflicts.
       assert.equal(
         warning,
-        "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0} (\"autostash while switching to 'feature/search'\").",
+        "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash@{0} (\"autostash while switching to 'feature/search'\").",
       );
       assert.equal(git('stash', 'list', '--format=%gs'), "autostash while switching to 'feature/search'");
     } else {
-      assert.equal(warning, "Switched to 'feature/search'; your changes conflicted in 1 file.");
+      assert.equal(warning, "Switched to 'feature/search'; your changes conflicted in main.txt.");
       assert.equal(git('stash', 'list'), '');
     }
   });

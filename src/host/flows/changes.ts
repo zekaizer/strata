@@ -14,13 +14,15 @@ import {
   popConflicted,
   popPartial,
   popRefused,
+  stashConflicted,
   stashLabel,
+  stashPartial,
 } from '../../core/wording.ts';
 import { readOverlap, readStash, readStashTop, readUnmerged, readUntrackedIn } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readOperationState, readWorktree } from '../../git/state.ts';
-import { notify, run, type Expect, type FlowHost } from '../flow.ts';
+import { finish, run, warnWithUndo, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 
 /** Uncommitted changes as an operation meets them, read right before it confirms. */
@@ -192,31 +194,40 @@ export async function resolveConflicts(host: FlowHost, paths: readonly string[])
 }
 
 /**
- * Tells how putting the stashed changes back after `done` went, when it did not simply work. A
- * stash whose restore conflicted is never offered for restoring again; one restored in part is
- * kept out of the leftover banner, which would advise dropping it.
+ * Finishes an operation that put stashed changes back: as finish() when they all came back, else
+ * with one warning saying what did not. `stash`: the operation was Apply or Pop of that stash
+ * (stashLabel). A stash whose restore conflicted is never offered for restoring again; one
+ * restored in part is kept out of the leftover banner, which would advise dropping it.
  */
-export async function reportRestore(host: FlowHost, done: string, r: Restored): Promise<void> {
-  if (r.kind === 'none' || r.kind === 'restored') return;
+export async function finishRestoring(
+  host: FlowHost,
+  r: Restored,
+  done: { message: string; focus?: string; undo?: Undo },
+  stash?: { label: string; pop: boolean },
+): Promise<void> {
+  if (r.kind === 'none' || r.kind === 'restored') return finish(host, done);
+  // Marks are kept only for stashes the graph lists: it reads the stash git kept first.
+  await host.refresh(done.focus);
+  host.setUndo(done.undo);
   const label = stashLabel(r.stash.index, r.stash.message);
   if (r.kind === 'conflicted') {
     await host.leftovers.markRestoreConflicted(r.stash.hash);
     const paths = await readUnmerged(host.git, host.cwd);
-    notify(
-      host,
-      'warning',
-      popConflicted(done, paths, paths.length, label),
-      ['Resolve...', 'Show Stash'],
-      async (a) => {
-        if (a === 'Resolve...') await resolveConflicts(host, paths);
-        else host.reveal(r.stash.hash);
-      },
-    );
+    const warning = stash ? stashConflicted(stash.label, paths, stash.pop) : popConflicted(done.message, paths, label);
+    warnWithUndo(host, warning, done.undo, ['Resolve...', 'Show Stash'], async (a) => {
+      if (a === 'Resolve...') await resolveConflicts(host, paths);
+      else host.reveal(r.stash.hash);
+    });
     return;
   }
   await host.leftovers.keep(r.stash.hash);
-  const message = r.kind === 'refused' ? popRefused(done, r.reason, label) : popPartial(done, label);
-  notify(host, 'warning', message, ['Show Stash', 'Show Output'], (a) => {
+  const warning =
+    r.kind === 'refused'
+      ? popRefused(done.message, r.reason, label)
+      : stash
+        ? stashPartial(stash.label, stash.pop)
+        : popPartial(done.message, label);
+  warnWithUndo(host, warning, done.undo, ['Show Stash', 'Show Output'], (a) => {
     if (a === 'Show Stash') host.reveal(r.stash.hash);
     else host.runner.showOutput();
   });

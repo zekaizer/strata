@@ -195,10 +195,14 @@ describe('stash operations', () => {
     git('commit', '--quiet', '-am', 'change notes');
     await run('strata.stash.pop', stashMenu(w));
     assert.equal(git('rev-parse', 'refs/stash'), w, 'git kept it');
+    const [only, ...more] = ui.of('notify');
+    assert.deepEqual(more, [], 'no success message before the warning');
+    assert.equal(only?.level, 'warning');
     assert.match(
-      ui.of('notify').find((n) => n.level === 'warning')?.message ?? '',
-      /^Popped stash@\{0\} \("WIP on main: .*"\), but restoring your stashed changes conflicted in 1 file \(NOTES\.md\)\./,
+      only.message,
+      /^Applied stash@\{0\} \("WIP on main: .*"\) with conflicts in NOTES\.md; the stash was kept\.$/,
     );
+    assert.deepEqual(only.actions, ['Resolve...', 'Show Stash']);
   });
 
   it('applies the stash of its row and keeps it, leaving the other stash alone', async () => {

@@ -27,7 +27,7 @@ import { runGit } from '../../git/run.ts';
 import { readWorktree } from '../../git/state.ts';
 import { finish, notify, run, type FlowHost } from '../flow.ts';
 import { Outdated } from '../target.ts';
-import { reportRestore, restore, runMovingUntracked } from './changes.ts';
+import { finishRestoring, restore, runMovingUntracked } from './changes.ts';
 import { absent, newName } from './refs.ts';
 
 /** A stash row's stash, as it is now; Outdated when it left the list. */
@@ -103,8 +103,7 @@ export async function restoreStash(host: FlowHost, hash: string, pop: boolean): 
   const done = pop ? STASH_DONE.popped(s.label) : STASH_DONE.applied(s.label);
   // Applied, Strata owes it no restore: popping it again would apply the changes twice.
   if (r.kind === 'restored' && !pop) await host.leftovers.keep(hash);
-  await finish(host, { message: done });
-  await reportRestore(host, done, r);
+  await finishRestoring(host, r, { message: done }, { label: s.label, pop });
 }
 
 export async function dropStash(host: FlowHost, hash: string): Promise<void> {

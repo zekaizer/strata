@@ -524,7 +524,7 @@ describe('history operations', () => {
     assert.equal(git('show', `${stash}:NOTES.md`), 'mine');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      'Finished the merge, but git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They\'re safe in stash@{0} ("autostash").',
+      'Finished the merge; git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They stay in stash@{0} ("autostash").',
     );
     await reload(panel());
     assert.equal(await leftover(), undefined, 'not a resolved restore conflict whose stash could be dropped');
@@ -568,11 +568,14 @@ describe('history operations', () => {
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.deepEqual(ui.first('confirm').buttons, ['Stash & Rebase']);
     assert.equal(git('rev-parse', 'HEAD~1'), git('rev-parse', 'main'), 'rebased');
-    const warning = ui.of('notify').find((n) => n.level === 'warning');
+    const [warning, ...more] = ui.of('notify');
+    assert.deepEqual(more, [], 'no success message before the warning');
+    assert.equal(warning?.level, 'warning');
     assert.match(
-      warning?.message ?? '',
-      /^Rebased 'strata-topic' onto 'main' \(1 commit\), but restoring your stashed changes conflicted in 1 file \(main\.txt\)\. Your changes are safe in stash@\{0\} \("autostash"\)\.$/,
+      warning.message,
+      /^Rebased 'strata-topic' onto 'main' \(1 commit\); restoring your stashed changes conflicted in main\.txt\. They stay in stash@\{0\} \("autostash"\)\.$/,
     );
+    assert.deepEqual(warning.actions, ['Resolve...', 'Show Stash', 'Undo']);
     const stash = git('rev-parse', 'refs/stash');
     await waitFor('leftover reported', async () => {
       const l = (await panel().probe()).leftover;

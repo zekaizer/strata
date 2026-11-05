@@ -253,11 +253,11 @@ describe('wording of history operations', () => {
   it('says when restoring stashed changes only partly worked, or not at all', () => {
     assert.equal(
       popPartial("Merged 'topic' into 'main'", 'stash@{0} ("On main: x")'),
-      "Merged 'topic' into 'main', but only part of your stashed changes came back (git could not restore some files). The rest is safe in stash@{0} (\"On main: x\").",
+      "Merged 'topic' into 'main'; only part of your stashed changes came back. The rest stays in stash@{0} (\"On main: x\").",
     );
     assert.equal(
       popRefused("Switched to 'x'", 'your local changes would be overwritten.', 'stash@{1} ("y")'),
-      "Switched to 'x', but git could not restore your stashed changes: your local changes would be overwritten. They're safe in stash@{1} (\"y\").",
+      'Switched to \'x\'; git could not restore your stashed changes: your local changes would be overwritten. They stay in stash@{1} ("y").',
     );
   });
 });
