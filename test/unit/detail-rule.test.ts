@@ -118,6 +118,31 @@ const NEEDED_SETTINGS = /pull\.ff/;
 const CONFIG_KEY = /\b(?:merge|pull|branch|rebase|strata|git)\.[a-zA-Z]+\b/;
 const JARGON = /\b(?:sequencer|ORIG_HEAD|autostash|credential helper|fsck)\b/i;
 
+/** Questions whose every answer can lose work, or that rewrite pushed commits: they warn. */
+const WARNS = new Set([
+  'rebase, dirty',
+  'reset, hard',
+  'reset, keep',
+  'revert of a merge',
+  'abort',
+  'skip',
+  'leave behind',
+  'delete branch',
+  'undo moved',
+  'undo moved, no commits',
+  'drop stash',
+  'force push',
+  'delete remote branch',
+  'delete remote tag',
+]);
+
+describe('confirmation levels', () => {
+  for (const [name, q] of confirmations)
+    it(`${name}: ${WARNS.has(name) ? 'warns' : 'informs'}`, () => {
+      assert.equal(q?.level ?? 'warning', WARNS.has(name) ? 'warning' : 'info');
+    });
+});
+
 describe('confirmation details', () => {
   for (const [name, q] of confirmations)
     it(`${name}: at most 3 short lines, no button labels, no config keys or jargon`, () => {

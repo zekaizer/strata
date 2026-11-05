@@ -115,7 +115,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('notify'), [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "A branch named 'strata/new' now exists; nothing was done.",
         actions: [],
       },
@@ -129,7 +129,7 @@ describe('ref operations', () => {
     ui.type('v9.7', '').meanwhile(() => git('tag', 'v9.7', 'main~1'));
     await run('strata.createTag', commitMenu(at));
     assert.deepEqual(ui.of('notify'), [
-      { kind: 'notify', level: 'error', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
+      { kind: 'notify', level: 'info', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
     ]);
     assert.equal(git('rev-parse', 'v9.7'), git('rev-parse', 'main~1'));
     assert.ok((await panel().probe()).generation > before);
@@ -148,7 +148,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('notify'), [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "A branch named 'strata-remote' now exists; nothing was done.",
         actions: [],
       },
@@ -241,7 +241,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.asked, [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "'strata-gone' no longer exists; the graph has been refreshed.",
         actions: [],
       },
@@ -257,7 +257,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('notify'), [
       {
         kind: 'notify',
-        level: 'error',
+        level: 'info',
         message: "'wip/experiment' changed while you were deciding; nothing was done.",
         actions: [],
       },
@@ -382,7 +382,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('confirm'), []);
     assert.match(
       ui.of('notify').find((n) => n.level === 'error')?.message ?? '',
-      /^error: The following untracked working tree files would be overwritten by checkout:\n\ta\nb\.txt$/,
+      /^Couldn't switch to 'strata-new': error: The following untracked working tree files would be overwritten by checkout:\n\ta\nb\.txt$/,
     );
     assert.equal(git('branch', '--show-current'), 'main');
   });

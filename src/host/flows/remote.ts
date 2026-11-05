@@ -40,7 +40,7 @@ import { changes } from './changes.ts';
 import { merge, rebase, refSource, type PullRun, type Source } from './history.ts';
 
 /**
- * Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it
+ * Runs a remote operation; a failed sign-in becomes the Type in Terminal question. Resolves whether it
  * ran. `rerun`: the command `op` is only the first step of.
  */
 async function remoteRun(

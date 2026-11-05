@@ -233,6 +233,39 @@ export const UNDO_STALE = 'Undo is no longer available: a newer operation ran.';
 /** A failed git command as an error notification shows it. */
 export const gitFailure = (message: string): string => message.trim().split('\n').slice(0, 3).join('\n');
 
+/** The verb of each progress label (DOING, HISTORY_DOING, …), as "Couldn't …" says it. */
+const FAILED_VERB: Record<string, string> = {
+  Applying: 'apply',
+  Aborting: 'abort',
+  Continuing: 'continue',
+  Creating: 'create',
+  'Cherry picking': 'cherry pick',
+  Deleting: 'delete',
+  Dropping: 'drop',
+  Fetching: 'fetch',
+  Merging: 'merge',
+  Popping: 'pop',
+  Publishing: 'publish',
+  Pushing: 'push',
+  Rebasing: 'rebase',
+  Renaming: 'rename',
+  Resetting: 'reset',
+  Reverting: 'revert',
+  Skipping: 'skip',
+  Staging: 'stage',
+  Stashing: 'stash',
+  Switching: 'switch',
+  Undoing: 'undo',
+  Unsetting: 'unset',
+};
+
+/** git failed `message` while running the operation of progress label `label`. */
+export function failedDuring(label: string, message: string): string {
+  const m = /^(Cherry picking|\S+) (.*)$/s.exec(label);
+  const verb = m && FAILED_VERB[m[1]!];
+  return verb ? `Couldn't ${verb} ${m[2]!}: ${message}` : `${label} failed: ${message}`;
+}
+
 export const gitTooOld = (found: string): string =>
   `Strata needs git 2.27 or newer to change repositories (found ${found}).`;
 
@@ -248,13 +281,14 @@ export function signInConfirmation(
   const name = remote === undefined ? 'a remote' : refName(remote);
   const then = rerun === undefined ? '.' : `, then run ${rerun} again.`;
   return {
+    level: 'info',
     message: kind === 'auth' ? `Strata couldn't sign in to ${name}.` : `Strata couldn't connect to ${name}.`,
     detail:
       kind === 'auth'
         ? `git needs you to sign in, which Strata can't show. Run the same command in a terminal to sign in there${then}`
         : `Connect to the host once from a terminal to accept its key${then}`,
     buttons: [
-      { id: 'terminal', label: 'Run in Terminal' },
+      { id: 'terminal', label: 'Type in Terminal' },
       { id: 'output', label: 'Show Output' },
     ],
   };
@@ -315,6 +349,7 @@ export function switchConfirmation<C extends StashChoice>(
   buttons: { id: C; label: string }[],
 ): Confirmation<C> {
   return {
+    level: 'info',
     message: `Switching to ${to} would overwrite your changes to ${plural(overlap.length, 'file')}.`,
     detail: [`${to} changes ${fileList(overlap)} too.`, section].filter((s) => s !== '').join('\n'),
     buttons,
@@ -339,6 +374,7 @@ export const inTheWayStash = (op: string): string => `Strata: untracked files in
 export function inTheWayConfirmation(op: string, files: readonly string[]): Confirmation<'stash'> {
   const one = files.length === 1;
   return {
+    level: 'info',
     message: `${plural(files.length, 'untracked file')} ${one ? 'is' : 'are'} in the way of the ${op}: ${fileList(files)}.`,
     detail: `The stash keeps ${one ? 'it' : 'them'}; Strata doesn't bring ${one ? 'it' : 'them'} back, because the ${op} puts its own ${one ? 'version' : 'versions'} there.`,
     buttons: [{ id: 'stash', label: one ? 'Stash It & Retry' : 'Stash Them & Retry' }],
@@ -369,6 +405,7 @@ export function tracksOtherConfirmation(
   remote: string,
 ): Confirmation<'switch' | 'new'> {
   return {
+    level: 'info',
     message: `${refName(branch)} tracks ${refName(upstream)}, not ${refName(remote)}.`,
     detail: '',
     buttons: [
@@ -468,7 +505,7 @@ export const DOING = {
   deletingTag: (tag: string): string => `Deleting tag ${refName(tag)}`,
 };
 
-/** Run in Terminal could not quote the command for the terminal's shell; `line` is quoted for a POSIX shell. */
+/** Type in Terminal could not quote the command for the terminal's shell; `line` is quoted for a POSIX shell. */
 export const commandUnquotable = (line: string): string =>
   `Strata can't quote this command safely for your terminal's shell. Run it there yourself, quoted for that shell: ${line}`;
 
@@ -525,6 +562,7 @@ export function mergeConfirmation(
     const [only] = dirty.modes;
     const both = dirty.modes.length > 1;
     return {
+      level: 'info',
       message,
       detail: [both ? either : f.canFastForward && only?.mode === 'ff' ? fastForwards : records, dirty.section].join(
         '\n',
@@ -541,7 +579,7 @@ export function mergeConfirmation(
     { id: 'ff', label: 'Fast-Forward' },
     { id: 'noFastForward', label: 'Create Merge Commit' },
   ];
-  return { message, detail: either, buttons: mergeFf === false ? both.reverse() : both };
+  return { level: 'info', message, detail: either, buttons: mergeFf === false ? both.reverse() : both };
 }
 
 export interface RebaseFacts {
@@ -569,6 +607,7 @@ export function rebaseConfirmation<B extends string>(
       ? ` ${f.onUpstream === 1 ? '1 is' : `${f.onUpstream} are`} on ${refName(f.upstream)}: you'll need to force push.`
       : '';
   return {
+    ...(drops === '' && pushed === '' ? { level: 'info' as const } : {}),
     message: f.op === 'pullRebase' ? `Pull ${f.onto} into ${f.branch}?` : `Rebase ${f.branch} onto ${f.onto}?`,
     detail: [
       `Replays ${plural(f.replay, 'commit')} of ${f.branch} on ${f.onto} (${f.ontoShort})${drops}.${pushed}`,
@@ -626,6 +665,7 @@ export function pickConfirmation<B extends string>(
   merge?: MergeParents,
 ): Confirmation<B> {
   return {
+    ...(kind === 'revert' && merge !== undefined ? {} : { level: 'info' as const }),
     message:
       kind === 'cherryPick' ? `Cherry pick ${commitName(c)} onto ${onto}?` : `Revert ${commitName(c)} on ${onto}?`,
     detail: [
@@ -692,6 +732,7 @@ export function stoppedMessage(
 /** Continue of a rebase whose `steps` (messageEdits) have git open the commit message editor. */
 export function messageEditsConfirmation(steps: readonly string[]): Confirmation<'terminal' | 'continue'> {
   return {
+    level: 'info',
     message: 'Continuing this rebase edits commit messages.',
     detail: [
       `git would open an editor for ${fileList(steps)}, which Strata can't show.`,
@@ -789,13 +830,18 @@ const FETCH_HISTORY = {
 
 /** A shallow clone lacks the commits an operation needs. */
 export function shallowConfirmation(a: string, b: string): Confirmation<HistoryFetch> {
-  return { message: `This clone is shallow: ${a} and ${b} have no common commit in it.`, ...FETCH_HISTORY };
+  return {
+    level: 'info',
+    message: `This clone is shallow: ${a} and ${b} have no common commit in it.`,
+    ...FETCH_HISTORY,
+  };
 }
 
 /** `short` is a commit a shallow clone has without its parent; `path`: the one file of it asked about. */
 export function shallowEdgeConfirmation(short: string, path?: string): Confirmation<HistoryFetch> {
   const changes = path === undefined ? 'its changes' : `its changes to ${path}`;
   return {
+    level: 'info',
     message: `${short} is the oldest commit this shallow clone has; its parent is not here, so ${changes} cannot be told apart from the whole ${path === undefined ? 'tree' : 'file'}.`,
     ...FETCH_HISTORY,
   };
@@ -950,6 +996,7 @@ export function divergedConfirmation<B extends string>(
   section = '',
 ): Confirmation<B> {
   return {
+    level: 'info',
     message: `${branch} has ${plural(ahead, 'commit')} ${refName(upstream)} lacks and is ${behind} behind.`,
     detail: [note ?? '', section].filter((s) => s !== '').join('\n'),
     buttons,
@@ -963,6 +1010,7 @@ export function pushOtherNameConfirmation(
   upstreamBranch: string,
 ): Confirmation<'new' | 'upstream'> {
   return {
+    level: 'info',
     message: `${refName(branch)} tracks ${refName(`${remote}/${upstreamBranch}`)}, which has another name.`,
     detail: '',
     buttons: [
@@ -991,6 +1039,7 @@ export function pushRejectedConfirmation(
   if (!canPull && !canForce) return undefined;
   const them = count === 1 ? 'it' : 'them';
   return {
+    level: 'info',
     message: pushRejected(upstream, branch, count),
     detail: [
       ...(canPull ? [`Pulling brings ${them} into ${refName(branch)}, then you can push.`] : []),

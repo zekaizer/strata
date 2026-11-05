@@ -319,7 +319,7 @@ describe('remote operations', () => {
       await reload(panel());
       await vscode.env.clipboard.writeText('untouched');
       const terminals = vscode.window.terminals.length;
-      ui.press('Run in Terminal');
+      ui.press('Type in Terminal');
       await run('strata.publish', branchMenu('strata-fix&docs'));
       assert.equal(ui.first('confirm').message, "Strata couldn't sign in to 'origin'.");
       assert.equal(await vscode.env.clipboard.readText(), 'untouched');

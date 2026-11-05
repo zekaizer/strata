@@ -93,6 +93,7 @@ describe('wording of ref operations', () => {
 
   it('asks what to do when the local namesake of a remote branch tracks another', () => {
     assert.deepEqual(tracksOtherConfirmation('main', 'upstream/main', 'origin/main'), {
+      level: 'info',
       message: "'main' tracks 'upstream/main', not 'origin/main'.",
       detail: '',
       buttons: [

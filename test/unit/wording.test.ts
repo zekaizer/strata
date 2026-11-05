@@ -6,6 +6,7 @@ import {
   deleteBranchConfirmation,
   dirtySection,
   fileList,
+  failedDuring,
   gitFailure,
   gitTooOld,
   HISTORY_DONE,
@@ -175,6 +176,16 @@ describe('wording of undo and failures', () => {
     assert.equal(gitFailure('  fatal: bad\n'), 'fatal: bad');
   });
 
+  it('names the operation a git failure happened in', () => {
+    assert.equal(
+      failedDuring("Merging 'topic' into 'main'", 'fatal: x'),
+      "Couldn't merge 'topic' into 'main': fatal: x",
+    );
+    assert.equal(failedDuring('Cherry picking abc1234', 'fatal: x'), "Couldn't cherry pick abc1234: fatal: x");
+    assert.equal(failedDuring("Pushing 'x' to 'origin/x'", 'e'), "Couldn't push 'x' to 'origin/x': e");
+    assert.equal(failedDuring('Frobbing it', 'e'), 'Frobbing it failed: e');
+  });
+
   it('hands a failed sign-in to a terminal', () => {
     const auth = signInConfirmation('origin', 'auth');
     assert.equal(auth.message, "Strata couldn't sign in to 'origin'.");
@@ -184,8 +195,9 @@ describe('wording of undo and failures', () => {
     );
     assert.deepEqual(
       auth.buttons.map((b) => b.label),
-      ['Run in Terminal', 'Show Output'],
+      ['Type in Terminal', 'Show Output'],
     );
+    assert.equal(auth.level, 'info');
     assert.equal(signInConfirmation(undefined, 'hostKey').message, "Strata couldn't connect to a remote.");
     assert.equal(
       signInConfirmation('origin', 'hostKey').detail,

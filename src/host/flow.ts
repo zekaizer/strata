@@ -8,6 +8,7 @@ import { shellCommand, shellKind } from '../core/shell.ts';
 import {
   changedMeanwhile,
   commandUnquotable,
+  failedDuring,
   gitFailure,
   refName,
   signInConfirmation,
@@ -126,9 +127,18 @@ export function run<T>(
     for (const e of opts.expect ?? [])
       if ((await resolve(host, e.rev)) !== e.hash) throw new Outdated(e.changed ?? changedMeanwhile(e.name));
     host.setUndo(undefined);
-    return steps(exec);
+    try {
+      return await steps(exec);
+    } catch (e) {
+      // The innermost run names the failure: an undo or a retry runs inside the operation's own.
+      if (e instanceof GitOpError && !DURING.has(e)) DURING.set(e, label);
+      throw e;
+    }
   });
 }
+
+/** The progress label of the operation each git failure happened in, for fail(). */
+const DURING = new WeakMap<GitOpError, string>();
 
 /** What to offer after an operation, besides Undo (Push after a Pull that a rejected push started). */
 export interface Next {
@@ -236,7 +246,7 @@ export async function fail(
   remote?: { name: string | undefined; op: Operation; cwd: string; rerun?: string },
 ): Promise<void> {
   if (e instanceof Outdated) {
-    void host.ui.notify('error', e.message);
+    void host.ui.notify('info', e.message);
     await host.refresh?.();
     return;
   }
@@ -246,7 +256,15 @@ export async function fail(
     else if (choice === 'output') host.runner.showOutput();
     return;
   }
-  const message = e instanceof GitOpError ? gitFailure(e.message) : e instanceof Error ? e.message : String(e);
+  const during = e instanceof GitOpError ? DURING.get(e) : undefined;
+  const message =
+    e instanceof GitOpError
+      ? during === undefined
+        ? gitFailure(e.message)
+        : failedDuring(during, gitFailure(e.message))
+      : e instanceof Error
+        ? e.message
+        : String(e);
   notify(host, 'error', message, e instanceof GitOpError ? ['Show Output'] : [], () => {
     host.runner.showOutput();
   });
@@ -270,7 +288,7 @@ export async function undoLast(host: FlowHost): Promise<void> {
     // Never move another branch than the one the operation moved.
     if (headRef(head.branch) !== g.ref) {
       host.setUndo(undefined);
-      notify(host, 'error', undoGone(undo.label, name), [], () => undefined);
+      notify(host, 'info', undoGone(undo.label, name), [], () => undefined);
       return;
     }
     if (head.hash !== g.after) {
