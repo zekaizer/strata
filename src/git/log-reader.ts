@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { Commit } from '../core/commit.ts';
 import { LOG_FORMAT, LogParser } from '../core/log-parser.ts';
+import { parseRepoPath } from '../core/path-filter.ts';
 import { isCommitId } from './details.ts';
 import { gitEnv } from './env.ts';
 import { runGit } from './run.ts';
@@ -15,21 +16,30 @@ export interface LogOptions {
   firstParent?: boolean;
   /** Full ref names (refs/...) to show history of; default: all branches, remote-tracking branches and HEAD. */
   refs?: string[] | undefined;
+  /**
+   * Repository-relative paths (a folder ends with '/'): only commits that change one of them, and
+   * the tips of the refs shown and HEAD, which keep their badges. Parents are rewritten to the
+   * nearest such ancestor, so every lane closes.
+   */
+  paths?: readonly string[] | undefined;
   /** Commit ids other worktrees have checked out, also shown when `refs` is undefined; missing ones are skipped. */
   heads?: readonly string[] | undefined;
 }
 
 /**
- * The revision arguments of the view `opts` describes: its commits and their order. Every git
- * command that lists or counts the graph's commits uses them, so they agree with the graph's order.
- * Rejects ref names that are not full names, heads that are not commit ids, and a missing `cwd`.
+ * The revision arguments of the view `opts` describes, ending with `--` and its pathspecs: its
+ * commits and their order. Every git command that lists or counts the graph's commits uses them,
+ * so they agree with the graph's order. Rejects ref names that are not full names, paths outside
+ * the repository and a missing `cwd`.
  */
 export async function viewArgs(opts: LogOptions): Promise<string[]> {
-  const { git, cwd, firstParent, refs } = opts;
+  const { git, cwd, firstParent, refs, paths = [] } = opts;
   const heads = refs ? [] : (opts.heads ?? []);
-  // Refs come from the webview; only full ref names may reach git, never options.
+  // Refs and paths come from the webview; only full ref names and paths may reach git, never options.
   const bad = refs?.find((r) => !/^refs\/[^\s]+$/.test(r) || r.includes('..'));
   if (bad !== undefined) throw new Error(`invalid ref name: ${bad}`);
+  const badPath = paths.find((p) => parseRepoPath(p) === undefined);
+  if (badPath !== undefined) throw new Error(`invalid path: ${badPath}`);
   const notId = heads.find((h) => !isCommitId(h));
   if (notId !== undefined) throw new Error(`invalid commit id: ${notId}`);
   // Otherwise spawn reports a missing cwd as "spawn git ENOENT", blaming git.
@@ -46,11 +56,26 @@ export async function viewArgs(opts: LogOptions): Promise<string[]> {
     // Topological order keeps each branch's commits together, which keeps the graph narrow.
     '--topo-order',
     ...(firstParent ? ['--first-parent'] : []),
+    // --simplify-by-decoration implies --simplify-merges: git prints nothing until the walk is
+    // done (see docs/PERFORMANCE.md), and keeps merges that join the lines of kept commits.
+    ...(paths.length > 0
+      ? [
+          '--parents',
+          '--simplify-by-decoration',
+          // Branch tips and HEAD only: a row per tag would bury the commits that change the paths.
+          // Other worktrees' detached HEADs are not decorations: kept only when they change the paths.
+          ...(refs ?? ['refs/heads/', 'refs/remotes/']).map((r) => `--decorate-refs=${r}`),
+          '--decorate-refs=HEAD',
+        ]
+      : []),
     // Tags are not start points: hundreds of old release tags make git's topological walk cover nearly
     // all history before the first commit is printed. Tags still label commits reachable from branches.
     ...(refs ?? ['--branches', '--remotes', ...head]),
     // A head gone since the worktree list was read is skipped, not an error.
     ...(heads.length > 0 ? ['--ignore-missing', ...heads] : []),
+    '--',
+    // A ':' or '*' in a file name is not pathspec magic; literal pathspecs still use Bloom filters.
+    ...paths.map((p) => `:(literal)${p}`),
   ];
 }
 
@@ -122,7 +147,6 @@ export class LogReader {
       `--format=${LOG_FORMAT}`,
       '--no-color',
       ...view,
-      '--',
     ];
     const proc = spawn(git, args, {
       cwd,
