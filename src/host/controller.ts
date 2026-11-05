@@ -1,7 +1,8 @@
 import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
+import { addRule, parseRules, type BadgeRule } from '../core/badge-rules.ts';
 import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
-import type { RefSnapshot } from '../core/refs.ts';
+import type { Ref, RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
@@ -55,6 +56,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
   private undoRecord: Undo | undefined;
   private gitDirOf: { root: string; dir: Promise<string> } | undefined;
+  private commonDirOf: { root: string; dir: Promise<string> } | undefined;
   private running: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private repoSubscription: vscode.Disposable | undefined;
@@ -139,11 +141,10 @@ export class GraphController implements vscode.Disposable, FlowHost {
   private watchStashes(repo: GitRepository): vscode.Disposable {
     let watcher: vscode.FileSystemWatcher | undefined;
     let disposed = false;
-    const root = repo.rootUri.fsPath;
-    void runGit(this.api.git.path, root, ['rev-parse', '--git-common-dir']).then(
+    void this.commonDir(repo.rootUri.fsPath).then(
       (dir) => {
         if (disposed) return;
-        const logs = vscode.Uri.file(resolve(root, dir.trim(), 'logs', 'refs'));
+        const logs = vscode.Uri.file(resolve(dir, 'logs', 'refs'));
         watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(logs, 'stash'));
         const refresh = () => {
           this.scheduleRefresh();
@@ -207,6 +208,9 @@ export class GraphController implements vscode.Disposable, FlowHost {
           if (hash) this.post({ type: 'reveal', hash });
           break;
         }
+        case 'setBadgeRules':
+          await this.setBadgeRules(parseRules(m.rules));
+          break;
         case 'refresh':
           await this.reset();
           break;
@@ -231,9 +235,10 @@ export class GraphController implements vscode.Disposable, FlowHost {
       return;
     }
     const cwd = repo.rootUri.fsPath;
-    const [refs, stashes] = await Promise.all([
+    const [refs, stashes, badgeRules] = await Promise.all([
       readRefs(this.api.git.path, cwd),
       readStashes(this.api.git.path, cwd, this.stashCache),
+      this.badgeRules(cwd),
     ]);
     if (generation !== this.generation) return;
     // Undo moves the branch HEAD was on; once HEAD is on another one, it would move the wrong branch.
@@ -257,6 +262,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
       refs,
       options: this.options,
       stashes,
+      badgeRules,
       ...(result === undefined ? {} : { result }),
     });
     this.scheduleGraphUpdate();
@@ -316,6 +322,37 @@ export class GraphController implements vscode.Disposable, FlowHost {
         dir: runGit(this.api.git.path, root, ['rev-parse', '--git-dir']).then((d) => resolve(root, d.trim())),
       };
     return this.gitDirOf.dir;
+  }
+
+  /** The git dir shared by every worktree of the repository at `root`, absolute. */
+  private commonDir(root: string): Promise<string> {
+    if (this.commonDirOf?.root !== root)
+      this.commonDirOf = {
+        root,
+        dir: runGit(this.api.git.path, root, ['rev-parse', '--git-common-dir']).then((d) => resolve(root, d.trim())),
+      };
+    return this.commonDirOf.dir;
+  }
+
+  /** The badge rules of the repository at `root`; none when its git dir cannot be read. */
+  private async badgeRules(root: string): Promise<BadgeRule[]> {
+    const dir = await this.commonDir(root).catch(() => undefined);
+    if (dir === undefined) return [];
+    return this.env.badgeRules.get(dir);
+  }
+
+  /** Adds a rule hiding the badge of `ref`: its short name, free of * and ?, matches only it. */
+  async hideBadge(ref: Ref): Promise<void> {
+    const dir = await this.commonDir(this.requireRepo().rootUri.fsPath);
+    await this.setBadgeRules(addRule(this.env.badgeRules.get(dir), { pattern: ref.short, keep: false }));
+  }
+
+  /** Replaces the graph's repository's badge rules and tells the graph. */
+  private async setBadgeRules(rules: BadgeRule[]): Promise<void> {
+    const repo = this.requireRepo();
+    const dir = await this.commonDir(repo.rootUri.fsPath);
+    await this.env.badgeRules.set(dir, rules);
+    if (this.repo === repo) this.post({ type: 'badgeRules', rules });
   }
 
   private marksOf(dir: string): StashMark[] {

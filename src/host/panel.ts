@@ -8,6 +8,7 @@ import type {
   WebviewToHost,
 } from '../shared/protocol.ts';
 import type { FileChange, FileView } from '../core/details.ts';
+import type { Ref } from '../core/refs.ts';
 import { GraphController } from './controller.ts';
 import type { FlowEnv, FlowHost } from './flow.ts';
 import { isCommandId } from '../shared/commands.ts';
@@ -135,6 +136,16 @@ export class GraphPanel implements vscode.Disposable {
 
   copyCommitPatch(hash: string): Promise<void> {
     return this.requireController().copyCommitPatch(hash);
+  }
+
+  /** Hides the badge of `ref` with a rule naming it. */
+  hideBadge(ref: Ref): Promise<void> {
+    return this.requireController().hideBadge(ref);
+  }
+
+  /** Opens the graph's ref filter searching for `search`. */
+  findRefs(search: string): void {
+    this.post({ type: 'findRefs', search });
   }
 
   copyStashPatch(hash: string): Promise<void> {

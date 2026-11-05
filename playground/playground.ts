@@ -3,9 +3,11 @@
 // Query: ?theme=dark|light|high-contrast|high-contrast-light&repo=<scenario>&select=<row>&showStashes=0
 //   &menu=<selector>: right-click that element, shown as while VS Code's menu is open
 //   &busy=<label>: a Strata operation running
+//   &badgeRules=IR*,!IR*release*: the repository's badge rules (! keeps); &search=<text> typed into the open filter
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
+import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import {
@@ -65,6 +67,11 @@ const queried: Partial<ViewOptions> = {
 };
 let options: ViewOptions = { ...DEFAULT_OPTIONS, ...queried };
 let visible: Commit[] = [];
+let badgeRules: BadgeRule[] = (params.get('badgeRules') ?? '')
+  .split(',')
+  .filter(Boolean)
+  .map((p) => (p.startsWith('!') ? { pattern: p.slice(1), keep: true } : { pattern: p, keep: false }));
+const search = params.get('search');
 
 /** Commits reachable from the selected refs (in the original order), like git log <refs> [--first-parent]. */
 function select(d: PlaygroundData, o: ViewOptions): Commit[] {
@@ -91,7 +98,15 @@ function reset(): void {
   generation++;
   offset = 0;
   visible = select(data, options);
-  toWebview({ type: 'reset', generation, repo: data.repo, refs: data.refs, options, stashes: data.stashes });
+  toWebview({
+    type: 'reset',
+    generation,
+    repo: data.repo,
+    refs: data.refs,
+    options,
+    stashes: data.stashes,
+    badgeRules,
+  });
 }
 
 async function onMessage(m: WebviewToHost): Promise<void> {
@@ -119,6 +134,8 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       if (openPopover === 'filter' && offset === commits.length) {
         setTimeout(() => {
           toWebview({ type: 'simulate', action: { kind: 'click', selector: '.ref-filter-button' } });
+          if (search !== null)
+            toWebview({ type: 'simulate', action: { kind: 'type', selector: '.popover-search', text: search } });
         }, 50);
       }
       if (selectRow !== null && offset === commits.length) {
@@ -138,7 +155,15 @@ async function onMessage(m: WebviewToHost): Promise<void> {
           };
           generation++;
           offset = 0;
-          toWebview({ type: 'reset', generation, repo: data.repo, refs: before, options, stashes: data.stashes });
+          toWebview({
+            type: 'reset',
+            generation,
+            repo: data.repo,
+            refs: before,
+            options,
+            stashes: data.stashes,
+            badgeRules,
+          });
           generation++;
           toWebview({
             type: 'reset',
@@ -147,6 +172,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
             refs: data.refs,
             options,
             stashes: data.stashes,
+            badgeRules,
             result: { focus: moved.hash },
           });
         }
@@ -162,6 +188,10 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       }
       break;
     }
+    case 'setBadgeRules':
+      badgeRules = m.rules;
+      toWebview({ type: 'badgeRules', rules: badgeRules });
+      break;
     case 'select': {
       const details = data?.details[m.hash];
       if (details) toWebview({ type: 'details', generation, details });

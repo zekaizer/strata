@@ -52,6 +52,19 @@ export function fitBadges({ widths, more, minWidth, gap, available }: BandFit): 
   return Math.min(kept, n);
 }
 
+/** `refsByHash` without the refs named in `hidden`; commits left with none are dropped. */
+export function shownRefs(
+  refsByHash: ReadonlyMap<string, readonly Ref[]>,
+  hidden: { has(name: string): boolean },
+): Map<string, Ref[]> {
+  const shown = new Map<string, Ref[]>();
+  for (const [hash, refs] of refsByHash) {
+    const kept = refs.filter((r) => !hidden.has(r.name));
+    if (kept.length > 0) shown.set(hash, kept);
+  }
+  return shown;
+}
+
 /**
  * The badges of one commit: a detached HEAD, then `refs` (in badgeOrder) with each local branch
  * merged with its same-named remote-tracking branches; past the first `keep(all)` the rest

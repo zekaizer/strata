@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { BadgeRuleStore } from './host/badge-store.ts';
 import { contextValue, type ContextKey } from './host/context.ts';
 import type { FlowEnv } from './host/flow.ts';
 import { registerCommands } from './host/menus.ts';
@@ -24,7 +25,12 @@ const ORPHAN_CHECK_MS = 3000;
 export function activate(context: vscode.ExtensionContext): StrataTestApi {
   GraphPanel.memento = context.workspaceState;
   const runner = new OpRunner();
-  const env: FlowEnv = { runner, ui: vscodeUi, state: context.workspaceState };
+  const env: FlowEnv = {
+    runner,
+    ui: vscodeUi,
+    state: context.workspaceState,
+    badgeRules: new BadgeRuleStore(context.globalState),
+  };
   GraphPanel.env = env;
   const show = () => GraphPanel.show(context.extensionUri);
   context.subscriptions.push(

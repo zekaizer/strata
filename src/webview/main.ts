@@ -3,6 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
+import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import {
@@ -26,7 +27,7 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { fitBadges, landedRefs, refsLabel, rowBadges, type Badge } from './badges.ts';
+import { fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
@@ -146,6 +147,13 @@ class App {
   private repo: RepoInfo | undefined;
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
   private refsByHash = new Map<string, Ref[]>();
+  /** The repository's badge rules, and the refs they hide by full name. */
+  private badgeRules: BadgeRule[] = [];
+  private hiddenBadges = new Map<string, BadgeRule>();
+  /** "Show hidden badges": the rules' badges are shown until the panel is reloaded. */
+  private showHiddenBadges = false;
+  /** `refsByHash` less the hidden badges' refs: what the ref bands show. */
+  private badgeRefsByHash = new Map<string, Ref[]>();
   // Declared before `options`, which is initialized from it.
   private restore: SavedState | undefined = savedState() as SavedState | undefined;
   // States saved before an option existed lack it.
@@ -275,15 +283,22 @@ class App {
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
-    this.refFilter = new RefFilter(
-      this.toolbar,
-      (refs) => {
+    this.refFilter = new RefFilter(this.toolbar, {
+      onRefs: (refs) => {
         this.setOptions({ ...this.options, refs });
       },
-      (show) => {
+      onShowStashes: (show) => {
         this.setShowStashes(show);
       },
-    );
+      onBadgeRules: (rules) => {
+        vscode.postMessage({ type: 'setBadgeRules', rules });
+      },
+      onShowHiddenBadges: (show) => {
+        this.showHiddenBadges = show;
+        this.applyBadgeRules();
+        this.relist();
+      },
+    });
     this.stashButton.append(
       el('span', 'codicon codicon-git-stash'),
       el('span', 'tool-label stash-count'),
@@ -414,7 +429,13 @@ class App {
         this.queueRender();
         break;
       case 'reset':
+        this.badgeRules = m.badgeRules;
         this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result);
+        break;
+      case 'badgeRules':
+        this.badgeRules = m.rules;
+        this.applyBadgeRules();
+        this.relist();
         break;
       case 'stashes':
         if (m.generation !== this.generation) return;
@@ -475,6 +496,9 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'findRefs':
+        this.refFilter.openWith(m.search);
+        break;
       case 'reveal':
         this.reveal(m.hash);
         break;
@@ -498,6 +522,9 @@ class App {
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.refFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+        this.refsByHash = new Map();
+        this.badgeRules = [];
+        this.applyBadgeRules();
         this.refFilter.update(this.refs, null);
         this.operation = undefined;
         this.operationNotes.clear();
@@ -597,6 +624,7 @@ class App {
     const upstream = headUpstream(refs);
     for (const [hash, list] of this.refsByHash)
       this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, options.refs));
+    this.applyBadgeRules();
     this.setStashes(stashes);
     this.updateBanner();
     this.commits = [];
@@ -715,6 +743,17 @@ class App {
       if (row.kind === 'commit' || stashes.some((s) => s.hash === row.stash.hash)) return rowHash(row);
     }
     return undefined;
+  }
+
+  /** Works out which badges the rules hide from the rules and the refs. */
+  private applyBadgeRules(): void {
+    this.hiddenBadges = hiddenRefs(this.badgeRules, this.refs);
+    this.badgeRefsByHash = shownRefs(this.refsByHash, this.showHiddenBadges ? new Set() : this.hiddenBadges);
+    this.refFilter.updateBadges({
+      rules: this.badgeRules,
+      hidden: this.hiddenBadges,
+      showHidden: this.showHiddenBadges,
+    });
   }
 
   private setStashes(stashes: StashEntry[]): void {
@@ -1384,8 +1423,13 @@ class App {
       return row;
     }
     const c = r.commit;
-    const badges = rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs, (all) => this.fitBand(all));
-    const refs = badges.flatMap((b) => b.refs);
+    const badgeRefs = this.badgeRefsByHash.get(c.hash) ?? [];
+    const badges = rowBadges(c.hash, badgeRefs, this.refs, (all) => this.fitBand(all));
+    // The row's menu still offers the refs whose badges are hidden.
+    const refs = [
+      ...badges.flatMap((b) => b.refs),
+      ...(this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r)).map((r) => r.name),
+    ];
     const branches = (this.refsByHash.get(c.hash) ?? []).filter(
       (r) => r.kind === 'branch' && r.short !== this.refs.headBranch,
     );
@@ -1438,7 +1482,7 @@ class App {
     );
     row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
     // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
-    const refsRead = refsLabel(rowBadges(c.hash, this.refsByHash.get(c.hash) ?? [], this.refs, (all) => all.length));
+    const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length));
     const said = [
       c.subject,
       refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
@@ -1626,7 +1670,7 @@ class App {
 
   /** Whether a commit shows ref badges; must agree with rowBadges(). */
   private hasBadges(hash: string): boolean {
-    return this.refsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
+    return this.badgeRefsByHash.has(hash) || (hash === this.refs.head && this.refs.headBranch === undefined);
   }
 
   private renderDetails(): void {
@@ -2345,6 +2389,9 @@ class App {
       })(),
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
+      refFilterButton: this.refFilter.button.textContent,
+      refFilterSearch: this.refFilter.searchText(),
+      badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
           !f.matches(':hover') &&

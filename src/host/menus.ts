@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { similarPattern } from '../core/badge-rules.ts';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
 import { canWrite } from '../core/git-version.ts';
 import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../core/wording.ts';
@@ -205,6 +206,14 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.copyRefName': (ctx) => {
     const host = panel().flowHost();
     return copyRefName(host, parseTarget(ctx, ['branch', 'remoteBranch', 'tag'], host.refs).ref);
+  },
+  'strata.hideBadge': (ctx) => {
+    const host = panel().flowHost();
+    return panel().hideBadge(parseTarget(ctx, ['branch', 'remoteBranch', 'tag'], host.refs).ref);
+  },
+  'strata.hideSimilarBadges': (ctx) => {
+    const host = panel().flowHost();
+    panel().findRefs(similarPattern(parseTarget(ctx, ['branch', 'remoteBranch', 'tag'], host.refs).ref.short));
   },
   'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),

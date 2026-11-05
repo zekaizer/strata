@@ -135,6 +135,29 @@ after(() => setTheme('dark'));
   }
 });
 
+(shotDir ? describe : describe.skip)('tool: hidden badge screenshots', () => {
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      await waitFor('history', async () => (await panel.probe()).done);
+      // A rule in the Hidden badges section and the toolbar's count, with the next glob previewed.
+      await panel.simulate({ kind: 'click', selector: '.ref-filter-button' });
+      await panel.simulate({ kind: 'type', selector: '.popover-search', text: 'cross/*' });
+      await panel.simulate({ kind: 'click', selector: '.popover-hide' });
+      await waitFor('rule applied', async () => (await panel.probe()).refFilterButton.includes('hidden'));
+      await panel.simulate({ kind: 'type', selector: '.popover-search', text: 'feature/*' });
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await mkdir(shotDir!, { recursive: true });
+      await screenshot(join(shotDir!, `hidden-badges-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.popover-rule button[aria-label^="Remove"]' });
+      await waitFor('rule removed', async () => !(await panel.probe()).refFilterButton.includes('hidden'));
+      panel.dispose();
+    });
+  }
+});
+
 // STRATA_MENU_SHOT_DIR=<dir>: screenshot the file and commit context menus.
 const menuDir = process.env['STRATA_MENU_SHOT_DIR'];
 (menuDir ? describe : describe.skip)('tool: context menu screenshots', () => {

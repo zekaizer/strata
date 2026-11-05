@@ -229,6 +229,16 @@
         "category": "Strata"
       },
       {
+        "command": "strata.hideBadge",
+        "title": "Hide Badge",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.hideSimilarBadges",
+        "title": "Hide Similar Badges...",
+        "category": "Strata"
+      },
+      {
         "command": "strata.deleteBranch",
         "title": "Delete Branch...",
         "category": "Strata",
@@ -553,6 +563,36 @@
           "group": "5_copy@1"
         },
         {
+          "command": "strata.hideBadge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "6_hide@1"
+        },
+        {
+          "command": "strata.hideBadge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "6_hide@1"
+        },
+        {
+          "command": "strata.hideBadge",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "6_hide@1"
+        },
+        {
+          "command": "strata.hideSimilarBadges",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "group": "6_hide@2"
+        },
+        {
+          "command": "strata.hideSimilarBadges",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
+          "group": "6_hide@2"
+        },
+        {
+          "command": "strata.hideSimilarBadges",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "6_hide@2"
+        },
+        {
           "command": "strata.deleteBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
           "group": "9_delete@1"
@@ -725,6 +765,14 @@
         },
         {
           "command": "strata.copyRefName",
+          "when": "false"
+        },
+        {
+          "command": "strata.hideBadge",
+          "when": "false"
+        },
+        {
+          "command": "strata.hideSimilarBadges",
           "when": "false"
         },
         {
