@@ -91,6 +91,7 @@
   --badge-tag: var(--vscode-charts-yellow);
   --badge-stash: var(--vscode-descriptionForeground);
   --badge-head: var(--vscode-scmGraph-historyItemRefColor, var(--vscode-charts-blue));
+  --badge-worktree: var(--vscode-charts-green);
 
   /*
    * A surface one layer below the list (the commit details): darker than the rows, which cast a
