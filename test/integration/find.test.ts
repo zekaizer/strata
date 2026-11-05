@@ -37,6 +37,8 @@ describe('find commits', () => {
   };
 
   afterEach(async () => {
+    if ((await panel().probe()).find.list !== undefined)
+      await panel().simulate({ kind: 'click', selector: '.find-toggle' });
     if ((await panel().probe()).find.open) await key('Escape');
     if ((await panel().probe()).options.refs !== null) {
       await panel().simulate({ kind: 'click', selector: '.ref-filter-button' });
@@ -216,5 +218,34 @@ describe('find commits', () => {
       `Commit ${hotfix.slice(0, 7)} is not in the graph: only tag v9-hotfix reaches it, and the graph starts from branches, not tags.`,
     );
     assert.deepEqual(ui.first('notify').actions, []);
+  });
+  it('lists the matches by group and goes to the one clicked', async () => {
+    await open();
+    await type('login');
+    const hits = expected('--grep=login');
+    await until('matches counted', (p) => p.find.matches === hits.length);
+    await panel().simulate({ kind: 'click', selector: '.find-toggle' });
+    const s = await until('list shown', (p) => p.find.list !== undefined);
+    const subject = (h: string) => git('log', '-1', '--format=%s', h);
+    assert.deepEqual(s.find.list!.slice(0, 2), [
+      'Branches and tags',
+      `feature/login on ${subject(git('rev-parse', 'feature/login'))} ${git('rev-parse', '--short=7', 'feature/login')}`,
+    ]);
+    const commits = s.find.list!.indexOf(`Commits (${hits.length})`);
+    assert.ok(commits > 0, 'a Commits group');
+    assert.ok(s.find.list![commits + 1]!.startsWith(subject(hits[0]!)));
+    await panel().simulate({ kind: 'click', selector: '.find-list .find-row:last-of-type' });
+    await until('the last match selected', (p) => p.selected === hits.at(-1));
+    await panel().simulate({ kind: 'click', selector: '.find-toggle' });
+    await until('list hidden', (p) => p.find.list === undefined);
+  });
+
+  it('offers to search for an author whose name holds the text', async () => {
+    await open();
+    await type('lovelace');
+    await panel().simulate({ kind: 'click', selector: '.find-toggle' });
+    await until('suggestion listed', (p) => p.find.list?.at(-1) === 'Search author:"Ada Lovelace"');
+    await panel().simulate({ kind: 'click', selector: '.find-list .find-row:last-of-type' });
+    await until('author search', (p) => p.find.input === 'author:"Ada Lovelace"' && p.find.matches > 0);
   });
 });

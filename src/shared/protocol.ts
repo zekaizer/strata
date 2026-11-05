@@ -271,6 +271,8 @@ export interface ProbeState {
     marks: Record<number, string[]>;
     hitRows: number[];
     badges: string[];
+    /** While the match list shows: the text of its headings, rows and notes, in order. */
+    list: string[] | undefined;
   };
   /** The repository's badge rules as the host last sent them. */
   badgeRules: BadgeRule[];

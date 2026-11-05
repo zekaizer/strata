@@ -103,6 +103,12 @@ interface Search {
   capped: boolean;
   /** The user typed the query: its first hits show a match. */
   typed: boolean;
+  /** Hits the match list shows; "Show N more…" adds a page. */
+  listed: number;
+  /** Matches locate found outside the view. */
+  outside: Set<string>;
+  /** An author of the loaded commits whose name holds the text, offered as author:<name>; null: none. */
+  suggestion?: string | null;
 }
 
 /** Going to a match the list has not loaded: asking where it is, then loading down to it. */
@@ -141,6 +147,9 @@ const RESTORE_SEARCH_LIMIT = 5000;
 const FIND_PAGE = 10_000;
 /** Chromium's limit on an element's height, which the list cannot grow past (docs/PERFORMANCE.md). */
 const MAX_LIST_PX = 33_500_000;
+/** Hits the match list shows at first, and adds per "Show N more…". */
+const LIST_FIRST = 10;
+const LIST_MORE = 100;
 
 /**
  * Old and New are words: no icon says "this file before / after the commit" without being read as
@@ -386,6 +395,9 @@ class App {
       onStop: () => this.stopJump(),
       onClose: () => {
         this.closeFind();
+      },
+      onList: () => {
+        this.renderFindList();
       },
     });
     this.findButton.title = `Find Commit (${isMac ? '⌘F' : 'Ctrl+F'})`;
@@ -1102,6 +1114,8 @@ class App {
         done: false,
         capped: false,
         typed,
+        listed: LIST_FIRST,
+        outside: new Set(),
       };
       if (this.generation >= 0) vscode.postMessage({ type: 'find', generation: this.generation, id, query });
     }
@@ -1185,6 +1199,8 @@ class App {
     if (!jump || m.id !== jump.id || m.generation !== this.generation) return;
     if (m.position === undefined) {
       this.stopJump();
+      this.search?.outside.add(m.hash);
+      this.renderFindList();
       this.findWidget.setCount({ text: 'Not in view', problem: true });
       const why = outOfView(m.reachedBy, this.options);
       this.notShown = { hash: m.hash, generation: this.generation, ...(why.action ? { action: why.action } : {}) };
@@ -1274,6 +1290,108 @@ class App {
     }
     this.findWidget.setCount(count);
     this.findWidget.setStepping((search?.matches.length ?? 0) > 0);
+    this.renderFindList();
+  }
+
+  /**
+   * The match list: the commits a hash names, the branches and tags whose names match, then the
+   * hits in graph order, LIST_FIRST at first; clicking one goes to it.
+   */
+  private renderFindList(): void {
+    const widget = this.findWidget;
+    const search = this.search;
+    if (!widget.listShown || !search) {
+      widget.list.replaceChildren();
+      widget.syncList();
+      return;
+    }
+    const current = this.selectedHash();
+    const text = search.query.text;
+    const commitRow = (h: FindHit, note?: string) => {
+      const row = el('button', 'list-row clickable find-row');
+      row.classList.toggle('current', h.hash === current);
+      row.title = `${h.subject}\n${h.author}, ${formatDate(h.authorTime)}, ${shortHash(h.hash)}`;
+      row.append(
+        codicon('git-commit'),
+        marked('list-row-text', h.subject, text === '' ? undefined : text),
+        el('span', 'list-row-note', note ?? `${shortHash(h.hash)} · ${h.author} · ${formatShortDate(h.authorTime)}`),
+      );
+      row.addEventListener('click', () => {
+        this.goToMatch(h.hash);
+      });
+      return row;
+    };
+    const rows: HTMLElement[] = [];
+    if (search.exact.length > 0)
+      rows.push(
+        el('div', 'section-title', 'Commit'),
+        ...search.exact.map((h) =>
+          commitRow(h, search.outside.has(h.hash) ? `not in the graph · ${shortHash(h.hash)}` : undefined),
+        ),
+      );
+    const refs = this.refs.refs.filter((r) => search.refs.has(r.name));
+    if (refs.length > 0) {
+      rows.push(el('div', 'section-title', 'Branches and tags'));
+      for (const r of refs.slice(0, LIST_FIRST)) {
+        const row = el('button', 'list-row clickable find-row');
+        const look = r.kind === 'branch' && r.short === this.refs.headBranch ? 'head' : r.kind;
+        const at = this.commits[this.position(r.hash) ?? -1];
+        row.append(
+          chip(look, BADGE_ICON[look], r.short, r.name),
+          el('span', 'list-row-text', at ? `on ${at.subject}` : ''),
+          el('span', 'list-row-note', shortHash(r.hash)),
+        );
+        if (this.hiddenBadges.has(r.name)) row.title = `Badge hidden by ${this.hiddenBadges.get(r.name)!.pattern}`;
+        row.addEventListener('click', () => {
+          this.goToMatch(r.hash);
+        });
+        rows.push(row);
+      }
+      if (refs.length > LIST_FIRST)
+        rows.push(el('div', 'popover-note', `${refs.length - LIST_FIRST} more; type to narrow`));
+    }
+    const more = !search.done || search.capped;
+    if (search.hits.length > 0) {
+      rows.push(el('div', 'section-title', `Commits (${search.hits.length.toLocaleString()}${more ? '+' : ''})`));
+      rows.push(...search.hits.slice(0, search.listed).map((h) => commitRow(h)));
+      const left = search.hits.length - search.listed;
+      if (left > 0) {
+        const note = el('div', 'popover-note');
+        const button = el('button', 'link-button', `Show ${Math.min(left, LIST_MORE).toLocaleString()} more…`);
+        button.addEventListener('click', () => {
+          search.listed += LIST_MORE;
+          this.renderFindList();
+        });
+        note.append(button);
+        rows.push(note);
+      }
+    } else if (search.done && search.exact.length === 0 && refs.length === 0) {
+      rows.push(el('div', 'popover-note', 'No commit, branch or tag matches.'));
+    }
+    const author = this.authorSuggestion(search);
+    if (author !== undefined) {
+      const row = el('button', 'list-row clickable find-row');
+      const query = `author:${author.includes(' ') ? `"${author}"` : author}`;
+      row.append(codicon('person'), el('span', 'list-row-text', `Search ${query}`));
+      row.addEventListener('click', () => {
+        this.findWidget.open(query);
+      });
+      rows.push(row);
+    }
+    widget.list.replaceChildren(...rows);
+    widget.syncList();
+  }
+
+  /** An author of the loaded commits whose name holds the query's text, worked out once per search. */
+  private authorSuggestion(search: Search): string | undefined {
+    if (search.suggestion === undefined) {
+      const text = search.query.text.toLowerCase();
+      search.suggestion =
+        search.query.author !== undefined || text === '' || search.query.hashPrefix !== undefined
+          ? null
+          : (this.commits.find((c) => c.author.toLowerCase().includes(text))?.author ?? null);
+    }
+    return search.suggestion ?? undefined;
   }
 
   private isMatch(hash: string | undefined): boolean {
@@ -3020,6 +3138,16 @@ class App {
           Number(r.dataset['index']),
         ),
         badges: [...this.rowsLayer.querySelectorAll('.badge.find-match')].map((b) => b.textContent),
+        list: this.findWidget.listShown
+          ? [...this.findWidget.list.children].map((e) =>
+              e.children.length === 0
+                ? e.textContent
+                : [...e.children]
+                    .map((c) => c.textContent)
+                    .filter((t) => t)
+                    .join(' '),
+            )
+          : undefined,
       },
       badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(

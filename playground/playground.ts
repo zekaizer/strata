@@ -50,9 +50,11 @@ const menuAt = params.get('menu');
 const busy = params.get('busy');
 const bannerState = params.get('banner');
 const land = params.get('land');
-/** `find=<text>` opens the find widget with that text typed; `findStep=N` then presses Enter N times. */
+/**
+ * `find=<text>` opens the find widget with that text typed; `findList=1` shows the match list.
+ */
 const findText = params.get('find');
-const findSteps = Number(params.get('findStep') ?? '0');
+const findList = params.get('findList') === '1';
 if (params.get('reduceMotion') === '1') document.body.classList.add('vscode-reduce-motion');
 
 for (const [k, v] of Object.entries(themes[theme])) document.documentElement.style.setProperty(k, v);
@@ -194,14 +196,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         setTimeout(() => {
           toWebview({ type: 'find' });
           toWebview({ type: 'simulate', action: { kind: 'type', selector: '.find-input', text: findText } });
-          for (let i = 0; i < findSteps; i++)
-            setTimeout(
-              () => {
-                toWebview({ type: 'simulate', action: { kind: 'focus', selector: '.find-input' } });
-                toWebview({ type: 'simulate', action: { kind: 'key', key: 'Enter', target: 'focused' } });
-              },
-              400 + i * 100,
-            );
+          if (findList) toWebview({ type: 'simulate', action: { kind: 'click', selector: '.find-toggle' } });
         }, 50);
       }
       if (land !== null && offset === commits.length && generation === 2) {

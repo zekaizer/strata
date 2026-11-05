@@ -11,6 +11,8 @@ export interface FindWidgetEvents {
   /** Escape: stops the jump in progress, if any; true when it did, and the widget stays open. */
   onStop(): boolean;
   onClose(): void;
+  /** The match list was shown or hidden. */
+  onList(shown: boolean): void;
 }
 
 /** What the count says, and how: an error look for no results and commits out of view. */
@@ -20,18 +22,24 @@ export interface FindCount {
 }
 
 /**
- * The find widget over the top right of the list: input, match count, previous and next, close,
- * and a progress bar while the list loads up to a match. It does not close on outside clicks.
+ * The find widget over the top right of the list: input, match count, previous and next, the
+ * match list toggle, close, and a progress bar while the list loads up to a match; the match list
+ * opens under it. It does not close on outside clicks.
  */
 export class FindWidget {
-  readonly element = el('div', 'popover bar find-widget');
+  readonly element = el('div', 'find-widget');
+  private readonly bar = el('div', 'popover bar');
+  /** The match list's rows; the owner fills it while `listShown`. */
+  readonly list = el('div', 'popover-list');
+  private readonly listBox = el('div', 'popover wide find-list');
+  private readonly toggle = el('button', 'icon-button find-toggle');
   readonly input = el('input', 'field find-input');
   private readonly count = el('span', 'popover-summary find-count');
   private readonly prev = el('button', 'icon-button find-prev');
   private readonly next = el('button', 'icon-button find-next');
   private readonly close = el('button', 'icon-button find-close');
   private readonly progress = el('div', 'popover-progress');
-  private readonly bar = el('div', 'popover-progress-bar');
+  private readonly fill = el('div', 'popover-progress-bar');
   private timer: ReturnType<typeof setTimeout> | undefined;
   /** The input the last onQuery reported. */
   private settled = '';
@@ -39,9 +47,8 @@ export class FindWidget {
 
   constructor(events: FindWidgetEvents) {
     this.events = events;
-    this.element.hidden = true;
-    this.element.setAttribute('role', 'search');
-    this.element.setAttribute('aria-label', 'Find commits');
+    this.bar.setAttribute('role', 'search');
+    this.bar.setAttribute('aria-label', 'Find commits');
     this.input.type = 'text';
     this.input.placeholder = 'Find';
     this.input.spellcheck = false;
@@ -63,9 +70,19 @@ export class FindWidget {
     button(this.close, 'close', 'Close (Escape)', () => {
       this.events.onClose();
     });
-    this.progress.append(this.bar);
+    button(this.toggle, 'list-unordered', 'Show Matches as a List', () => {
+      this.showList(!this.listShown);
+    });
+    this.toggle.setAttribute('aria-pressed', 'false');
+    this.progress.append(this.fill);
     this.progress.hidden = true;
-    this.element.append(this.input, this.count, this.prev, this.next, this.close, this.progress);
+    this.bar.append(this.input, this.count, this.prev, this.next, this.toggle, this.close, this.progress);
+    this.list.setAttribute('role', 'list');
+    this.listBox.setAttribute('aria-label', 'Matches');
+    this.listBox.hidden = true;
+    this.listBox.append(this.list);
+    this.element.hidden = true;
+    this.element.append(this.bar, this.listBox);
     this.input.addEventListener('input', () => {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => {
@@ -90,6 +107,23 @@ export class FindWidget {
 
   get value(): string {
     return this.input.value;
+  }
+
+  get listShown(): boolean {
+    return this.toggle.classList.contains('active');
+  }
+
+  /** Shows or hides the match list; it shows only while it has rows. */
+  showList(shown: boolean): void {
+    this.toggle.classList.toggle('active', shown);
+    this.toggle.setAttribute('aria-pressed', String(shown));
+    this.events.onList(shown);
+    this.syncList();
+  }
+
+  /** Call after filling `list`. */
+  syncList(): void {
+    this.listBox.hidden = !this.listShown || this.list.childElementCount === 0;
   }
 
   /** Shows the widget with the input focused and its text selected; `text` replaces the input. */
@@ -126,7 +160,7 @@ export class FindWidget {
   setProgress(done: number | null | undefined): void {
     this.progress.hidden = done === null;
     this.progress.classList.toggle('indeterminate', done === undefined);
-    this.bar.style.width = done === null || done === undefined ? '' : `${Math.round(Math.min(1, done) * 100)}%`;
+    this.fill.style.width = done === null || done === undefined ? '' : `${Math.round(Math.min(1, done) * 100)}%`;
   }
 
   /** Runs the pending query at once, if the input changed since the last one. */

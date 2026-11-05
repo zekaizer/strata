@@ -1160,9 +1160,41 @@ body:not(.hover-off) .file:hover .file-actions,
  * marked with the editor's find colors; the current one (the selected row) more strongly.
  */
 .find-widget {
+  position: absolute;
   top: var(--space-4);
   right: var(--space-16);
+  z-index: var(--z-popover);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-4);
   max-width: calc(100% - 2 * var(--space-16));
+}
+
+.find-widget[hidden] {
+  display: none;
+}
+
+.find-widget > .popover {
+  position: relative;
+  inset: auto;
+  max-width: 100%;
+}
+
+.find-widget > .popover.bar {
+  width: auto;
+}
+
+.find-list {
+  max-height: min(420px, 60vh);
+}
+
+.find-row .list-row-text {
+  min-width: 0;
+}
+
+.find-row .list-row-note {
+  font-variant-numeric: tabular-nums;
 }
 
 .find-count {
@@ -1184,6 +1216,10 @@ body:not(.hover-off) .file:hover .file-actions,
     max-width: calc(100% - 2 * var(--space-4));
   }
 
+  .find-row .list-row-note {
+    display: none;
+  }
+
   .find-count {
     min-width: 0;
   }
@@ -1198,7 +1234,8 @@ body:not(.hover-off) .file:hover .file-actions,
 }
 
 .row.selected .find-mark,
-.row.cursor .find-mark {
+.row.cursor .find-mark,
+.find-row.current .find-mark {
   background: var(--vscode-editor-findMatchBackground);
   outline-color: var(--vscode-editor-findMatchBorder, transparent);
 }
