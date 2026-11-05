@@ -6,6 +6,7 @@
 //   &badgeRules=*-rc*,!v2*-rc*: the repository's badge rules (! keeps); &search=<text> typed into the open popover
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &where=pending: the ref card's where-is question is never answered (its loading state)
+//   &page=components: the design system gallery (gallery.ts) instead of the webview
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
@@ -23,6 +24,7 @@ import dark from './themes/dark.json';
 import highContrastLight from './themes/high-contrast-light.json';
 import highContrast from './themes/high-contrast.json';
 import light from './themes/light.json';
+import { renderGallery } from './gallery.ts';
 import type { PlaygroundData } from './types.ts';
 
 const themes: Record<ThemeKind, Record<string, string>> = {
@@ -330,3 +332,6 @@ Object.assign(window, {
     };
   },
 });
+
+if (params.get('page') === 'components') renderGallery(document.getElementById('app')!);
+else document.body.append(Object.assign(document.createElement('script'), { src: 'main.js' }));

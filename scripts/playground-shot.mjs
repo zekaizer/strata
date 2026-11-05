@@ -18,11 +18,13 @@ try {
 
 // Usage: node scripts/playground-shot.mjs [outDir] [WxH] [query] [hover]
 //   e.g. query "repo=octopus&select=1", hover ".expansion .file" (a selector) or "@30,394" (a point)
+//   query "page=components": the design system gallery, as a full-page screenshot
 const outDir = process.argv[2] ?? 'artifacts/playground';
 const [width, height] = (process.argv[3] ?? '1200x800').split('x').map(Number);
 const query = process.argv[4] ?? 'repo=branchy&select=1';
 /** Optional CSS selector, or "@x,y" in CSS px, to hover before the screenshot (e.g. to show row actions). */
 const hover = process.argv[5];
+const gallery = /(^|&)page=components(&|$)/.test(query);
 const root = 'out/playground';
 const types = {
   '.html': 'text/html',
@@ -56,7 +58,8 @@ for (const theme of ['dark', 'light', 'high-contrast', 'high-contrast-light']) {
     console.error(`[${theme}] ${e.message}`);
   });
   await page.goto(`http://127.0.0.1:${port}/index.html?theme=${theme}&${query}`);
-  await page.waitForFunction(() => window.__strataSent.some((m) => m.type === 'ready'));
+  if (gallery) await page.waitForFunction(() => window.document.documentElement.dataset.galleryReady === '1');
+  else await page.waitForFunction(() => window.__strataSent.some((m) => m.type === 'ready'));
   // Let pages, layout and any requested selection settle.
   await page.waitForTimeout(400);
   if (hover?.startsWith('@')) {
@@ -70,7 +73,7 @@ for (const theme of ['dark', 'light', 'high-contrast', 'high-contrast-light']) {
     await page.waitForTimeout(100);
   }
   const file = join(outDir, `${theme}.png`);
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, fullPage: gallery });
   console.log(file);
   await page.close();
 }
