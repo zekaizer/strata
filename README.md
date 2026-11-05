@@ -9,6 +9,8 @@ page, so it opens quickly even on very large repositories.
   with branch, remote and tag badges above their commits. A branch and
   its same-named remote-tracking branches on the same commit share one badge
   (`main │ origin`); when they differ, both show, so unpushed work stands out.
+  The current branch and its upstream come first; badges that do not fit the
+  row collapse into a `+N` badge.
 - Stashes are rows of their own, directly above the commit each was made on,
   newest on top, with a square node beside that commit's line. A stash whose
   commit is no longer on its branch (after a rebase or amend) sits above the

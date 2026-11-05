@@ -1,8 +1,6 @@
 import { headUpstream, pairRefs, type Ref, type RefSnapshot } from '../core/refs.ts';
 import type { BadgeContext } from '../shared/menu-context.ts';
 
-/** Badges shown in a row's ref band; the rest collapse into a "+N" badge. */
-export const MAX_BADGES = 6;
 /** Remote names shown inside a branch's badge; the rest collapse into "+k". */
 const REMOTES_SHOWN = 2;
 
@@ -26,11 +24,45 @@ export interface Badge extends Target {
   also: string[];
 }
 
+/** A row's badges in order and how much room its ref band has, in px. */
+export interface BandFit {
+  /** Natural width of each badge. */
+  widths: readonly number[];
+  /** Width of the "+N" badge standing for `hidden` badges. */
+  more: (hidden: number) => number;
+  /** Narrowest the last kept badge may ellipsize to. */
+  minWidth: number;
+  gap: number;
+  available: number;
+}
+
+/**
+ * How many badges from the front a band shows: all at natural width but the last, which may
+ * ellipsize down to `minWidth`, followed by a "+N" for the rest that fits too. At least one.
+ */
+export function fitBadges({ widths, more, minWidth, gap, available }: BandFit): number {
+  const n = widths.length;
+  let kept = 1;
+  let used = 0;
+  for (let k = 1; k <= n; k++) {
+    const tail = k < n ? gap + more(n - k) : 0;
+    if (used + Math.min(widths[k - 1]!, minWidth) + tail <= available) kept = k;
+    used += widths[k - 1]! + gap;
+  }
+  return Math.min(kept, n);
+}
+
 /**
  * The badges of one commit: a detached HEAD, then `refs` (in badgeOrder) with each local branch
- * merged with its same-named remote-tracking branches; past MAX_BADGES the rest collapse into "+N".
+ * merged with its same-named remote-tracking branches; past the first `keep(all)` the rest
+ * collapse into "+N".
  */
-export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnapshot): Badge[] {
+export function rowBadges(
+  hash: string,
+  refs: readonly Ref[],
+  snapshot: RefSnapshot,
+  keep: (all: readonly Badge[]) => number,
+): Badge[] {
   const all: Badge[] = [];
   if (hash === snapshot.head && snapshot.headBranch === undefined)
     all.push({
@@ -46,8 +78,9 @@ export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnaps
   const upstream = headUpstream(snapshot);
   for (const { ref, remotes } of pairRefs(refs, snapshot.remotes))
     all.push(refBadge(hash, ref, remotes, snapshot.headBranch, upstream));
-  if (all.length <= MAX_BADGES) return all;
-  const rest = all.slice(MAX_BADGES - 1);
+  const kept = keep(all);
+  if (kept >= all.length) return all;
+  const rest = all.slice(kept);
   const names = rest.flatMap((b) => b.refs);
   const more: Badge = {
     look: 'more',
@@ -59,7 +92,7 @@ export function rowBadges(hash: string, refs: readonly Ref[], snapshot: RefSnaps
     remotes: [],
     also: [],
   };
-  return [...all.slice(0, MAX_BADGES - 1), more];
+  return [...all.slice(0, kept), more];
 }
 
 function refBadge(

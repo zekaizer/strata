@@ -516,6 +516,11 @@ canvas.graph {
   overflow-clip-margin: 2px;
 }
 
+/* Every badge the band shows keeps its natural width but the last before a "+N" (fitBadges in badges.ts). */
+.refs > .badge:not(:last-child, :has(+ .badge-more)) {
+  flex: none;
+}
+
 /* Like VS Code lists: hover never paints over the selection. */
 body:not(.hover-off) .row:not(.selected):hover {
   background: var(--vscode-list-hoverBackground);
@@ -598,7 +603,7 @@ body.keyboard-nav .scroller:focus .row.cursor {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  /* Long names give way before short ones disappear; each keeps at least its icon. */
+  /* A badge left to shrink keeps at least its icon. */
   flex: 0 1 auto;
   min-width: 20px;
   box-sizing: border-box;
