@@ -1,6 +1,11 @@
 import * as assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { canWrite, parseGitVersion } from '../../src/core/git-version.ts';
+import { readGitVersion } from '../../src/git/facts.ts';
+import { tempDir } from './helpers.ts';
 
 describe('git version', () => {
   it('reads the version of every platform build', () => {
@@ -16,5 +21,23 @@ describe('git version', () => {
     assert.equal(canWrite([3, 0, 0]), true);
     assert.equal(canWrite([2, 26, 9]), false);
     assert.equal(canWrite([1, 99, 0]), false);
+  });
+});
+
+describe('the git version read', () => {
+  const dir = tempDir('git-version');
+  const fake = join(dir, 'git');
+  const script = (version: string) => {
+    writeFileSync(fake, `#!/bin/sh\necho 'git version ${version}'\n`, { mode: 0o755 });
+  };
+
+  it('reads again after a failure, and per git path', async () => {
+    await assert.rejects(readGitVersion(fake, dir));
+    script('2.30.1');
+    assert.deepEqual(await readGitVersion(fake, dir), [2, 30, 1]);
+    assert.deepEqual(
+      await readGitVersion('git', dir),
+      parseGitVersion(execFileSync('git', ['version'], { encoding: 'utf8' })),
+    );
   });
 });

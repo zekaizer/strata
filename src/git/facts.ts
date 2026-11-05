@@ -1,5 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { parseGitVersion, type GitVersion } from '../core/git-version.ts';
 import type { OperationState } from '../core/repo-state.ts';
 import type { CommitList, CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
@@ -425,4 +426,17 @@ export async function readWorktreeBranches(git: string, cwd: string): Promise<Ma
     if (path !== undefined && branch !== undefined && path !== top) found.set(branch, path);
   }
   return found;
+}
+
+const gitVersions = new Map<string, Promise<GitVersion | undefined>>();
+
+/** The version of `git`, read once per path; a failed read is not kept. */
+export function readGitVersion(git: string, cwd: string): Promise<GitVersion | undefined> {
+  let v = gitVersions.get(git);
+  if (!v) {
+    v = runGit(git, cwd, ['version']).then(parseGitVersion);
+    gitVersions.set(git, v);
+    v.catch(() => gitVersions.delete(git));
+  }
+  return v;
 }
