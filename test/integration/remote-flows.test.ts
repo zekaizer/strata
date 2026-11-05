@@ -430,7 +430,7 @@ describe('remote operations', () => {
     git('push', '--quiet', 'origin', 'refs/tags/strata-v1');
     git('push', '--quiet', 'mirror', 'refs/tags/strata-v1');
     await reload(panel());
-    ui.choose('origin').press('Delete Tag from Remote');
+    ui.choose('origin').press('Delete Remote Tag');
     await run('strata.deleteRemoteTag', tagMenu('strata-v1'));
     assert.deepEqual(ui.first('pick').items, ['origin', 'mirror']);
     assert.equal(ui.first('confirm').message, "Delete tag 'strata-v1' from 'origin'?");

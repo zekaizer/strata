@@ -5,7 +5,7 @@ import { fitBadges, landedRefs, refsLabel, rowBadges } from '../../src/webview/b
 
 const h = (c: string) => c.repeat(40);
 const at = h('c');
-const ref = (name: string, upstream?: string): Ref => {
+const ref = (name: string, upstream?: string, tracks = upstream !== undefined): Ref => {
   const [, kind, short] = /^refs\/(heads|remotes|tags)\/(.*)$/.exec(name)!;
   return {
     name,
@@ -13,6 +13,7 @@ const ref = (name: string, upstream?: string): Ref => {
     kind: kind === 'heads' ? 'branch' : kind === 'remotes' ? 'remote' : 'tag',
     hash: at,
     ...(upstream ? { upstream } : {}),
+    ...(tracks ? { tracks: true } : {}),
   };
 };
 const snapshot = (refs: Ref[], headBranch: string | undefined): RefSnapshot => ({
@@ -48,6 +49,11 @@ describe('rowBadges', () => {
       strataIsCurrent: false,
       strataUpstream: false,
     });
+  });
+
+  it('says a branch has an upstream when one is configured without a remote-tracking branch for it', () => {
+    const [b] = badgesOf([ref('refs/heads/pr-12', undefined, true)]);
+    assert.equal((b!.context as { strataUpstream: boolean }).strataUpstream, true);
   });
 
   it('makes each remote name in a merged badge a target of its own, past two a "+k" for the rest', () => {

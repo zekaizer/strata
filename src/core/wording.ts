@@ -1124,7 +1124,7 @@ export function deleteRemoteTagConfirmation(tag: string, remote: string, at: Com
   return {
     message: `Delete tag ${refName(tag)} from ${refName(remote)}?`,
     detail: [`The local tag stays at ${commitName(at)}.`, "Strata can't undo this."].join('\n'),
-    buttons: [{ id: 'delete', label: 'Delete Tag from Remote' }],
+    buttons: [{ id: 'delete', label: 'Delete Remote Tag' }],
   };
 }
 

@@ -69,7 +69,8 @@ export function parseStatus(out: string): Worktree {
 /** A stash by its commit (stable) and its current stash@{n} number. */
 export interface StashRef {
   hash: string;
-  index: number;
+  /** The reflog subject, e.g. "On main: Add lexer" or "autostash". */
+  message: string;
 }
 
 /**

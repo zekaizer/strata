@@ -110,7 +110,7 @@ function refBadge(
           strataHash: hash,
           strataRef: r.name,
           strataIsCurrent: current,
-          strataUpstream: r.upstream !== undefined,
+          strataUpstream: r.tracks === true,
         }
       : { webviewSection: r.kind === 'remote' ? 'remoteBranch' : 'tag', strataHash: hash, strataRef: r.name };
   const shown = remotes.length > REMOTES_SHOWN ? remotes.slice(0, REMOTES_SHOWN) : remotes;

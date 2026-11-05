@@ -22,6 +22,7 @@ describe('readRefs', () => {
       kind: 'branch',
       hash: git(dir, 'rev-parse', 'main'),
       upstream: 'refs/remotes/origin/main',
+      tracks: true,
     });
     assert.equal(byName.get('refs/remotes/origin/develop')!.kind, 'remote');
     assert.equal(byName.get('refs/remotes/origin/develop')!.short, 'origin/develop');
@@ -38,6 +39,26 @@ describe('readRefs', () => {
     assert.equal(byName.get('refs/heads/release/0.2')?.upstream, 'refs/remotes/origin/release/0.2');
     assert.equal(byName.get('refs/heads/develop')?.upstream, undefined);
     assert.equal(byName.get('refs/remotes/origin/main')?.upstream, undefined);
+  });
+
+  it('tells a branch with an upstream configured but no remote-tracking branch for it: a URL remote, or one the refspec leaves out', async () => {
+    const d = join(root, 'tracks');
+    scenarios.refs().write(d);
+    git(d, 'branch', 'by-url', 'main');
+    git(d, 'config', 'branch.by-url.remote', 'https://example.invalid/fork.git');
+    git(d, 'config', 'branch.by-url.merge', 'refs/heads/feature');
+    git(d, 'branch', 'unfetched', 'main');
+    git(d, 'remote', 'add', '-t', 'main', 'narrow', 'https://example.invalid/narrow.git');
+    git(d, 'config', 'branch.unfetched.remote', 'narrow');
+    git(d, 'config', 'branch.unfetched.merge', 'refs/heads/feature');
+    git(d, 'branch', 'no-remote', 'main');
+    git(d, 'config', 'branch.no-remote.merge', 'refs/heads/feature');
+    const byName = new Map((await readRefs('git', d)).refs.map((r) => [r.short, r]));
+    for (const b of ['by-url', 'unfetched']) {
+      assert.equal(byName.get(b)?.tracks, true, b);
+      assert.equal(byName.get(b)?.upstream, undefined, b);
+    }
+    for (const b of ['no-remote', 'develop', 'origin/main']) assert.equal(byName.get(b)?.tracks, undefined, b);
   });
 
   it('lists the configured remotes', async () => {

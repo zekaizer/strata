@@ -448,6 +448,13 @@ body.vscode-high-contrast .banner {
   cursor: default;
 }
 
+/* A held primary button keeps no fill: at half opacity it would still stand out from the others. */
+.banner-button.primary[aria-disabled='true'] {
+  border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+
 body:not(.hover-off) .banner-button:not([aria-disabled='true']):hover {
   background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
 }
