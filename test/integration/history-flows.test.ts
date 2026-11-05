@@ -614,6 +614,8 @@ describe('history operations', () => {
     git('add', 'main.txt');
     git('commit', '--quiet', '--no-edit');
     await reload(panel());
+    // The operation context key is set after the reload's repository read, not with it.
+    await waitFor('the cherry pick in the context', () => api().contextValue('strata.operation') === 'cherryPick');
     return git('rev-parse', 'HEAD');
   };
 
