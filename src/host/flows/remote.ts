@@ -1,28 +1,50 @@
 import type { Operation } from '../../core/operations.ts';
+import type { Ref } from '../../core/refs.ts';
+import { remoteBranch } from '../../core/remote-branch.ts';
 import {
+  deleteRemoteBranchConfirmation,
+  deleteRemoteTagConfirmation,
+  deleteRemoteTagPick,
   detachedNoBranch,
   divergedConfirmation,
   forcePushConfirmation,
   NO_REMOTE,
   noUpstream,
   publishPick,
+  pushTagPick,
   PULL_NOTES,
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
   quote,
   REMOTE_DOING,
   REMOTE_DONE,
+  tagExistsOnRemote,
 } from '../../core/wording.ts';
-import { countCommits, readCommit, readConfig, readForkPoint, readHead, readUpstream } from '../../git/facts.ts';
+import {
+  countCommits,
+  readCommit,
+  readConfig,
+  readForkPoint,
+  readHead,
+  readTrackingBranches,
+  readUnmergedRemoteCommits,
+  readUpstream,
+} from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { fail, finish, notify, run, type FlowHost } from '../flow.ts';
+import { fail, finish, notify, run, type Expect, type FlowHost } from '../flow.ts';
 import { merge, rebase, refSource } from './history.ts';
 
 /** Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it ran. */
-async function remoteRun(host: FlowHost, label: string, remote: string | undefined, op: Operation): Promise<boolean> {
+async function remoteRun(
+  host: FlowHost,
+  label: string,
+  remote: string | undefined,
+  op: Operation,
+  expect?: readonly Expect[],
+): Promise<boolean> {
   try {
-    return (await run(host, label, (exec) => exec(op), { remote: true })) !== undefined;
+    return (await run(host, label, (exec) => exec(op), { remote: true, ...(expect ? { expect } : {}) })) !== undefined;
   } catch (e) {
     if (e instanceof GitOpError && (e.kind === 'auth' || e.kind === 'hostKey')) {
       await fail(host, e, { name: remote, op, cwd: host.cwd });
@@ -179,16 +201,19 @@ async function rejected(
     await finish(host, { message: REMOTE_DONE.forcePushed(op.branch, destName) });
 }
 
+/** The remote to push to: the only one, or the user's choice with remote.pushDefault (or origin) first. */
+async function pickRemote(host: FlowHost, title: string): Promise<string | undefined> {
+  if (!hasRemote(host)) return undefined;
+  const preferred = (await readConfig(host.git, host.cwd, 'remote.pushDefault')) ?? 'origin';
+  const ordered = [...host.refs.remotes].sort((a, b) => Number(b === preferred) - Number(a === preferred));
+  return ordered.length === 1
+    ? ordered[0]
+    : host.ui.pick({ title, items: ordered.map((r) => ({ label: r, value: r })) });
+}
+
 /** Pushes `branch` to a remote of the user's choice and makes that its upstream. */
 export async function publish(host: FlowHost, branch: string): Promise<void> {
-  if (!hasRemote(host)) return;
-  const remotes = host.refs.remotes;
-  const preferred = (await readConfig(host.git, host.cwd, 'remote.pushDefault')) ?? 'origin';
-  const ordered = [...remotes].sort((a, b) => Number(b === preferred) - Number(a === preferred));
-  const remote =
-    ordered.length === 1
-      ? ordered[0]
-      : await host.ui.pick({ title: publishPick(branch), items: ordered.map((r) => ({ label: r, value: r })) });
+  const remote = await pickRemote(host, publishPick(branch));
   if (remote === undefined) return;
   const op: Operation = {
     kind: 'push',
@@ -200,4 +225,77 @@ export async function publish(host: FlowHost, branch: string): Promise<void> {
   };
   if (await remoteRun(host, REMOTE_DOING.publishing(branch, remote), remote, op))
     await finish(host, { message: REMOTE_DONE.published(branch, remote) });
+}
+
+/** Pushes `tag` to a remote of the user's choice; git refuses to replace a different tag there. */
+export async function pushTag(host: FlowHost, tag: string): Promise<void> {
+  const remote = await pickRemote(host, pushTagPick(tag));
+  if (remote === undefined) return;
+  try {
+    if (!(await remoteRun(host, REMOTE_DOING.pushingTag(tag, remote), remote, { kind: 'pushTag', remote, tag })))
+      return;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'tagExists')) throw e;
+    notify(host, 'error', tagExistsOnRemote(tag, remote), ['Show Output'], () => {
+      host.runner.showOutput();
+    });
+    return;
+  }
+  await finish(host, { message: REMOTE_DONE.tagPushed(tag, remote) });
+}
+
+/** Deletes tag `ref` from a remote of the user's choice; the local tag stays. */
+export async function deleteRemoteTag(host: FlowHost, ref: Ref): Promise<void> {
+  const tag = ref.short;
+  const remote = await pickRemote(host, deleteRemoteTagPick(tag));
+  if (remote === undefined) return;
+  const at = await readCommit(host.git, host.cwd, ref.name);
+  if (!(await host.ui.confirm(deleteRemoteTagConfirmation(tag, remote, at)))) return;
+  const op: Operation = { kind: 'deleteRemoteRef', remote, ref: ref.name, lease: undefined };
+  if (await remoteRun(host, REMOTE_DOING.deletingTag(tag, remote), remote, op))
+    await finish(host, { message: REMOTE_DONE.remoteTagDeleted(tag, remote) });
+}
+
+/**
+ * Deletes the branch of remote-tracking branch `ref` from its remote, leased on the commit the
+ * confirmation counted from. `moved`: asked again after the lease failed and `ref` was fetched.
+ */
+export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false): Promise<void> {
+  const rb = remoteBranch(ref.name, host.refs.remotes);
+  if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
+  const { remote, branch } = rb;
+  const [tip, unmerged, tracking] = await Promise.all([
+    readCommit(host.git, host.cwd, ref.name),
+    readUnmergedRemoteCommits(host.git, host.cwd, remote, branch),
+    readTrackingBranches(host.git, host.cwd, ref.name),
+  ]);
+  const ask = deleteRemoteBranchConfirmation(remote, branch, ref.short, tip, unmerged, tracking, moved);
+  if (!(await host.ui.confirm(ask))) return;
+  const dest = `refs/heads/${branch}`;
+  const op: Operation = { kind: 'deleteRemoteRef', remote, ref: dest, lease: tip.hash };
+  const label = REMOTE_DOING.deletingBranch(branch, remote);
+  try {
+    if (!(await remoteRun(host, label, remote, op, [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }])))
+      return;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'rejected')) throw e;
+    // The lease failed: the remote has the branch elsewhere, or no longer has it.
+    try {
+      const fetch: Operation = { kind: 'fetch', remote, ref: dest };
+      if (!(await remoteRun(host, REMOTE_DOING.fetching(remote), remote, fetch))) return;
+    } catch (f) {
+      if (!(f instanceof GitOpError && f.kind === 'noRemoteRef')) throw f;
+      // Without a lease git deletes a ref the remote lacks, and with it the remote-tracking branch.
+      if (await remoteRun(host, label, remote, { ...op, lease: undefined }))
+        await finish(host, { message: REMOTE_DONE.remoteBranchGone(ref.short, remote) });
+      return;
+    }
+    const now = await runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', ref.name]).then(
+      (s) => s.trim(),
+      () => undefined,
+    );
+    if (now === tip.hash) throw new Error(`git did not update ${ref.short}; see the output.`, { cause: e });
+    return deleteRemoteBranch(host, ref, true);
+  }
+  await finish(host, { message: REMOTE_DONE.remoteBranchDeleted(branch, remote) });
 }

@@ -155,6 +155,7 @@ export const COMMANDS = {
     titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
     writes: true,
   },
+  'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
   'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
   'strata.copyRefName': {
     title: 'Copy Name',
@@ -170,6 +171,16 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
+  'strata.deleteRemoteTag': {
+    title: 'Delete Tag from Remote...',
+    menus: [{ section: 'tag', group: '9_delete@2' }],
+    writes: true,
+  },
+  'strata.deleteRemoteBranch': {
+    title: 'Delete Remote Branch...',
+    menus: [{ section: 'remoteBranch', group: '9_delete@1' }],
+    writes: true,
+  },
 
   'strata.operation.continue': {
     title: 'Continue Operation',

@@ -312,6 +312,34 @@ describe('operations', () => {
     assert.equal(run(origin, 'rev-parse', 'published'), head(c));
   });
 
+  it('deletes a remote branch, only where the lease still holds, and drops its remote-tracking branch', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', origin, c);
+    const at = run(c, 'rev-parse', 'origin/topic');
+    const del = { kind: 'deleteRemoteRef', remote: 'origin', ref: 'refs/heads/topic' } as const;
+    await assert.rejects(op(c, { ...del, lease: run(c, 'rev-parse', 'origin/main') }), { kind: 'rejected' });
+    assert.equal(run(origin, 'rev-parse', 'topic'), at, 'a stale lease deletes nothing');
+    await op(c, { ...del, lease: at });
+    assert.equal(run(origin, 'branch', '--list', 'topic'), '');
+    assert.equal(run(c, 'branch', '--remotes', '--list', 'origin/topic'), '');
+  });
+
+  it('pushes a tag, refusing to replace a different tag of that name', async () => {
+    const origin = repo();
+    const c = join(root, `clone${n++}`);
+    run(root, 'clone', '--quiet', origin, c);
+    run(c, 'tag', '--annotate', '--message', 'v1', 'v1', 'main');
+    await op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' });
+    assert.equal(run(origin, 'rev-parse', 'v1'), run(c, 'rev-parse', 'v1'));
+    await op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' });
+    run(c, 'tag', '--force', 'v1', 'main');
+    await assert.rejects(op(c, { kind: 'pushTag', remote: 'origin', tag: 'v1' }), { kind: 'tagExists' });
+    await op(c, { kind: 'deleteRemoteRef', remote: 'origin', ref: 'refs/tags/v1', lease: undefined });
+    assert.equal(run(origin, 'tag', '--list', 'v1'), '');
+    assert.equal(run(c, 'tag', '--list', 'v1'), 'v1', 'the local tag stays');
+  });
+
   it('pushes to an upstream branch of another name', async () => {
     const origin = repo();
     const c = join(root, `clone${n++}`);

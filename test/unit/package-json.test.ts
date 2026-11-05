@@ -103,6 +103,20 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.copyRefName',
       'strata.deleteBranch',
     ]);
-    assert.deepEqual(refActions('tag', {}), ['strata.checkoutDetached', 'strata.copyRefName', 'strata.deleteTag']);
+    assert.deepEqual(refActions('remoteBranch', {}), [
+      'strata.checkout',
+      'strata.merge',
+      'strata.rebase',
+      'strata.fetch',
+      'strata.copyRefName',
+      'strata.deleteRemoteBranch',
+    ]);
+    assert.deepEqual(refActions('tag', {}), [
+      'strata.checkoutDetached',
+      'strata.pushTag',
+      'strata.copyRefName',
+      'strata.deleteTag',
+      'strata.deleteRemoteTag',
+    ]);
   });
 });

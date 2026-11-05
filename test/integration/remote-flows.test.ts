@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { branchMenu, flowSuite, reload, run } from './flow-helpers.ts';
+import { branchMenu, flowSuite, reload, remoteMenu, run, tagMenu } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 const IDENTITY = ['-c', 'user.name=Other Person', '-c', 'user.email=other@example.com'];
@@ -206,6 +206,117 @@ describe('remote operations', () => {
       await terminal.update('defaultProfile.linux', undefined, vscode.ConfigurationTarget.Global);
       await terminal.update('profiles.linux', undefined, vscode.ConfigurationTarget.Global);
     }
+  });
+
+  const tracked = (name: string) => git('for-each-ref', `refs/remotes/${name}`);
+  /** A branch on the remote at a commit of its own, fetched: `name` as in strata-x. */
+  const remoteOnly = async (name: string) => {
+    const only = git('commit-tree', 'main^{tree}', '-p', 'main', '-m', 'Only there');
+    git('push', '--quiet', 'origin', `${only}:refs/heads/${name}`);
+    await reload(panel());
+    return only;
+  };
+  const pushFromOther = (branch: string, subject: string) => {
+    const other = join(root, 'other');
+    execFileSync('git', ['clone', '--quiet', '--branch', branch, bare, other]);
+    execFileSync('git', [...IDENTITY, '-C', other, 'commit', '--quiet', '--allow-empty', '-m', subject]);
+    execFileSync('git', ['-C', other, 'push', '--quiet', 'origin', branch]);
+  };
+
+  it('deletes a remote branch, naming the local branch that tracks it, which stays', async () => {
+    await publish();
+    ui.press('Delete Remote Branch');
+    await run('strata.deleteRemoteBranch', remoteMenu('origin/strata-pub'));
+    const asked = ui.first('confirm');
+    assert.equal(asked.message, "Delete branch 'strata-pub' from 'origin'?");
+    assert.match(
+      asked.detail,
+      / No commits are lost\. Local branch 'strata-pub' tracks it and stays\. Strata can't undo this\.$/,
+    );
+    assert.deepEqual(errors(), []);
+    assert.equal(remote('branch', '--list', 'strata-pub'), '');
+    assert.equal(tracked('origin/strata-pub'), '', 'git drops the remote-tracking branch');
+    assert.ok(git('rev-parse', '--verify', 'refs/heads/strata-pub'));
+  });
+
+  it('asks again with what the remote has when someone pushed to the branch since the fetch', async () => {
+    await remoteOnly('strata-x');
+    pushFromOther('strata-x', 'Their fix');
+    ui.press('Delete Remote Branch and Commits', 'Delete Remote Branch and Commits');
+    await run('strata.deleteRemoteBranch', remoteMenu('origin/strata-x'));
+    const asked = ui.of('confirm');
+    assert.equal(asked.length, 2);
+    assert.equal(asked[0]!.message, "Delete branch 'strata-x' from 'origin' and its 1 unmerged commit?");
+    assert.match(
+      asked[1]!.detail,
+      /^'origin\/strata-x' changed on 'origin' since the last fetch\. 2 commits would be on no branch, newest "Their fix"/,
+    );
+    assert.deepEqual(errors(), []);
+    assert.equal(remote('branch', '--list', 'strata-x'), '');
+    assert.equal(tracked('origin/strata-x'), '');
+  });
+
+  it('keeps the remote branch when the second question is cancelled', async () => {
+    await remoteOnly('strata-x');
+    pushFromOther('strata-x', 'Their fix');
+    ui.press('Delete Remote Branch and Commits');
+    await run('strata.deleteRemoteBranch', remoteMenu('origin/strata-x'));
+    assert.equal(ui.of('confirm').length, 2);
+    assert.match(remote('log', '-1', '--format=%s', 'strata-x'), /^Their fix$/);
+  });
+
+  it('drops the remote-tracking branch of a branch the remote no longer has', async () => {
+    await remoteOnly('strata-x');
+    remote('update-ref', '-d', 'refs/heads/strata-x');
+    ui.press('Delete Remote Branch and Commits');
+    await run('strata.deleteRemoteBranch', remoteMenu('origin/strata-x'));
+    assert.equal(ui.of('confirm').length, 1);
+    assert.deepEqual(errors(), []);
+    assert.equal(tracked('origin/strata-x'), '');
+  });
+
+  it('pushes a tag to the remote picked, offering the push default first', async () => {
+    const mirror = join(root, 'mirror.git');
+    execFileSync('git', ['init', '--quiet', '--bare', mirror]);
+    git('remote', 'add', 'mirror', mirror);
+    git('config', 'remote.pushDefault', 'mirror');
+    git('tag', 'strata-v1', 'main~1');
+    await reload(panel());
+    ui.choose('origin');
+    await run('strata.pushTag', tagMenu('strata-v1'));
+    assert.deepEqual(ui.first('pick').items, ['mirror', 'origin']);
+    assert.deepEqual(errors(), []);
+    assert.equal(remote('rev-parse', 'refs/tags/strata-v1'), git('rev-parse', 'main~1'));
+  });
+
+  it('says so when the remote has a different tag of that name', async () => {
+    git('push', '--quiet', 'origin', 'main~1:refs/tags/strata-v1');
+    git('tag', 'strata-v1', 'main');
+    await reload(panel());
+    await run('strata.pushTag', tagMenu('strata-v1'));
+    assert.equal(errors()[0]?.message, "'origin' already has a different tag 'strata-v1'; nothing was pushed.");
+    assert.equal(remote('rev-parse', 'refs/tags/strata-v1'), git('rev-parse', 'main~1'));
+  });
+
+  it('deletes a tag from the remote picked, keeping the local tag', async () => {
+    const mirror = join(root, 'mirror.git');
+    execFileSync('git', ['init', '--quiet', '--bare', mirror]);
+    git('remote', 'add', 'mirror', mirror);
+    git('tag', 'strata-v1', 'main~1');
+    git('push', '--quiet', 'origin', 'refs/tags/strata-v1');
+    git('push', '--quiet', 'mirror', 'refs/tags/strata-v1');
+    await reload(panel());
+    ui.choose('origin').press('Delete Tag from Remote');
+    await run('strata.deleteRemoteTag', tagMenu('strata-v1'));
+    assert.deepEqual(ui.first('pick').items, ['origin', 'mirror']);
+    assert.equal(ui.first('confirm').message, "Delete tag 'strata-v1' from 'origin'?");
+    assert.deepEqual(errors(), []);
+    assert.equal(remote('tag', '--list', 'strata-v1'), '');
+    assert.equal(
+      execFileSync('git', ['-C', mirror, 'tag', '--list', 'strata-v1'], { encoding: 'utf8' }).trim(),
+      'strata-v1',
+    );
+    assert.equal(git('tag', '--list', 'strata-v1'), 'strata-v1');
   });
 
   it('fetches a remote, and pulls the current branch by fast-forwarding it', async () => {

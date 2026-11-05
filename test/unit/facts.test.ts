@@ -22,7 +22,9 @@ import {
   readStashFilesUntrackedHere,
   readStashTop,
   readUnmerged,
+  readTrackingBranches,
   readUnmergedCommits,
+  readUnmergedRemoteCommits,
   readUntrackedAt,
   readUntrackedIn,
   readUpstream,
@@ -111,6 +113,31 @@ describe('confirmation facts', () => {
     assert.equal(reset.dropped.count, 60);
     assert.equal(reset.dropped.newest.length, 50);
     assert.equal(reset.unreachable, 60);
+  });
+
+  it("lists a remote branch's commits that no other ref has, and the branches tracking it", async () => {
+    const originHead = run(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD');
+    run(dir, 'update-ref', 'refs/remotes/origin/gone', 'topic');
+    run(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/gone');
+    run(dir, 'branch', '--quiet', '--track', 'follows', 'origin/main');
+    try {
+      const unmerged = async () =>
+        (await readUnmergedRemoteCommits('git', dir, 'origin', 'gone')).map((c) => c.subject);
+      assert.deepEqual(await unmerged(), [], 'on topic');
+      run(
+        dir,
+        'update-ref',
+        'refs/remotes/origin/gone',
+        run(dir, 'commit-tree', 'topic^{tree}', '-p', 'topic', '-m', 'theirs'),
+      );
+      assert.deepEqual(await unmerged(), ['theirs'], 'origin/HEAD pointing at it does not keep it');
+      assert.deepEqual(await readTrackingBranches('git', dir, 'refs/remotes/origin/main'), ['follows', 'main']);
+      assert.deepEqual(await readTrackingBranches('git', dir, 'refs/remotes/origin/gone'), []);
+    } finally {
+      run(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', originHead);
+      run(dir, 'update-ref', '-d', 'refs/remotes/origin/gone');
+      run(dir, 'branch', '--quiet', '--delete', 'follows');
+    }
   });
 
   it('finds dirty files a switch would have to touch', async () => {

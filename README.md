@@ -94,7 +94,10 @@ operation is stopped, Continue, Abort and Skip.
 - **Branches and tags:** Checkout (a remote branch checks out its local
   branch, or creates one that tracks it), Create Branch, Create Tag, Rename,
   Delete and Copy Name. Deleting a branch says which commits no other branch
-  or tag has.
+  or tag has. Push Tag pushes a tag to a remote (you pick one when there are
+  several), and says so when the remote already has a different tag of that
+  name. Delete Tag from Remote deletes it there and keeps your local tag;
+  that can't be undone.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
   Branch to Here in any of git's modes. Each confirmation says what happens to
@@ -109,7 +112,11 @@ operation is stopped, Continue, Abort and Skip.
 - **Remotes:** Fetch, Pull (fast-forward, merge or rebase, following
   `pull.rebase`), Push and Publish Branch. A rejected push says how many
   commits the remote has that your branch doesn't, and offers a force push
-  with lease when `git.allowForcePush` is on.
+  with lease when `git.allowForcePush` is on. Delete Remote Branch, on a
+  remote branch badge, says which commits no other branch or tag has and which
+  local branches track it (they stay). It deletes nothing when someone pushed
+  to the branch since your last fetch, and asks again with what they pushed.
+  Deleting a remote branch can't be undone.
 - **Uncommitted changes** are named in the confirmation, with the choice to
   stash them around the operation (and bring them back after it) or keep them
   in place. `strata.autoStash` decides which comes first: `gitConfig` (the

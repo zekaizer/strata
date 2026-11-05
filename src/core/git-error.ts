@@ -6,6 +6,8 @@ export type GitErrorKind =
   | 'rejected'
   /** A hook or the server refused the push; forcing cannot help. */
   | 'remoteRejected'
+  /** A tag push refused because the remote has a different tag of that name. */
+  | 'tagExists'
   /** No common commit, e.g. in a shallow clone. */
   | 'unrelated'
   | 'conflict'
@@ -16,6 +18,8 @@ export type GitErrorKind =
   | 'noUpstream'
   /** A cherry pick or revert left nothing to commit (git prints this on stdout). */
   | 'nothingToCommit'
+  /** A fetch of a ref the remote does not have. */
+  | 'noRemoteRef'
   | 'other';
 
 /** Classifies a failed git command by its stderr; the command must run with English messages (see runGitOp). */
@@ -44,11 +48,13 @@ const PATTERNS: readonly [RegExp, GitErrorKind][] = [
   [IN_THE_WAY, 'untrackedOverwrite'],
   [/is already checked out at|is already used by worktree at|used by worktree at/, 'checkedOutElsewhere'],
   [/\[remote rejected\]/, 'remoteRejected'],
+  [/\[rejected\][^\n]*\(already exists\)/, 'tagExists'],
   [/\[rejected\]|Updates were rejected/, 'rejected'],
   [/refusing to merge unrelated histories/, 'unrelated'],
   [/is not fully merged/, 'notMerged'],
   [/has no upstream branch|no tracking information/, 'noUpstream'],
   [/^(?:nothing(?: added)? to commit|no changes added to commit)\b/m, 'nothingToCommit'],
+  [/couldn't find remote ref/, 'noRemoteRef'],
 ];
 
 /** The last progress line of a chunk of `--progress` stderr, e.g. "Receiving objects:  45% (450/1000)". */

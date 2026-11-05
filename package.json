@@ -203,6 +203,12 @@
         "enablement": "!strata.busy"
       },
       {
+        "command": "strata.pushTag",
+        "title": "Push Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.renameBranch",
         "title": "Rename Branch...",
         "category": "Strata",
@@ -222,6 +228,18 @@
       {
         "command": "strata.deleteTag",
         "title": "Delete Tag...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.deleteRemoteTag",
+        "title": "Delete Tag from Remote...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.deleteRemoteBranch",
+        "title": "Delete Remote Branch...",
         "category": "Strata",
         "enablement": "!strata.busy"
       },
@@ -496,6 +514,11 @@
           "group": "3_remote@1"
         },
         {
+          "command": "strata.pushTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "3_remote@1"
+        },
+        {
           "command": "strata.renameBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
           "group": "4_edit@1"
@@ -523,6 +546,16 @@
         {
           "command": "strata.deleteTag",
           "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "9_delete@1"
+        },
+        {
+          "command": "strata.deleteRemoteTag",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'tag'",
+          "group": "9_delete@2"
+        },
+        {
+          "command": "strata.deleteRemoteBranch",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
           "group": "9_delete@1"
         },
         {
@@ -665,6 +698,10 @@
           "when": "activeWebviewPanelId == 'strata.graph'"
         },
         {
+          "command": "strata.pushTag",
+          "when": "false"
+        },
+        {
           "command": "strata.renameBranch",
           "when": "false"
         },
@@ -678,6 +715,14 @@
         },
         {
           "command": "strata.deleteTag",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteRemoteTag",
+          "when": "false"
+        },
+        {
+          "command": "strata.deleteRemoteBranch",
           "when": "false"
         },
         {
