@@ -164,7 +164,7 @@ export function leftoverOf(i: {
   /** This worktree's marks. */
   marks: readonly StashMark[];
 }): Leftover | undefined {
-  const ref = (s: { hash: string; index: number }) => ({ hash: s.hash, index: s.index });
+  const ref = (s: { hash: string; message: string }) => ({ hash: s.hash, message: s.message });
   const pending = (s: { hash: string; index: number; message: string }): Leftover | undefined => {
     const op = strataAutostashOf(s.message);
     return op === undefined ? undefined : { kind: 'pendingStash', stash: ref(s), operation: EXPLICIT[op] };

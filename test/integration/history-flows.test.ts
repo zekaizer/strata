@@ -656,7 +656,9 @@ describe('history operations', () => {
       /Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick of [0-9a-f]+ onto 'main'"\.$/,
     );
     await waitFor('the banner names the held stash', async () =>
-      (await panel().probe()).banner?.text.includes('Your uncommitted changes are in stash@{0} (Strata autostash)'),
+      (await panel().probe()).banner?.text.includes(
+        'Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick',
+      ),
     );
     assert.equal(read('NOTES.md'), notes);
     write('main.txt', 'resolved\n');

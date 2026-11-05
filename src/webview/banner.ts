@@ -1,5 +1,5 @@
 import type { Leftover, OperationKind, OperationState } from '../core/repo-state.ts';
-import { fileList, plural, rebaseContinues } from '../core/wording.ts';
+import { fileList, plural, rebaseContinues, stashLabel } from '../core/wording.ts';
 import type { CommandId } from '../shared/commands.ts';
 
 /** Which of the banner's sentences shows (design §7.2); "Resolved" and "Stopped" have no conflicts left. */
@@ -68,7 +68,6 @@ export function bannerOf(
 ): Banner | undefined {
   if (operation) return stopped(operation, leftover, facts);
   if (!leftover) return undefined;
-  const stash = `stash@{${leftover.kind === 'unmerged' ? (leftover.autostash?.index ?? 0) : leftover.stash.index}}`;
   const on = (label: string, command: CommandId, hash: string): BannerAction => ({
     label,
     command,
@@ -82,7 +81,7 @@ export function bannerOf(
             warning: true,
             label: 'Stashed changes',
             parts: [
-              `Restoring your stashed changes conflicted in ${fileList(leftover.files)}. They're safe in ${stash}.`,
+              `Restoring your stashed changes conflicted in ${fileList(leftover.files)}. They stay in ${stashLabel(leftover.stash.message)}.`,
             ],
             more: '',
             actions: [RESOLVE, on('Show Stash', 'strata.showStash', leftover.stash.hash)],
@@ -91,7 +90,7 @@ export function bannerOf(
             state: 'leftoverResolved',
             warning: false,
             label: 'Stashed changes',
-            parts: [`Conflicts resolved. If all your changes are back, drop ${stash}.`],
+            parts: [`Conflicts resolved. If all your changes are back, drop ${stashLabel(leftover.stash.message)}.`],
             more: '',
             actions: [
               on('Drop Stash...', 'strata.stash.drop', leftover.stash.hash),
@@ -104,7 +103,7 @@ export function bannerOf(
         warning: false,
         label: 'Stashed changes',
         parts: [
-          `Strata stashed your changes before ${/^[aeiou]/.test(leftover.operation) ? 'an' : 'a'} ${leftover.operation} and hasn't restored them: ${stash}.`,
+          `Strata stashed your changes before ${/^[aeiou]/.test(leftover.operation) ? 'an' : 'a'} ${leftover.operation} and hasn't restored them: ${stashLabel(leftover.stash.message)}.`,
         ],
         more: '',
         actions: [
@@ -119,7 +118,7 @@ export function bannerOf(
         warning: true,
         label: 'Conflicts',
         parts: [`${plural(leftover.count, 'file')} ${leftover.count === 1 ? 'has' : 'have'} conflicts.`],
-        more: kept ? `git kept stashed changes in ${stash} (autostash).` : '',
+        more: kept ? `Your uncommitted changes are in ${stashLabel(kept.message)}.` : '',
         actions: [RESOLVE, ...(kept ? [on('Show Stash', 'strata.showStash', kept.hash)] : [])],
       };
     }
@@ -270,7 +269,7 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
         );
       const held =
         leftover?.kind === 'pendingStash'
-          ? `Your uncommitted changes are in stash@{${leftover.stash.index}} (Strata autostash); Strata restores them when you continue or abort here.`
+          ? `Your uncommitted changes are in ${stashLabel(leftover.stash.message)}; Strata restores them when you continue or abort here.`
           : '';
       return banner('sequencer', [...doing, conflicts], [RESOLVE, CONTINUE, SKIP, ABORT], held);
     }

@@ -5,6 +5,7 @@
 //   &busy=<label>: a Strata operation running
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
+import { autostashMessage } from '../src/core/autostash.ts';
 import type { Commit } from '../src/core/commit.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
 import {
@@ -175,7 +176,13 @@ async function onMessage(m: WebviewToHost): Promise<void> {
 function repoStates(state: string, d: PlaygroundData): [OperationState | undefined, Leftover | undefined][] {
   const at = (short: string) => d.refs.refs.find((r) => r.short === short)?.hash ?? d.commits[0]!.hash;
   const applying = d.commits.find((c) => c.subject === 'Search UI')?.hash ?? d.commits[1]!.hash;
-  const stash = { hash: d.stashes[0]?.hash ?? d.commits[0]!.hash, index: 0 };
+  const hash = d.stashes[0]?.hash ?? d.commits[0]!.hash;
+  const stash = { hash, message: d.stashes[0]?.message ?? 'On main: Add lexer' };
+  const held = {
+    hash,
+    message: `On main: ${autostashMessage('cherryPick', `of ${applying.slice(0, 7)} onto 'main'`)}`,
+  };
+  const gitStash = { hash, message: 'autostash' };
   const rebase: OperationState = {
     kind: 'rebase',
     branch: 'feature/search',
@@ -212,12 +219,12 @@ function repoStates(state: string, d: PlaygroundData): [OperationState | undefin
       [merge, undefined],
       [{ ...merge, ...resolved }, undefined],
     ],
-    sequencer: [[pick, { kind: 'pendingStash', stash, operation: 'cherry pick' }]],
+    sequencer: [[pick, { kind: 'pendingStash', stash: held, operation: 'cherry pick' }]],
     sequencerBetween: [[{ ...pick, ...resolved, applying: undefined, remaining: 2 }, undefined]],
     leftover: [[undefined, { kind: 'restoreConflicted', stash, files: ['src/lexer.ts'] }]],
     leftoverResolved: [[undefined, { kind: 'restoreConflicted', stash, files: [] }]],
-    pending: [[undefined, { kind: 'pendingStash', stash, operation: 'cherry pick' }]],
-    conflicts: [[undefined, { kind: 'unmerged', files: ['a.txt', 'b.txt'], count: 2, autostash: stash }]],
+    pending: [[undefined, { kind: 'pendingStash', stash: held, operation: 'cherry pick' }]],
+    conflicts: [[undefined, { kind: 'unmerged', files: ['a.txt', 'b.txt'], count: 2, autostash: gitStash }]],
   };
   return states[state] ?? [];
 }

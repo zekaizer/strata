@@ -95,7 +95,7 @@ describe('leftoverOf', () => {
     const held = { ...base, stashes, unmerged: ['a'], marks: [pushed(stashes[0]!.hash, 'c'.repeat(40))] };
     assert.deepEqual(leftoverOf({ ...held, operation: picking('c'.repeat(40)) }), {
       kind: 'pendingStash',
-      stash: { hash: stashes[0]!.hash, index: 0 },
+      stash: { hash: stashes[0]!.hash, message: stashes[0]!.message },
       operation: 'cherry pick',
     });
     assert.equal(leftoverOf({ ...held, operation: picking('d'.repeat(40)) }), undefined);
@@ -105,7 +105,11 @@ describe('leftoverOf', () => {
     const stashes = [stash(0, 'autostash'), stash(1, 'On main: Strata autostash: switch to x')];
     const marks: StashMark[] = [pushed(stashes[1]!.hash), { kind: 'restoreConflicted', hash: stashes[0]!.hash }];
     const l = leftoverOf({ ...base, stashes, unmerged: ['a.ts'], marks });
-    assert.deepEqual(l, { kind: 'restoreConflicted', stash: { hash: stashes[0]!.hash, index: 0 }, files: ['a.ts'] });
+    assert.deepEqual(l, {
+      kind: 'restoreConflicted',
+      stash: { hash: stashes[0]!.hash, message: stashes[0]!.message },
+      files: ['a.ts'],
+    });
   });
 
   it('reports a stash Strata pushed here and nobody restored, and no Strata-named stash it did not push', () => {
@@ -115,7 +119,7 @@ describe('leftoverOf', () => {
     ];
     assert.deepEqual(leftoverOf({ ...base, stashes, marks: [pushed(stashes[1]!.hash)] }), {
       kind: 'pendingStash',
-      stash: { hash: stashes[1]!.hash, index: 1 },
+      stash: { hash: stashes[1]!.hash, message: stashes[1]!.message },
       operation: 'cherry pick',
     });
     assert.equal(leftoverOf({ ...base, stashes }), undefined);
@@ -127,7 +131,7 @@ describe('leftoverOf', () => {
       kind: 'unmerged',
       files: ['a.ts', 'b.ts'],
       count: 2,
-      autostash: { hash: stashes[1]!.hash, index: 1 },
+      autostash: { hash: stashes[1]!.hash, message: stashes[1]!.message },
     });
   });
 
@@ -141,7 +145,7 @@ describe('leftoverOf', () => {
     );
     assert.deepEqual(
       (leftoverOf({ ...base, headBranch: 'feature', stashes, unmerged: ['a.ts'] }) as { autostash: unknown }).autostash,
-      { hash: stashes[0]!.hash, index: 0 },
+      { hash: stashes[0]!.hash, message: 'autostash' },
     );
   });
 });
