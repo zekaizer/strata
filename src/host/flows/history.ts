@@ -14,7 +14,9 @@ import {
   HISTORY_DOING,
   HISTORY_DONE,
   IN_THE_WAY_OF,
+  mainlinePick,
   mergeConfirmation,
+  type MergeParents,
   pickConfirmation,
   quote,
   rebaseConfirmation,
@@ -39,6 +41,7 @@ import {
   readConfigBool,
   readHead,
   readMergeBase,
+  readMergeParents,
   readRebaseCounts,
   readResetFacts,
   readStash,
@@ -344,7 +347,7 @@ export async function rebase(
   });
 }
 
-/** Cherry pick or revert of `hash` on HEAD. */
+/** Cherry pick or revert of `hash` on HEAD; of a merge, relative to the parent picked (cherry pick) or its first. */
 export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: string): Promise<void> {
   const [h, c] = await Promise.all([head(host), readCommit(host.git, host.cwd, hash)]);
   if (kind === 'cherryPick' && (await isAncestor(host.git, host.cwd, c.hash, h.hash))) {
@@ -352,19 +355,29 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
     return;
   }
   if (await atShallowEdge(host, c.hash)) return;
+  const parents = await readMergeParents(host.git, host.cwd, c.hash);
+  let merge: MergeParents | undefined;
+  if (parents !== undefined) {
+    const asked = mainlinePick(c, parents);
+    const mainline =
+      kind === 'revert'
+        ? 1
+        : await host.ui.pick({ ...asked, items: asked.items.map((i, n) => ({ ...i, value: n + 1 })) });
+    if (mainline === undefined) return;
+    merge = { parents, mainline };
+  }
   const ch = await changes(host, kind);
   const detached = h.branch === undefined;
   let choice: StashChoice | 'go' | undefined = 'go';
-  if (ch.choices.choices.length > 0 || detached) {
+  if (ch.choices.choices.length > 0 || detached || (merge !== undefined && kind === 'revert')) {
     const buttons: { id: StashChoice | 'go'; label: string }[] =
       ch.choices.choices.length > 0
         ? stashButtons(kind, ch.choices.choices)
         : [{ id: 'go', label: kind === 'cherryPick' ? 'Cherry Pick' : 'Revert' }];
-    choice = await host.ui.confirm(pickConfirmation(kind, c, h.name, detached, ch.section, buttons));
+    choice = await host.ui.confirm(pickConfirmation(kind, c, h.name, detached, ch.section, buttons, merge));
     if (choice === undefined) return;
   }
-  const op: Operation =
-    kind === 'cherryPick' ? { kind: 'cherryPick', commit: c.hash } : { kind: 'revert', commit: c.hash };
+  const op: Operation = { kind, commit: c.hash, ...(merge === undefined ? {} : { mainline: merge.mainline }) };
   const label = kind === 'cherryPick' ? HISTORY_DOING.picking(c.short) : HISTORY_DOING.reverting(c.short);
   const r = await runStoppable(host, () =>
     runMovingUntracked(

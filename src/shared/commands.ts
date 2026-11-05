@@ -93,10 +93,10 @@ export const COMMANDS = {
   'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@3')], writes: true },
   'strata.cherryPick': {
     title: 'Cherry Pick',
-    menus: [commit('3_apply@1', '!strataIsHead && !strataMerge')],
+    menus: [commit('3_apply@1', '!strataIsHead')],
     writes: true,
   },
-  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2', '!strataMerge')], writes: true },
+  'strata.revert': { title: 'Revert', menus: [commit('3_apply@2')], writes: true },
   'strata.merge': {
     title: 'Merge into Current Branch...',
     menus: [

@@ -117,6 +117,26 @@ export async function readCommit(git: string, cwd: string, rev: string): Promise
 
 export const countCommits = count;
 
+/** A parent of a merge commit; `mergedIn`: how many commits the other parents bring that it lacks. */
+export interface MergeParent extends CommitInfo {
+  mergedIn: number;
+}
+
+/** The parents of `hash` in order, when it is a merge commit. */
+export async function readMergeParents(git: string, cwd: string, hash: string): Promise<MergeParent[] | undefined> {
+  const [, ...parents] = (await runGit(git, cwd, ['rev-list', '--parents', '--max-count=1', hash, '--']))
+    .trim()
+    .split(' ');
+  if (parents.length < 2) return undefined;
+  return Promise.all(
+    parents.map(async (p) => {
+      const others = parents.filter((o) => o !== p);
+      const [c, mergedIn] = await Promise.all([readCommit(git, cwd, p), count(git, cwd, [...others, '--not', p])]);
+      return { ...c, mergedIn };
+    }),
+  );
+}
+
 /** Whether `a` is an ancestor of (or equal to) `b`. */
 export const isAncestor = (git: string, cwd: string, a: string, b: string): Promise<boolean> =>
   runGit(git, cwd, ['merge-base', '--is-ancestor', a, b]).then(

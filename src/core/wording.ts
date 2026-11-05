@@ -477,7 +477,44 @@ export function rebaseConfirmation<B extends string>(
   };
 }
 
-/** Cherry pick or revert of `c` on `onto` (a quoted branch, or HEAD). */
+/** A merge commit's parents in order; `mergedIn`: how many commits the other parents bring that it lacks. */
+export interface MergeParents {
+  parents: readonly (CommitRef & { mergedIn: number })[];
+  /** The parent (1-based) the changes are taken relative to. */
+  mainline: number;
+}
+
+/** The parents to cherry pick merge `c` relative to, the first preselected. */
+export function mainlinePick(
+  c: CommitRef,
+  parents: MergeParents['parents'],
+): { title: string; placeholder: string; items: { label: string; description: string; detail: string }[] } {
+  return {
+    title: `Cherry Pick ${c.short} "${c.subject}"`,
+    placeholder: 'A merge commit: apply its changes relative to which parent?',
+    items: parents.map((p, i) => ({
+      label: `Parent ${i + 1}: ${p.short}`,
+      description: p.subject,
+      detail: `Applies the ${plural(p.mergedIn, 'commit')} merged in from ${fileList(
+        parents.filter((o) => o !== p).map((o) => o.short),
+      )}`,
+    })),
+  };
+}
+
+/** What a cherry pick or revert of a merge applies or undoes. */
+function mergeSentence(kind: 'cherryPick' | 'revert', m: MergeParents): string {
+  const main = m.parents[m.mainline - 1]!;
+  const others = m.parents.filter((p) => p !== main);
+  const from =
+    others.length === 1 ? `${others[0]!.short} "${others[0]!.subject}"` : fileList(others.map((o) => o.short));
+  const changes = `the changes of the ${plural(main.mergedIn, 'commit')} it merged into ${main.short} "${main.subject}" from ${from}.`;
+  return kind === 'cherryPick'
+    ? `Applies ${changes}`
+    : `Undoes ${changes} Merging those commits again later won't bring them back.`;
+}
+
+/** Cherry pick or revert of `c` on `onto` (a quoted branch, or HEAD); `merge`: of a merge commit. */
 export function pickConfirmation<B extends string>(
   kind: 'cherryPick' | 'revert',
   c: CommitRef,
@@ -485,13 +522,18 @@ export function pickConfirmation<B extends string>(
   detached: boolean,
   section: string,
   buttons: { id: B; label: string }[],
+  merge?: MergeParents,
 ): Confirmation<B> {
   return {
     message:
       kind === 'cherryPick'
         ? `Cherry pick ${c.short} "${c.subject}" onto ${onto}?`
         : `Revert ${c.short} "${c.subject}" on ${onto}?`,
-    detail: [detached ? 'HEAD is detached: the new commit will be on no branch.' : '', section]
+    detail: [
+      merge === undefined ? '' : mergeSentence(kind, merge),
+      detached ? 'HEAD is detached: the new commit will be on no branch.' : '',
+      section,
+    ]
       .filter((s) => s !== '')
       .join(' '),
     buttons,

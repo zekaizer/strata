@@ -5,6 +5,7 @@ import {
   conflictsInProgress,
   dirtySection,
   HISTORY_DONE,
+  mainlinePick,
   mergeConfirmation,
   operationInProgress,
   pickConfirmation,
@@ -74,6 +75,52 @@ describe('wording of history operations', () => {
       pickConfirmation('revert', c, "'main'", false, 'x', []).message,
       'Revert abc1234 "Add lexer" on \'main\'?',
     );
+  });
+
+  const parents = [
+    { short: 'aaa1111', subject: 'Release prep', mergedIn: 3 },
+    { short: 'bbb2222', subject: 'Add parser', mergedIn: 5 },
+  ];
+
+  it('names what a revert of a merge undoes, and that merging those commits again brings nothing', () => {
+    const p = pickConfirmation('revert', c, "'main'", false, '', [], { parents, mainline: 1 });
+    assert.equal(p.message, 'Revert abc1234 "Add lexer" on \'main\'?');
+    assert.equal(
+      p.detail,
+      'Undoes the changes of the 3 commits it merged into aaa1111 "Release prep" from bbb2222 "Add parser". Merging those commits again later won\'t bring them back.',
+    );
+  });
+
+  it('names what a cherry pick of a merge applies, relative to the parent chosen', () => {
+    const p = pickConfirmation('cherryPick', c, 'HEAD', true, '', [], { parents, mainline: 2 });
+    assert.equal(
+      p.detail,
+      'Applies the changes of the 5 commits it merged into bbb2222 "Add parser" from aaa1111 "Release prep". HEAD is detached: the new commit will be on no branch.',
+    );
+    const octopus = [...parents, { short: 'ccc3333', subject: 'Add docs', mergedIn: 1 }];
+    assert.match(
+      pickConfirmation('cherryPick', c, 'HEAD', false, '', [], { parents: octopus, mainline: 3 }).detail,
+      /^Applies the changes of the 1 commit it merged into ccc3333 "Add docs" from aaa1111 and bbb2222\.$/,
+    );
+  });
+
+  it('asks which parent a cherry pick of a merge applies its changes relative to', () => {
+    assert.deepEqual(mainlinePick(c, parents), {
+      title: 'Cherry Pick abc1234 "Add lexer"',
+      placeholder: 'A merge commit: apply its changes relative to which parent?',
+      items: [
+        {
+          label: 'Parent 1: aaa1111',
+          description: 'Release prep',
+          detail: 'Applies the 3 commits merged in from bbb2222',
+        },
+        {
+          label: 'Parent 2: bbb2222',
+          description: 'Add parser',
+          detail: 'Applies the 5 commits merged in from aaa1111',
+        },
+      ],
+    });
   });
 
   it('says where a stopped operation is and where the changes are', () => {

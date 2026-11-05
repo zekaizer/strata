@@ -98,7 +98,9 @@ operation is stopped, Continue, Abort and Skip.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
   Branch to Here in any of git's modes. Each confirmation says what happens to
-  which commits.
+  which commits. A merge commit can be cherry picked relative to the parent you
+  choose, and reverted, which undoes the commits it brought in from its other
+  parents.
 - **Stashes:** Stash Changes (optionally with untracked files), Apply, Pop,
   Drop, Create Branch from Stash and Copy Patch. Apply, Pop and Create Branch
   from Stash change nothing when files the stash's untracked part adds already
