@@ -221,9 +221,9 @@ export class GraphPanel implements vscode.Disposable {
     return this.session().showPath(path);
   }
 
-  /** Writes a commit-graph for the shown repository and reloads. */
+  /** Writes a commit-graph with changed-path filters for the shown repository and reloads. */
   writeCommitGraph(): Promise<void> {
-    return this.controller?.shown?.writeCommitGraph() ?? Promise.resolve();
+    return this.controller?.shown?.writeCommitGraph(true) ?? Promise.resolve();
   }
 
   /** Resolves once the webview has booted. */

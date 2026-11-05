@@ -1247,3 +1247,29 @@ export const PATH_HISTORY = {
   exactOnly:
     'Renames that change the file are not looked for in a partial clone: its contents are downloaded on demand.',
 } as const;
+
+const KEEP_GRAPH = 'Write and keep updated';
+
+/** The offer to write a commit-graph when history is slow to load. */
+export const COMMIT_GRAPH_OFFER = {
+  keep: KEEP_GRAPH,
+  /** The repository has none: `forPaths` when a file or folder history was slow, which also needs filters. */
+  graph: (repo: string, forPaths: boolean): { message: string; buttons: string[] } => ({
+    message: forPaths
+      ? `History of ${repo} loads slowly because the repository has no commit-graph. Writing one with ` +
+        'changed-path filters (git commit-graph write --reachable --changed-paths) makes the graph and ' +
+        'file history open in a fraction of the time. Kept updated, it also covers new commits as they come in.'
+      : `History of ${repo} loads slowly because the repository has no commit-graph. Writing one ` +
+        '(git commit-graph write --reachable) makes the graph open in a fraction of the time. Kept updated, ' +
+        'it also covers new commits as they come in.',
+    buttons: [KEEP_GRAPH, 'Write once'],
+  }),
+  /** It has one without changed-path filters, and the history of `path` was slow. */
+  filters: (path: string): { message: string; buttons: string[] } => ({
+    message:
+      `History of ${path} is slow to search because the commit-graph has no changed-path filters. ` +
+      'Writing them (git commit-graph write --reachable --changed-paths) makes file and folder history ' +
+      'several times faster; new commits keep them.',
+    buttons: ['Write Filters'],
+  }),
+} as const;

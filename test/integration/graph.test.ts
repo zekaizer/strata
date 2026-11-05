@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
+import { hasChangedPaths } from '../../src/git/commit-graph.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { FileView } from '../../src/shared/protocol.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
@@ -159,7 +160,7 @@ describe('graph panel', () => {
 });
 
 describe('commit-graph command', () => {
-  it('writes a commit-graph and reloads the history', async () => {
+  it('writes a commit-graph with changed-path filters and reloads the history', async () => {
     const panel = (await strata()).show();
     await panel.whenReady();
     const info = git('rev-parse', '--git-path', 'objects/info');
@@ -168,6 +169,7 @@ describe('commit-graph command', () => {
     const before = (await panel.probe()).generation;
     await vscode.commands.executeCommand('strata.writeCommitGraph');
     assert.ok(existsSync(join(workspaceRoot(), info, 'commit-graph')));
+    assert.ok(await hasChangedPaths('git', workspaceRoot()), 'changed-path filters written');
     await waitFor('reload', async () => (await panel.probe()).generation > before);
     panel.dispose();
   });
