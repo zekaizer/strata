@@ -39,7 +39,7 @@ describe('a closed graph', () => {
     api.current()?.dispose();
   });
 
-  it("drops its Undo: the toast left open does nothing, and the new graph's Undo stays", async () => {
+  it("drops its Undo: the toast left open says so, and the new graph's Undo stays", async () => {
     const first = await open();
     const toast = ui.later();
     const one = await fastForward(first, 'strata-one', 'main');
@@ -53,7 +53,9 @@ describe('a closed graph', () => {
     ui.clear();
     ui.press('Undo Anyway');
     await undoOne('Undo');
-    assert.deepEqual(ui.asked, []);
+    assert.deepEqual(ui.asked, [
+      { kind: 'notify', level: 'info', message: 'Undo is no longer available: a newer operation ran.', actions: [] },
+    ]);
     assert.equal(git('rev-parse', 'main'), two);
     assert.equal(api.contextValue('strata.canUndo'), true);
   });

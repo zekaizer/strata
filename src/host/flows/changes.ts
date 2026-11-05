@@ -202,7 +202,7 @@ export async function resolveConflicts(host: FlowHost, paths: readonly string[])
 export async function finishRestoring(
   host: FlowHost,
   r: Restored,
-  done: { message: string; focus?: string; undo?: Undo; next?: Next },
+  done: { message: string; focus?: string; undo?: Undo; next?: Next; quiet?: boolean },
   stash?: { label: string; pop: boolean },
 ): Promise<void> {
   if (r.kind === 'none' || r.kind === 'restored') return finish(host, done);

@@ -38,15 +38,30 @@ describe('ref operations', () => {
     assert.equal(git('branch', '--show-current'), 'strata/new');
     assert.equal(git('rev-parse', 'HEAD'), at);
     await selected(panel(), at);
-    assert.deepEqual(ui.of('notify'), [
-      { kind: 'notify', level: 'info', message: `Created 'strata/new' at ${short}`, actions: ['Undo'] },
-    ]);
+    assert.deepEqual(ui.of('notify'), [], 'history is as it was: the status bar says it');
+    await waitFor('announced', async () => (await panel().probe()).announced === `Created 'strata/new' at ${short}`);
     assert.equal(api().contextValue('strata.canUndo'), true);
 
     await run('strata.undo');
     assert.equal(git('branch', '--show-current'), 'main');
     assert.equal(git('branch', '--list', 'strata/new'), '');
     assert.equal(api().contextValue('strata.canUndo'), false);
+  });
+
+  it("says so when a notification's Undo is clicked after a newer operation", async () => {
+    git('branch', 'strata-one', 'main~1');
+    git('branch', 'strata-two', 'main~1');
+    await reload(panel());
+    const click = ui.later();
+    await run('strata.deleteBranch', branchMenu('strata-one', git('rev-parse', 'main~1')));
+    const undoOne = await click;
+    await run('strata.deleteBranch', branchMenu('strata-two', git('rev-parse', 'main~1')));
+    ui.clear();
+    await undoOne('Undo');
+    assert.deepEqual(ui.of('notify'), [
+      { kind: 'notify', level: 'info', message: 'Undo is no longer available: a newer operation ran.', actions: [] },
+    ]);
+    assert.equal(git('branch', '--list', 'strata-one'), '', 'not restored');
   });
 
   it('drops Undo when HEAD moves to another branch outside Strata', async () => {
@@ -423,9 +438,7 @@ describe('ref operations', () => {
     ui.type('v9.8', '');
     await run('strata.createTag', commitMenu(at));
     assert.equal(git('cat-file', '-t', 'refs/tags/v9.8'), 'commit');
-    assert.deepEqual(ui.of('notify'), [
-      { kind: 'notify', level: 'info', message: `Created tag 'v9.8' at ${at.slice(0, 7)}`, actions: ['Undo'] },
-    ]);
+    assert.deepEqual(ui.of('notify'), []);
 
     git('-c', 'tag.gpgSign=false', 'tag', '--annotate', '--message', 'Release 9.9', 'v9.9', at);
     const object = git('rev-parse', 'refs/tags/v9.9');

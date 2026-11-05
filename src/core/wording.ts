@@ -228,6 +228,9 @@ export const undoGone = (label: string, head: string): string =>
 
 export const undone = (label: string): string => `Undid the ${label}`;
 
+/** Undo clicked on the notification of an operation that is no longer the last one. */
+export const UNDO_STALE = 'Undo is no longer available: a newer operation ran.';
+
 /** A failed git command as an error notification shows it. */
 export const gitFailure = (message: string): string => message.trim().split('\n').slice(0, 3).join('\n');
 

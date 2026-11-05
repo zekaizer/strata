@@ -11,6 +11,7 @@ import {
   gitFailure,
   quote,
   signInConfirmation,
+  UNDO_STALE,
   undoGone,
   undoLabel,
   undoMovedConfirmation,
@@ -135,15 +136,20 @@ export interface Next {
   run: () => Promise<void>;
 }
 
-/** After an operation succeeded: reload the graph at `focus`, report, and offer Undo and `next`. */
+/**
+ * After an operation succeeded: reload the graph at `focus`, report, and offer Undo and `next` in
+ * a notification. `quiet`: an operation that leaves history as it was (create or rename a branch
+ * or tag) reports in the status bar only; Undo Last Operation still undoes it.
+ */
 export async function finish(
   host: FlowHost,
-  r: { message: string; focus?: string; undo?: Undo; next?: Next },
+  r: { message: string; focus?: string; undo?: Undo; next?: Next; quiet?: boolean },
 ): Promise<void> {
   await host.refresh(r.focus);
   host.setUndo(r.undo);
   host.done(r.message);
-  const { undo, next } = r;
+  const { next } = r;
+  const undo = r.quiet ? undefined : r.undo;
   if (undo || next)
     notify(host, 'info', r.message, [...(undo ? ['Undo'] : []), ...(next ? [next.action] : [])], (a) =>
       a === 'Undo' && undo ? undoIfLatest(host, undo) : next?.run(),
@@ -179,8 +185,8 @@ export function warnWithUndo(
 }
 
 async function undoIfLatest(host: FlowHost, undo: Undo): Promise<void> {
-  // A newer operation replaced this one's Undo.
   if (host.lastUndo === undo) await undoLast(host);
+  else void host.ui.notify('info', UNDO_STALE);
 }
 
 /** Where failures are shown: a graph (which refresh when what it showed is outdated), or just the Ui. */

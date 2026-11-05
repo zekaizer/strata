@@ -158,7 +158,10 @@ operation is stopped, Continue, Abort and Skip.
   merge, rebase, cherry pick or revert (also one that stopped and that
   Continue or Skip finished), a created, renamed or deleted branch or tag, or a
   dropped stash. It only moves the branch the operation moved,
-  and asks first if that branch moved since.
+  and asks first if that branch moved since. Operations that change history or
+  delete something also offer Undo in the notification that reports them;
+  creating, renaming or checking out a branch or tag reports in the status bar
+  only.
 - When an operation stops at conflicts, Strata says where and in which files;
   **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
   leaves the stopped commit out, and other changes (except Fetch) wait until

@@ -110,7 +110,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     throw e;
   }
   if (restored === undefined) return;
-  const done = { message: s.done, focus: s.commit, ...(s.undo ? { undo: s.undo } : {}) };
+  const done = { message: s.done, focus: s.commit, quiet: true, ...(s.undo ? { undo: s.undo } : {}) };
   // switch --merge exits 0 even when it leaves conflicts; since git 2.55 it keeps the changes in a stash then.
   const migrated = choice === 'migrate' && restored.kind === 'none' ? await readUnmerged(host.git, host.cwd) : [];
   if (migrated.length > 0)
@@ -279,6 +279,7 @@ export async function createTag(host: FlowHost, at: string): Promise<void> {
   const object = (await runGit(host.git, host.cwd, ['rev-parse', '--verify', `refs/tags/${name}`])).trim();
   await finish(host, {
     message: DONE.tagCreated(name, commit.short),
+    quiet: true,
     focus: commit.hash,
     undo: {
       label: 'tag creation',
@@ -314,6 +315,7 @@ export async function renameBranch(host: FlowHost, ref: Ref): Promise<void> {
   if (ran === undefined) return;
   await finish(host, {
     message: DONE.renamed(ref.short, to),
+    quiet: true,
     focus: tip.hash,
     undo: {
       label: 'rename',
