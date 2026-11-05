@@ -414,7 +414,10 @@ offers to add them. Turn the offer off with the
 Finding commits reads the messages git stores, so it scans all history when few
 commits match: about a second on a repository of 150,000 commits, with or
 without a commit-graph. Common text shows its first matches at once with a
-commit-graph; without one, git again reads all history first.
+commit-graph; without one, git again reads all history first, so a search
+that has found nothing after half a second offers to write one (once per
+window, as for a slow first page). A bar runs along the bottom of the find
+widget while it searches.
 
 New commits (your own, fetched or rebased) are not in the commit-graph until it
 is written again. With `strata.keepCommitGraphUpdated` turned on (or **Write and

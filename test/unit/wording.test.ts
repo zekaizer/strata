@@ -233,8 +233,8 @@ const titleCase = (label: string) =>
 describe('commit-graph offer', () => {
   it('labels its buttons in title case, as every other notification does', () => {
     const labels = [
-      ...COMMIT_GRAPH_OFFER.graph('zephyr', false).buttons,
-      ...COMMIT_GRAPH_OFFER.graph('zephyr', true).buttons,
+      ...COMMIT_GRAPH_OFFER.graph('zephyr', 'history').buttons,
+      ...COMMIT_GRAPH_OFFER.graph('zephyr', 'paths').buttons,
       ...COMMIT_GRAPH_OFFER.filters('kernel/sched.c').buttons,
       COMMIT_GRAPH_OFFER.later,
       COMMIT_GRAPH_OFFER.never,
@@ -243,5 +243,11 @@ describe('commit-graph offer', () => {
       labels.filter((l) => !titleCase(l)),
       [],
     );
+  });
+  it('says a slow search is what it speeds up, and that searches for rare text stay as they are', () => {
+    const { message } = COMMIT_GRAPH_OFFER.graph('zephyr', 'find');
+    assert.match(message, /^Searching zephyr is slow because the repository has no commit-graph\./);
+    assert.match(message, /git commit-graph write --reachable\)/);
+    assert.match(message, /first matches/);
   });
 });

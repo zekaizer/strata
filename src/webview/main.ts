@@ -1533,6 +1533,8 @@ class App {
         : { text: matchCount(total, at, more), problem: total === 0 && !more };
     }
     this.findWidget.setCount(count);
+    // Going to a match shows how far it has loaded; otherwise the bar runs while the search does.
+    if (!this.jump) this.findWidget.setProgress(search && !search.done ? undefined : null);
     this.findWidget.setStepping((search?.matches.length ?? 0) > 0);
     this.renderFindList();
   }

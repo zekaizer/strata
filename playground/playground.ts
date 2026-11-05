@@ -61,10 +61,12 @@ const busy = params.get('busy');
 const bannerState = params.get('banner');
 const land = params.get('land');
 /**
- * `find=<text>` opens the find widget with that text typed; `findList=1` shows the match list.
+ * `find=<text>` opens the find widget with that text typed; `findList=1` shows the match list;
+ * `findSlow=1`: the search never answers.
  */
 const findText = params.get('find');
 const findList = params.get('findList') === '1';
+const findSlow = params.get('findSlow') === '1';
 /** `range=i,j`: click row i, then Shift-click row j (a multi-selection). */
 const rangeRows = params.get('range')?.split(',').map(Number);
 /** `edit=reword` (on `select`) or `edit=squash` (on `range`): the message editor as the host opens it. */
@@ -375,6 +377,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       break;
     }
     case 'find': {
+      if (findSlow) break;
       // Subjects only (the playground has no bodies), in the history's order, in one batch.
       const { text, author, hashPrefix } = m.query;
       const has = (s: string, part: string | undefined) =>

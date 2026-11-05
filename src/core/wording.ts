@@ -1252,21 +1252,32 @@ export const PATH_HISTORY = {
 
 const KEEP_GRAPH = 'Write and Keep Updated';
 
+/** A read of history that took long enough to offer a commit-graph. */
+export type SlowRead = 'history' | 'paths' | 'find';
+
 /** The offer to write a commit-graph when history is slow to load. */
 export const COMMIT_GRAPH_OFFER = {
   keep: KEEP_GRAPH,
   /** After the offer's buttons: asks again in the next window, or never. */
   later: 'Not Now',
   never: "Don't Ask Again",
-  /** The repository has none: `forPaths` when a file or folder history was slow, which also needs filters. */
-  graph: (repo: string, forPaths: boolean): { message: string; buttons: string[] } => ({
-    message: forPaths
-      ? `History of ${repo} loads slowly because the repository has no commit-graph. Writing one with ` +
-        'changed-path filters (git commit-graph write --reachable --changed-paths) makes the graph and ' +
-        'file history open in a fraction of the time. Kept updated, it also covers new commits as they come in.'
-      : `History of ${repo} loads slowly because the repository has no commit-graph. Writing one ` +
-        '(git commit-graph write --reachable) makes the graph open in a fraction of the time. Kept updated, ' +
-        'it also covers new commits as they come in.',
+  /**
+   * The repository has none, and what was slow: the history, a file or folder history (which also
+   * needs filters) or a search.
+   */
+  graph: (repo: string, slow: SlowRead): { message: string; buttons: string[] } => ({
+    message:
+      slow === 'paths'
+        ? `History of ${repo} loads slowly because the repository has no commit-graph. Writing one with ` +
+          'changed-path filters (git commit-graph write --reachable --changed-paths) makes the graph and ' +
+          'file history open in a fraction of the time. Kept updated, it also covers new commits as they come in.'
+        : slow === 'find'
+          ? `Searching ${repo} is slow because the repository has no commit-graph. Writing one ` +
+            '(git commit-graph write --reachable) shows the first matches of most searches at once and makes ' +
+            'the graph open in a fraction of the time. Kept updated, it also covers new commits as they come in.'
+          : `History of ${repo} loads slowly because the repository has no commit-graph. Writing one ` +
+            '(git commit-graph write --reachable) makes the graph open in a fraction of the time. Kept updated, ' +
+            'it also covers new commits as they come in.',
     buttons: [KEEP_GRAPH, 'Write Once'],
   }),
   /** It has one without changed-path filters, and the history of `path` was slow. */

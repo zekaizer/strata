@@ -19,7 +19,7 @@ import { hasChangedPaths, hasCommitGraph, updateCommitGraph, writeCommitGraph } 
 import { changingCommits, isPartialClone, isTracked, readPathOrigin } from '../git/path-history.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
-import { COMMIT_GRAPH_OFFER, DONE } from '../core/wording.ts';
+import { COMMIT_GRAPH_OFFER, DONE, type SlowRead } from '../core/wording.ts';
 import { inFilter, isRepoPath, parsePathFilter, samePathFilter, type PathFilter } from '../core/path-filter.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader, type LogOptions } from '../git/log-reader.ts';
@@ -47,6 +47,8 @@ const SLOW_FIRST_PAGE_MS = 2000;
 const GRAPH_UPDATE_DELAY_MS = 3000;
 /** A path history not read to its end after this long suggests changed-path filters, which speed it up several times. */
 const SLOW_PATH_MS = 2000;
+/** A search with no answer after this long suggests a commit-graph: without one, git reads all history first. */
+const SLOW_FIND_MS = 500;
 /** A path history's page holds what has arrived after this long: a rare path's commits are spread over all of history. */
 const PATH_FLUSH_MS = 150;
 /** Patches larger than this are copied only after asking: pasting them can freeze an editor. */
@@ -434,7 +436,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
           oldest: undefined,
           done: false,
           slow: setTimeout(() => {
-            if (this.pathRead?.generation === generation && !this.pathRead.done) void this.suggestCommitGraph(true);
+            if (this.pathRead?.generation === generation && !this.pathRead.done) void this.suggestCommitGraph('paths');
           }, SLOW_PATH_MS),
         }
       : undefined;
@@ -474,7 +476,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (!page || generation !== this.generation) return;
     if (this.timedGeneration !== generation) {
       this.timedGeneration = generation;
-      if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph(path !== null);
+      if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph(path ? 'paths' : 'history');
     }
     const read = this.pathRead;
     if (!path || read?.generation !== generation) {
@@ -794,6 +796,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const search = new AbortController();
     this.search = search;
     const live = () => !search.signal.aborted && generation === this.generation;
+    const slow = setTimeout(() => {
+      if (live()) void this.suggestCommitGraph('find');
+    }, SLOW_FIND_MS);
     let exact: FindHit[] | undefined;
     try {
       exact = hashPrefix === undefined ? undefined : await findExact(this.api.git.path, this.cwd, hashPrefix);
@@ -801,6 +806,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       await findCommits(
         { ...this.view(), query: { text, author, hashPrefix }, cap: FIND_CAP, signal: search.signal },
         (batch) => {
+          clearTimeout(slow);
           this.post({ type: 'findHits', generation, id, ...batch, ...(exact ? { exact } : {}) });
           exact = undefined;
         },
@@ -810,6 +816,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       // The widget stops waiting; the error shows in the toolbar.
       this.post({ type: 'findHits', generation, id, hits: [], done: true, capped: false, ...(exact ? { exact } : {}) });
       throw e;
+    } finally {
+      clearTimeout(slow);
     }
   }
 
@@ -1192,21 +1200,22 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   /**
-   * Offers, once per repository and window, to write a commit-graph when history is slow; for a
-   * slow path history (`forPaths`), also changed-path filters, also into an existing commit-graph.
+   * Offers, once per repository and window, to write a commit-graph when reading history was
+   * `slow`; for a slow path history, also changed-path filters, also into an existing commit-graph.
    */
-  private async suggestCommitGraph(forPaths: boolean): Promise<void> {
+  private async suggestCommitGraph(slow: SlowRead): Promise<void> {
     if (this.suggested.has(this.key)) return;
     const config = vscode.workspace.getConfiguration('strata');
     if (!config.get<boolean>('suggestCommitGraph', true)) return;
     const git = this.api.git.path;
+    const forPaths = slow === 'paths';
     const graph = await hasCommitGraph(git, this.cwd);
     if (graph && (!forPaths || (await hasChangedPaths(git, this.cwd)))) return;
     this.suggested.add(this.key);
     const { later, never } = COMMIT_GRAPH_OFFER;
     const offer = graph
       ? COMMIT_GRAPH_OFFER.filters(this.pathName())
-      : COMMIT_GRAPH_OFFER.graph(basename(this.cwd), forPaths);
+      : COMMIT_GRAPH_OFFER.graph(basename(this.cwd), slow);
     const choice = await vscode.window.showInformationMessage(offer.message, ...offer.buttons, later, never);
     if (choice === COMMIT_GRAPH_OFFER.keep)
       await config.update('keepCommitGraphUpdated', true, vscode.ConfigurationTarget.Global);
