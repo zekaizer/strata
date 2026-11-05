@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { CommitDetails } from '../core/details.ts';
 import { parseStashList, type StashEntry } from '../core/stash.ts';
 import { readChangedFiles, readCommitDetails } from './details.ts';
@@ -147,4 +150,58 @@ export async function readStashDetails(git: string, cwd: string, hash: string): 
       untracked: untracked === undefined || !added ? undefined : { hash: untracked, files: added },
     },
   };
+}
+
+/** The identity git stash falls back to when none is configured, as commit-tree has no fallback. */
+const STASH_IDENT = {
+  GIT_AUTHOR_NAME: 'git stash',
+  GIT_AUTHOR_EMAIL: 'git@stash',
+  GIT_COMMITTER_NAME: 'git stash',
+  GIT_COMMITTER_EMAIL: 'git@stash',
+};
+
+/**
+ * A stash commit of `paths` as the index and the work tree have them, for `git stash store`.
+ * `git stash push -- paths` refuses while any path is unmerged; this writes objects only, through a
+ * temporary index, leaving the index, the work tree and every ref as they are. `message`: the
+ * stash's message and reflog subject.
+ */
+export async function createStash(
+  git: string,
+  cwd: string,
+  paths: readonly string[],
+  message: string,
+): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'strata-stash-'));
+  const temp = (args: string[]) => runGit(git, cwd, args, { GIT_INDEX_FILE: join(dir, 'index') });
+  try {
+    const [head, staged, ident] = await Promise.all([
+      runGit(git, cwd, ['rev-parse', '--verify', 'HEAD']).then((s) => s.trim()),
+      runGit(git, cwd, ['ls-files', '--stage', '-z', '--', ...paths.map((p) => `:(literal)${p}`)]),
+      runGit(git, cwd, ['var', 'GIT_COMMITTER_IDENT']).then(
+        () => ({}),
+        () => STASH_IDENT,
+      ),
+    ]);
+    await temp(['read-tree', head]);
+    const entries = staged
+      .split('\0')
+      .filter((e) => e !== '')
+      .map((e) => {
+        const [info = '', path = ''] = e.split('\t');
+        const [mode = '', hash = ''] = info.split(' ');
+        return { mode, hash, path };
+      });
+    for (const e of entries) await temp(['update-index', '--add', '--cacheinfo', e.mode, e.hash, e.path]);
+    const gone = paths.filter((p) => !entries.some((e) => e.path === p));
+    if (gone.length > 0) await temp(['update-index', '--force-remove', '--', ...gone]);
+    const index = (await temp(['write-tree'])).trim();
+    await temp(['update-index', '--add', '--remove', '--', ...paths]);
+    const tree = (await temp(['write-tree'])).trim();
+    const commit = async (args: string[]) => (await runGit(git, cwd, ['commit-tree', ...args], ident)).trim();
+    const indexCommit = await commit([index, '-p', head, '-m', `index on ${message}`]);
+    return await commit([tree, '-p', head, '-p', indexCommit, '-m', message]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }

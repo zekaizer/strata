@@ -15,6 +15,7 @@ import {
   HISTORY_DONE,
   IN_THE_WAY_OF,
   mergeConfirmation,
+  opName,
   pickConfirmation,
   quote,
   rebaseConfirmation,
@@ -37,6 +38,7 @@ import {
   isShallowEdge,
   readCommit,
   readConfigBool,
+  readDiscardedByAbort,
   readHead,
   readMergeBase,
   readRebaseCounts,
@@ -49,7 +51,8 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readOperationState } from '../../git/state.ts';
+import { readAbortTarget, readOperationState } from '../../git/state.ts';
+import { createStash } from '../../git/stash.ts';
 import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 import type { TargetOf } from '../target.ts';
@@ -112,7 +115,13 @@ async function head(host: FlowHost): Promise<Head> {
 }
 
 /** Undo of a move of HEAD's branch: back where it was, keeping uncommitted changes. */
-const moveUndo = (host: FlowHost, label: string, h: Head, after: string, mode: ResetMode = 'keep'): Undo => ({
+const moveUndo = (
+  host: FlowHost,
+  label: string,
+  h: Pick<Head, 'branch' | 'hash'>,
+  after: string,
+  mode: ResetMode = 'keep',
+): Undo => ({
   label,
   repo: host.cwd,
   guard: { kind: 'head', ref: headRef(h.branch), before: h.hash, after },
@@ -476,23 +485,54 @@ async function restoreHeld(host: FlowHost, exec: Exec, state: OperationState): P
   return held ? restore(host, exec, held.hash) : { kind: 'none' };
 }
 
-/** Continue, Abort or Skip, and what follows: stopping again, or restoring stashed changes. */
+/**
+ * Continue, Abort or Skip, and what follows: stopping again, or restoring stashed changes. `keep`:
+ * first stash the uncommitted changes the Abort or Skip would discard, in a stash of that message
+ * that Strata never pops. `started`: where the operation started, which Undo goes back to once it
+ * has finished.
+ */
 async function settle(
   host: FlowHost,
   state: OperationState,
   label: string,
   op: Operation,
-  done: string,
+  done: (kept: string | undefined) => string,
+  { keep, started }: { keep?: string | undefined; started?: string } = {},
 ): Promise<void> {
+  let kept: string | undefined;
   const r = await runStoppable(host, () =>
     run(host, label, async (exec) => {
+      if (keep) kept = await keepDiscarded(host, exec, state, keep);
       const byGit = await execAutostash(host, exec, op);
       return byGit.kind === 'none' ? restoreHeld(host, exec, state) : byGit;
     }),
   );
   if (!r) return;
-  const after = await readHead(host.git, host.cwd);
-  await finishWithRestore(host, r, { message: done, focus: after.hash });
+  const [after, stash, still] = await Promise.all([
+    readHead(host.git, host.cwd),
+    kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
+    // A rebase's Continue exits 0 when it stops at its next edit.
+    started === undefined ? undefined : readOperationState(host.git, host.cwd),
+  ]);
+  const undo =
+    started === undefined || still !== undefined
+      ? undefined
+      : moveUndo(host, opName(state.kind), { branch: state.branch, hash: started }, after.hash);
+  await finishWithRestore(host, r, {
+    message: done(stash && stashLabel(stash.index, stash.message)),
+    focus: after.hash,
+    ...(undo ? { undo } : {}),
+  });
+}
+
+/** Stores what the Abort or Skip of `state` would discard, read again now, as a stash; resolves its commit. */
+async function keepDiscarded(host: FlowHost, exec: Exec, state: OperationState, message: string) {
+  const paths = await readDiscardedByAbort(host.git, host.cwd, state);
+  if (paths.length === 0) return undefined;
+  const subject = `On ${state.branch ?? '(no branch)'}: ${message}`;
+  const commit = await createStash(host.git, host.cwd, paths, subject);
+  await exec({ kind: 'stashStore', commit, message: subject });
+  return commit;
 }
 
 export async function continueOperation(host: FlowHost): Promise<void> {
@@ -504,30 +544,51 @@ export async function continueOperation(host: FlowHost): Promise<void> {
     return;
   }
   const op: Operation = { kind: 'continue', operation: state.kind };
-  await settle(host, state, HISTORY_DOING.continuing(state.kind), op, HISTORY_DONE.continued(state.kind));
+  const started = await readAbortTarget(host.git, host.cwd, state.kind);
+  await settle(host, state, HISTORY_DOING.continuing(state.kind), op, () => HISTORY_DONE.continued(state.kind), {
+    started,
+  });
 }
 
 export async function abortOperation(host: FlowHost): Promise<void> {
   const state = await inProgress(host);
   if (!state) return;
-  // Rebase and merge go back to ORIG_HEAD (the tip before they started); a pick stops on HEAD itself.
-  const back = await readCommit(
-    host.git,
-    host.cwd,
-    state.kind === 'rebase' || state.kind === 'merge' ? 'ORIG_HEAD' : 'HEAD',
-  );
+  const [target, discards] = await Promise.all([
+    readAbortTarget(host.git, host.cwd, state.kind),
+    readDiscardedByAbort(host.git, host.cwd, state),
+  ]);
+  // A rebase's commits so far are on top of onto; a cherry pick's or revert's on top of where it started.
+  const [back, dropped] = await Promise.all([
+    readCommit(host.git, host.cwd, target),
+    countCommits(host.git, host.cwd, [`${state.kind === 'rebase' ? (state.onto ?? target) : target}..HEAD`]),
+  ]);
   const held = state.autostash || (await heldStash(host, state)) !== undefined;
-  if (!(await host.ui.confirm(abortConfirmation(state.kind, state.branch, back.short, held)))) return;
+  const answer = await host.ui.confirm(
+    abortConfirmation(state.kind, state.branch, back.short, held, discards, dropped),
+  );
+  if (answer === undefined) return;
   const op: Operation = { kind: 'abort', operation: state.kind };
-  await settle(host, state, HISTORY_DOING.aborting(state.kind), op, HISTORY_DONE.aborted(state.kind));
+  const keep = answer === 'stash' ? `Strata: before abort of the ${opName(state.kind)}` : undefined;
+  await settle(host, state, HISTORY_DOING.aborting(state.kind), op, (k) => HISTORY_DONE.aborted(state.kind, k), {
+    keep,
+  });
 }
 
 export async function skipCommit(host: FlowHost): Promise<void> {
   const state = await inProgress(host);
   if (!state || state.kind === 'merge' || state.applying === undefined) return;
-  const c: CommitInfo = await readCommit(host.git, host.cwd, state.applying);
+  const [c, discards]: [CommitInfo, string[]] = await Promise.all([
+    readCommit(host.git, host.cwd, state.applying),
+    readDiscardedByAbort(host.git, host.cwd, state),
+  ]);
   const branch = state.branch === undefined ? 'HEAD' : quote(state.branch);
-  if (!(await host.ui.confirm(skipConfirmation(c, branch)))) return;
+  const answer = await host.ui.confirm(skipConfirmation(c, branch, discards));
+  if (answer === undefined) return;
   const op: Operation = { kind: 'skip', operation: state.kind };
-  await settle(host, state, HISTORY_DOING.skipping(c.short), op, HISTORY_DONE.skipped(c.short));
+  const keep = answer === 'stash' ? `Strata: before skip of ${c.short}` : undefined;
+  const started = await readAbortTarget(host.git, host.cwd, state.kind);
+  await settle(host, state, HISTORY_DOING.skipping(c.short), op, (k) => HISTORY_DONE.skipped(c.short, k), {
+    keep,
+    started,
+  });
 }

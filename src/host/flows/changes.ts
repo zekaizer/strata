@@ -5,6 +5,7 @@ import { untrackedInTheWay } from '../../core/git-error.ts';
 import type { Operation } from '../../core/operations.ts';
 import type { Worktree } from '../../core/repo-state.ts';
 import {
+  autostashRefused,
   dirtySection,
   gitFailure,
   inTheWayConfirmation,
@@ -221,13 +222,22 @@ export async function reportRestore(host: FlowHost, done: string, r: Restored): 
 
 /**
  * Runs `op`, which git may autostash around (merge, rebase, their Continue, Abort or Skip, switch
- * --merge), and finds the stash git keeps when putting the changes back conflicted: a new stash
- * top after a success (exit 0). Read from the stash list, not stderr: git 2.55 reworded the message.
+ * --merge), and finds the stash git keeps when it could not put the changes back: a new stash top
+ * after a success (exit 0). Read from the stash list, not stderr: git 2.55 reworded the message,
+ * and it says the restore conflicted also when git refused to apply the stash at all.
  */
 export async function execAutostash(host: FlowHost, exec: Exec, op: Operation): Promise<Restored> {
   const before = await readStashTop(host.git, host.cwd);
   await exec(op);
   const after = await readStashTop(host.git, host.cwd);
   const stash = after === undefined || after === before ? undefined : await readStash(host.git, host.cwd, after);
-  return stash ? { kind: 'conflicted', stash } : { kind: 'none' };
+  if (!stash) return { kind: 'none' };
+  if ((await readUnmerged(host.git, host.cwd)).length > 0) return { kind: 'conflicted', stash };
+  // git applies a stash whole or not at all: it refused over local changes to files the stash changes.
+  const [changed, worktree] = await Promise.all([
+    runGit(host.git, host.cwd, ['diff', '--name-only', '-z', '--no-renames', `${stash.hash}^1`, stash.hash, '--']),
+    readWorktree(host.git, host.cwd),
+  ]);
+  const inTheWay = changed.split('\0').filter((p) => worktree.paths.includes(p));
+  return { kind: 'refused', stash, reason: autostashRefused(inTheWay) };
 }
