@@ -179,6 +179,22 @@ export const COMMANDS = {
       { section: 'tag', group: '5_copy@1' },
     ],
   },
+  'strata.hideBadge': {
+    title: 'Hide Badge',
+    menus: [
+      { section: 'branch', group: '6_hide@1', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '6_hide@1' },
+      { section: 'tag', group: '6_hide@1' },
+    ],
+  },
+  'strata.hideSimilarBadges': {
+    title: 'Hide Similar Badges...',
+    menus: [
+      { section: 'branch', group: '6_hide@2', when: '!strataIsCurrent' },
+      { section: 'remoteBranch', group: '6_hide@2' },
+      { section: 'tag', group: '6_hide@2' },
+    ],
+  },
   'strata.deleteBranch': {
     title: 'Delete Branch...',
     menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent' }],

@@ -487,6 +487,8 @@ describe('ref operations', () => {
         'Publish Branch...',
         'Rename Branch...',
         'Copy Name',
+        'Hide Badge',
+        'Hide Similar Badges...',
         'Delete Branch...',
       ],
     });

@@ -191,6 +191,8 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.publish',
       'strata.renameBranch',
       'strata.copyRefName',
+      'strata.hideBadge',
+      'strata.hideSimilarBadges',
       'strata.deleteBranch',
     ]);
     assert.deepEqual(refActions('remoteBranch', {}), [
@@ -199,12 +201,16 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.rebase',
       'strata.fetchRemote',
       'strata.copyRefName',
+      'strata.hideBadge',
+      'strata.hideSimilarBadges',
       'strata.deleteRemoteBranch',
     ]);
     assert.deepEqual(refActions('tag', {}), [
       'strata.checkoutDetached',
       'strata.pushTag',
       'strata.copyRefName',
+      'strata.hideBadge',
+      'strata.hideSimilarBadges',
       'strata.deleteTag',
       'strata.deleteRemoteTag',
     ]);

@@ -55,6 +55,8 @@ export type HostToWebview =
   | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
+  /** Opens the ref filter searching for `search`, selected (Hide Similar Badges...). */
+  | { type: 'findRefs'; search: string }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
@@ -128,6 +130,10 @@ export interface ProbeState {
   operationNotes: Record<string, string>;
   /** Text of the toolbar's ref filter button, e.g. "All · 2 hidden". */
   refFilterButton: string;
+  /** The ref filter's search text while its popover is open. */
+  refFilterSearch: string | undefined;
+  /** The repository's badge rules as the host last sent them. */
+  badgeRules: BadgeRule[];
   /** Label of the toolbar's stash count button; empty while it is hidden. */
   stashButton: string;
   /** Rendered stash rows by row index: badge, subject cell and aria-label text, and menu context. */

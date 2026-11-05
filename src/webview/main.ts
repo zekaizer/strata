@@ -496,6 +496,9 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'findRefs':
+        this.refFilter.openWith(m.search);
+        break;
       case 'reveal':
         this.reveal(m.hash);
         break;
@@ -2387,6 +2390,8 @@ class App {
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       refFilterButton: this.refFilter.button.textContent,
+      refFilterSearch: this.refFilter.searchText(),
+      badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
           !f.matches(':hover') &&

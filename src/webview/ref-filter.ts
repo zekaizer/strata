@@ -193,6 +193,11 @@ export class RefFilter {
     this.search.select();
   }
 
+  /** The search text while the popover is open. */
+  searchText(): string | undefined {
+    return this.popover.hidden ? undefined : this.search.value;
+  }
+
   private toggle(): void {
     if (this.popover.hidden) {
       this.popover.hidden = false;

@@ -1,7 +1,8 @@
 import * as assert from 'node:assert/strict';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
-import { delay, git, strata, waitFor } from './helpers.ts';
+import * as vscode from 'vscode';
+import { git, strata, waitFor } from './helpers.ts';
 
 describe('hidden badges', () => {
   let panel: GraphPanel;
@@ -20,14 +21,13 @@ describe('hidden badges', () => {
     return p;
   }
 
-  /** Removes the tests' three rules through the Hidden badges section, leaving the next run a clean slate. */
+  /** Removes every rule through the Hidden badges section, leaving the next run a clean slate. */
   async function removeRules(): Promise<void> {
     await panel.simulate({ kind: 'click', selector: '.ref-filter-button' });
-    for (let i = 0; i < 3; i++) {
+    for (let n = (await panel.probe()).badgeRules.length; n > 0; n--) {
       await panel.simulate({ kind: 'click', selector: '.popover-rule button[aria-label^="Remove"]' });
-      await delay(300);
+      await until('a rule removed', (p) => p.badgeRules.length < n);
     }
-    await until('every badge shown', (p) => shows(p, 'cross/x') && !p.refFilterButton.includes('hidden'));
     await panel.simulate({ kind: 'key', key: 'Escape' });
   }
 
@@ -87,5 +87,31 @@ describe('hidden badges', () => {
     const s = await panel.probe();
     assert.ok(!shows(s, 'cross/x') && !shows(s, 'wip/experiment'), 'still hidden');
     assert.ok(shows(s, 'cross/y'), 'the exception is kept too');
+  });
+
+  const branchMenu = (branch: string) => ({
+    webview: 'strata.graph',
+    webviewSection: 'branch',
+    strataHash: git('rev-parse', branch),
+    strataRef: `refs/heads/${branch}`,
+    strataIsCurrent: false,
+    strataUpstream: false,
+  });
+
+  it('hides one badge with Hide Badge', async () => {
+    await vscode.commands.executeCommand('strata.hideBadge', branchMenu('cross/y'));
+    const s = await until('cross/y hidden', (p) => !shows(p, 'cross/y'));
+    assert.deepEqual(s.badgeRules.at(-1), { pattern: 'cross/y', keep: false });
+  });
+
+  it('previews a glob for the badge with Hide Similar Badges, hiding on confirmation', async () => {
+    await vscode.commands.executeCommand('strata.hideSimilarBadges', branchMenu('feature/login'));
+    let s = await until('filter open', (p) => p.refFilterSearch !== undefined);
+    assert.equal(s.refFilterSearch, 'feature/*');
+    assert.ok(shows(s, 'feature/login'), 'nothing hidden before confirming');
+    await panel.simulate({ kind: 'click', selector: '.popover-hide' });
+    s = await until('feature badges hidden', (p) => !shows(p, 'feature/login') && !shows(p, 'feature/search'));
+    assert.deepEqual(s.badgeRules.at(-1), { pattern: 'feature/*', keep: false });
+    await panel.simulate({ kind: 'key', key: 'Escape' });
   });
 });

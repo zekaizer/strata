@@ -1,8 +1,8 @@
 import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
-import { parseRules, type BadgeRule } from '../core/badge-rules.ts';
+import { addRule, parseRules, type BadgeRule } from '../core/badge-rules.ts';
 import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
-import type { RefSnapshot } from '../core/refs.ts';
+import type { Ref, RefSnapshot } from '../core/refs.ts';
 import type { Leftover, OperationState } from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
@@ -339,6 +339,12 @@ export class GraphController implements vscode.Disposable, FlowHost {
     const dir = await this.commonDir(root).catch(() => undefined);
     if (dir === undefined) return [];
     return this.env.badgeRules.get(dir);
+  }
+
+  /** Adds a rule hiding the badge of `ref`: its short name, free of * and ?, matches only it. */
+  async hideBadge(ref: Ref): Promise<void> {
+    const dir = await this.commonDir(this.requireRepo().rootUri.fsPath);
+    await this.setBadgeRules(addRule(this.env.badgeRules.get(dir), { pattern: ref.short, keep: false }));
   }
 
   /** Replaces the graph's repository's badge rules and tells the graph. */
