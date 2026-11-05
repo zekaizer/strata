@@ -9,7 +9,9 @@ import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/comm
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
-import { LogReader } from '../git/log-reader.ts';
+import { LogReader, type LogOptions } from '../git/log-reader.ts';
+import { findCommits, findExact, locateCommit } from '../git/find.ts';
+import type { FindQuery } from '../core/find.ts';
 import { readCommitPatch, readFilePatch, readStashPatch } from '../git/patch.ts';
 import { readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
@@ -33,6 +35,9 @@ const GRAPH_UPDATE_DELAY_MS = 3000;
 const LARGE_PATCH_BYTES = 4 << 20;
 /** Each git query behind the ref card's On, First in and After lines is stopped after this; its line is left out. */
 export const WHERE_BUDGET_MS = 300;
+
+/** Commits a search hands out at most; the find widget then says "10,000+". */
+export const FIND_CAP = 10_000;
 
 /** workspaceState key of Strata's stash marks, by the git dir of the worktree they belong to. */
 const STASH_MARKS = 'strata.stashMarks';
@@ -98,6 +103,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private graphAgain = false;
   /** Stops the ref card's where-is query in flight. */
   private whereQuery: AbortController | undefined;
+  /** Stops the find widget's search, and its locate query, in flight. */
+  private search: AbortController | undefined;
+  private locating: AbortController | undefined;
   /** WHERE_BUDGET_MS; integration tests shorten it to see lines left out. */
   static whereBudgetMs = WHERE_BUDGET_MS;
 
@@ -239,6 +247,15 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         case 'whereIs':
           await this.whereIs(m.generation, m.hash);
           break;
+        case 'find':
+          await this.find(m.generation, m.id, m.query);
+          break;
+        case 'findStop':
+          this.stopFind();
+          break;
+        case 'locate':
+          await this.locate(m.generation, m.id, m.hash);
+          break;
         case 'headNotShown': {
           const at = m.branch ?? `detached at ${m.hash.slice(0, 7)}`;
           const action = m.branch === undefined ? 'Show All Branches' : `Show ${m.branch} Too`;
@@ -267,6 +284,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.reader?.dispose();
     this.reader = undefined;
     this.stopWhere();
+    this.stopFind();
     const generation = ++this.generation;
     const cwd = this.cwd;
     const [refs, stashes, badgeRules] = await Promise.all([
@@ -283,12 +301,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const known = new Set(refs.refs.map((r) => r.name));
     const kept = this.options.refs?.filter((r) => known.has(r)) ?? [];
     this.options = { ...this.options, refs: kept.length > 0 ? kept : null };
-    this.reader = new LogReader({
-      git: this.api.git.path,
-      cwd,
-      firstParent: this.options.firstParent,
-      refs: this.options.refs ?? undefined,
-    });
+    this.reader = new LogReader(this.view());
     this.post({
       type: 'reset',
       generation,
@@ -404,6 +417,67 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private stopWhere(): void {
     this.whereQuery?.abort();
     this.whereQuery = undefined;
+  }
+
+  /** The history shown, as LogReader reads it. */
+  private view(): LogOptions {
+    return {
+      git: this.api.git.path,
+      cwd: this.cwd,
+      firstParent: this.options.firstParent,
+      refs: this.options.refs ?? undefined,
+    };
+  }
+
+  /** Answers find: streams the commits of the history shown that `query` matches. */
+  private async find(generation: number, id: number, query: FindQuery): Promise<void> {
+    this.search?.abort();
+    this.search = undefined;
+    if (generation !== this.generation) return;
+    // The query comes from the webview: only strings reach git, each as one option's value.
+    const { text, author, hashPrefix } = query;
+    if (typeof text !== 'string' || (author !== undefined && typeof author !== 'string'))
+      throw new Error('invalid find query');
+    const search = new AbortController();
+    this.search = search;
+    const live = () => !search.signal.aborted && generation === this.generation;
+    let exact = hashPrefix === undefined ? undefined : await findExact(this.api.git.path, this.cwd, hashPrefix);
+    if (!live()) return;
+    try {
+      await findCommits(
+        { ...this.view(), query: { text, author, hashPrefix }, cap: FIND_CAP, signal: search.signal },
+        (batch) => {
+          this.post({ type: 'findHits', generation, id, ...batch, ...(exact ? { exact } : {}) });
+          exact = undefined;
+        },
+      );
+    } catch (e) {
+      if (!live()) return;
+      // The widget stops waiting; the error shows in the toolbar.
+      this.post({ type: 'findHits', generation, id, hits: [], done: true, capped: false, ...(exact ? { exact } : {}) });
+      throw e;
+    }
+  }
+
+  /** Answers locate: where commit `hash` is in the history shown. */
+  private async locate(generation: number, id: number, hash: string): Promise<void> {
+    this.locating?.abort();
+    if (generation !== this.generation) return;
+    if (!isCommitId(hash)) throw new Error('invalid commit id');
+    const query = new AbortController();
+    this.locating = query;
+    const located = await locateCommit({ ...this.view(), hash, signal: query.signal }).catch((e: unknown) => {
+      if (!query.signal.aborted) throw e;
+    });
+    if (!located || generation !== this.generation) return;
+    this.post({ type: 'located', generation, id, hash, ...located });
+  }
+
+  private stopFind(): void {
+    this.search?.abort();
+    this.search = undefined;
+    this.locating?.abort();
+    this.locating = undefined;
   }
 
   private marksOf(dir: string): StashMark[] {
@@ -769,6 +843,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   dispose(): void {
     this.disposed = true;
     this.stopWhere();
+    this.stopFind();
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);
     this.reader?.dispose();
