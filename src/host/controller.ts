@@ -218,7 +218,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     }
   }
 
-  private async reset(result?: { focus?: string }): Promise<void> {
+  private async reset(result?: { focus?: string; notified?: true }): Promise<void> {
     if (this.disposed) return;
     this.reader?.dispose();
     this.reader = undefined;
@@ -621,8 +621,8 @@ export class GraphController implements vscode.Disposable, FlowHost {
     };
   }
 
-  refresh(focus?: string): Promise<void> {
-    return this.reset(focus === undefined ? {} : { focus });
+  refresh(focus?: string, notified = false): Promise<void> {
+    return this.reset({ ...(focus === undefined ? {} : { focus }), ...(notified ? { notified: true } : {}) });
   }
 
   done(message: string): void {

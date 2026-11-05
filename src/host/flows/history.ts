@@ -193,7 +193,7 @@ async function fetchHistory(host: FlowHost, question: Confirmation<HistoryFetch>
  * git's own words, for a stop without conflicts (a cherry pick with nothing left to commit).
  */
 async function stopped(host: FlowHost, state: OperationState, reason: string): Promise<void> {
-  await host.refresh((await readHead(host.git, host.cwd)).hash);
+  await host.refresh((await readHead(host.git, host.cwd)).hash, true);
   const [subject, held] = await Promise.all([
     state.applying === undefined ? undefined : readCommit(host.git, host.cwd, state.applying).then((c) => c.subject),
     heldStash(host, state),

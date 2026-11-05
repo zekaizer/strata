@@ -205,6 +205,8 @@ class App {
   );
   /** What the banner last said aloud: a new stop or leftover, not a subject that arrived later. */
   private bannerSaid = '';
+  /** The host notified how the last operation ended: the banner it brings is not said again. */
+  private bannerNotified = false;
   /** Stops seen with conflicts (stopKey): when none are left, they were resolved. */
   private readonly conflictedStops = new Set<string>();
   /**
@@ -550,8 +552,9 @@ class App {
     refs: RefSnapshot,
     options: ViewOptions,
     stashes: StashEntry[],
-    result?: { focus?: string },
+    result?: { focus?: string; notified?: true },
   ): void {
+    this.bannerNotified = result?.notified === true;
     const focus = result?.focus;
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
     // scroll position too when the history itself is the same view. A row of a stash that is gone
@@ -777,7 +780,7 @@ class App {
 
   /**
    * Shows the operation in progress or what one left behind. It is said politely when it says
-   * something new: VS Code already announces the toast the host shows for a stop.
+   * something new, unless the host notified it: VS Code reads that notification out.
    */
   private updateBanner(): void {
     const op = this.operation;
@@ -795,7 +798,9 @@ class App {
       : '';
     if (said === this.bannerSaid) return;
     this.bannerSaid = said;
-    if (banner) this.announce(this.banner.text);
+    if (!banner) return;
+    if (this.bannerNotified) this.bannerNotified = false;
+    else this.announce(this.banner.text);
   }
 
   /**

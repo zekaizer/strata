@@ -36,7 +36,8 @@ export type HostToWebview =
   | { type: 'init'; theme: ThemeKind }
   /**
    * `result`: the history after an operation, which marks what it moved; its `focus` is a commit
-   * or stash to select and reveal once loaded, instead of the kept selection.
+   * or stash to select and reveal once loaded, instead of the kept selection. `notified`: a
+   * notification, which VS Code reads out, says how the operation ended.
    */
   | {
       type: 'reset';
@@ -45,7 +46,7 @@ export type HostToWebview =
       refs: RefSnapshot;
       options: ViewOptions;
       stashes: StashEntry[];
-      result?: { focus?: string };
+      result?: { focus?: string; notified?: true };
     }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
