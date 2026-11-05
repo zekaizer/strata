@@ -20,6 +20,7 @@ npm ci
 | Integration tests (VS Code 1.90.0)     | `npm run test:integration:min`                      |
 | Multi-repository integration tests     | `npm run test:integration:multi`                    |
 | Everything                             | `npm test`                                          |
+| Suites leave an outer `GIT_DIR` alone  | `npm run test:isolation` (any command: see below)   |
 | Screenshot the context menus           | `STRATA_MENU_SHOT_DIR=<dir>` with `npm run shot`    |
 | Screenshot the panel in all themes     | `npm run shot` → `artifacts/shots/*.png`            |
 | Screenshot for the README              | `npm run shot:readme` → `artifacts/shots/`          |
@@ -60,6 +61,15 @@ It also writes `showcase`, holding `quillboard` (`test/fixtures/showcase.ts`):
 49 commits of an invented web app by six invented authors, with pull request
 merges, release tags, a release branch and remote-tracking branches. Only the
 README screenshot uses it, under the `readme` label (`test/readme/`).
+
+## Running inside another git command
+
+`git rebase --exec`, hooks and similar set `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and
+friends for the commands they run. Tests and fixtures create repositories of their own, so these
+must not reach them: `test/isolate-git.ts` removes them from the environment of the unit test
+processes (`--import`), the fixture writer and the VS Code instances the integration tests start.
+`node scripts/git-isolation.ts <command>` runs a command with them pointing at a scratch
+repository and fails if it changed; `npm run test:isolation` does that for the unit tests.
 
 ## Headless environments
 

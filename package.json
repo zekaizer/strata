@@ -1343,7 +1343,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p src/webview/tsconfig.json && tsc -p src/worker/tsconfig.json && tsc -p playground/tsconfig.json",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test:unit",
-    "test:unit": "node --test --test-reporter=spec \"test/unit/**/*.test.ts\"",
+    "test:unit": "node --test --import ./test/isolate-git.ts --test-reporter=spec \"test/unit/**/*.test.ts\"",
     "test:integration": "npm run build && node test/fixtures/cli.ts branchy multi-repo && node scripts/xvfb.mjs -- vscode-test --label stable && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable && node scripts/xvfb.mjs -- vscode-test --label multi && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable multi",
     "test:integration:min": "npm run build && node test/fixtures/cli.ts branchy multi-repo && node scripts/xvfb.mjs -- vscode-test --label min && node scripts/xvfb.mjs -- node scripts/restart-test.mjs 1.90.0 && node scripts/xvfb.mjs -- vscode-test --label multi-min && node scripts/xvfb.mjs -- node scripts/restart-test.mjs 1.90.0 multi",
     "test:integration:multi": "npm run build && node test/fixtures/cli.ts multi-repo && node scripts/xvfb.mjs -- vscode-test --label multi && node scripts/xvfb.mjs -- node scripts/restart-test.mjs stable multi",
