@@ -16,7 +16,7 @@ import {
   pushOtherNameConfirmation,
   pushRejectedConfirmation,
   pushRejectedNotice,
-  quote,
+  refName,
   REMOTE_DOING,
   REMOTE_DONE,
   tagExistsOnRemote,
@@ -123,7 +123,7 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
   }
   const src: Source = upstream.ref
     ? await refSource(host, { name: upstream.ref, short: upstream.name })
-    : { rev: tracking, arg: tracking, name: quote(upstream.name) };
+    : { rev: tracking, arg: tracking, name: refName(upstream.name) };
   const how: PullRun = next ? { next } : {};
   if (ahead === 0) return merge(host, src, how);
   const [rebaseCfg, ff] = await Promise.all([
@@ -152,7 +152,7 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
     ...(canMerge ? [{ id: 'merge' as const, label: stashMerge ? 'Stash & Merge' : 'Merge' }] : []),
   ];
   const answer = await host.ui.confirm(
-    divergedConfirmation(quote(branch), upstream.name, ahead, behind, buttons, note, forRebase.section),
+    divergedConfirmation(refName(branch), upstream.name, ahead, behind, buttons, note, forRebase.section),
   );
   if (answer === 'rebase') await rebaseOnto({ ...how, stash: stashRebase });
   else if (answer === 'merge') await merge(host, src, { ...how, stash: stashMerge });
@@ -318,7 +318,7 @@ export async function deleteRemoteTag(host: FlowHost, ref: Ref): Promise<void> {
  */
 export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false): Promise<void> {
   const rb = remoteBranch(ref.name, host.refs.remotes);
-  if (!rb) throw new Error(`'${ref.short}' is not a branch of a known remote.`);
+  if (!rb) throw new Error(`${refName(ref.short)} is not a branch of a known remote.`);
   const { remote, branch } = rb;
   const [tip, unmerged, tracking] = await Promise.all([
     readCommit(host.git, host.cwd, ref.name),
@@ -333,7 +333,7 @@ export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false
   try {
     if (
       !(await remoteRun(host, label, remote, op, {
-        expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+        expect: [{ rev: ref.name, hash: tip.hash, name: refName(ref.short) }],
       }))
     )
       return;

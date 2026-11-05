@@ -215,7 +215,7 @@ describe('ref operations', () => {
     await run('strata.deleteBranch', branchMenu('wip/experiment', tip));
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Delete branch 'wip/experiment' and its 1 unmerged commit?");
-    assert.match(asked.detail, /^1 commit would be on no branch, newest "Unmerged experiment"/);
+    assert.match(asked.detail, /^1 commit would be on no branch, newest [0-9a-f]+ "Unmerged experiment"\./);
     assert.equal(git('branch', '--list', 'wip/experiment'), '');
     await selected(panel(), git('merge-base', 'HEAD', tip));
 

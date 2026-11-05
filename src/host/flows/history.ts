@@ -21,7 +21,7 @@ import {
   type MergeParents,
   opName,
   pickConfirmation,
-  quote,
+  refName,
   rebaseConfirmation,
   rebaseContinues,
   RESET_MODES,
@@ -115,7 +115,7 @@ export async function refSource(host: FlowHost, ref: { name: string; short: stri
     (out) => out.split('\n')[0],
     () => undefined,
   );
-  return { rev: ref.name, arg: reads === ref.name ? ref.short : ref.name, name: quote(ref.short), ref: ref.name };
+  return { rev: ref.name, arg: reads === ref.name ? ref.short : ref.name, name: refName(ref.short), ref: ref.name };
 }
 
 /** The branch HEAD is on (or HEAD itself), as Undo guards and sentences name it. */
@@ -128,7 +128,7 @@ interface Head {
 
 async function head(host: FlowHost): Promise<Head> {
   const h = await readHead(host.git, host.cwd);
-  const name = h.branch === undefined ? 'HEAD' : quote(h.branch);
+  const name = h.branch === undefined ? 'HEAD' : refName(h.branch);
   return { ...h, name, expect: { rev: 'HEAD', hash: h.hash, name } };
 }
 
@@ -677,7 +677,7 @@ export async function skipCommit(host: FlowHost): Promise<void> {
     readCommit(host.git, host.cwd, state.applying),
     readDiscardedByAbort(host.git, host.cwd, state),
   ]);
-  const branch = state.branch === undefined ? 'HEAD' : quote(state.branch);
+  const branch = state.branch === undefined ? 'HEAD' : refName(state.branch);
   const answer = await host.ui.confirm(skipConfirmation(c, branch, discards));
   if (answer === undefined) return;
   const op: Operation = { kind: 'skip', operation: state.kind };

@@ -115,7 +115,7 @@ describe('wording of history operations', () => {
     assert.equal(r.message, "Rebase 'feature' onto 'main'?");
     assert.equal(
       r.detail,
-      "Replays 4 commits of 'feature' on 'main' (e4f5a6b), without its 1 merge commit. 2 are on origin/feature: you'll need to force push.\nUndo restores the original commits.",
+      "Replays 4 commits of 'feature' on 'main' (e4f5a6b), without its 1 merge commit. 2 are on 'origin/feature': you'll need to force push.\nUndo restores the original commits.",
     );
   });
 

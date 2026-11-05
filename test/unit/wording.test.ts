@@ -68,12 +68,12 @@ describe('wording', () => {
     );
     assert.equal(
       r!.detail,
-      '\'main\' moves back 1 commit ("Two"); their changes are discarded.\nUndo brings it back (1 also on origin/main).',
+      "'main' moves back 1 commit (\"Two\"); their changes are discarded.\nUndo brings it back (1 also on 'origin/main').",
     );
     const partly = resetConfirmation({ ...reset, onUpstream: 1, unreachable: 1 }, 'keep');
     assert.match(
       partly!.detail,
-      /\nUndo brings them back \(1 on no other branch; 1 also on origin\/main\)\.\nYour uncommitted changes stay\.$/,
+      /\nUndo brings them back \(1 on no other branch; 1 also on 'origin\/main'\)\.\nYour uncommitted changes stay\.$/,
     );
   });
 
@@ -98,7 +98,7 @@ describe('wording', () => {
     );
     assert.ok(lossy);
     assert.equal(lossy.message, "Delete branch 'topic' and its 2 unmerged commits?");
-    assert.match(lossy.detail, /^2 commits would be on no branch, newest "Tip" \(abc1234\)\./);
+    assert.match(lossy.detail, /^2 commits would be on no branch, newest abc1234 "Tip"\./);
     assert.deepEqual(lossy.buttons, [{ id: 'delete', label: 'Delete Branch and Commits' }]);
     const long = deleteBranchConfirmation('topic', { newest: [c('abc1234', 'Tip')], count: 60 }, undefined);
     assert.equal(long?.message, "Delete branch 'topic' and its 60 unmerged commits?");

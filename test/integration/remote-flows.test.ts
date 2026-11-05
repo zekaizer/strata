@@ -173,7 +173,7 @@ describe('remote operations', () => {
     await reload(panel());
     ui.press("Push to new 'origin/strata-fix'");
     await run('strata.push', { ...branchMenu('strata-fix', fix), strataUpstream: true });
-    assert.equal(ui.first('confirm').message, "'strata-fix' tracks origin/strata-pub, which has another name.");
+    assert.equal(ui.first('confirm').message, "'strata-fix' tracks 'origin/strata-pub', which has another name.");
     assert.equal(remote('rev-parse', 'strata-fix'), fix);
     assert.notEqual(remote('rev-parse', 'strata-pub'), fix, 'the upstream of another name is untouched');
   });
@@ -373,7 +373,7 @@ describe('remote operations', () => {
     assert.equal(asked[0]!.message, "Delete branch 'strata-x' from 'origin' and its 1 unmerged commit?");
     assert.match(
       asked[1]!.detail,
-      /^'origin\/strata-x' changed on 'origin' since the last fetch\. 2 commits would be on no branch, newest "Their fix"/,
+      /^'origin\/strata-x' changed on 'origin' since the last fetch\. 2 commits would be on no branch, newest [0-9a-f]+ "Their fix"\./,
     );
     assert.deepEqual(errors(), []);
     assert.equal(remote('branch', '--list', 'strata-x'), '');

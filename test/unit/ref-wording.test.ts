@@ -109,7 +109,7 @@ describe('wording of ref operations', () => {
   it('says a renamed branch keeps its remote name', () => {
     assert.deepEqual(renameInput('topic', 'origin'), {
       title: "Rename Branch 'topic'",
-      prompt: "Enter the new name. 'topic' on origin keeps its name.",
+      prompt: "Enter the new name. 'topic' on 'origin' keeps its name.",
     });
     assert.equal(renameInput('topic', undefined).prompt, 'Enter the new name.');
     assert.equal(NEEDS_NEW_NAME, 'Enter a different name.');
@@ -184,7 +184,7 @@ describe('results and progress of ref operations', () => {
   it('says what was done', () => {
     const cases: [string, string][] = [
       [DONE.switched('topic'), "Switched to 'topic'"],
-      [DONE.switched('x', { count: 3, upstream: 'origin/x' }), "Switched to 'x' (3 behind origin/x)"],
+      [DONE.switched('x', { count: 3, upstream: 'origin/x' }), "Switched to 'x' (3 behind 'origin/x')"],
       [DONE.tracking('x', 'origin/x'), "Created 'x' tracking 'origin/x'"],
       [DONE.detached('abc1234'), 'Detached HEAD at abc1234'],
       [DONE.branchCreated('x', 'abc1234'), "Created 'x' at abc1234"],

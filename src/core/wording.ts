@@ -104,7 +104,7 @@ const MODE_LINE: Record<ResetMode, string> = {
  */
 export function resetConfirmation(f: ResetFacts, mode: ResetMode, ask = false): Confirmation<'reset'> | undefined {
   if (!ask && f.dropped.count === 0 && !(mode === 'hard' && f.dirtyFiles > 0)) return undefined;
-  const name = f.branch === undefined ? 'HEAD' : `'${f.branch}'`;
+  const name = f.branch === undefined ? 'HEAD' : refName(f.branch);
   const n = f.dropped.count;
   const it = n === 1 ? 'it' : 'them';
   const moves =
@@ -115,7 +115,7 @@ export function resetConfirmation(f: ResetFacts, mode: ResetMode, ask = false): 
         : `${name} moves back ${plural(n, 'commit')} (${quoted(f.dropped)}); ${MODE_LINE[mode]}.`;
   const also = [
     ...(f.unreachable > 0 && f.unreachable < n ? [`${f.unreachable} on no other branch`] : []),
-    ...(f.onUpstream > 0 && f.upstream ? [`${f.onUpstream} also on ${f.upstream}`] : []),
+    ...(f.onUpstream > 0 && f.upstream ? [`${f.onUpstream} also on ${refName(f.upstream)}`] : []),
   ];
   return {
     message: `Reset ${name} to ${f.target.short}?`,
@@ -141,11 +141,11 @@ export function deleteBranchConfirmation(
   if (!newest) return undefined;
   const n = unreachable.count;
   return {
-    message: `Delete branch '${branch}' and its ${plural(n, 'unmerged commit')}?`,
+    message: `Delete branch ${refName(branch)} and its ${plural(n, 'unmerged commit')}?`,
     detail: [
-      `${plural(n, 'commit')} would be on no branch, newest "${newest.subject}" (${newest.short}).`,
+      `${plural(n, 'commit')} would be on no branch, newest ${commitName(newest)}.`,
       'Undo restores the branch.',
-      ...(upstream ? [`${upstream} stays on its remote.`] : []),
+      ...(upstream ? [`${refName(upstream)} stays on its remote.`] : []),
     ].join('\n'),
     buttons: [{ id: 'delete', label: 'Delete Branch and Commits' }],
   };
@@ -178,7 +178,7 @@ export function abortConfirmation(
   discards: readonly string[] = [],
   dropped = 0,
 ): Confirmation<'abort' | 'stash' | 'discard'> {
-  const name = branch === undefined ? 'HEAD' : `'${branch}'`;
+  const name = branch === undefined ? 'HEAD' : refName(branch);
   const discarded = discards.length > 0 ? discardedChanges('Abort', discards) : undefined;
   const lost = dropped > 0 ? `the ${plural(dropped, 'commit')} it ${op === 'rebase' ? 'replayed' : 'made'} and ` : '';
   return {
@@ -194,7 +194,7 @@ export function abortConfirmation(
   };
 }
 
-const branchName = (branch: string | undefined) => (branch === undefined ? 'HEAD' : `'${branch}'`);
+const branchName = (branch: string | undefined) => (branch === undefined ? 'HEAD' : refName(branch));
 
 /**
  * `label` names what is undone ("merge", "branch creation"); `newer`: the commits made on the
@@ -216,9 +216,7 @@ export function undoMovedConfirmation(
     };
   return {
     message: `Undo the ${label} and lose ${plural(newer, 'commit')} on ${name}?`,
-    detail: [`Made since the ${label}, newest ${newest.short} "${newest.subject}".`, "Strata can't undo this."].join(
-      '\n',
-    ),
+    detail: [`Made since the ${label}, newest ${commitName(newest)}.`, "Strata can't undo this."].join('\n'),
     buttons: [{ id: 'undo', label: `Undo and Drop ${plural(newer, 'Commit')}` }],
   };
 }
@@ -247,7 +245,7 @@ export function signInConfirmation(
   kind: 'auth' | 'hostKey',
   rerun?: string,
 ): Confirmation<'terminal' | 'output'> {
-  const name = remote === undefined ? 'a remote' : `'${remote}'`;
+  const name = remote === undefined ? 'a remote' : refName(remote);
   const then = rerun === undefined ? '.' : `, then run ${rerun} again.`;
   return {
     message: kind === 'auth' ? `Strata couldn't sign in to ${name}.` : `Strata couldn't connect to ${name}.`,
@@ -265,17 +263,21 @@ export function signInConfirmation(
 /** Progress label of Undo Last Operation. */
 export const undoLabel = (label: string): string => `Undoing the ${label}`;
 
-export const quote = (name: string): string => `'${name}'`;
+/** A branch, remote-tracking branch, tag or remote as sentences name it: 'main', 'origin/main'. */
+export const refName = (name: string): string => `'${name}'`;
+
+/** A commit as sentences name it: abc1234 "Add lexer". */
+export const commitName = (c: CommitRef): string => `${c.short} "${c.subject}"`;
 
 /** `name`, as sentences name it, moved between the confirmation and the operation. */
 export const changedMeanwhile = (name: string): string => `${name} changed while you were deciding; nothing was done.`;
 
 /** A branch or tag Strata was about to create appeared since the graph read its refs. */
 export const refAppeared = (kind: 'branch' | 'tag', name: string): string =>
-  `A ${kind} named '${name}' now exists; nothing was done.`;
+  `A ${kind} named ${refName(name)} now exists; nothing was done.`;
 
 /** A menu opened on a ref that is gone. */
-export const staleTarget = (name: string): string => `'${name}' no longer exists; the graph has been refreshed.`;
+export const staleTarget = (name: string): string => `${refName(name)} no longer exists; the graph has been refreshed.`;
 
 const VERB: Record<StashOp, string> = {
   rebase: 'Rebase',
@@ -327,7 +329,7 @@ export const IN_THE_WAY_OF = {
   rebase: (onto: string): string => `rebase onto ${onto}`,
   cherryPick: (short: string): string => `cherry pick of ${short}`,
   revert: (short: string): string => `revert of ${short}`,
-  stashBranch: (name: string): string => `switch to the new branch '${name}'`,
+  stashBranch: (name: string): string => `switch to the new branch ${refName(name)}`,
 };
 
 /** The stash that moves untracked files out of the way of `op` (IN_THE_WAY_OF); Strata never pops it. */
@@ -348,7 +350,7 @@ export function leaveBehindConfirmation(count: number, head: CommitRef): Confirm
   return {
     message: `Leave ${plural(count, 'commit')} behind?`,
     detail: [
-      `No branch has ${count === 1 ? 'it' : 'them'}; newest ${head.short} "${head.subject}".`,
+      `No branch has ${count === 1 ? 'it' : 'them'}; newest ${commitName(head)}.`,
       "Undo can't bring them back; only the reflog keeps them.",
     ].join('\n'),
     buttons: [{ id: 'switch', label: 'Switch Anyway' }],
@@ -356,7 +358,7 @@ export function leaveBehindConfirmation(count: number, head: CommitRef): Confirm
 }
 
 export const createBranchInput = (at: CommitRef): { title: string; prompt: string } => ({
-  title: `Create Branch at ${at.short} "${at.subject}"`,
+  title: `Create Branch at ${commitName(at)}`,
   prompt: 'Creates the branch and switches to it.',
 });
 
@@ -367,51 +369,52 @@ export function tracksOtherConfirmation(
   remote: string,
 ): Confirmation<'switch' | 'new'> {
   return {
-    message: `'${branch}' tracks '${upstream}', not '${remote}'.`,
+    message: `${refName(branch)} tracks ${refName(upstream)}, not ${refName(remote)}.`,
     detail: '',
     buttons: [
       { id: 'new', label: 'Create Tracking Branch...' },
-      { id: 'switch', label: `Switch to '${branch}'` },
+      { id: 'switch', label: `Switch to ${refName(branch)}` },
     ],
   };
 }
 
 /** A new branch tracking remote branch `remote` (e.g. origin/main). */
 export const trackingBranchInput = (remote: string): { title: string; prompt: string } => ({
-  title: `Create Branch Tracking '${remote}'`,
+  title: `Create Branch Tracking ${refName(remote)}`,
   prompt: 'Creates the branch and switches to it.',
 });
 
 export const createTagInput = (at: CommitRef): { title: string; prompt: string } => ({
-  title: `Create Tag at ${at.short} "${at.subject}"`,
+  title: `Create Tag at ${commitName(at)}`,
   prompt: 'Enter the tag name.',
 });
 
 export const tagMessageInput = (tag: string, at: CommitRef): { title: string; prompt: string } => ({
-  title: `Create Tag '${tag}' at ${at.short}`,
+  title: `Create Tag ${refName(tag)} at ${at.short}`,
   prompt: 'Message (empty for a lightweight tag)',
 });
 
 export const refExists = (kind: 'branch' | 'tag', name: string, short: string): string =>
-  `A ${kind} named '${name}' already exists (at ${short}).`;
+  `A ${kind} named ${refName(name)} already exists (at ${short}).`;
 
 /** `name` would be a directory of `other` or the other way around (pathConflict). */
 export const refPathConflict = (kind: 'branch' | 'tag', name: string, other: string): string =>
-  `A ${kind} can't be named '${name}' while the ${kind} '${other}' exists.`;
+  `A ${kind} can't be named ${refName(name)} while the ${kind} ${refName(other)} exists.`;
 
 /** A rename to the name it has. */
 export const NEEDS_NEW_NAME = 'Enter a different name.';
 
 /** `remote`: the remote of the branch's upstream, whose branch keeps its name. */
 export const renameInput = (branch: string, remote: string | undefined): { title: string; prompt: string } => ({
-  title: `Rename Branch '${branch}'`,
-  prompt: ['Enter the new name.', ...(remote === undefined ? [] : [`'${branch}' on ${remote} keeps its name.`])].join(
-    ' ',
-  ),
+  title: `Rename Branch ${refName(branch)}`,
+  prompt: [
+    'Enter the new name.',
+    ...(remote === undefined ? [] : [`${refName(branch)} on ${refName(remote)} keeps its name.`]),
+  ].join(' '),
 });
 
 export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
-  `'${branch}' is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
+  `${refName(branch)} is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
 
 /** `done`: what the operation did; `paths`: the conflicted files; `stash`: stashLabel(), which git kept. */
 export const popConflicted = (done: string, paths: readonly string[], stash: string): string =>
@@ -441,15 +444,15 @@ export const migrateConflicted = (done: string, paths: readonly string[]): strin
 /** What a finished operation did, for the status bar and the Undo notification. */
 export const DONE = {
   switched: (branch: string, behind?: { count: number; upstream: string }): string =>
-    `Switched to '${branch}'${behind ? ` (${behind.count} behind ${behind.upstream})` : ''}`,
-  tracking: (branch: string, upstream: string): string => `Created '${branch}' tracking '${upstream}'`,
+    `Switched to ${refName(branch)}${behind ? ` (${behind.count} behind ${refName(behind.upstream)})` : ''}`,
+  tracking: (branch: string, upstream: string): string => `Created ${refName(branch)} tracking ${refName(upstream)}`,
   detached: (short: string): string => `Detached HEAD at ${short}`,
-  branchCreated: (name: string, short: string): string => `Created '${name}' at ${short}`,
-  tagCreated: (tag: string, short: string): string => `Created tag '${tag}' at ${short}`,
-  renamed: (from: string, to: string): string => `Renamed '${from}' to '${to}'`,
-  branchDeleted: (branch: string): string => `Deleted branch '${branch}'`,
-  tagDeleted: (tag: string): string => `Deleted tag '${tag}'`,
-  copied: (name: string): string => `Copied '${name}'`,
+  branchCreated: (name: string, short: string): string => `Created ${refName(name)} at ${short}`,
+  tagCreated: (tag: string, short: string): string => `Created tag ${refName(tag)} at ${short}`,
+  renamed: (from: string, to: string): string => `Renamed ${refName(from)} to ${refName(to)}`,
+  branchDeleted: (branch: string): string => `Deleted branch ${refName(branch)}`,
+  tagDeleted: (tag: string): string => `Deleted tag ${refName(tag)}`,
+  copied: (name: string): string => `Copied ${refName(name)}`,
   copiedHash: (short: string): string => `Copied the commit hash of ${short}`,
   copiedShortHash: (short: string): string => `Copied ${short}`,
   copiedSubject: (short: string): string => `Copied the subject of ${short}`,
@@ -458,11 +461,11 @@ export const DONE = {
 /** Progress labels: what is running. `to` is named as in a sentence (a quoted branch or a short id). */
 export const DOING = {
   switching: (to: string): string => `Switching to ${to}`,
-  creatingBranch: (name: string): string => `Creating branch '${name}'`,
-  creatingTag: (tag: string): string => `Creating tag '${tag}'`,
-  renaming: (branch: string): string => `Renaming '${branch}'`,
-  deletingBranch: (branch: string): string => `Deleting branch '${branch}'`,
-  deletingTag: (tag: string): string => `Deleting tag '${tag}'`,
+  creatingBranch: (name: string): string => `Creating branch ${refName(name)}`,
+  creatingTag: (tag: string): string => `Creating tag ${refName(tag)}`,
+  renaming: (branch: string): string => `Renaming ${refName(branch)}`,
+  deletingBranch: (branch: string): string => `Deleting branch ${refName(branch)}`,
+  deletingTag: (tag: string): string => `Deleting tag ${refName(tag)}`,
 };
 
 /** Run in Terminal could not quote the command for the terminal's shell; `line` is quoted for a POSIX shell. */
@@ -563,7 +566,7 @@ export function rebaseConfirmation<B extends string>(
   const drops = f.merges > 0 ? `, without its ${plural(f.merges, 'merge commit')}` : '';
   const pushed =
     f.onUpstream > 0 && f.upstream
-      ? ` ${f.onUpstream === 1 ? '1 is' : `${f.onUpstream} are`} on ${f.upstream}: you'll need to force push.`
+      ? ` ${f.onUpstream === 1 ? '1 is' : `${f.onUpstream} are`} on ${refName(f.upstream)}: you'll need to force push.`
       : '';
   return {
     message: f.op === 'pullRebase' ? `Pull ${f.onto} into ${f.branch}?` : `Rebase ${f.branch} onto ${f.onto}?`,
@@ -591,7 +594,7 @@ export function mainlinePick(
   parents: MergeParents['parents'],
 ): { title: string; placeholder: string; items: { label: string; description: string; detail: string }[] } {
   return {
-    title: `Cherry Pick ${c.short} "${c.subject}"`,
+    title: `Cherry Pick ${commitName(c)}`,
     placeholder: 'A merge commit: apply its changes relative to which parent?',
     items: parents.map((p, i) => ({
       label: `Parent ${i + 1}: ${p.short}`,
@@ -607,9 +610,8 @@ export function mainlinePick(
 function mergeSentence(kind: 'cherryPick' | 'revert', m: MergeParents): string {
   const main = m.parents[m.mainline - 1]!;
   const others = m.parents.filter((p) => p !== main);
-  const from =
-    others.length === 1 ? `${others[0]!.short} "${others[0]!.subject}"` : fileList(others.map((o) => o.short));
-  const changes = `the changes of the ${plural(main.mergedIn, 'commit')} it merged into ${main.short} "${main.subject}" from ${from}.`;
+  const from = others.length === 1 ? commitName(others[0]!) : fileList(others.map((o) => o.short));
+  const changes = `the changes of the ${plural(main.mergedIn, 'commit')} it merged into ${commitName(main)} from ${from}.`;
   return kind === 'cherryPick' ? `Applies ${changes}` : `Undoes ${changes} Merging them again won't bring them back.`;
 }
 
@@ -625,9 +627,7 @@ export function pickConfirmation<B extends string>(
 ): Confirmation<B> {
   return {
     message:
-      kind === 'cherryPick'
-        ? `Cherry pick ${c.short} "${c.subject}" onto ${onto}?`
-        : `Revert ${c.short} "${c.subject}" on ${onto}?`,
+      kind === 'cherryPick' ? `Cherry pick ${commitName(c)} onto ${onto}?` : `Revert ${commitName(c)} on ${onto}?`,
     detail: [
       merge === undefined ? '' : mergeSentence(kind, merge),
       detached ? 'HEAD is detached: the new commit will be on no branch.' : '',
@@ -662,7 +662,7 @@ export const resetPick = (
   target: CommitRef,
   leaving: number,
 ): { title: string; placeholder: string } => ({
-  title: `Reset ${branch} to ${target.short} "${target.subject}"`,
+  title: `Reset ${branch} to ${commitName(target)}`,
   placeholder:
     leaving > 0
       ? `${plural(leaving, 'commit')} leave ${branch}. What happens to their changes?`
@@ -741,7 +741,7 @@ export function skipConfirmation(
 ): Confirmation<'skip' | 'stash' | 'discard'> {
   const discarded = discards.length > 0 ? discardedChanges('Skip', discards) : undefined;
   return {
-    message: `Skip ${c.short} "${c.subject}"?`,
+    message: `Skip ${commitName(c)}?`,
     detail: [`Its changes won't be in ${branch}.`, ...(discarded ? [discarded.line] : [])].join('\n'),
     buttons: discarded ? discarded.buttons : [{ id: 'skip', label: 'Skip Commit' }],
   };
@@ -872,7 +872,7 @@ export function dropStashConfirmation(
   files: { changed: number; untracked: number } | undefined,
   base: CommitRef,
 ): Confirmation<'drop'> {
-  const on = `${base.short} "${base.subject}"`;
+  const on = commitName(base);
   const holds =
     files === undefined
       ? `Made on ${on}.`
@@ -896,7 +896,7 @@ export function stashFilesExist(label: string, files: readonly string[], again =
 /** Branch `name` was created from stash `label` (stashLabel), but git did not restore `files`, which exist here. */
 export function stashBranchPartial(name: string, label: string, files: readonly string[]): string {
   const one = files.length === 1;
-  return `Created '${name}' from ${label}, but ${fileList(files)} did not come back because ${one ? 'it already exists' : 'they already exist'} here. The stash is kept.`;
+  return `Created ${refName(name)} from ${label}, but ${fileList(files)} did not come back because ${one ? 'it already exists' : 'they already exist'} here. The stash is kept.`;
 }
 
 export const stashBranchInput = (index: number, message: string, short: string): { title: string; prompt: string } => ({
@@ -913,7 +913,7 @@ export const STASH_DONE = {
   applied: (label: string): string => `Applied ${label}`,
   popped: (label: string): string => `Popped ${label}`,
   dropped: (label: string): string => `Dropped ${label}`,
-  branched: (name: string, label: string): string => `Created '${name}' from ${label} and applied it`,
+  branched: (name: string, label: string): string => `Created ${refName(name)} from ${label} and applied it`,
 };
 
 export const STASH_DOING = {
@@ -921,15 +921,15 @@ export const STASH_DOING = {
   applying: (label: string): string => `Applying ${label}`,
   popping: (label: string): string => `Popping ${label}`,
   dropping: (label: string): string => `Dropping ${label}`,
-  branching: (name: string): string => `Creating '${name}' from a stash`,
+  branching: (name: string): string => `Creating ${refName(name)} from a stash`,
 };
 
 export const NO_REMOTE = 'This repository has no remote.';
 
-export const noUpstream = (branch: string): string => `'${branch}' has no upstream branch.`;
+export const noUpstream = (branch: string): string => `${refName(branch)} has no upstream branch.`;
 
 export const upstreamGone = (branch: string, upstream: string): string =>
-  `'${upstream}', the upstream of '${branch}', is gone from its remote. Publish the branch again, or unset its upstream.`;
+  `${refName(upstream)}, the upstream of ${refName(branch)}, is gone from its remote. Publish the branch again, or unset its upstream.`;
 
 /** A detached HEAD has no branch to pull into or push. */
 export const detachedNoBranch = (action: 'pull' | 'push'): string =>
@@ -950,7 +950,7 @@ export function divergedConfirmation<B extends string>(
   section = '',
 ): Confirmation<B> {
   return {
-    message: `${branch} has ${plural(ahead, 'commit')} '${upstream}' lacks and is ${behind} behind.`,
+    message: `${branch} has ${plural(ahead, 'commit')} ${refName(upstream)} lacks and is ${behind} behind.`,
     detail: [note ?? '', section].filter((s) => s !== '').join('\n'),
     buttons,
   };
@@ -963,18 +963,18 @@ export function pushOtherNameConfirmation(
   upstreamBranch: string,
 ): Confirmation<'new' | 'upstream'> {
   return {
-    message: `'${branch}' tracks ${remote}/${upstreamBranch}, which has another name.`,
+    message: `${refName(branch)} tracks ${refName(`${remote}/${upstreamBranch}`)}, which has another name.`,
     detail: '',
     buttons: [
-      { id: 'new', label: `Push to new '${remote}/${branch}'` },
-      { id: 'upstream', label: `Push to '${remote}/${upstreamBranch}'` },
+      { id: 'new', label: `Push to new ${refName(`${remote}/${branch}`)}` },
+      { id: 'upstream', label: `Push to ${refName(`${remote}/${upstreamBranch}`)}` },
     ],
   };
 }
 
 /** A push the remote refused because it has `count` commits `branch` lacks (counted after fetching them). */
 export const pushRejected = (upstream: string, branch: string, count: number): string =>
-  `'${upstream}' has ${plural(count, 'commit')} that '${branch}' doesn't have.`;
+  `${refName(upstream)} has ${plural(count, 'commit')} that ${refName(branch)} doesn't have.`;
 
 /**
  * The question after a rejected push, saying only what the offered answers do: Pull (`canPull`,
@@ -993,8 +993,8 @@ export function pushRejectedConfirmation(
   return {
     message: pushRejected(upstream, branch, count),
     detail: [
-      ...(canPull ? [`Pulling brings ${them} into '${branch}', then you can push.`] : []),
-      ...(canForce ? [`A force push removes ${them} from '${upstream}'.`] : []),
+      ...(canPull ? [`Pulling brings ${them} into ${refName(branch)}, then you can push.`] : []),
+      ...(canForce ? [`A force push removes ${them} from ${refName(upstream)}.`] : []),
     ].join('\n'),
     buttons: [
       ...(canPull ? [{ id: 'pull' as const, label: 'Pull' }] : []),
@@ -1005,7 +1005,7 @@ export function pushRejectedConfirmation(
 
 /** A rejected push of a branch that is not the current one, with force pushes turned off. */
 export const pushRejectedNotice = (upstream: string, branch: string, count: number): string =>
-  `${pushRejected(upstream, branch, count)} Switch to '${branch}' and pull ${count === 1 ? 'it' : 'them'} first.`;
+  `${pushRejected(upstream, branch, count)} Switch to ${refName(branch)} and pull ${count === 1 ? 'it' : 'them'} first.`;
 
 export function forcePushConfirmation(
   branch: string,
@@ -1015,11 +1015,11 @@ export function forcePushConfirmation(
   newest: string | undefined,
 ): Confirmation<'force'> {
   return {
-    message: `Force push '${branch}' to '${remote}'?`,
+    message: `Force push ${refName(branch)} to ${refName(remote)}?`,
     detail: [
-      `Removes ${plural(count, 'commit')} '${branch}' doesn't have from ${upstream}${newest === undefined ? '' : `, newest "${newest}"`}.`,
+      `Removes ${plural(count, 'commit')} ${refName(branch)} doesn't have from ${refName(upstream)}${newest === undefined ? '' : `, newest "${newest}"`}.`,
       "Strata can't undo this.",
-      `Nothing is pushed if ${upstream} changed since Strata read it.`,
+      `Nothing is pushed if ${refName(upstream)} changed since Strata read it.`,
     ].join('\n'),
     buttons: [{ id: 'force', label: 'Force Push' }],
   };
@@ -1046,18 +1046,18 @@ export function deleteRemoteBranchConfirmation(
       ? []
       : [
           tracking.length === 1
-            ? `Local branch '${tracking[0]}' tracks it and stays.`
-            : `Local branches ${fileList(tracking.map(quote))} track it and stay.`,
+            ? `Local branch ${refName(tracking[0]!)} tracks it and stays.`
+            : `Local branches ${fileList(tracking.map(refName))} track it and stay.`,
         ];
   return {
     message: newest
-      ? `Delete branch '${branch}' from '${remote}' and its ${plural(n, 'unmerged commit')}?`
-      : `Delete branch '${branch}' from '${remote}'?`,
+      ? `Delete branch ${refName(branch)} from ${refName(remote)} and its ${plural(n, 'unmerged commit')}?`
+      : `Delete branch ${refName(branch)} from ${refName(remote)}?`,
     detail: [
-      `${moved ? `'${name}' changed on '${remote}' since the last fetch. ` : ''}${
+      `${moved ? `${refName(name)} changed on ${refName(remote)} since the last fetch. ` : ''}${
         newest
-          ? `${plural(n, 'commit')} would be on no branch, newest "${newest.subject}" (${newest.short}).`
-          : `'${name}' points at ${tip.short} "${tip.subject}", which another branch or tag has too.`
+          ? `${plural(n, 'commit')} would be on no branch, newest ${commitName(newest)}.`
+          : `${refName(name)} points at ${commitName(tip)}, which another branch or tag has too.`
       }`,
       "Strata can't undo this.",
       ...tracks,
@@ -1066,43 +1066,46 @@ export function deleteRemoteBranchConfirmation(
   };
 }
 
-export const publishPick = (branch: string): string => `Publish '${branch}' to…`;
-export const pushTagPick = (tag: string): string => `Push tag '${tag}' to…`;
+export const publishPick = (branch: string): string => `Publish ${refName(branch)} to…`;
+export const pushTagPick = (tag: string): string => `Push tag ${refName(tag)} to…`;
 
-export const deleteRemoteTagPick = (tag: string): string => `Delete tag '${tag}' from…`;
+export const deleteRemoteTagPick = (tag: string): string => `Delete tag ${refName(tag)} from…`;
 
 export function deleteRemoteTagConfirmation(tag: string, remote: string, at: CommitRef): Confirmation<'delete'> {
   return {
-    message: `Delete tag '${tag}' from '${remote}'?`,
-    detail: [`The local tag stays at ${at.short} "${at.subject}".`, "Strata can't undo this."].join('\n'),
+    message: `Delete tag ${refName(tag)} from ${refName(remote)}?`,
+    detail: [`The local tag stays at ${commitName(at)}.`, "Strata can't undo this."].join('\n'),
     buttons: [{ id: 'delete', label: 'Delete Tag from Remote' }],
   };
 }
 
 export const tagExistsOnRemote = (tag: string, remote: string): string =>
-  `'${remote}' already has a different tag '${tag}'; nothing was pushed.`;
+  `${refName(remote)} already has a different tag ${refName(tag)}; nothing was pushed.`;
 
 export const REMOTE_DONE = {
-  fetched: (remote: string | undefined): string => `Fetched ${remote ?? 'all remotes'}`,
-  published: (branch: string, remote: string): string => `Published '${branch}' to ${remote}`,
-  pushed: (branch: string, upstream: string): string => `Pushed '${branch}' to ${upstream}`,
-  forcePushed: (branch: string, upstream: string): string => `Force pushed '${branch}' to ${upstream}`,
-  remoteBranchDeleted: (branch: string, remote: string): string => `Deleted branch '${branch}' from ${remote}`,
-  tagPushed: (tag: string, remote: string): string => `Pushed tag '${tag}' to ${remote}`,
-  remoteTagDeleted: (tag: string, remote: string): string => `Deleted tag '${tag}' from ${remote}`,
-  remoteBranchGone: (name: string, remote: string): string => `'${name}' was already gone from ${remote}`,
-  upstreamUnset: (branch: string): string => `Unset the upstream of '${branch}'`,
+  fetched: (remote: string | undefined): string => `Fetched ${remote === undefined ? 'all remotes' : refName(remote)}`,
+  published: (branch: string, remote: string): string => `Published ${refName(branch)} to ${refName(remote)}`,
+  pushed: (branch: string, upstream: string): string => `Pushed ${refName(branch)} to ${refName(upstream)}`,
+  forcePushed: (branch: string, upstream: string): string => `Force pushed ${refName(branch)} to ${refName(upstream)}`,
+  remoteBranchDeleted: (branch: string, remote: string): string =>
+    `Deleted branch ${refName(branch)} from ${refName(remote)}`,
+  tagPushed: (tag: string, remote: string): string => `Pushed tag ${refName(tag)} to ${refName(remote)}`,
+  remoteTagDeleted: (tag: string, remote: string): string => `Deleted tag ${refName(tag)} from ${refName(remote)}`,
+  remoteBranchGone: (name: string, remote: string): string =>
+    `${refName(name)} was already gone from ${refName(remote)}`,
+  upstreamUnset: (branch: string): string => `Unset the upstream of ${refName(branch)}`,
   upToDate: 'Already up to date',
 };
 
 export const REMOTE_DOING = {
-  fetching: (remote: string | undefined): string => `Fetching ${remote ?? 'all remotes'}`,
-  pushing: (branch: string, dest: string): string => `Pushing '${branch}' to ${dest}`,
-  publishing: (branch: string, remote: string): string => `Publishing '${branch}' to ${remote}`,
-  pushingTag: (tag: string, remote: string): string => `Pushing tag '${tag}' to ${remote}`,
-  deletingTag: (tag: string, remote: string): string => `Deleting tag '${tag}' from ${remote}`,
-  deletingBranch: (branch: string, remote: string): string => `Deleting '${branch}' from ${remote}`,
-  unsettingUpstream: (branch: string): string => `Unsetting the upstream of '${branch}'`,
+  fetching: (remote: string | undefined): string =>
+    `Fetching ${remote === undefined ? 'all remotes' : refName(remote)}`,
+  pushing: (branch: string, dest: string): string => `Pushing ${refName(branch)} to ${refName(dest)}`,
+  publishing: (branch: string, remote: string): string => `Publishing ${refName(branch)} to ${refName(remote)}`,
+  pushingTag: (tag: string, remote: string): string => `Pushing tag ${refName(tag)} to ${refName(remote)}`,
+  deletingTag: (tag: string, remote: string): string => `Deleting tag ${refName(tag)} from ${refName(remote)}`,
+  deletingBranch: (branch: string, remote: string): string => `Deleting ${refName(branch)} from ${refName(remote)}`,
+  unsettingUpstream: (branch: string): string => `Unsetting the upstream of ${refName(branch)}`,
 };
 
 /** Why a diverged pull offers less than Rebase and Merge, or rebases differently than configured. */
@@ -1115,5 +1118,5 @@ export const PULL_NOTES = {
 export const REF_ACTIONS = {
   title: 'Branch and Tag Actions',
   kind: { branch: 'branch', remote: 'remote branch', tag: 'tag' } as Record<RefKind, string>,
-  actionsFor: (name: string): string => `Actions for '${name}'`,
+  actionsFor: (name: string): string => `Actions for ${refName(name)}`,
 };

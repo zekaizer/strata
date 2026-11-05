@@ -9,7 +9,7 @@ import {
   changedMeanwhile,
   commandUnquotable,
   gitFailure,
-  quote,
+  refName,
   signInConfirmation,
   UNDO_STALE,
   undoGone,
@@ -266,7 +266,7 @@ export async function undoLast(host: FlowHost): Promise<void> {
   if (undo.guard.kind === 'head') {
     const g = undo.guard;
     const head = await readHead(host.git, host.cwd);
-    const name = head.branch === undefined ? 'HEAD' : quote(head.branch);
+    const name = head.branch === undefined ? 'HEAD' : refName(head.branch);
     // Never move another branch than the one the operation moved.
     if (headRef(head.branch) !== g.ref) {
       host.setUndo(undefined);

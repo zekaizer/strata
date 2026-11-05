@@ -58,7 +58,7 @@ describe('wording of remote operations', () => {
 
   it('confirms a push to an upstream of another name, offering a branch of its own first', () => {
     const c = pushOtherNameConfirmation('feature', 'origin', 'main');
-    assert.equal(c.message, "'feature' tracks origin/main, which has another name.");
+    assert.equal(c.message, "'feature' tracks 'origin/main', which has another name.");
     assert.deepEqual(c.buttons, [
       { id: 'new', label: "Push to new 'origin/feature'" },
       { id: 'upstream', label: "Push to 'origin/main'" },
@@ -94,7 +94,7 @@ describe('wording of remote operations', () => {
     assert.equal(f.message, "Force push 'x' to 'origin'?");
     assert.equal(
       f.detail,
-      "Removes 2 commits 'x' doesn't have from origin/x, newest \"Their fix\".\nStrata can't undo this.\nNothing is pushed if origin/x changed since Strata read it.",
+      "Removes 2 commits 'x' doesn't have from 'origin/x', newest \"Their fix\".\nStrata can't undo this.\nNothing is pushed if 'origin/x' changed since Strata read it.",
     );
   });
 
@@ -109,7 +109,7 @@ describe('wording of remote operations', () => {
     assert.equal(lost.message, "Delete branch 'x' from 'origin' and its 2 unmerged commits?");
     assert.equal(
       lost.detail,
-      "'origin/x' changed on 'origin' since the last fetch. 2 commits would be on no branch, newest \"Fix\" (abc1234).\nStrata can't undo this.\nLocal branches 'x' and 'y' track it and stay.",
+      "'origin/x' changed on 'origin' since the last fetch. 2 commits would be on no branch, newest abc1234 \"Fix\".\nStrata can't undo this.\nLocal branches 'x' and 'y' track it and stay.",
     );
     assert.deepEqual(lost.buttons, [{ id: 'delete', label: 'Delete Remote Branch and Commits' }]);
     assert.match(
@@ -129,15 +129,15 @@ describe('wording of remote operations', () => {
 
   it('says what was done', () => {
     assert.equal(REMOTE_DONE.fetched(undefined), 'Fetched all remotes');
-    assert.equal(REMOTE_DONE.fetched('origin'), 'Fetched origin');
-    assert.equal(REMOTE_DONE.published('x', 'origin'), "Published 'x' to origin");
-    assert.equal(REMOTE_DONE.pushed('x', 'origin/x'), "Pushed 'x' to origin/x");
+    assert.equal(REMOTE_DONE.fetched('origin'), "Fetched 'origin'");
+    assert.equal(REMOTE_DONE.published('x', 'origin'), "Published 'x' to 'origin'");
+    assert.equal(REMOTE_DONE.pushed('x', 'origin/x'), "Pushed 'x' to 'origin/x'");
     assert.equal(REMOTE_DONE.upToDate, 'Already up to date');
     assert.equal(pushTagPick('v1'), "Push tag 'v1' to…");
-    assert.equal(REMOTE_DONE.tagPushed('v1', 'origin'), "Pushed tag 'v1' to origin");
+    assert.equal(REMOTE_DONE.tagPushed('v1', 'origin'), "Pushed tag 'v1' to 'origin'");
     assert.equal(tagExistsOnRemote('v1', 'origin'), "'origin' already has a different tag 'v1'; nothing was pushed.");
-    assert.equal(REMOTE_DONE.remoteTagDeleted('v1', 'origin'), "Deleted tag 'v1' from origin");
-    assert.equal(REMOTE_DONE.remoteBranchDeleted('x', 'origin'), "Deleted branch 'x' from origin");
-    assert.equal(REMOTE_DONE.remoteBranchGone('origin/x', 'origin'), "'origin/x' was already gone from origin");
+    assert.equal(REMOTE_DONE.remoteTagDeleted('v1', 'origin'), "Deleted tag 'v1' from 'origin'");
+    assert.equal(REMOTE_DONE.remoteBranchDeleted('x', 'origin'), "Deleted branch 'x' from 'origin'");
+    assert.equal(REMOTE_DONE.remoteBranchGone('origin/x', 'origin'), "'origin/x' was already gone from 'origin'");
   });
 });
