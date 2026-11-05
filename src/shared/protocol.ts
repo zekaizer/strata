@@ -156,6 +156,8 @@ export interface BadgeFilterProbe {
   rules: string[] | undefined;
   /** Listed refs by short name, " (hidden)" after those whose badge is hidden. */
   refs: string[] | undefined;
+  /** The "Show hidden badges (N)" option's text while it is offered. */
+  showHidden: string | undefined;
 }
 
 /** Webview state reported for integration tests. */

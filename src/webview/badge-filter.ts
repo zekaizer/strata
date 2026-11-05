@@ -42,6 +42,8 @@ export class BadgeFilter {
   private readonly ruleList = el('div', 'popover-rules');
   private readonly refsHeading = el('div', 'popover-group');
   private readonly list = el('div', 'popover-list badge-refs');
+  /** Offered while badges are hidden, or shown for now. */
+  private readonly showHidden = el('div', 'popover-section');
   private readonly showHiddenBox = el('input');
   private readonly showHiddenLabel = el('span', 'popover-item-text');
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
@@ -95,15 +97,14 @@ export class BadgeFilter {
     });
     const showHiddenItem = el('label', 'popover-item');
     showHiddenItem.append(this.showHiddenBox, codicon('eye'), this.showHiddenLabel);
-    const showHidden = el('div', 'popover-section');
-    showHidden.append(showHiddenItem);
+    this.showHidden.append(showHiddenItem);
 
     const listed = el('div', 'popover-section badge-listed');
     listed.append(this.refsHeading, this.list);
     this.popover.hidden = true;
     this.popover.setAttribute('role', 'dialog');
     this.popover.setAttribute('aria-label', 'Hidden badges');
-    this.popover.append(top, rules, listed, showHidden);
+    this.popover.append(top, rules, listed, this.showHidden);
     host.append(this.popover);
     dismissable(this.popover, this.button, () => {
       this.close();
@@ -152,6 +153,7 @@ export class BadgeFilter {
             (r) => `${r.dataset['short'] ?? ''}${r.classList.contains('badge-hidden') ? ' (hidden)' : ''}`,
           )
         : undefined,
+      showHidden: open && !this.showHidden.hidden ? this.showHiddenLabel.textContent : undefined,
     };
   }
 
@@ -211,8 +213,10 @@ export class BadgeFilter {
       items.push(el('div', 'popover-more', test ? 'No refs match' : 'No badges hidden. Type a pattern above.'));
     this.list.replaceChildren(...items);
     const n = this.state.hidden.size;
+    const offered = n > 0 || this.state.showHidden;
+    if (!offered && this.showHidden.contains(document.activeElement)) this.input.focus();
+    this.showHidden.hidden = !offered;
     this.showHiddenBox.checked = this.state.showHidden;
-    this.showHiddenBox.disabled = n === 0 && !this.state.showHidden;
     this.showHiddenLabel.textContent = `Show hidden badges (${n})`;
   }
 

@@ -52,6 +52,7 @@ describe('hidden badges', () => {
     s = await until('popover open', (p) => p.badgeFilter.pattern !== undefined);
     assert.deepEqual(s.badgeFilter.rules, []);
     assert.deepEqual(s.badgeFilter.refs, [], 'nothing hidden to list');
+    assert.equal(s.badgeFilter.showHidden, undefined, 'nothing hidden to show');
     assert.equal(s.badgeFilter.hide, false, 'nothing typed to hide');
     assert.match(s.focused, /badge-pattern/);
   });
@@ -73,6 +74,7 @@ describe('hidden badges', () => {
     assert.deepEqual(s.badgeFilter.refs, ['cross/x (hidden)', 'cross/y (hidden)']);
     assert.equal(s.badgeFilter.summary, 'Matches 2 branches · 2 hidden');
     assert.deepEqual([s.badgeFilter.hide, s.badgeFilter.show], [false, true]);
+    assert.equal(s.badgeFilter.showHidden, 'Show hidden badges (2)');
     assert.doesNotMatch(s.refFilterButton, /hidden/, 'the branch filter is about history only');
     const row = Object.entries(s.rowHashes).find(([, h]) => h === git('rev-parse', 'cross/x'))?.[0];
     if (row !== undefined) assert.equal(s.refBands[Number(row)], undefined, 'a row left without badges has no band');
