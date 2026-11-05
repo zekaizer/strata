@@ -41,8 +41,17 @@ const perf = {
   launchArgs: launchArgs('perf'),
 };
 
+// A folder holding several repositories (test/fixtures/workspaces.ts).
+const multi = {
+  ...base,
+  files: 'out/test/multirepo/**/*.test.cjs',
+  workspaceFolder: join(import.meta.dirname, 'out', 'fixtures', 'multi-repo'),
+};
+
 export default defineConfig([
   { ...base, label: 'stable', version: 'stable', launchArgs: launchArgs('stable') },
   { ...base, label: 'min', version: '1.90.0', launchArgs: launchArgs('min') },
+  { ...multi, label: 'multi', version: 'stable', launchArgs: launchArgs('multi') },
+  { ...multi, label: 'multi-min', version: '1.90.0', launchArgs: launchArgs('multi-min') },
   perf,
 ]);

@@ -23,6 +23,16 @@ export interface ViewOptions {
 
 export const DEFAULT_OPTIONS: ViewOptions = { firstParent: false, refs: null, showStashes: true };
 
+/** An open repository, as the repository switcher lists it. */
+export interface RepoItem {
+  root: string;
+  name: string;
+  /** Where it is: relative to its workspace folder, else its full path. */
+  path: string;
+  /** The current branch, or the short commit of a detached HEAD; undefined before the first commit. */
+  head: string | undefined;
+}
+
 export interface RepoInfo {
   /** Folder name shown in the toolbar. */
   name: string;
@@ -51,6 +61,8 @@ export type HostToWebview =
       badgeRules: BadgeRule[];
       result?: { focus?: string; notified?: true };
     }
+  /** The open repositories in VS Code's order, when they change, after a reset and on request. */
+  | { type: 'repositories'; repos: RepoItem[] }
   /** The repository's badge rules changed; the history is not reloaded. */
   | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
@@ -83,8 +95,18 @@ export type HostToWebview =
   | { type: 'simulate'; action: SimulatedAction };
 
 export type WebviewToHost =
-  /** `options` carries view options saved by a previous session of this panel. */
-  | { type: 'ready'; workerOk: boolean; options: ViewOptions | undefined }
+  /**
+   * What a previous session of this panel saved: the root of the repository it showed last, the
+   * view options of each repository it showed by root, and view options saved before they were
+   * kept per repository (for the repository shown first).
+   */
+  | {
+      type: 'ready';
+      workerOk: boolean;
+      last: string | undefined;
+      views: Record<string, ViewOptions>;
+      options: ViewOptions | undefined;
+    }
   | { type: 'loadMore'; generation: number; count: number }
   | { type: 'select'; generation: number; hash: string }
   | {
@@ -97,6 +119,10 @@ export type WebviewToHost =
       beside: boolean;
     }
   | { type: 'setOptions'; options: ViewOptions }
+  /** The repository switcher opened: answered with `repositories`, with current branches. */
+  | { type: 'listRepositories' }
+  /** Shows the repository at `root`, an open one's root. */
+  | { type: 'switchRepository'; root: string }
   /** Replaces the repository's badge rules. */
   | { type: 'setBadgeRules'; rules: BadgeRule[] }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
@@ -113,6 +139,13 @@ export type WebviewToHost =
 /** Webview state reported for integration tests. */
 export interface ProbeState {
   generation: number;
+  /** Root of the repository shown. */
+  repo: string | undefined;
+  /**
+   * The toolbar's repository name: a label with one repository, else the switcher's button; and
+   * while the switcher is open, its rows (name, path, branch), the shown one marked "shown".
+   */
+  repoSwitcher: { button: boolean; text: string; rows: string[] | undefined; search: boolean };
   commits: number;
   laidOut: number;
   done: boolean;

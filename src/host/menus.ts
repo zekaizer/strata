@@ -7,7 +7,7 @@ import { isCommitId } from '../git/details.ts';
 import { readGitVersion, readUnmerged } from '../git/facts.ts';
 import { readOperationState } from '../git/state.ts';
 import { COMMAND_IDS, COMMANDS, type CommandId, type CommandSpec } from '../shared/commands.ts';
-import { isRepoPath } from './controller.ts';
+import { isRepoPath } from './session.ts';
 import { fail, undoLast, type FlowEnv, type FlowHost } from './flow.ts';
 import {
   checkoutBranch,

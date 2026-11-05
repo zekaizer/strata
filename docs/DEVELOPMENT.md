@@ -18,6 +18,7 @@ npm ci
 | Unit tests only                        | `npm run test:unit`                                 |
 | Integration tests (VS Code stable)     | `npm run test:integration`                          |
 | Integration tests (VS Code 1.90.0)     | `npm run test:integration:min`                      |
+| Multi-repository integration tests     | `npm run test:integration:multi`                    |
 | Everything                             | `npm test`                                          |
 | Screenshot the context menus           | `STRATA_MENU_SHOT_DIR=<dir>` with `npm run shot`    |
 | Screenshot the panel in all themes     | `npm run shot` → `artifacts/shots/*.png`            |
@@ -44,6 +45,13 @@ no ref reaches), `octopus`, `multi-root`, `refs` (annotated/lightweight tags,
 remotes, ahead/behind), `clock-skew`, `large` (5000 seeded random commits).
 `test/fixtures/stashes.ts` writes stashes with git plumbing, so integration
 tests add the same ones to the `branchy` workspace and drop them afterwards.
+
+`test/fixtures/workspaces.ts` writes `multi-repo`, a folder that is not a
+repository holding `alpha` and `beta` and `gamma` nested in `beta`. The tests in
+`test/multirepo/` run against it under the `multi` and `multi-min` labels, and
+`scripts/restart-test.mjs <version> multi` checks the repository shown last is
+restored. `npm run test:integration` and `test:integration:min` run them after
+the single-repository tests.
 
 ## Headless environments
 

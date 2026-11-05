@@ -1,7 +1,8 @@
 // Restart test: start VS Code twice with the same profile and workspace in
 // development mode. A driver extension (test/restart/driver.ts) prepares state
 // in the first run and checks what was restored in the second.
-// Usage: node scripts/restart-test.mjs [stable|1.90.0]
+// Usage: node scripts/restart-test.mjs [stable|1.90.0] [multi]
+//   multi: in the multi-repo fixture workspace, the repository shown last comes back with its selection.
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import { spawn } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,10 +11,11 @@ import { userDataDir } from './lib/test-paths.ts';
 import { testSettings } from './lib/test-settings.ts';
 
 const version = process.argv[2] ?? 'stable';
+const multi = process.argv[3] === 'multi';
 const root = resolve('.');
-const workspace = join(root, 'out', 'fixtures', 'branchy');
+const workspace = join(root, 'out', 'fixtures', multi ? 'multi-repo' : 'branchy');
 const driver = join(root, 'out', 'test', 'restart');
-const profile = userDataDir(`restart-${version}`);
+const profile = userDataDir(`restart-${version}${multi ? '-multi' : ''}`);
 const result = join(profile, 'result.json');
 
 cpSync('test/restart/package.json', join(driver, 'package.json'));
@@ -44,7 +46,11 @@ async function phase(n) {
   let stderr = '';
   await new Promise((done, fail) => {
     const p = spawn(code, args, {
-      env: { ...process.env, STRATA_RESTART_PHASE: String(n), STRATA_RESTART_RESULT: result },
+      env: {
+        ...process.env,
+        STRATA_RESTART_PHASE: `${multi ? 'multi-' : ''}${n}`,
+        STRATA_RESTART_RESULT: result,
+      },
       stdio: ['ignore', 'ignore', 'pipe'],
     });
     p.stderr.on('data', (d) => {
@@ -67,6 +73,20 @@ async function phase(n) {
   console.log(`phase ${n}:`, out);
   if (out.error) throw new Error(`phase ${n}: ${out.error}`);
   return out;
+}
+
+if (multi) {
+  const first = await phase(1);
+  const second = await phase(2);
+  const failures = [];
+  if (second.repo !== first.repo) failures.push(`showed ${second.repo} instead of ${first.repo}`);
+  if (second.restoredSelection !== first.selected) failures.push('selection not restored');
+  if (failures.length) {
+    console.error(`restart test (${version}, multi) FAILED: ${failures.join(', ')}`);
+    process.exit(1);
+  }
+  console.log(`restart test (${version}, multi) passed: the repository shown last and its selection restored`);
+  process.exit(0);
 }
 
 const first = await phase(1);

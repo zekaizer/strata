@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { RepoKey } from '../core/repos.ts';
 
 // The subset of the built-in git extension's API (vscode.git, API version 1) Strata uses.
 // Declared here instead of vendoring git.d.ts; field names follow that public API.
@@ -23,6 +24,8 @@ export interface GitApi {
   toGitUri(uri: vscode.Uri, ref: string): vscode.Uri;
   getRepository(uri: vscode.Uri): GitRepository | null;
 }
+
+export const repoKey = (repo: GitRepository): RepoKey => repo.rootUri.fsPath as RepoKey;
 
 interface GitExtension {
   readonly enabled: boolean;
