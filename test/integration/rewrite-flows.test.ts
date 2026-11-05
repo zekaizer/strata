@@ -269,4 +269,22 @@ describe('tidying recent commits', () => {
     await waitFor('the squash', () => git('rev-parse', 'HEAD~1') === git('rev-parse', `${a}~1`));
     assert.equal(message('HEAD'), 'a.txt: a\n\nb.txt: b');
   });
+
+  it('ends a Shift-click selection when find jumps to a match elsewhere', async () => {
+    const [a, , c] = await three();
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(c) });
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(a), shiftKey: true });
+    await waitFor('the selection', async () => (await panel().probe()).selection.length === 3);
+    await panel().simulate({ kind: 'click', selector: '.find-button' });
+    await panel().simulate({ kind: 'type', selector: '.find-input', text: 'Initial commit' });
+    await panel().simulate({ kind: 'key', key: 'Enter', target: 'focused' });
+    const p = await waitFor('the jump', async () => {
+      const probe = await panel().probe();
+      return probe.selected !== a && probe.selected !== undefined && probe;
+    });
+    assert.deepEqual(p.selection, []);
+    assert.equal(p.outOfReach.length, 0);
+    assert.equal(p.selectionPanel, false);
+    await panel().simulate({ kind: 'key', key: 'Escape', target: 'focused' });
+  });
 });

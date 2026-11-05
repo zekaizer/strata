@@ -2065,6 +2065,9 @@ class App {
     const row = this.list[index];
     if (!row) return;
     const hash = rowHash(row);
+    // A multi-selection lives under its oldest commit: selecting any other row (a click, a find
+    // jump, a link) ends it.
+    if (this.range && hash !== this.rangeHashes().at(-1)) this.range = undefined;
     const screenTop = this.rowTop(index) - this.scroller.scrollTop;
     this.selected = index;
     this.expanded = opts.expand ?? this.expanded;
@@ -2101,7 +2104,6 @@ class App {
    */
   private userSelect(index: number, opts: { expand?: boolean } = {}): void {
     this.selections++;
-    this.range = undefined;
     this.clearActionError();
     this.restore = undefined;
     this.headQuery = undefined;
