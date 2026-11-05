@@ -8,17 +8,18 @@
  * Elements that carry a data-vscode-context (src/shared/menu-context.ts): the `webviewSection` VS
  * Code matches menus against. `refs` is a "+N" badge.
  */
-export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'file';
+export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | 'head' | 'refs' | 'worktree' | 'file';
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
   commit: ['strataIsHead', 'strataHasRefs', 'strataBranch'],
   stash: ['strataLeftover'],
-  branch: ['strataIsCurrent', 'strataUpstream'],
+  branch: ['strataIsCurrent', 'strataUpstream', 'strataInWorktree'],
   remoteBranch: [],
   tag: [],
   head: [],
   refs: [],
+  worktree: ['strataLocked', 'strataPrunable', 'strataMain', 'strataShown'],
   file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed'],
 };
 
@@ -85,7 +86,7 @@ export const COMMANDS = {
     title: 'Checkout',
     menus: [
       commit('2_checkout@1', 'strataBranch'),
-      { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent' },
+      { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent && !strataInWorktree' },
       { section: 'remoteBranch', group: '1_checkout@1' },
     ],
     writes: true,
@@ -172,7 +173,11 @@ export const COMMANDS = {
     writes: 'whileStopped',
   },
   'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
-  'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
+  'strata.renameBranch': {
+    title: 'Rename Branch...',
+    menus: [{ section: 'branch', group: '4_edit@1', when: '!strataInWorktree' }],
+    writes: true,
+  },
   'strata.copyRefName': {
     title: 'Copy Name',
     menus: [
@@ -199,7 +204,7 @@ export const COMMANDS = {
   },
   'strata.deleteBranch': {
     title: 'Delete Branch...',
-    menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent' }],
+    menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent && !strataInWorktree' }],
     writes: true,
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },
@@ -212,6 +217,36 @@ export const COMMANDS = {
     title: 'Delete Remote Branch...',
     menus: [{ section: 'remoteBranch', group: '9_delete@1' }],
     writes: true,
+  },
+
+  /** Another worktree (its part in a branch's badge, or its badge on a detached HEAD). */
+  'strata.worktree.show': {
+    title: 'Show Worktree in Graph',
+    menus: [{ section: 'worktree', group: '1_open@1', when: 'strataShown' }],
+  },
+  'strata.worktree.openNewWindow': {
+    title: 'Open Worktree in New Window',
+    menus: [{ section: 'worktree', group: '1_open@2', when: '!strataPrunable' }],
+  },
+  'strata.worktree.openCurrentWindow': {
+    title: 'Open Worktree in Current Window',
+    menus: [{ section: 'worktree', group: '1_open@3', when: '!strataPrunable' }],
+  },
+  // A remote window's file explorer is on another machine.
+  'strata.worktree.reveal': {
+    title: 'Reveal Worktree in File Explorer',
+    menus: [{ section: 'worktree', group: '2_copy@1', when: '!strataPrunable && !remoteName' }],
+  },
+  'strata.worktree.copyPath': { title: 'Copy Worktree Path', menus: [{ section: 'worktree', group: '2_copy@2' }] },
+  'strata.worktree.remove': {
+    title: 'Remove Worktree...',
+    menus: [{ section: 'worktree', group: '9_remove@1', when: '!strataMain && !strataPrunable' }],
+    writes: 'whileStopped',
+  },
+  'strata.worktree.prune': {
+    title: 'Prune Worktrees',
+    menus: [{ section: 'worktree', group: '9_remove@1', when: 'strataPrunable' }],
+    writes: 'whileStopped',
   },
 
   'strata.operation.continue': {

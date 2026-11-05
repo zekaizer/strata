@@ -165,6 +165,7 @@ All tokens are custom properties on `:root` in `tokens.css`.
 | `--badge-tag`                | `--vscode-charts-yellow`                                                    | Tag chips                              |
 | `--badge-stash`              | `--vscode-descriptionForeground`                                            | Stash chips                            |
 | `--badge-head`               | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | HEAD chip, the head row's bar and tint |
+| `--badge-worktree`           | `--vscode-charts-green`                                                     | Worktree chips and chip parts          |
 | `--surface-sunken`           | editor background mixed with black (6%, 28% in dark, none in HC)            | The details pane                       |
 | `--surface-sunken-shadow`    | black at 28% (75% in dark)                                                  | The details pane's inset shadow        |
 | `--surface-sunken-hover`     | list hover mixed with black (light), list hover (dark, HC)                  | Hovered rows on the sunken surface     |
@@ -230,14 +231,17 @@ or `.indeterminate` runs without a known end (`--duration-progress`, still under
 
 `.chip` shows a ref, a stash or a short label: `--chip-height`, caption size, `--radius-md`.
 
-| Variant                                              | Looks                                                         |
-| ---------------------------------------------------- | ------------------------------------------------------------- |
-| `.chip-branch`, `-remote`, `-tag`, `-stash`, `-head` | Tinted with the kind's `--badge-*` color; head bolder         |
-| `.chip-warning`                                      | `--color-warning` (with `.chip-outline`: a stopped operation) |
-| `.chip-stash.autostash`                              | Warning tint, full tone even in a quiet row                   |
-| no kind                                              | Muted ("+N")                                                  |
-| `.chip-outline` (with or without `.chip-warning`)    | A label: outline in the text color, no tint                   |
-| `.badge`                                             | In a ref band: shrinks to its icon, square corner             |
+| Variant                                              | Looks                                                                                     |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `.chip-branch`, `-remote`, `-tag`, `-stash`, `-head` | Tinted with the kind's `--badge-*` color; head bolder                                     |
+| `.chip-worktree`                                     | Another worktree (`--badge-worktree`)                                                     |
+| `.chip-part` + a kind                                | A second name after a divider, in its kind's color; a `.badge` with one may grow to 320px |
+| `.chip-stale` (on a chip or a part)                  | What it names is gone: its text struck through                                            |
+| `.chip-warning`                                      | `--color-warning` (with `.chip-outline`: a stopped operation)                             |
+| `.chip-stash.autostash`                              | Warning tint, full tone even in a quiet row                                               |
+| no kind                                              | Muted ("+N")                                                                              |
+| `.chip-outline` (with or without `.chip-warning`)    | A label: outline in the text color, no tint                                               |
+| `.badge`                                             | In a ref band: shrinks to its icon, square corner                                         |
 
 Contents: an optional codicon (sized with the text), `.chip-text`. A context can quiet chips
 without knowing their kind by setting `--chip-edge`, `--chip-tint` and `--chip-icon`; rows do this

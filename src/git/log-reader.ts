@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { Commit } from '../core/commit.ts';
 import { LOG_FORMAT, LogParser } from '../core/log-parser.ts';
+import { isCommitId } from './details.ts';
 import { gitEnv } from './env.ts';
 import { runGit } from './run.ts';
 
@@ -14,18 +15,23 @@ export interface LogOptions {
   firstParent?: boolean;
   /** Full ref names (refs/...) to show history of; default: all branches, remote-tracking branches and HEAD. */
   refs?: string[] | undefined;
+  /** Commit ids other worktrees have checked out, also shown when `refs` is undefined; missing ones are skipped. */
+  heads?: readonly string[] | undefined;
 }
 
 /**
  * The revision arguments of the view `opts` describes: its commits and their order. Every git
  * command that lists or counts the graph's commits uses them, so they agree with the graph's order.
- * Rejects ref names that are not full names and a missing `cwd`.
+ * Rejects ref names that are not full names, heads that are not commit ids, and a missing `cwd`.
  */
 export async function viewArgs(opts: LogOptions): Promise<string[]> {
   const { git, cwd, firstParent, refs } = opts;
+  const heads = refs ? [] : (opts.heads ?? []);
   // Refs come from the webview; only full ref names may reach git, never options.
   const bad = refs?.find((r) => !/^refs\/[^\s]+$/.test(r) || r.includes('..'));
   if (bad !== undefined) throw new Error(`invalid ref name: ${bad}`);
+  const notId = heads.find((h) => !isCommitId(h));
+  if (notId !== undefined) throw new Error(`invalid commit id: ${notId}`);
   // Otherwise spawn reports a missing cwd as "spawn git ENOENT", blaming git.
   if (!existsSync(cwd)) throw new Error(`repository folder not found: ${cwd}`);
   // HEAD is listed explicitly so a detached HEAD shows up, but only when it
@@ -43,6 +49,8 @@ export async function viewArgs(opts: LogOptions): Promise<string[]> {
     // Tags are not start points: hundreds of old release tags make git's topological walk cover nearly
     // all history before the first commit is printed. Tags still label commits reachable from branches.
     ...(refs ?? ['--branches', '--remotes', ...head]),
+    // A head gone since the worktree list was read is skipped, not an error.
+    ...(heads.length > 0 ? ['--ignore-missing', ...heads] : []),
   ];
 }
 

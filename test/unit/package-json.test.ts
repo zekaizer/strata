@@ -180,6 +180,29 @@ describe('graph title bar', () => {
   });
 });
 
+describe('worktree menu', () => {
+  it('opens, copies and removes a worktree; prunes one whose folder is gone', () => {
+    assert.deepEqual(refActions('worktree', {}), [
+      'strata.worktree.openNewWindow',
+      'strata.worktree.openCurrentWindow',
+      'strata.worktree.reveal',
+      'strata.worktree.copyPath',
+      'strata.worktree.remove',
+    ]);
+    assert.deepEqual(refActions('worktree', { strataShown: true, strataMain: true })[0], 'strata.worktree.show');
+    assert.ok(!refActions('worktree', { strataMain: true }).includes('strata.worktree.remove'));
+    assert.deepEqual(refActions('worktree', { strataPrunable: true }), [
+      'strata.worktree.copyPath',
+      'strata.worktree.prune',
+    ]);
+  });
+
+  it('hides Reveal in a remote window, whose files are on another machine', () => {
+    const reveal = webview.find((m) => m.command === 'strata.worktree.reveal');
+    assert.match(reveal?.when ?? '', /!remoteName/);
+  });
+});
+
 describe('package.json activation', () => {
   it('activates after startup too, to replace a graph an extension host restart left behind', () => {
     // Nothing else wakes Strata then: VS Code does not revive the webview through the serializer.
@@ -218,6 +241,14 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.hideBadge',
       'strata.hideSimilarBadges',
       'strata.deleteBranch',
+    ]);
+    assert.deepEqual(refActions('branch', { strataIsCurrent: false, strataUpstream: true, strataInWorktree: true }), [
+      'strata.merge',
+      'strata.rebase',
+      'strata.push',
+      'strata.copyRefName',
+      'strata.hideBadge',
+      'strata.hideSimilarBadges',
     ]);
     assert.deepEqual(refActions('remoteBranch', {}), [
       'strata.checkout',

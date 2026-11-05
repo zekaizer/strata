@@ -299,6 +299,43 @@
         "enablement": "!strata.busy && !strata.operation"
       },
       {
+        "command": "strata.worktree.show",
+        "title": "Show Worktree in Graph",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.worktree.openNewWindow",
+        "title": "Open Worktree in New Window",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.worktree.openCurrentWindow",
+        "title": "Open Worktree in Current Window",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.worktree.reveal",
+        "title": "Reveal Worktree in File Explorer",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.worktree.copyPath",
+        "title": "Copy Worktree Path",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.worktree.remove",
+        "title": "Remove Worktree...",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
+        "command": "strata.worktree.prune",
+        "title": "Prune Worktrees",
+        "category": "Strata",
+        "enablement": "!strata.busy"
+      },
+      {
         "command": "strata.operation.continue",
         "title": "Continue Operation",
         "category": "Strata",
@@ -467,7 +504,7 @@
         },
         {
           "command": "strata.checkout",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent && !strataInWorktree",
           "group": "1_checkout@1"
         },
         {
@@ -602,7 +639,7 @@
         },
         {
           "command": "strata.renameBranch",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataInWorktree",
           "group": "4_edit@1"
         },
         {
@@ -652,7 +689,7 @@
         },
         {
           "command": "strata.deleteBranch",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent && !strataInWorktree",
           "group": "9_delete@1"
         },
         {
@@ -669,6 +706,41 @@
           "command": "strata.deleteRemoteBranch",
           "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
           "group": "9_delete@1"
+        },
+        {
+          "command": "strata.worktree.show",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && strataShown",
+          "group": "1_open@1"
+        },
+        {
+          "command": "strata.worktree.openNewWindow",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && !strataPrunable",
+          "group": "1_open@2"
+        },
+        {
+          "command": "strata.worktree.openCurrentWindow",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && !strataPrunable",
+          "group": "1_open@3"
+        },
+        {
+          "command": "strata.worktree.reveal",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && !strataPrunable && !remoteName",
+          "group": "2_copy@1"
+        },
+        {
+          "command": "strata.worktree.copyPath",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree'",
+          "group": "2_copy@2"
+        },
+        {
+          "command": "strata.worktree.remove",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && !strataMain && !strataPrunable",
+          "group": "9_remove@1"
+        },
+        {
+          "command": "strata.worktree.prune",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'worktree' && strataPrunable",
+          "group": "9_remove@1"
         },
         {
           "command": "strata.stash.apply",
@@ -859,6 +931,34 @@
         },
         {
           "command": "strata.deleteRemoteBranch",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.show",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.openNewWindow",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.openCurrentWindow",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.reveal",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.copyPath",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.remove",
+          "when": "false"
+        },
+        {
+          "command": "strata.worktree.prune",
           "when": "false"
         },
         {

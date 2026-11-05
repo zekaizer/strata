@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { untrackedInTheWay, untrackedNotRestored } from '../../src/core/git-error.ts';
@@ -53,6 +53,24 @@ describe('operations', () => {
     await op(c, { kind: 'trackRemote', name: 'topic', remoteRef: 'refs/remotes/origin/topic', migrate: false });
     assert.equal(branch(c), 'topic');
     assert.equal(run(c, 'rev-parse', '--abbrev-ref', 'topic@{upstream}'), 'origin/topic');
+  });
+
+  it('removes worktrees, with changes or locked when forced, and prunes those whose folders are gone', async () => {
+    const d = repo();
+    const wt = (name: string) => join(root, `${name}${n++}`);
+    const [clean, dirty, locked, gone] = [wt('clean'), wt('dirty'), wt('locked'), wt('gone')];
+    for (const p of [clean, dirty, locked, gone]) run(d, 'worktree', 'add', '--quiet', '--detach', p);
+    writeFileSync(join(dirty, 'new.txt'), 'x\n');
+    run(d, 'worktree', 'lock', locked);
+    await op(d, { kind: 'removeWorktree', path: clean, force: 0 });
+    await assert.rejects(op(d, { kind: 'removeWorktree', path: dirty, force: 0 }));
+    await op(d, { kind: 'removeWorktree', path: dirty, force: 1 });
+    await assert.rejects(op(d, { kind: 'removeWorktree', path: locked, force: 1 }));
+    await op(d, { kind: 'removeWorktree', path: locked, force: 2 });
+    rmSync(gone, { recursive: true });
+    await op(d, { kind: 'pruneWorktrees' });
+    assert.equal(run(d, 'worktree', 'list', '--porcelain').split('\n\n').length, 1);
+    assert.ok(![clean, dirty, locked].some(existsSync));
   });
 
   it('carries uncommitted changes with migrate', async () => {

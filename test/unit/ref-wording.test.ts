@@ -122,6 +122,19 @@ describe('wording of ref operations', () => {
     assert.equal(refAppeared('branch', 'topic'), "A branch named 'topic' now exists; nothing was done.");
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
+    const wt = { path: '/r/wt', name: 'wt', head: undefined, branch: 'refs/heads/topic', main: false };
+    assert.equal(
+      checkedOutElsewhere('topic', { ...wt, state: { kind: 'active' } }),
+      "'topic' is checked out in worktree 'wt' (/r/wt).",
+    );
+    assert.equal(
+      checkedOutElsewhere('topic', { ...wt, state: { kind: 'locked', reason: 'on usb disk' } }),
+      "'topic' is checked out in worktree 'wt' (/r/wt). It is locked: on usb disk.",
+    );
+    assert.equal(
+      checkedOutElsewhere('topic', { ...wt, state: { kind: 'prunable', reason: 'gone' } }),
+      "'topic' is checked out in worktree 'wt' (/r/wt). Its folder is gone; pruning the worktree frees the branch.",
+    );
     assert.equal(
       popConflicted("Switched to 'topic'", ['a.txt'], stashLabel('autostash')),
       "Switched to 'topic'; restoring your stashed changes conflicted in a.txt. They stay in the stash git made.",

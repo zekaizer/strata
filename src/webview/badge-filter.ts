@@ -46,7 +46,7 @@ export class BadgeFilter {
   private readonly showHidden = el('div', 'popover-section');
   private readonly showHiddenBox = el('input', 'checkbox');
   private readonly showHiddenLabel = el('span', 'list-row-text');
-  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
   private state: BadgeState = { rules: [], hidden: new Map(), showHidden: false };
   private readonly events: BadgeFilterEvents;
 

@@ -28,7 +28,7 @@ export class RefFilter {
   private readonly stashes = el('div', 'popover-section popover-stashes');
   private readonly stashBox = el('input', 'checkbox');
   private readonly stashLabel = el('span', 'list-row-text');
-  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+  private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
   private selected: Set<string> | null = null;
   private readonly events: RefFilterEvents;
 

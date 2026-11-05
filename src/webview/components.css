@@ -522,8 +522,42 @@ body.vscode-reduce-motion .popover-progress.indeterminate .popover-progress-bar 
   font-weight: var(--font-weight-strong);
 }
 
+.chip-worktree {
+  --chip-color: var(--badge-worktree);
+}
+
 .chip-warning {
   --chip-color: var(--color-warning);
+}
+
+/*
+ * A second thing a chip names, after a divider and in its own kind's color (a kind class on the
+ * part): the worktree a branch is checked out in. It gives way before the chip's own text does.
+ */
+.chip-part {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 100 auto;
+  min-width: 0;
+  margin-left: var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 1px solid color-mix(in srgb, var(--chip-color) 60%, transparent);
+  font-weight: normal;
+}
+
+/* A ref chip with a part gets room for both names. */
+.chip.badge:has(> .chip-part) {
+  max-width: 320px;
+}
+
+body.vscode-high-contrast .chip-part {
+  border-left-color: var(--vscode-contrastBorder);
+}
+
+/* What it names is gone (a prunable worktree, whose folder was deleted): struck through. */
+.chip-stale > .chip-text {
+  text-decoration: line-through;
 }
 
 /* A label rather than a ref: an outline in the text color, no tint. */

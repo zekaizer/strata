@@ -31,6 +31,7 @@
   the graph's title bar.
 - Stash, apply, pop and drop stashes, shown as rows above the commits they
   were made on.
+- See which branches other worktrees have checked out, open or remove them.
 - Stopped at conflicts? Strata says where, opens the files and offers
   Continue, Skip and Abort.
 - Hide noisy badges, such as CI tags, with patterns per repository.

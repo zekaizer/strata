@@ -1,6 +1,7 @@
 import type { DirtyFacts, StashChoice, StashOp } from './autostash.ts';
 import { MORE_HISTORY, type MergeMode, type ResetMode } from './operations.ts';
 import type { RefKind } from './refs.ts';
+import type { WorktreeInfo } from './worktrees.ts';
 import type { OperationKind } from './repo-state.ts';
 
 /** A commit as confirmations name it. */
@@ -313,6 +314,9 @@ export const refAppeared = (kind: 'branch' | 'tag', name: string): string =>
 /** A menu opened on a ref that is gone. */
 export const staleTarget = (name: string): string => `${refName(name)} no longer exists; the graph has been refreshed.`;
 
+export const staleWorktree = (path: string): string =>
+  `The worktree at ${path} is no longer there; the graph has been refreshed.`;
+
 const VERB: Record<StashOp, string> = {
   rebase: 'Rebase',
   merge: 'Merge',
@@ -450,8 +454,25 @@ export const renameInput = (branch: string, remote: string | undefined): { title
   ].join(' '),
 });
 
-export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
-  `${refName(branch)} is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
+/** `where`: the worktree, or only its path when git named one the worktree list no longer has. */
+export function checkedOutElsewhere(branch: string, where: WorktreeInfo | string | undefined): string {
+  if (where === undefined || typeof where === 'string')
+    return `${refName(branch)} is checked out in another worktree${where === undefined ? '' : ` (${where})`}.`;
+  const state =
+    where.state.kind === 'locked'
+      ? ` It is locked${where.state.reason === undefined ? '' : `: ${where.state.reason}`}.`
+      : where.state.kind === 'prunable'
+        ? ' Its folder is gone; pruning the worktree frees the branch.'
+        : '';
+  return `${refName(branch)} is checked out in worktree ${refName(where.name)} (${where.path}).${state}`;
+}
+
+/** The buttons of checkedOutElsewhere: the worktree open in this window, in another, or pruned before `verb` again. */
+export const ELSEWHERE = {
+  show: 'Show in Graph',
+  open: 'Open Worktree in New Window',
+  prune: (verb: 'Checkout' | 'Delete' | 'Rename'): string => `Prune and ${verb}`,
+};
 
 /** `done`: what the operation did; `paths`: the conflicted files; `stash`: stashLabel(), which git kept. */
 export const popConflicted = (done: string, paths: readonly string[], stash: string): string =>
@@ -493,6 +514,11 @@ export const DONE = {
   copiedHash: (short: string): string => `Copied the commit hash of ${short}`,
   copiedShortHash: (short: string): string => `Copied ${short}`,
   copiedSubject: (short: string): string => `Copied the subject of ${short}`,
+  worktreeRemoved: (name: string): string => `Removed worktree ${refName(name)}`,
+  worktreesPruned: (names: readonly string[]): string =>
+    names.length === 1
+      ? `Pruned worktree ${refName(names[0]!)}, whose folder is gone`
+      : `Pruned ${plural(names.length, 'worktree')} whose folders are gone`,
 };
 
 /** Progress labels: what is running. `to` is named as in a sentence (a quoted branch or a short id). */
@@ -503,7 +529,34 @@ export const DOING = {
   renaming: (branch: string): string => `Renaming ${refName(branch)}`,
   deletingBranch: (branch: string): string => `Deleting branch ${refName(branch)}`,
   deletingTag: (tag: string): string => `Deleting tag ${refName(tag)}`,
+  removingWorktree: (name: string): string => `Removing worktree ${refName(name)}`,
+  pruningWorktrees: 'Pruning worktrees',
 };
+
+/**
+ * Remove Worktree: `changes` uncommitted (untracked files included), which `git worktree remove`
+ * refuses without --force; `branch`: short name, undefined when detached; `locked`: its reason ('' none).
+ */
+export function removeWorktreeConfirmation(w: {
+  name: string;
+  path: string;
+  branch: string | undefined;
+  changes: number;
+  locked: string | undefined;
+}): Confirmation<'remove'> {
+  return {
+    message: `Remove worktree ${refName(w.name)}?`,
+    detail: [
+      `Its folder ${w.path} is deleted.`,
+      ...(w.changes > 0 ? [`Its ${plural(w.changes, 'uncommitted change')}, untracked files included, are lost.`] : []),
+      ...(w.locked === undefined ? [] : [`It is locked${w.locked === '' ? '' : `: ${w.locked}`}.`]),
+      w.branch === undefined
+        ? 'Commits only its detached HEAD reaches leave the graph.'
+        : `Branch ${refName(w.branch)} stays.`,
+    ].join('\n'),
+    buttons: [{ id: 'remove', label: w.changes > 0 || w.locked !== undefined ? 'Remove Anyway' : 'Remove Worktree' }],
+  };
+}
 
 /** Type in Terminal could not quote the command for the terminal's shell; `line` is quoted for a POSIX shell. */
 export const commandUnquotable = (line: string): string =>

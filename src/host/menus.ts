@@ -35,8 +35,11 @@ import {
 } from './flows/history.ts';
 import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
+import { pruneWorktrees, removeWorktree } from './flows/worktree.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
+import { repoList } from './repositories.ts';
+import { samePath, type WorktreeInfo } from '../core/worktrees.ts';
 import { parseBranchTarget, parseTarget, type TargetKind, type TargetOf } from './target.ts';
 
 /** A context menu argument: the clicked element's data-vscode-context (set by the webview) plus the webview id. */
@@ -140,6 +143,23 @@ const write = (flow: (host: FlowHost, ctx: MenuArg) => Promise<void>) => async (
 /** The menu target of a command that also runs from the palette or title bar (no menu context there). */
 const optionalTarget = <K extends TargetKind>(ctx: MenuArg, kinds: readonly K[], host: FlowHost) =>
   typeof ctx?.['webviewSection'] === 'string' ? parseTarget(ctx, kinds, host.refs) : undefined;
+
+/** The worktree a menu was opened on, as the graph's refs list it. */
+const worktreeArg = (ctx: MenuArg): WorktreeInfo => {
+  const host = panel().flowHost();
+  return parseTarget(ctx, ['worktree'], host.refs).worktree;
+};
+
+function openWorktree(w: WorktreeInfo, how: 'newWindow' | 'thisWindow' | 'reveal'): Promise<void> {
+  const host = panel().flowHost();
+  return host.ui.openFolder(host.folderUri(w.path), how);
+}
+
+/** Shows the worktree at `path`, which this window has open, in the graph. */
+export async function showWorktree(path: string): Promise<void> {
+  const key = (await repoList()).keys().find((k) => samePath(path, k));
+  if (key === undefined || !(await panel().showRepository(key))) throw new Error(`${path} is not open in this window`);
+}
 
 /** A stash commit named by a banner button (`strataHash`). */
 const stashHash = (ctx: MenuArg): string => {
@@ -281,6 +301,17 @@ const handlers = (env: FlowEnv): Handlers => ({
     panel().flowHost().reveal(stashHash(ctx));
   },
   'strata.keepStash': (ctx) => panel().flowHost().leftovers.keep(stashHash(ctx)),
+
+  'strata.worktree.show': (ctx) => showWorktree(worktreeArg(ctx).path),
+  'strata.worktree.openNewWindow': (ctx) => openWorktree(worktreeArg(ctx), 'newWindow'),
+  'strata.worktree.openCurrentWindow': (ctx) => openWorktree(worktreeArg(ctx), 'thisWindow'),
+  'strata.worktree.reveal': (ctx) => openWorktree(worktreeArg(ctx), 'reveal'),
+  'strata.worktree.copyPath': copy((ctx) => panel().flowHost().folderUri(worktreeArg(ctx).path).fsPath, DONE.copied),
+
+  'strata.worktree.remove': on(['worktree'], (host, t) => removeWorktree(host, t.worktree)),
+  'strata.worktree.prune': write(async (host) => {
+    await pruneWorktrees(host);
+  }),
 
   'strata.undo': write(undoLast),
   'strata.showOutput': () => {

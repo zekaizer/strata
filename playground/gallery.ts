@@ -308,12 +308,22 @@ function chips(): HTMLElement {
     ['remote', 'cloud', 'origin/main'],
     ['tag', 'tag', 'v1.2.0'],
     ['stash', 'git-stash', 'stash@{0}'],
+    ['worktree', 'worktree', 'review'],
   ];
   const inRow = (selected: boolean, hover: boolean, ...content: HTMLElement[]) => {
     const r = el('div', `row${selected ? ' selected' : ''}${hover ? ' is-hover' : ''} g-static`);
     r.style.cssText = 'height:auto;padding:4px 8px;gap:4px;display:flex;align-items:center';
     r.append(...content);
     return r;
+  };
+  /** A branch chip naming the worktree it is checked out in; `state`: '', 'locked' or 'chip-stale'. */
+  const held = (state: string) => {
+    const c = chip('branch', 'git-branch', 'feature/login', 'badge');
+    const part = el('span', `chip-part chip-worktree ${state === 'chip-stale' ? state : ''}`.trim());
+    part.append(codicon('worktree'), el('span', 'chip-text', 'strata-login'));
+    if (state === 'locked') part.append(codicon('lock'));
+    c.append(part);
+    return c;
   };
   const autostash = () => {
     const c = chip('stash', 'git-stash', 'stash@{0}', 'autostash');
@@ -331,6 +341,13 @@ function chips(): HTMLElement {
       spec('.chip-outline', chip('', undefined, 'Rebasing onto', 'chip-outline')),
       spec('.chip-outline.chip-warning', chip('warning', 'warning', 'Stopped here', 'chip-outline')),
       spec('.chip-stash.autostash', autostash()),
+    ),
+    row(
+      spec('.chip-part.chip-worktree', held('')),
+      spec('locked', held('locked')),
+      spec('.chip-part.chip-stale', held('chip-stale')),
+      spec('.chip-worktree.chip-stale.badge', chip('worktree', 'worktree', 'old-spike', 'badge chip-stale')),
+      spec('quiet in a row', inRow(false, false, held('locked'))),
     ),
     row(
       spec('quiet in a row', inRow(false, false, ...kinds.map(([k, i, t]) => chip(k, i, t, 'badge')), autostash())),

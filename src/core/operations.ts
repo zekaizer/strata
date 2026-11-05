@@ -75,7 +75,10 @@ export type Operation =
     }
   | { kind: 'pushTag'; remote: string; tag: string }
   /** Deletes full ref `ref` on `remote`. `lease`: the commit it must still be at there. */
-  | { kind: 'deleteRemoteRef'; remote: string; ref: string; lease: string | undefined };
+  | { kind: 'deleteRemoteRef'; remote: string; ref: string; lease: string | undefined }
+  /** `force`: once for a worktree with changes, twice for a locked one. `path`: as git lists it. */
+  | { kind: 'removeWorktree'; path: string; force: 0 | 1 | 2 }
+  | { kind: 'pruneWorktrees' };
 
 /** How many commits further back Fetch More History reaches in a shallow clone. */
 export const MORE_HISTORY = 100;
@@ -206,5 +209,9 @@ export function argv(op: Operation): string[] {
         op.remote,
         op.ref,
       ];
+    case 'removeWorktree':
+      return ['worktree', 'remove', ...Array<string>(op.force).fill('--force'), '--', op.path];
+    case 'pruneWorktrees':
+      return ['worktree', 'prune'];
   }
 }

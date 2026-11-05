@@ -1,3 +1,5 @@
+import type { WorktreeInfo } from './worktrees.ts';
+
 export type RefKind = 'branch' | 'remote' | 'tag';
 
 export interface Ref {
@@ -25,6 +27,8 @@ export interface RefSnapshot {
   refs: Ref[];
   /** Names of the configured remotes (`git remote`). */
   remotes: string[];
+  /** The repository's other worktrees: every one but the graph's, in `git worktree list` order. */
+  worktrees: WorktreeInfo[];
 }
 
 /** The current branch's upstream, full name; undefined when detached or without one. */

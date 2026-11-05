@@ -16,6 +16,7 @@ const ICON: Record<CardRef['look'] | RefKind, string> = {
   branch: 'git-branch',
   remote: 'cloud',
   tag: 'tag',
+  worktree: 'worktree',
 };
 
 /** A commit's node under the pointer: its refs, which tag lines to show, and the node's centre in client px. */
@@ -126,7 +127,9 @@ export class RefCard {
       .map((r) => {
         const line = el('div', `ref-card-line ref-card-${r.look}${r.hiddenBy === undefined ? '' : ' hidden-badge'}`);
         line.append(codicon(ICON[r.look]), el('span', 'ref-card-text', r.text));
-        if (r.note !== undefined) line.append(el('span', 'ref-card-note', r.note));
+        const state = r.state === undefined ? '' : `, ${r.state}`;
+        if (r.note !== undefined) line.append(el('span', 'ref-card-note', r.note + (r.worktree ? '' : state)));
+        if (r.worktree !== undefined) line.append(el('span', 'ref-card-note', `in worktree ${r.worktree}${state}`));
         if (r.hiddenBy !== undefined) line.append(el('span', 'ref-card-note', `hidden by ${r.hiddenBy}`));
         return line;
       });

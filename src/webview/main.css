@@ -1133,6 +1133,10 @@ body:not(.hover-off) .file:hover .file-actions,
   --chip-color: var(--badge-tag);
 }
 
+.ref-card-worktree {
+  --chip-color: var(--badge-worktree);
+}
+
 .ref-card-head .ref-card-text {
   font-weight: var(--font-weight-strong);
 }
@@ -1245,7 +1249,8 @@ body:not(.hover-off) .file:hover .file-actions,
   background: var(--vscode-editor-findRangeHighlightBackground);
 }
 
-.badge.find-match .chip-text {
+.badge.find-match > .chip-text,
+.chip-part.find-match > .chip-text {
   background: var(--vscode-editor-findMatchHighlightBackground);
   outline: 1px solid var(--vscode-editor-findMatchHighlightBorder, transparent);
 }

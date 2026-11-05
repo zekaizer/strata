@@ -1,7 +1,8 @@
 // Developer tools that run inside the integration host, enabled by env vars:
 //   STRATA_CAPTURE_THEMES=<dir>  dump --vscode-* variables per built-in theme
 //   STRATA_SHOT_DIR=<dir>        screenshot the graph panel per built-in theme
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { mkdir, writeFile } from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
@@ -163,6 +164,56 @@ after(() => setTheme('dark'));
       await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
       await panel.simulate({ kind: 'click', selector: '.popover-rule button[aria-label^="Remove"]' });
       await waitFor('rule removed', async () => !(await panel.probe()).badgeFilter.button.includes('hidden'));
+      panel.dispose();
+    });
+  }
+});
+
+(shotDir ? describe : describe.skip)('tool: worktree screenshots', () => {
+  let root = '';
+  const search = () => join(root, 'strata-search');
+  const bisect = () => join(root, 'bisect');
+  before(async () => {
+    root = mkdtempSync(join(tmpdir(), 'strata-wt-shot-'));
+    git('worktree', 'add', '--quiet', search(), 'feature/search');
+    git('worktree', 'lock', '--reason', 'on usb disk', search());
+    git('worktree', 'add', '--quiet', '--detach', bisect(), 'cross/x');
+    await gitSettled();
+  });
+  after(() => {
+    git('worktree', 'remove', '--force', '--force', search());
+    git('worktree', 'remove', '--force', bisect());
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      await waitFor('worktree badges', async () => {
+        const p = await panel.probe();
+        return (
+          p.done &&
+          Object.values(p.menuContexts.badges)
+            .flat()
+            .some((c) => c['webviewSection'] === 'worktree')
+        );
+      });
+      await mkdir(shotDir!, { recursive: true });
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await screenshot(join(shotDir!, `worktrees-${id}.png`));
+      const tip = git('rev-parse', 'feature/search');
+      const row = Number(Object.entries((await panel.probe()).rowHashes).find(([, h]) => h === tip)?.[0]);
+      await panel.simulate({ kind: 'hoverNode', index: row });
+      await waitFor('ref card', async () => (await panel.probe()).refCard !== undefined);
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await screenshot(join(shotDir!, `worktrees-card-${id}.png`));
+      await panel.simulate({ kind: 'contextMenu', selector: '.chip-part' });
+      await delay(800);
+      await screenshot(join(shotDir!, `worktrees-menu-${id}.png`));
+      await vscode.commands.executeCommand('workbench.action.quickOpen');
+      await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
       panel.dispose();
     });
   }

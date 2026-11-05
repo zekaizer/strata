@@ -32,6 +32,8 @@ export interface Ui {
   pick<T>(o: { title: string; placeholder?: string; items: (PickItem<T> | PickSeparator)[] }): Promise<T | undefined>;
   /** A non-modal message with optional action buttons; resolves with the clicked one. */
   notify(level: 'info' | 'warning' | 'error', message: string, ...actions: string[]): Promise<string | undefined>;
+  /** Opens a folder in a new window or this one, or shows it in the system's file manager. */
+  openFolder(folder: vscode.Uri, how: 'newWindow' | 'thisWindow' | 'reveal'): Promise<void>;
 }
 
 export const vscodeUi: Ui = {
@@ -74,5 +76,9 @@ export const vscodeUi: Ui = {
           ? vscode.window.showWarningMessage
           : vscode.window.showInformationMessage;
     return Promise.resolve(show(message, ...actions));
+  },
+  async openFolder(folder, how) {
+    if (how === 'reveal') await vscode.commands.executeCommand('revealFileInOS', folder);
+    else await vscode.commands.executeCommand('vscode.openFolder', folder, { forceNewWindow: how === 'newWindow' });
   },
 };

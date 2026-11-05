@@ -505,8 +505,8 @@ describe('ref operations', () => {
         {
           kind: 'notify',
           level: 'error',
-          message: `'wip/experiment' is checked out in another worktree (${other}).`,
-          actions: [],
+          message: `'wip/experiment' is checked out in worktree 'other' (${other}).`,
+          actions: ['Open Worktree in New Window'],
         },
       ]);
     } finally {

@@ -7,11 +7,14 @@
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &where=pending: the ref card's where-is question is never answered (its loading state)
 //   &page=components: the design system gallery (gallery.ts) instead of the webview
+//   &worktrees=1: other worktrees (branchy): feature/search locked, feature/login, wip/experiment
+//     prunable, and one detached on "Prepare criss-cross"; with &repos=N the first is open here
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
 import type { Leftover, OperationState } from '../src/core/repo-state.ts';
+import type { WorktreeInfo } from '../src/core/worktrees.ts';
 import {
   DEFAULT_OPTIONS,
   type HostToWebview,
@@ -97,9 +100,12 @@ function repositories(): RepoItem[] {
     'mobile',
     'design-tokens',
   ];
+  const worktree = data.refs.worktrees[0];
+  const linked = worktree ? [{ root: worktree.path, name: worktree.name, path: worktree.name, head: 'main' }] : [];
   return [
     shown,
-    ...others.slice(0, Math.max(0, repoCount - 1)).map((path, i) => ({
+    ...linked.slice(0, Math.max(0, repoCount - 1)),
+    ...others.slice(0, Math.max(0, repoCount - 1 - linked.length)).map((path, i) => ({
       root: `/work/${path}`,
       name: path.split('/').at(-1)!,
       path,
@@ -113,7 +119,11 @@ function select(d: PlaygroundData, o: ViewOptions): Commit[] {
   const byHash = new Map(d.commits.map((c) => [c.hash, c]));
   const starts = o.refs
     ? d.refs.refs.filter((r) => o.refs!.includes(r.name)).map((r) => r.hash)
-    : [...d.refs.refs.map((r) => r.hash), ...(d.refs.head ? [d.refs.head] : [])];
+    : [
+        ...d.refs.refs.map((r) => r.hash),
+        ...(d.refs.head ? [d.refs.head] : []),
+        ...d.refs.worktrees.flatMap((w) => (w.branch === undefined && w.head ? [w.head] : [])),
+      ];
   const seen = new Set<string>();
   const stack = [...starts];
   while (stack.length > 0) {
@@ -151,6 +161,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
     case 'ready': {
       toWebview({ type: 'init', theme });
       data = (await (await fetch(`data/${repo}.json`)).json()) as PlaygroundData;
+      if (params.get('worktrees') === '1') data.refs.worktrees = worktrees(data);
       if (m.options) options = { ...m.options, ...queried };
       reset();
       break;
@@ -312,6 +323,25 @@ async function onMessage(m: WebviewToHost): Promise<void> {
     default:
       break;
   }
+}
+
+/** Other worktrees of the scenario's repository, on its branches and one detached commit. */
+function worktrees(d: PlaygroundData): WorktreeInfo[] {
+  const tip = (short: string) => d.refs.refs.find((r) => r.short === short)?.hash;
+  const at = (subject: string) => d.commits.find((c) => c.subject === subject)?.hash;
+  const wt = (name: string, branch: string | undefined, head: string | undefined, state: WorktreeInfo['state']) =>
+    head === undefined
+      ? []
+      : [{ path: `/work/${name}`, name, head, branch: branch && `refs/heads/${branch}`, state, main: false }];
+  return [
+    ...wt('strata-search', 'feature/search', tip('feature/search'), { kind: 'locked', reason: 'on usb disk' }),
+    ...wt('strata-login', 'feature/login', tip('feature/login'), { kind: 'active' }),
+    ...wt('old-spike', 'wip/experiment', tip('wip/experiment'), {
+      kind: 'prunable',
+      reason: 'gitdir file points to non-existent location',
+    }),
+    ...wt('bisect', undefined, at('Prepare criss-cross'), { kind: 'active' }),
+  ];
 }
 
 /** repoState messages that bring the banner into `state`, from the scenario's commits and refs. */

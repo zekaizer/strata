@@ -18,6 +18,7 @@ const snapshot = (refs: Ref[], headBranch: string | undefined = 'main'): RefSnap
   headBranch,
   refs,
   remotes: ['origin'],
+  worktrees: [],
 });
 const none = new Set<string>();
 
