@@ -10,6 +10,7 @@ import type { StashEntry } from '../core/stash.ts';
 import { hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
 import { patchStats } from '../core/patch.ts';
+import { isRepoPath } from '../core/path-filter.ts';
 import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader, type LogOptions } from '../git/log-reader.ts';
 import { findCommits, findExact, locateCommit } from '../git/find.ts';
@@ -932,16 +933,6 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     for (const w of this.linked.values()) w.close();
     this.linked.clear();
   }
-}
-
-/** A repository-relative path as git prints it: '/'-separated, no empty, '.' or '..' segments. */
-export function isRepoPath(p: string): boolean {
-  return (
-    p.length > 0 &&
-    !p.includes('\0') &&
-    !p.includes('\\') &&
-    p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..')
-  );
 }
 
 /** runGit's output cap is the patch size limit; its error does not say so. */

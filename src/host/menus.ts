@@ -2,12 +2,12 @@ import * as vscode from 'vscode';
 import { similarPattern } from '../core/badge-rules.ts';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
 import { canWrite } from '../core/git-version.ts';
+import { isRepoPath } from '../core/path-filter.ts';
 import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../core/wording.ts';
 import { isCommitId } from '../git/details.ts';
 import { readGitVersion, readUnmerged } from '../git/facts.ts';
 import { readOperationState } from '../git/state.ts';
 import { COMMAND_IDS, COMMANDS, type CommandId, type CommandSpec } from '../shared/commands.ts';
-import { isRepoPath } from './session.ts';
 import { fail, undoLast, type FlowEnv, type FlowHost } from './flow.ts';
 import {
   checkoutBranch,
