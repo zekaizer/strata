@@ -560,7 +560,8 @@ class App {
         this.noRepository = true;
         this.switcher.setShown(undefined, 'No git repository');
         this.status.classList.remove('error');
-        this.status.textContent = 'Open a folder that contains a git repository.';
+        // The list says what to do; the toolbar's name already says there is no repository.
+        this.status.textContent = '';
         this.refFilter.close();
         this.badgeFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
