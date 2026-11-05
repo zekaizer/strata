@@ -954,7 +954,14 @@ class App {
       },
       hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
     });
+    const shown = !this.banner.element.hidden;
     this.banner.show(banner);
+    if (
+      shown !== !this.banner.element.hidden &&
+      this.busyLabel !== undefined &&
+      !this.status.classList.contains('error')
+    )
+      this.updateStatus();
     const said = banner
       ? JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null])
       : '';
@@ -1232,12 +1239,14 @@ class App {
   }
 
   private updateStatus(): void {
+    // The banner, while shown, says what runs in its place.
+    const busy = this.banner.element.hidden ? this.busyLabel : undefined;
     this.status.classList.remove('error');
-    this.status.classList.toggle('busy', this.busyLabel !== undefined);
+    this.status.classList.toggle('busy', busy !== undefined);
     // The toolbar may be too narrow for all of it.
-    this.status.title = this.busyLabel ?? '';
-    if (this.busyLabel !== undefined) {
-      this.status.textContent = `${this.busyLabel}…`;
+    this.status.title = busy ?? '';
+    if (busy !== undefined) {
+      this.status.textContent = `${busy}…`;
       return;
     }
     const n = this.commits.length.toLocaleString();
