@@ -1,5 +1,7 @@
 # Strata
 
+<!-- ci-stamp -->
+
 A fast commit graph for git repositories in VS Code. It reads history page by
 page, so it opens quickly even on very large repositories.
 

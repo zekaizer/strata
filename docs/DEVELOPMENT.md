@@ -120,9 +120,10 @@ GitHub releases. Runners are pinned to `ubuntu-24.04`.
 
 Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes
 `<version>-ci.<run number>` and the README (the extension's details page in
-the Extensions view) starts with the build's commit and date, so an installed
-CI build says which one it is. A release of the same version sorts above it.
-Release packaging (`npm run package`) does not stamp.
+the Extensions view) gets the build's commit and date under its header, at the
+`<!-- ci-stamp -->` line, so an installed CI build says which one it is. The
+script fails if the README lacks that line. A release of the same version
+sorts above it. Release packaging (`npm run package`) does not stamp.
 
 `package.json` overrides the `glob` used by mocha (through
 `@vscode/test-cli`) with glob 13: mocha 11 pins the deprecated glob 10,
