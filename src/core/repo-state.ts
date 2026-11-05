@@ -93,6 +93,41 @@ export function changesSummary(w: WorkingChanges): ChangesSummary | undefined {
   return { staged, unstaged, conflicted, untracked, submodules };
 }
 
+export interface ChangeCount {
+  kind: 'conflicted' | 'staged' | 'unstaged' | 'untracked';
+  n: number;
+  /** "4 conflicts", "2 staged", "3 changed", "1 untracked". */
+  text: string;
+}
+
+/** The counts the uncommitted changes row shows, conflicts first, none of them zero. */
+export function changeCounts(s: ChangesSummary): ChangeCount[] {
+  const counts: ChangeCount[] = [
+    { kind: 'conflicted', n: s.conflicted, text: `${s.conflicted} ${s.conflicted === 1 ? 'conflict' : 'conflicts'}` },
+    { kind: 'staged', n: s.staged, text: `${s.staged} staged` },
+    { kind: 'unstaged', n: s.unstaged, text: `${s.unstaged} changed` },
+    { kind: 'untracked', n: s.untracked ?? 0, text: `${s.untracked ?? 0} untracked` },
+  ];
+  return counts.filter((c) => c.n > 0);
+}
+
+/** What the uncommitted changes row says to a tooltip and a screen reader. */
+export function describeChanges(s: ChangesSummary, branch: string | undefined): string {
+  const on = branch === undefined ? '' : ` on ${branch}`;
+  const notes = [
+    s.untracked === undefined ? 'Untracked files are not counted.' : '',
+    s.submodules > 0 ? 'git stash never records changes inside submodules.' : '',
+  ];
+  return [
+    `Uncommitted changes${on}: ${changeCounts(s)
+      .map((c) => c.text)
+      .join(', ')}.`,
+    ...notes,
+  ]
+    .filter((t) => t)
+    .join(' ');
+}
+
 /** Parses `git status --porcelain=v2 -z`; `untracked`: whether git was asked to list untracked files. */
 export function parseStatus(out: string, untracked = false): WorkingChanges {
   const w: WorkingChanges = {

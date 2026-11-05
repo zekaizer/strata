@@ -21,7 +21,14 @@ import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
-import type { ChangesSummary, Leftover, OperationState } from '../core/repo-state.ts';
+import {
+  changeCounts,
+  describeChanges,
+  type ChangeCount,
+  type ChangesSummary,
+  type Leftover,
+  type OperationState,
+} from '../core/repo-state.ts';
 import { samePath } from '../core/worktrees.ts';
 import {
   anchoredAt,
@@ -220,6 +227,13 @@ const BADGE_ICON: Record<Exclude<Badge['look'], 'more'>, string> = {
   remote: 'cloud',
   tag: 'tag',
   worktree: 'worktree',
+};
+
+const CHANGE_ICON: Record<ChangeCount['kind'], string> = {
+  conflicted: 'warning',
+  staged: 'check',
+  unstaged: 'edit',
+  untracked: 'diff-added',
 };
 
 class App {
@@ -474,7 +488,7 @@ class App {
     this.findButton.addEventListener('click', () => {
       this.openFind();
     });
-    this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'));
+    this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'), el('span', 'head-dot', '•'));
     this.headButton.addEventListener('click', () => {
       this.goToHead();
     });
@@ -711,6 +725,7 @@ class App {
         });
         this.updateStatus();
         this.updateStashButton();
+        this.updateHeadButton();
         if (this.landing && this.landing.start === undefined) {
           this.landing.start = performance.now();
           this.landingTimer = setTimeout(() => {
@@ -1175,13 +1190,17 @@ class App {
     if (!shown) this.closeFind();
   }
 
+  /** With uncommitted changes whose row is not in the graph (nor HEAD), the button carries a dot. */
   private updateHeadButton(): void {
     const head = this.refs.head;
     this.headButton.disabled = head === undefined;
-    this.headButton.title =
+    const unseen = this.changes !== undefined && this.commits.length > 0 && this.indexOf(CHANGES_ROW) < 0;
+    this.headButton.classList.toggle('dotted', unseen);
+    const title =
       head === undefined
         ? 'Go to HEAD: nothing is checked out yet'
         : `Go to HEAD (${this.refs.headBranch ?? `detached at ${shortHash(head)}`})`;
+    this.headButton.title = unseen ? `${title}. ${describeChanges(this.changes!, this.refs.headBranch)}` : title;
     this.headButton.setAttribute('aria-label', this.headButton.title);
   }
 
@@ -1692,7 +1711,9 @@ class App {
     const was = this.selectedHash();
     this.list = [];
     this.geometry.clear();
-    this.appendRows(interleave(this.commits, 0, this.anchors, this.changesAt()));
+    // Before the first page there are no rows: that page brings any row that goes first.
+    if (this.commits.length > 0 || this.done)
+      this.appendRows(interleave(this.commits, 0, this.anchors, this.changesAt()));
     const survivor = (i: number) => {
       for (let j = i; j < old.length; j++) {
         const k = this.indexOf(rowHash(old[j]!));
@@ -1702,6 +1723,7 @@ class App {
     };
     if (this.selected >= 0) this.selected = survivor(this.selected);
     this.syncSizer();
+    this.updateHeadButton();
     // At the very top, a row added above the first one is shown rather than scrolled past.
     if (anchor >= 0 && top > 0) this.scroller.scrollTop = this.rowTop(survivor(anchor)) + offset;
     this.updateStashButton();
@@ -2114,7 +2136,7 @@ class App {
     this.bodyExpanded = false;
     clearTimeout(this.copiedTimer);
     this.pendingDetails = undefined;
-    if (this.expanded) {
+    if (this.expanded && row.kind !== 'changes') {
       this.pendingDetails = hash;
       this.showLoading();
       vscode.postMessage({ type: 'select', generation: this.generation, hash });
@@ -2460,13 +2482,13 @@ class App {
     // While several commits are selected, what Shift-click cannot add steps back.
     if (selection.length > 0 && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
     if (r.kind === 'changes') {
-      const subject = el('span', 'subject');
-      subject.append(el('span', 'text', 'Uncommitted changes'));
-      row.append(el('span', 'graph-spacer'), subject);
+      this.fillChangesRow(row, r.changes);
+      this.markMenuTarget(row, i);
       return row;
     }
     if (r.kind === 'stash') {
       this.fillStashRow(row, r.stash);
+      if (this.belowChanges(i)) row.classList.add('head-chain');
       if (this.landing?.stash === r.stash.hash) this.markLanded(row);
       this.markMenuTarget(row, i);
       return row;
@@ -2580,6 +2602,35 @@ class App {
       vscode.postMessage({ type: 'openPathDiff', generation: this.generation, hash, beside: e.altKey });
     });
     return b;
+  }
+
+  /** Whether list row `i` is between the uncommitted changes row and HEAD (the stashes on HEAD). */
+  private belowChanges(i: number): boolean {
+    let j = i - 1;
+    while (this.list[j]?.kind === 'stash') j--;
+    return this.list[j]?.kind === 'changes';
+  }
+
+  /** "Uncommitted changes", then the counts: conflicts first, each with its icon, none of them zero. */
+  private fillChangesRow(row: HTMLElement, s: ChangesSummary): void {
+    row.classList.add('changes');
+    const subject = el('span', 'subject');
+    subject.append(el('span', 'text', 'Uncommitted changes'));
+    const counts = el('span', 'change-counts');
+    for (const c of changeCounts(s)) {
+      const count = el('span', `change-count change-${c.kind}`);
+      count.append(
+        codicon(CHANGE_ICON[c.kind]),
+        el('span', 'change-n', String(c.n)),
+        el('span', 'change-word', c.text.replace(/^\d+ /, '')),
+      );
+      counts.append(count);
+    }
+    subject.append(counts);
+    row.append(el('span', 'graph-spacer'), subject);
+    const label = describeChanges(s, this.refs.headBranch);
+    row.title = label;
+    row.setAttribute('aria-label', label);
   }
 
   /**

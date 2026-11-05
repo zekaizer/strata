@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { listChanges, parseStatus } from '../../src/core/repo-state.ts';
+import { changeCounts, changesSummary, describeChanges, listChanges, parseStatus } from '../../src/core/repo-state.ts';
 
 /** `git status --porcelain=v2 -z` records, each NUL-terminated. */
 const status = (...records: string[]) => records.map((r) => `${r}\0`).join('');
@@ -83,5 +83,34 @@ describe('working changes', () => {
     assert.deepEqual(listChanges(status(`1 .A N... 000000 000000 100644 ${Z} ${Z} ita.txt`), 10).files, [
       { group: 'unstaged', status: 'A', path: 'ita.txt' },
     ]);
+  });
+
+  it('has nothing to show for a clean work tree, or one with only untracked files left uncounted', () => {
+    assert.equal(changesSummary(parseStatus('', true)), undefined);
+    assert.equal(changesSummary(parseStatus(status('? a'), false)), undefined);
+    assert.deepEqual(changesSummary(parseStatus(status('? a'), true)), {
+      staged: 0,
+      unstaged: 0,
+      conflicted: 0,
+      untracked: 1,
+      submodules: 0,
+    });
+  });
+
+  it('says conflicts first and leaves out what is zero', () => {
+    const s = { staged: 2, unstaged: 0, conflicted: 1, untracked: 3, submodules: 0 };
+    assert.deepEqual(
+      changeCounts(s).map((c) => c.text),
+      ['1 conflict', '2 staged', '3 untracked'],
+    );
+    assert.equal(describeChanges(s, 'main'), 'Uncommitted changes on main: 1 conflict, 2 staged, 3 untracked.');
+  });
+
+  it('says when untracked files were not counted and that stashes skip submodules', () => {
+    const s = { staged: 0, unstaged: 1, conflicted: 0, untracked: undefined, submodules: 1 };
+    assert.equal(
+      describeChanges(s, undefined),
+      'Uncommitted changes: 1 changed. Untracked files are not counted. git stash never records changes inside submodules.',
+    );
   });
 });

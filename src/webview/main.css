@@ -44,6 +44,16 @@ body {
   display: none;
 }
 
+/* Uncommitted changes whose row is not in the graph. */
+.head-dot {
+  display: none;
+  color: var(--color-git-modified);
+}
+
+.head-button.dotted .head-dot {
+  display: inline;
+}
+
 /* Narrow toolbars keep the icons and drop the labels. */
 @container toolbar (max-width: 420px) {
   .first-parent-button .tool-label,
@@ -487,6 +497,98 @@ body:not(.vscode-high-contrast) .row:not(.selected) .chip-stash.autostash {
 .row.stash .text,
 .stash-note {
   color: var(--color-muted);
+}
+
+/*
+ * The uncommitted changes, above HEAD: one line, the subject reaching across the author and date
+ * columns, none of which it has. A dashed bar at the left edge carries HEAD's bar up through the
+ * stashes on HEAD to it.
+ */
+.row.changes .subject {
+  grid-column: 2 / -1;
+  gap: var(--space-12);
+}
+
+.row.changes .text {
+  flex: none;
+}
+
+.row.changes::before,
+.row.head-chain::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: repeating-linear-gradient(to bottom, var(--bar-color) 0 3px, transparent 3px 6px);
+  --bar-color: var(--badge-head);
+}
+
+body.vscode-high-contrast .row.changes::before,
+body.vscode-high-contrast .row.head-chain::before {
+  --bar-color: var(--vscode-contrastActiveBorder, var(--badge-head));
+}
+
+.change-counts {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.change-count {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: none;
+  white-space: pre;
+}
+
+.change-count + .change-count::before {
+  content: '·';
+  padding: 0 var(--space-8);
+  color: var(--color-muted);
+}
+
+.change-n {
+  font-weight: var(--font-weight-strong);
+}
+
+.change-conflicted {
+  color: var(--color-git-conflict);
+}
+
+.change-staged {
+  color: var(--color-git-staged);
+}
+
+.change-unstaged {
+  color: var(--color-git-modified);
+}
+
+.change-untracked {
+  color: var(--color-git-untracked);
+}
+
+.scroller:focus-within .row.changes.selected .change-count {
+  color: inherit;
+}
+
+/* Narrow lists keep the subject and the counts, each by its icon. */
+@container list (max-width: 600px) {
+  .change-word {
+    display: none;
+  }
+  .row.changes .subject {
+    gap: var(--space-8);
+  }
+  .change-count {
+    gap: var(--space-2);
+  }
+  .change-count + .change-count::before {
+    padding: 0 var(--space-4);
+  }
 }
 
 /* Where the operation in progress stopped, and a rebase's target (banner.ts operationNotes). */

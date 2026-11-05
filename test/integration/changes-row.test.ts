@@ -38,13 +38,18 @@ describe('uncommitted changes row', () => {
     assert.equal(rowOf(p, 'changes'), 0);
     assert.equal(rowOf(p, git('rev-parse', 'HEAD')), 1);
     assert.equal(p.scrollTop, 0, 'a row added at the top is shown, not scrolled past');
+    assert.equal(p.rowLabels['changes'], 'Uncommitted changes on main: 1 changed.');
     git('checkout', '--', 'main.txt');
     await waitFor('no changes row', async () => rowOf(await panel.probe(), 'changes') < 0);
   });
 
   it('shows a row for untracked files alone', async () => {
     writeFileSync(file('scratch.txt'), 'new\n');
-    await waitFor('changes row', async () => rowOf(await panel.probe(), 'changes') === 0);
+    const p = await waitFor('changes row', async () => {
+      const s = await panel.probe();
+      return rowOf(s, 'changes') === 0 && s;
+    });
+    assert.equal(p.rowLabels['changes'], 'Uncommitted changes on main: 1 untracked.');
     rmSync(file('scratch.txt'));
     await waitFor('no changes row', async () => rowOf(await panel.probe(), 'changes') < 0);
   });
