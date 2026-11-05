@@ -106,9 +106,8 @@ to get started and the requirements.
 - Right-click a branch, remote branch or tag badge for **Hide Badge**, or for
   **Hide Similar Badges...**, which opens the badge popover with a pattern for
   refs named like it (`release/2.1` gives `release/*`) to check before hiding.
-- When some of a commit's refs are out of sight (collapsed into `+N` or hidden
-  by a rule), rest the pointer on its node for a card with all of its refs: a
-  detached HEAD, branches (the current one marked), remote branches and
+- In the graph, rest the pointer on a commit's node for a card with all of its
+  refs: a detached HEAD, branches (the current one marked), remote branches and
   tags, including those collapsed into `+N`. Badges a rule hides are dimmed and
   name the rule, for example _hidden by `*-rc*`_.
 - The commit checked out has a bar at the left edge of its row (and a tinted

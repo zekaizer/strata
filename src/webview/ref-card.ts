@@ -19,7 +19,6 @@ const ICON: Record<CardRef['look'], string> = {
 /** A commit's node under the pointer: its refs and the node's centre in client px. */
 export interface CardTarget {
   hash: string;
-  /** The card's lines; none: no card. */
   refs: readonly CardRef[];
   x: number;
   y: number;
