@@ -781,6 +781,9 @@ export const autostashRefused = (paths: readonly string[]): string =>
 export const OPEN_SCM = 'Open Source Control View';
 
 export const NOTHING_TO_STASH = 'No local changes to stash.';
+/** After `git stash push` made no stash, with `submodules` changed inside. */
+export const nothingStashed = (submodules: number): string =>
+  submodules > 0 ? 'No local changes to stash: git never stashes changes inside submodules.' : NOTHING_TO_STASH;
 
 /** `n` changed tracked files, `staged` of them staged; `untracked`: Include Untracked. */
 export function stashPushInput(n: number, staged: number, untracked: boolean): { title: string; prompt: string } {

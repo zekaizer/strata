@@ -3,6 +3,7 @@ import {
   dropStashConfirmation,
   IN_THE_WAY_OF,
   NOTHING_TO_STASH,
+  nothingStashed,
   STASH_DOING,
   STASH_DONE,
   stashBranchDirty,
@@ -60,6 +61,7 @@ export async function stashPush(host: FlowHost, includeUntracked: boolean): Prom
     validate: () => undefined,
   });
   if (message === undefined) return;
+  const before = await readStashTop(host.git, host.cwd);
   const ran = await run(host, STASH_DOING.stashing, (exec) =>
     exec({
       kind: 'stashPush',
@@ -69,6 +71,11 @@ export async function stashPush(host: FlowHost, includeUntracked: boolean): Prom
   );
   if (ran === undefined) return;
   const top = await readStashTop(host.git, host.cwd);
+  // git exits 0 with "No local changes to save" (e.g. only changes inside submodules).
+  if (top === before) {
+    void host.ui.notify('info', nothingStashed(wt.submodules));
+    return;
+  }
   const s = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
   if (!s) return;
   await finish(host, { message: STASH_DONE.stashed(wt.paths.length, stashLabel(s.index, s.message)), focus: s.hash });

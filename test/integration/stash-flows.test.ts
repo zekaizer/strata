@@ -18,6 +18,36 @@ describe('stash operations', () => {
     assert.deepEqual(ui.asked, [{ kind: 'notify', level: 'info', message: 'No local changes to stash.', actions: [] }]);
   });
 
+  it('says when the only changes are inside a submodule, which git never stashes', async () => {
+    const sub = join(workspaceRoot(), 'strata-sub');
+    try {
+      execFileSync('git', ['init', '--quiet', sub]);
+      writeFileSync(join(sub, 'f.txt'), 'one\n');
+      git('-C', sub, 'add', 'f.txt');
+      git('-C', sub, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '--quiet', '-m', 'sub');
+      git('add', 'strata-sub');
+      git('commit', '--quiet', '-m', 'Add submodule');
+      writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'older\n');
+      git('stash', 'push', '--quiet');
+      const older = git('stash', 'list');
+      writeFileSync(join(sub, 'f.txt'), 'two\n');
+      await reload(panel());
+      ui.type('');
+      await run('strata.stash.push');
+      assert.equal(git('stash', 'list'), older, 'no stash was made');
+      assert.deepEqual(ui.of('notify'), [
+        {
+          kind: 'notify',
+          level: 'info',
+          message: 'No local changes to stash: git never stashes changes inside submodules.',
+          actions: [],
+        },
+      ]);
+    } finally {
+      rmSync(sub, { recursive: true, force: true });
+    }
+  });
+
   it('stashes, pops, drops and brings a dropped stash back with Undo', async () => {
     writeFileSync(join(workspaceRoot(), 'NOTES.md'), 'mine\n');
     ui.type('my work');
