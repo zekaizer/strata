@@ -135,25 +135,21 @@ export function resetConfirmation(f: ResetFacts, mode: ResetMode, ask = false): 
   };
 }
 
-/** `unreachable`: the commits on no other branch, remote-tracking branch or tag, newest first. */
+/**
+ * `unreachable`: the commits on no other branch, remote-tracking branch or tag, newest first.
+ * Undefined when none: Undo restores the branch, so there is nothing to confirm.
+ */
 export function deleteBranchConfirmation(
   branch: string,
-  tip: CommitRef,
   unreachable: CommitList,
   upstream: string | undefined,
-): Confirmation<'delete'> {
-  const remote = upstream ? ` The remote branch ${upstream} is not deleted.` : '';
+): Confirmation<'delete'> | undefined {
   const newest = unreachable.newest[0];
-  if (!newest)
-    return {
-      message: `Delete branch '${branch}'?`,
-      detail: `It points at ${tip.short} "${tip.subject}", which is also on another branch. No commits are lost.${remote}`,
-      buttons: [{ id: 'delete', label: 'Delete Branch' }],
-    };
+  if (!newest) return undefined;
   const n = unreachable.count;
   return {
     message: `Delete branch '${branch}' and its ${plural(n, 'unmerged commit')}?`,
-    detail: `${plural(n, 'commit')} would be on no branch, newest "${newest.subject}" (${newest.short}). Undo restores the branch; otherwise only the reflog can.${remote}`,
+    detail: `${plural(n, 'commit')} would be on no branch, newest "${newest.subject}" (${newest.short}). Undo restores the branch; otherwise only the reflog can.${upstream ? ` The remote branch ${upstream} is not deleted.` : ''}`,
     buttons: [{ id: 'delete', label: 'Delete Branch and Commits' }],
   };
 }
@@ -412,14 +408,6 @@ export const renameInput = (branch: string, remote: string | undefined): { title
   ),
 });
 
-export function deleteTagConfirmation(tag: string, at: CommitRef): Confirmation<'delete'> {
-  return {
-    message: `Delete tag '${tag}'?`,
-    detail: `It points at ${at.short} "${at.subject}". A tag already pushed stays on its remote, and a fetch brings it back.`,
-    buttons: [{ id: 'delete', label: 'Delete Tag' }],
-  };
-}
-
 export const checkedOutElsewhere = (branch: string, path: string | undefined): string =>
   `'${branch}' is checked out in another worktree${path === undefined ? '' : ` (${path})`}.`;
 
@@ -502,8 +490,8 @@ export function mergeAnswer(id: MergeStashAnswer): { mode: MergeMode; choice: St
 }
 
 /**
- * Clean: Fast-Forward or Create Merge Commit (merge commit first when merge.ff is false), or just
- * Merge. Dirty: for each of `modes`, in order, a button per answer about the changes.
+ * Clean (a merge that can fast-forward): Fast-Forward or Create Merge Commit, merge commit first
+ * when merge.ff is false. Dirty: for each of `modes`, in order, a button per answer about the changes.
  */
 export function mergeConfirmation(f: MergeFacts, mergeFf: boolean | undefined): Confirmation<MergeMode>;
 export function mergeConfirmation(
@@ -537,7 +525,6 @@ export function mergeConfirmation(
       ),
     };
   }
-  if (!f.canFastForward) return { message, detail: records, buttons: [{ id: 'ff', label: 'Merge' }] };
   const both: { id: MergeMode; label: string }[] = [
     { id: 'ff', label: 'Fast-Forward' },
     { id: 'noFastForward', label: 'Create Merge Commit' },

@@ -305,11 +305,11 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 
     const picked = mergeAnswer(answer);
     mode = picked.mode;
     autostash = picked.choice === 'stash';
-  } else if (via === 'menu') {
+  } else if (via === 'menu' && canFastForward) {
     const answer = await host.ui.confirm(mergeConfirmation(facts, mergeFf));
     if (answer === undefined) return;
     mode = answer;
-  } else mode = 'ff';
+  } else mode = via === 'menu' ? preferred : 'ff';
   const r = await runStoppable(host, () =>
     runMovingUntracked(
       host,
@@ -360,7 +360,9 @@ export async function rebase(
     changes(host, op),
   ]);
   const dirty = c.choices.choices.length > 0;
-  if (dirty || via === 'menu') {
+  // Undo restores the original commits: ask only about changes, dropped merges and pushed commits.
+  const warns = counts.merges > 0 || (counts.onUpstream > 0 && upstream !== undefined);
+  if (dirty || (via === 'menu' && warns)) {
     const buttons: { id: StashChoice | 'rebase'; label: string }[] = dirty
       ? stashButtons(op, c.choices.choices)
       : [{ id: 'rebase', label: 'Rebase' }];

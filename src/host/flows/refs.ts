@@ -11,7 +11,6 @@ import {
   createBranchInput,
   createTagInput,
   deleteBranchConfirmation,
-  deleteTagConfirmation,
   DOING,
   DONE,
   IN_THE_WAY_OF,
@@ -341,7 +340,8 @@ export async function deleteBranch(host: FlowHost, ref: Ref): Promise<void> {
     // `branch -D` drops the whole branch.<b> section; Undo puts it back.
     readBranchConfig(host.git, host.cwd, ref.short),
   ]);
-  if (!(await host.ui.confirm(deleteBranchConfirmation(ref.short, tip, unmerged, upstream?.name)))) return;
+  const ask = deleteBranchConfirmation(ref.short, unmerged, upstream?.name);
+  if (ask && !(await host.ui.confirm(ask))) return;
   // Where the branch hung off the current line, which stays in the graph.
   const forkPoint = await readMergeBase(host.git, host.cwd, 'HEAD', tip.hash);
   let ran: unknown;
@@ -379,7 +379,6 @@ export async function deleteTag(host: FlowHost, ref: Ref): Promise<void> {
     runGit(host.git, host.cwd, ['rev-parse', '--verify', ref.name]).then((s) => s.trim()),
     readCommit(host.git, host.cwd, ref.name),
   ]);
-  if (!(await host.ui.confirm(deleteTagConfirmation(ref.short, at)))) return;
   const ran = await run(host, DOING.deletingTag(ref.short), (exec) => exec({ kind: 'deleteTag', name: ref.short }), {
     expect: [{ rev: ref.name, hash: object, name: quote(ref.short) }],
   });

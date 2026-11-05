@@ -42,9 +42,6 @@ describe('wording of history operations', () => {
     assert.equal(ff.detail, "'main' can fast-forward to abc1234 (2 commits), or record a merge commit.");
     assert.deepEqual(labels(ff.buttons), ['Fast-Forward', 'Create Merge Commit']);
     assert.deepEqual(labels(mergeConfirmation(merge, false).buttons), ['Create Merge Commit', 'Fast-Forward']);
-    const diverged = mergeConfirmation({ ...merge, canFastForward: false }, undefined);
-    assert.equal(diverged.detail, "Creates a merge commit on 'main' with 2 commits from 'topic'.");
-    assert.deepEqual(labels(diverged.buttons), ['Merge']);
   });
 
   it('says how a merge with uncommitted changes records the result, and asks about the changes', () => {

@@ -88,28 +88,18 @@ describe('wording', () => {
   });
 
   it('says when deleting a branch loses commits', () => {
-    const safe = deleteBranchConfirmation('topic', c('abc1234', 'Tip'), { newest: [], count: 0 }, 'origin/topic');
-    assert.equal(safe.message, "Delete branch 'topic'?");
-    assert.equal(
-      safe.detail,
-      'It points at abc1234 "Tip", which is also on another branch. No commits are lost. The remote branch origin/topic is not deleted.',
-    );
+    assert.equal(deleteBranchConfirmation('topic', { newest: [], count: 0 }, 'origin/topic'), undefined);
     const lossy = deleteBranchConfirmation(
       'topic',
-      c('abc1234', 'Tip'),
       { newest: [c('abc1234', 'Tip'), c('def5678', 'Older')], count: 2 },
       undefined,
     );
+    assert.ok(lossy);
     assert.equal(lossy.message, "Delete branch 'topic' and its 2 unmerged commits?");
     assert.match(lossy.detail, /^2 commits would be on no branch, newest "Tip" \(abc1234\)\./);
     assert.deepEqual(lossy.buttons, [{ id: 'delete', label: 'Delete Branch and Commits' }]);
-    const long = deleteBranchConfirmation(
-      'topic',
-      c('abc1234', 'Tip'),
-      { newest: [c('abc1234', 'Tip')], count: 60 },
-      undefined,
-    );
-    assert.equal(long.message, "Delete branch 'topic' and its 60 unmerged commits?");
+    const long = deleteBranchConfirmation('topic', { newest: [c('abc1234', 'Tip')], count: 60 }, undefined);
+    assert.equal(long?.message, "Delete branch 'topic' and its 60 unmerged commits?");
   });
 
   it('says what aborting gives back', () => {

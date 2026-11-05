@@ -190,9 +190,8 @@ describe('history operations', () => {
   it('stops a rebase at a conflict, reports it, holds other writes, and aborts back', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
-    assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-topic' on top of 'main'/);
+    assert.deepEqual(ui.of('confirm'), [], 'Undo restores the commits: nothing to confirm');
     assert.deepEqual(ui.of('notify').at(-1), {
       kind: 'notify',
       level: 'warning',
@@ -222,7 +221,6 @@ describe('history operations', () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
     const notes = read('NOTES.md');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.equal(api().contextValue('strata.operation'), 'rebase');
     write('NOTES.md', 'mine\n');
@@ -315,7 +313,6 @@ describe('history operations', () => {
   it('names where a rebase started even when ORIG_HEAD moved while it was stopped', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     git('update-ref', 'ORIG_HEAD', 'main~1');
     ui.clear();
@@ -330,7 +327,6 @@ describe('history operations', () => {
 
   it('continues a rebase once its conflict is resolved, staging it, not before, and the banner goes', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     await waitFor('rebase banner', async () => (await panel().probe()).banner?.state === 'rebase');
 
@@ -354,7 +350,6 @@ describe('history operations', () => {
   it('undoes a rebase that stopped and then finished with Continue, back to where it started', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     write('main.txt', 'resolved\n');
     git('add', 'main.txt');
@@ -434,7 +429,6 @@ describe('history operations', () => {
   it('undoes a rebase that stopped and then finished with Skip, back to where it started', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.equal(api().contextValue('strata.operation'), 'rebase');
     ui.press('Skip Commit');
@@ -458,7 +452,6 @@ describe('history operations', () => {
     await run('strata.undo');
     assert.equal(git('rev-parse', 'HEAD'), before);
 
-    ui.press('Merge');
     await run('strata.merge', branchMenu('strata-pick', picked));
     assert.equal(api().contextValue('strata.operation'), 'merge');
     write('main.txt', 'resolved\n');
@@ -774,10 +767,10 @@ describe('history operations', () => {
     const onto = await inTheWay();
     branchWith('strata-topic', 'main~1', 'topic.txt', 'topic\n');
     await reload(panel());
-    ui.press('Rebase', 'Stash It & Retry');
+    ui.press('Stash It & Retry');
     await run('strata.rebase', branchMenu('strata-new', onto));
     assert.equal(
-      ui.of('confirm')[1]?.message,
+      ui.of('confirm')[0]?.message,
       "1 untracked file is in the way of the rebase onto 'strata-new': new.txt.",
     );
     assert.equal(git('rev-parse', 'HEAD~1'), onto);
@@ -850,7 +843,6 @@ describe('history operations', () => {
     git('update-ref', '-d', 'refs/remotes/origin/main');
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     await reload(panel());
-    ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
     assert.equal(api().contextValue('strata.operation'), 'rebase');
 

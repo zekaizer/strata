@@ -8,7 +8,6 @@ import {
   checkedOutElsewhere,
   createBranchInput,
   createTagInput,
-  deleteTagConfirmation,
   DOING,
   DONE,
   leaveBehindConfirmation,
@@ -117,16 +116,6 @@ describe('wording of ref operations', () => {
     });
     assert.equal(renameInput('topic', undefined).prompt, 'Enter the new name.');
     assert.equal(NEEDS_NEW_NAME, 'Enter a different name.');
-  });
-
-  it('says what deleting a tag leaves', () => {
-    const c = deleteTagConfirmation('v1', tip);
-    assert.equal(c.message, "Delete tag 'v1'?");
-    assert.equal(
-      c.detail,
-      'It points at abc1234 "Tip". A tag already pushed stays on its remote, and a fetch brings it back.',
-    );
-    assert.deepEqual(c.buttons, [{ id: 'delete', label: 'Delete Tag' }]);
   });
 
   it('reports what went wrong around a switch', () => {

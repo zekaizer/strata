@@ -97,14 +97,16 @@ operation is stopped, Continue, Abort and Skip.
   branch, or creates one that tracks it; when the local branch of that name
   tracks something else, you choose between switching to it anyway and
   creating a tracking branch of another name), Create Branch, Create Tag,
-  Rename, Delete and Copy Name. Deleting a branch says which commits no other branch
-  or tag has. Push Tag pushes a tag to a remote (you pick one when there are
+  Rename, Delete and Copy Name. Deleting a branch asks first only when no
+  other branch or tag has its commits, and names them. Push Tag pushes a tag to a remote (you pick one when there are
   several), and says so when the remote already has a different tag of that
   name. Delete Tag from Remote deletes it there and keeps your local tag;
   that can't be undone.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current
-  Branch to Here in any of git's modes. Each confirmation says what happens to
+  Branch to Here in any of git's modes. Strata asks first only when there is a
+  choice to make, when Undo couldn't bring back what is lost, or when commits
+  already pushed would be rewritten; the confirmation says what happens to
   which commits. A merge commit can be cherry picked relative to the parent you
   choose, and reverted, which undoes the commits it brought in from its other
   parents.

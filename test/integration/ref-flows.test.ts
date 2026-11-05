@@ -210,6 +210,16 @@ describe('ref operations', () => {
     await selected(panel(), tip);
   });
 
+  it('deletes a branch whose commits another ref has without asking, and undoes that', async () => {
+    git('branch', 'strata-merged', 'main~1');
+    await reload(panel());
+    await run('strata.deleteBranch', branchMenu('strata-merged', git('rev-parse', 'main~1')));
+    assert.deepEqual(ui.of('confirm'), []);
+    assert.equal(git('branch', '--list', 'strata-merged'), '');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'strata-merged'), git('rev-parse', 'main~1'));
+  });
+
   it('refuses a menu on a branch that is gone, says so and refreshes the graph', async () => {
     const before = (await panel().probe()).generation;
     await run('strata.deleteBranch', branchMenu('strata-gone'));
@@ -400,9 +410,8 @@ describe('ref operations', () => {
     assert.equal(git('cat-file', '-t', object), 'tag');
     await selected(panel(), at);
 
-    ui.press('Delete Tag');
     await run('strata.deleteTag', tagMenu('v9.9'));
-    assert.equal(ui.first('confirm').message, "Delete tag 'v9.9'?");
+    assert.deepEqual(ui.of('confirm'), [], 'Undo restores the tag: nothing to confirm');
     assert.equal(git('tag', '--list', 'v9.9'), '');
     await run('strata.undo');
     assert.equal(git('rev-parse', 'refs/tags/v9.9'), object);
@@ -421,7 +430,6 @@ describe('ref operations', () => {
     git('-c', 'tag.gpgSign=false', 'tag', '--annotate', '--message', 'Release 9.9', 'v9.9', at);
     const object = git('rev-parse', 'refs/tags/v9.9');
     await reload(panel());
-    ui.press('Delete Tag');
     await run('strata.deleteTag', tagMenu('v9.9'));
     assert.equal(git('tag', '--list', 'v9.9'), '');
     await run('strata.undo');
