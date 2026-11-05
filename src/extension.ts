@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { BadgeRuleStore } from './host/badge-store.ts';
 import { contextValue, type ContextKey } from './host/context.ts';
 import type { FlowEnv } from './host/flow.ts';
-import { registerEntryPoints } from './host/entry.ts';
+import { graphStatusBarItem, registerEntryPoints } from './host/entry.ts';
 import { registerCommands } from './host/menus.ts';
 import { GraphPanel } from './host/panel.ts';
 import { disposeRepoList } from './host/repositories.ts';
@@ -19,6 +19,8 @@ export interface StrataTestApi {
   setUi(ui: Ui | undefined): void;
   /** The value Strata last gave a context key. */
   contextValue(key: ContextKey): unknown;
+  /** The status bar item that opens the graph, once the git extension is ready. */
+  statusBarItem(): vscode.StatusBarItem | undefined;
 }
 
 /** Time for VS Code to revive the graph through the serializer before a tab without it counts as orphaned. */
@@ -38,9 +40,8 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
   const show = () => GraphPanel.show(context.extensionUri);
   context.subscriptions.push(
     runner,
-    vscode.commands.registerCommand('strata.show', show),
     ...registerCommands(env),
-    ...registerEntryPoints(context.extensionUri, env),
+    registerEntryPoints(context.extensionUri, env),
     vscode.commands.registerCommand('strata.writeCommitGraph', async () => {
       const panel = GraphPanel.current ?? show();
       await panel.whenReady();
@@ -69,6 +70,7 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
       env.ui = ui ?? vscodeUi;
     },
     contextValue,
+    statusBarItem: graphStatusBarItem,
   };
 }
 

@@ -39,7 +39,7 @@
         "command": "strata.show",
         "title": "Show Commit Graph",
         "category": "Strata",
-        "icon": "$(git-commit)"
+        "icon": "$(git-merge)"
       },
       {
         "command": "strata.writeCommitGraph",
@@ -49,6 +49,17 @@
       {
         "command": "strata.switchRepository",
         "title": "Switch Repository...",
+        "category": "Strata"
+      },
+      {
+        "command": "strata.openInGraph",
+        "title": "Open in Commit Graph",
+        "category": "Strata",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "strata.showActive",
+        "title": "Show Commit Graph for the Active Editor",
         "category": "Strata"
       },
       {
@@ -356,6 +367,18 @@
           "group": "navigation"
         }
       ],
+      "scm/sourceControl": [
+        {
+          "command": "strata.openInGraph",
+          "when": "scmProvider == git",
+          "group": "inline"
+        },
+        {
+          "command": "strata.openInGraph",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ],
       "webview/context": [
         {
           "command": "strata.file.openChanges",
@@ -644,6 +667,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "strata.openInGraph",
+          "when": "false"
+        },
+        {
+          "command": "strata.showActive",
+          "when": "false"
+        },
         {
           "command": "strata.switchRepository",
           "when": "strata.repositories > 1"

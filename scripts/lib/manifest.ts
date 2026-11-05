@@ -7,11 +7,13 @@ interface Pkg {
   contributes: { commands: Item[]; menus: Record<string, Item[]> };
 }
 
-/** Commands src/extension.ts registers itself, outside the table. */
+/** Commands registered outside the table (src/extension.ts, src/host/entry.ts). */
 const HAND_WRITTEN: ReadonlySet<string> = new Set([
   'strata.show',
   'strata.writeCommitGraph',
   'strata.switchRepository',
+  'strata.openInGraph',
+  'strata.showActive',
 ]);
 
 /**
