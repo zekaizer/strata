@@ -111,9 +111,12 @@ export function changeCounts(s: ChangesSummary): ChangeCount[] {
   return counts.filter((c) => c.n > 0);
 }
 
-/** What the uncommitted changes row says to a tooltip and a screen reader. */
-export function describeChanges(s: ChangesSummary, branch: string | undefined): string {
-  const on = branch === undefined ? '' : ` on ${branch}`;
+/**
+ * What the uncommitted changes row says to a tooltip and a screen reader; `path`: the path history
+ * they were counted in.
+ */
+export function describeChanges(s: ChangesSummary, branch: string | undefined, path?: string): string {
+  const on = `${path === undefined ? '' : ` to ${path}`}${branch === undefined ? '' : ` on ${branch}`}`;
   const notes = [
     s.untracked === undefined ? 'Untracked files are not counted.' : '',
     s.submodules > 0 ? 'git stash never records changes inside submodules.' : '',

@@ -114,8 +114,12 @@ describe('repository state', () => {
     );
   });
 
-  it('never writes the index', async () => {
+  it("reads only a path history's paths, and never writes the index", async () => {
     const d = repo();
+    mkdirSync(join(d, 'notes'));
+    writeFileSync(join(d, 'notes', 'a:b.txt'), 'a\n');
+    writeFileSync(join(d, 'f.txt'), 'edited\n');
+    writeFileSync(join(d, 'other.txt'), 'edited\n');
     // A file touched but not changed makes a plain git status refresh the index.
     const g = join(d, 'g.txt');
     writeFileSync(g, 'g\n');
@@ -124,10 +128,15 @@ describe('repository state', () => {
     utimesSync(g, later, later);
     const index = join(d, '.git', 'index');
     const before = readFileSync(index);
-    await readGraphStatus('git', d, { untracked: true });
+    const out = await readGraphStatus('git', d, { untracked: true, paths: ['notes/', 'f.txt', 'g.txt'] });
     assert.deepEqual(readFileSync(index), before);
     run(d, 'status');
     assert.notDeepEqual(readFileSync(index), before, 'a plain status refreshes it');
+    const w = parseStatus(out, true);
+    assert.deepEqual(
+      { paths: w.paths, unstaged: w.unstaged, untracked: w.untracked },
+      { paths: ['f.txt', 'g.txt'], unstaged: 1, untracked: 1 },
+    );
   });
 
   it('tells deletions from the index (git rm) from deleted files git still tracks', async () => {

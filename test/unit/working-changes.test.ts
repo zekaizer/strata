@@ -104,6 +104,10 @@ describe('working changes', () => {
       ['1 conflict', '2 staged', '3 untracked'],
     );
     assert.equal(describeChanges(s, 'main'), 'Uncommitted changes on main: 1 conflict, 2 staged, 3 untracked.');
+    assert.equal(
+      describeChanges(s, 'main', 'src/'),
+      'Uncommitted changes to src/ on main: 1 conflict, 2 staged, 3 untracked.',
+    );
   });
 
   it('says when untracked files were not counted and that stashes skip submodules', () => {

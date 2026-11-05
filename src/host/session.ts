@@ -604,6 +604,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     try {
       const status = await readGraphStatus(this.api.git.path, this.cwd, {
         untracked: this.scansUntracked(),
+        paths: this.options.path?.paths,
         limits: { signal: query.signal },
       });
       details = listChanges(status, CHANGES_LISTED);
@@ -671,14 +672,19 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     return !this.untrackedSlow && vscode.workspace.getConfiguration('git').get<string>('untrackedChanges') !== 'hidden';
   }
 
-  /** The uncommitted changes; undefined without a work tree, null when the read was stopped. */
+  /**
+   * The uncommitted changes (in a path history, to its paths only); undefined without a work tree,
+   * null when the read was stopped.
+   */
   private async readChanges(signal: AbortSignal): Promise<ChangesSummary | undefined | null> {
     const git = this.api.git.path;
     const cwd = this.cwd;
+    const paths = this.options.path?.paths;
     const read = async (untracked: boolean, timeoutMs?: number) =>
       parseStatus(
         await readGraphStatus(git, cwd, {
           untracked,
+          paths,
           limits: { signal, ...(timeoutMs ? { timeoutMs } : {}) },
         }),
         untracked,

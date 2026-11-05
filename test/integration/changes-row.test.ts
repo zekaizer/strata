@@ -81,6 +81,26 @@ describe('uncommitted changes row', () => {
     await waitFor('no changes row', async () => rowOf(await panel.probe(), 'changes') < 0);
   });
 
+  it("counts only a path history's changes", async () => {
+    await vscode.commands.executeCommand('strata.showHistory', vscode.Uri.file(file('main.txt')));
+    await waitFor('path history', async () => (await panel.probe()).options.path !== null);
+    writeFileSync(file('scratch.txt'), 'new\n');
+    writeFileSync(file('main.txt'), 'edited\n');
+    const p = await waitFor('changes row', async () => {
+      const s = await panel.probe();
+      return s.done && rowOf(s, 'changes') >= 0 && s;
+    });
+    assert.equal(p.rowLabels['changes'], 'Uncommitted changes to main.txt on main: 1 changed.');
+    git('checkout', '--', 'main.txt');
+    await waitFor('no changes row', async () => rowOf(await panel.probe(), 'changes') < 0);
+    rmSync(file('scratch.txt'));
+    await panel.simulate({ kind: 'click', selector: '.path-chip-clear' });
+    await waitFor('whole history', async () => {
+      const s = await panel.probe();
+      return s.options.path === null && s.done;
+    });
+  });
+
   it('unfolds into the changes by group, and opens a staged file as HEAD against the index', async () => {
     writeFileSync(file('NOTES.md'), 'staged\n');
     git('add', 'NOTES.md');

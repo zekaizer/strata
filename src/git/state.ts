@@ -151,12 +151,12 @@ export async function readWorkingChanges(git: string, cwd: string): Promise<Work
  * `git status --porcelain=v2 -z` as the graph reads it, on its own schedule. `--no-optional-locks`:
  * it never takes index.lock from git commands the user runs meanwhile. `untracked`: also untracked
  * files, a folder git does not ignore as one entry ("dir/"), so a huge one costs no more than a
- * small one.
+ * small one. `paths`: only those (a path history's).
  */
 export function readGraphStatus(
   git: string,
   cwd: string,
-  opts: { untracked: boolean; limits?: GitLimits },
+  opts: { untracked: boolean; paths?: readonly string[] | undefined; limits?: GitLimits },
 ): Promise<string> {
   const args = [
     '--no-optional-locks',
@@ -166,5 +166,6 @@ export function readGraphStatus(
     `--untracked-files=${opts.untracked ? 'normal' : 'no'}`,
     '--ignore-submodules=none',
   ];
-  return runGit(git, cwd, args, {}, opts.limits);
+  const paths = opts.paths?.map((p) => `:(literal)${p}`) ?? [];
+  return runGit(git, cwd, paths.length > 0 ? [...args, '--', ...paths] : args, {}, opts.limits);
 }

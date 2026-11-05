@@ -1240,7 +1240,9 @@ class App {
       head === undefined
         ? 'Go to HEAD: nothing is checked out yet'
         : `Go to HEAD (${this.refs.headBranch ?? `detached at ${shortHash(head)}`})`;
-    this.headButton.title = unseen ? `${title}. ${describeChanges(this.changes!, this.refs.headBranch)}` : title;
+    this.headButton.title = unseen
+      ? `${title}. ${describeChanges(this.changes!, this.refs.headBranch, this.options.path?.paths[0])}`
+      : title;
     this.headButton.setAttribute('aria-label', this.headButton.title);
   }
 
@@ -2671,7 +2673,7 @@ class App {
     }
     subject.append(counts);
     row.append(el('span', 'graph-spacer'), subject);
-    const label = describeChanges(s, this.refs.headBranch);
+    const label = describeChanges(s, this.refs.headBranch, this.options.path?.paths[0]);
     row.title = label;
     row.setAttribute('aria-label', label);
   }
@@ -3272,7 +3274,10 @@ class App {
     }
     if (w.truncated > 0)
       files.append(el('div', 'details-note', `${w.truncated} more not listed: Source Control lists them all.`));
-    if (w.files.length === 0) files.append(el('div', 'details-note', 'No uncommitted changes.'));
+    const path = this.options.path?.paths[0];
+    if (w.files.length === 0)
+      files.append(el('div', 'details-note', `No uncommitted changes${path === undefined ? '' : ` to ${path}`}.`));
+    else if (path !== undefined) files.append(el('div', 'details-note', `Only changes to ${path} are listed.`));
     this.showDetails(main, files, keepScroll);
     this.holdChangesActions();
   }
@@ -3692,7 +3697,6 @@ class App {
     li.style.setProperty('--depth', String(depth));
     li.dataset['path'] = f.path;
     if (f.path === this.openedFile) li.classList.add('opened');
-    if (this.options.path && inFilter(f.path, this.options.path)) li.classList.add('in-filter');
     li.append(el('span', 'file-status', status));
     const label = el('span', 'file-path');
     // The folder is the tree around it; a rename also shows where the file came from.
@@ -3723,6 +3727,7 @@ class App {
   private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
     const views = fileViews(f, source.base);
     const li = this.fileEntry(f, name, depth);
+    if (this.options.path && inFilter(f.path, this.options.path)) li.classList.add('in-filter');
     li.dataset['views'] = views.join(' ');
     const menu = fileMenuContext(source, f, views);
     li.setAttribute('data-vscode-context', JSON.stringify(menu));
