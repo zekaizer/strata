@@ -321,7 +321,7 @@ class App {
   private readonly stashButton = el('button', 'tool-button stash-button');
   /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
   private commits: Commit[] = [];
-  /** Parents of the loaded commits, by commit. */
+  /** Parents of the loaded commits, by commit: all of them, also in first-parent history. */
   private parentsOf = new Map<string, readonly string[]>();
   /** Loaded commits Strata can rewrite (rewritableLine), newest first, by position. */
   private rewritable = new Map<string, number>();
@@ -753,7 +753,7 @@ class App {
         if (this.commitIndex)
           for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
         this.commits.push(...m.commits);
-        for (const c of m.commits) this.parentsOf.set(c.hash, c.parents);
+        for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
         this.findRewritable();
         this.measureTexts(m.commits);
         this.worker?.postMessage({

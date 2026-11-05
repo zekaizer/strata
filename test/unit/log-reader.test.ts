@@ -49,17 +49,25 @@ describe('LogReader', () => {
     assert.deepEqual(await readAll({ git: 'git', cwd: large, firstParent: true }, 50), expected);
   });
 
-  it('reports only the first parent in first-parent mode', async () => {
+  it('reports only the first parent in first-parent mode, and the other parents of a merge apart', async () => {
     // git prints every parent in %P even with --first-parent; the graph must not await the others.
     const r = new LogReader({ git: 'git', cwd: large, firstParent: true });
     const { commits } = await r.next(5000);
     r.dispose();
-    const expected = git(large, 'rev-list', '--first-parent', '--parents', ...REV_ARGS)
+    const parents = git(large, 'rev-list', '--first-parent', '--parents', ...REV_ARGS)
       .split('\n')
-      .map((l) => l.split(' ').slice(1, 2));
+      .map((l) => l.split(' ').slice(1));
     assert.deepEqual(
       commits.map((c) => c.parents),
-      expected,
+      parents.map((p) => p.slice(0, 1)),
+    );
+    assert.ok(
+      parents.some((p) => p.length > 1),
+      'the history has merges',
+    );
+    assert.deepEqual(
+      commits.map((c) => c.otherParents ?? []),
+      parents.map((p) => p.slice(1)),
     );
   });
 

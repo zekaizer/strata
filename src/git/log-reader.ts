@@ -179,7 +179,12 @@ export class LogReader {
       try {
         const commits = this.parser.push(d);
         // %P lists every parent even with --first-parent; the other parents never appear in this stream.
-        if (firstParent) for (const c of commits) c.parents.length = Math.min(c.parents.length, 1);
+        if (firstParent)
+          for (const c of commits)
+            if (c.parents.length > 1) {
+              c.otherParents = c.parents.slice(1);
+              c.parents.length = 1;
+            }
         this.buffer.push(...commits);
       } catch (e) {
         this.fail(e as Error);

@@ -308,6 +308,31 @@ describe('tidying recent commits', () => {
     await panel().simulate({ kind: 'key', key: 'Escape', target: 'focused' });
   });
 
+  it('offers no rewriting from a merge down in first-parent history, which shows the merge with one parent', async () => {
+    const [, , c] = await three();
+    const merge = git('rev-list', '--first-parent', '--merges', '--max-count=1', 'HEAD');
+    const below = git('rev-parse', `${merge}^1`);
+    const gen = (await panel().probe()).generation;
+    await panel().simulate({ kind: 'click', selector: '.first-parent-button' });
+    await waitFor('first-parent history', async () => {
+      const p = await panel().probe();
+      return p.generation > gen && p.options.firstParent && p.done;
+    });
+    const rewritable = async (hash: string) => {
+      await panel().simulate({ kind: 'clickRow', index: await rowOf(hash) });
+      const p = await waitFor(`${hash} selected`, async () => {
+        const probe = await panel().probe();
+        return probe.selected === hash && probe;
+      });
+      return p.menuContexts.selectedRow?.['strataRewritable'];
+    };
+    assert.equal(await rewritable(c), true);
+    assert.equal(await rewritable(merge), false);
+    assert.equal(await rewritable(below), false);
+    await panel().simulate({ kind: 'click', selector: '.first-parent-button' });
+    await waitFor('the whole history again', async () => !(await panel().probe()).options.firstParent);
+  });
+
   it('offers no rewriting in a file history, whose rows are not the commit history, and says why', async () => {
     const [a, , c] = await three();
     const gen = (await panel().probe()).generation;
