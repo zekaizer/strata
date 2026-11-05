@@ -11,8 +11,8 @@ export function shellKind(path: string): ShellKind {
   return name === 'cmd' ? 'cmd' : 'unknown';
 }
 
-/** Arguments a POSIX shell (and fish) reads as themselves. */
-const PLAIN = /^[\w./@:=+,-]+$/;
+/** Arguments a POSIX shell (and fish) reads as themselves; zsh expands a leading `=`. */
+const PLAIN = /^[\w./@:+,-][\w./@:=+,-]*$/;
 
 /**
  * Arguments PowerShell reads as themselves: no `,` (array operator), no leading `@` (splatting),

@@ -35,6 +35,10 @@ describe('commands typed into a terminal', () => {
     );
   });
 
+  it('quotes a leading = that zsh expands to a command path', () => {
+    assert.equal(shellCommand(['git', 'fetch', '=a', 'a=b'], 'posix'), "git fetch '=a' a=b");
+  });
+
   it('gives up where it cannot quote safely', () => {
     assert.equal(shellCommand(['git', 'push', 'origin', 'a&calc'], 'cmd'), undefined);
     assert.equal(shellCommand(['git', 'push', 'origin', 'a$(id)'], 'unknown'), undefined);
