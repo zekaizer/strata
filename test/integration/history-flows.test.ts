@@ -327,6 +327,41 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), c);
   });
 
+  it('before continuing a rebase that would edit commit messages, offers the terminal or keeping them', async () => {
+    git('switch', '--quiet', '--create', 'strata-topic', 'main');
+    const [a, b, c] = [commitFile('a.txt', 'a\n'), commitFile('b.txt', 'b\n'), commitFile('c.txt', 'c\n')];
+    rebaseInteractive('main', [`edit ${a}`, `reword ${b}`, `fixup -c ${c}`]);
+    await reload(panel());
+
+    ui.clear();
+    await run('strata.operation.continue');
+    const asked = ui.first('confirm');
+    assert.equal(asked.message, 'Continuing this rebase edits commit messages.');
+    assert.equal(
+      asked.detail,
+      `git opens an editor for reword ${b.slice(0, 7)} and fixup -c ${c.slice(0, 7)}, which Strata can't show. ` +
+        'Continue in a terminal to edit them there, or continue here with the messages git prepares, unedited.',
+    );
+    assert.deepEqual(asked.buttons, ['Continue in Terminal', 'Continue Anyway']);
+    assert.equal(api().contextValue('strata.operation'), 'rebase', 'cancelled');
+
+    const terminals = vscode.window.terminals.length;
+    ui.press('Continue in Terminal');
+    await run('strata.operation.continue');
+    const terminal = await waitFor(
+      'a terminal',
+      () => vscode.window.terminals.length > terminals && vscode.window.terminals.at(-1),
+    );
+    assert.equal(terminal.name, 'Strata git');
+    terminal.dispose();
+    assert.equal(api().contextValue('strata.operation'), 'rebase', 'typed, not run');
+
+    ui.press('Continue Anyway');
+    await run('strata.operation.continue');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('log', '-1', '--format=%s'), 'c.txt: c', "fixup -c's message, unedited");
+  });
+
   it('undoes a rebase that stopped and then finished with Skip, back to where it started', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     const tip = git('rev-parse', 'HEAD');

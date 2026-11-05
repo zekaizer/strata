@@ -163,6 +163,20 @@ export function notify(
   );
 }
 
+/** Types the git command of `op` into a new terminal in `cwd`, for the user to run there. */
+export function typeInTerminal(host: Pick<FlowHost, 'ui'>, op: Operation, cwd: string): void {
+  const line = shellCommand(['git', ...argv(op)], shellKind(vscode.env.shell));
+  // Typed or pasted, a line the shell splits differently would run other commands.
+  if (line === undefined) {
+    void host.ui.notify('info', commandUnquotable(commandLine(op)));
+    return;
+  }
+  const terminal = vscode.window.createTerminal({ name: 'Strata git', cwd });
+  terminal.show();
+  // Typed, not run: the user sees what will run and presses Enter.
+  terminal.sendText(line, false);
+}
+
 /** Shows why an operation failed. `remote` names the remote operation, for a failed sign-in. */
 export async function fail(
   host: Presenter,
@@ -176,18 +190,8 @@ export async function fail(
   }
   if (e instanceof GitOpError && remote && (e.kind === 'auth' || e.kind === 'hostKey')) {
     const choice = await host.ui.confirm(signInConfirmation(remote.name, e.kind));
-    if (choice === 'terminal') {
-      const line = shellCommand(['git', ...argv(remote.op)], shellKind(vscode.env.shell));
-      // Typed or pasted, a line the shell splits differently would run other commands.
-      if (line === undefined) {
-        void host.ui.notify('info', commandUnquotable(commandLine(remote.op)));
-        return;
-      }
-      const terminal = vscode.window.createTerminal({ name: 'Strata git', cwd: remote.cwd });
-      terminal.show();
-      // Typed, not run: the user sees what will run and presses Enter.
-      terminal.sendText(line, false);
-    } else if (choice === 'output') host.runner.showOutput();
+    if (choice === 'terminal') typeInTerminal(host, remote.op, remote.cwd);
+    else if (choice === 'output') host.runner.showOutput();
     return;
   }
   const message = e instanceof GitOpError ? gitFailure(e.message) : e instanceof Error ? e.message : String(e);

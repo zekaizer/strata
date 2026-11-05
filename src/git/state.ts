@@ -8,7 +8,7 @@ import {
   type Worktree,
 } from '../core/repo-state.ts';
 import { runGit } from './run.ts';
-import { sequencerTodo } from '../core/todo.ts';
+import { messageEdits, sequencerTodo } from '../core/todo.ts';
 
 /** Files git keeps while an operation is stopped. */
 const MARKERS = [
@@ -131,6 +131,13 @@ export async function readAbortTarget(git: string, cwd: string, kind: OperationK
     text(resolve(at.sequencer, 'abort-safety')),
   ]);
   return start !== undefined && safety === head ? start : head;
+}
+
+/** The steps of the stopped rebase that Continue would have git open the commit message editor for (messageEdits). */
+export async function readMessageEdits(git: string, cwd: string): Promise<string[]> {
+  const at = await gitPaths(git, cwd, ['rebase-merge/done', 'rebase-merge/git-rebase-todo'] as const);
+  const [done, todo] = await Promise.all([text(at['rebase-merge/done']), text(at['rebase-merge/git-rebase-todo'])]);
+  return messageEdits(done ?? '', todo ?? '');
 }
 
 /** Uncommitted changes to tracked files. Untracked files are not scanned: slow on huge trees, and autostash ignores them. */

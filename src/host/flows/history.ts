@@ -17,6 +17,7 @@ import {
   IN_THE_WAY_OF,
   mainlinePick,
   mergeConfirmation,
+  messageEditsConfirmation,
   type MergeParents,
   opName,
   pickConfirmation,
@@ -56,9 +57,9 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readAbortTarget, readOperationState } from '../../git/state.ts';
+import { readAbortTarget, readMessageEdits, readOperationState } from '../../git/state.ts';
 import { createStash } from '../../git/stash.ts';
-import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
+import { finish, headRef, notify, run, typeInTerminal, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
 import type { TargetOf } from '../target.ts';
 import {
@@ -568,6 +569,16 @@ export async function continueOperation(host: FlowHost): Promise<void> {
     return;
   }
   const op: Operation = { kind: 'continue', operation: state.kind };
+  // Strata runs git with GIT_EDITOR=true, which keeps the messages as they are.
+  const edits = state.kind === 'rebase' ? await readMessageEdits(host.git, host.cwd) : [];
+  if (edits.length > 0) {
+    const answer = await host.ui.confirm(messageEditsConfirmation(edits));
+    if (answer === undefined) return;
+    if (answer === 'terminal') {
+      typeInTerminal(host, op, host.cwd);
+      return;
+    }
+  }
   const started = await readAbortTarget(host.git, host.cwd, state.kind);
   await settle(host, state, HISTORY_DOING.continuing(state.kind), op, () => HISTORY_DONE.continued(state.kind), {
     started,
