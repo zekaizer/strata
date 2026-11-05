@@ -688,6 +688,10 @@ export const popPartial = (done: string, stash: string): string =>
 export const popRefused = (done: string, reason: string, stash: string): string =>
   `${done}, but git could not restore your stashed changes: ${reason} They're safe in ${stash}.`;
 
+/** Why git did not apply its autostash, for popRefused: local changes to `paths` (none known: unnamed). */
+export const autostashRefused = (paths: readonly string[]): string =>
+  `they would overwrite your changes${paths.length > 0 ? ` to ${fileList(paths)}` : ''}.`;
+
 export const OPEN_SCM = 'Open Source Control View';
 
 export const NOTHING_TO_STASH = 'No local changes to stash.';

@@ -258,6 +258,31 @@ describe('history operations', () => {
     assert.equal(api().contextValue('strata.operation'), '');
   });
 
+  it("says git's autostash is still in the stash when Continue could not restore it over changes made since", async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    git('switch', '--quiet', 'main');
+    await reload(panel());
+    write('NOTES.md', 'mine\n');
+    ui.press('Stash & Merge');
+    await run('strata.merge', branchMenu('strata-topic', git('rev-parse', 'strata-topic')));
+    assert.equal(api().contextValue('strata.operation'), 'merge');
+    write('NOTES.md', 'edited while resolving\n');
+    write('main.txt', 'resolved\n');
+    git('add', 'main.txt');
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-topic'));
+    assert.equal(read('NOTES.md'), 'edited while resolving\n', 'nothing was restored');
+    const stash = git('rev-parse', 'refs/stash');
+    assert.equal(git('show', `${stash}:NOTES.md`), 'mine');
+    assert.equal(
+      ui.of('notify').find((n) => n.level === 'warning')?.message,
+      'Finished the merge, but git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They\'re safe in stash@{0} ("autostash").',
+    );
+    await reload(panel());
+    assert.equal(await leftover(), undefined, 'not a resolved restore conflict whose stash could be dropped');
+  });
+
   it('skips a cherry pick that stopped, and gives back the changes stashed for it', async () => {
     const picked = await conflicting();
     const before = git('rev-parse', 'HEAD');
