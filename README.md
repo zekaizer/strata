@@ -1,9 +1,24 @@
-# Strata
+<p align="center">
+  <img src="media/icon.png" width="96" height="96" alt="">
+</p>
+
+<h1 align="center">Strata</h1>
+
+<p align="center">
+  A fast commit graph for git repositories in VS Code.
+</p>
+
+<p align="center">
+  <a href="https://github.com/zekaizer/strata/actions/workflows/ci.yml"><img src="https://github.com/zekaizer/strata/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/zekaizer/strata/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
 <!-- ci-stamp -->
 
-A fast commit graph for git repositories in VS Code. It reads history page by
-page, so it opens quickly even on very large repositories.
+![The commit graph in a dark theme: branch lanes with badges, and a commit's changed files unfolded under it](media/screenshot.png)
+
+Strata reads history page by page, so it opens quickly even on very large
+repositories.
 
 ## Features
 

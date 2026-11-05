@@ -86,7 +86,7 @@ scripts/             build, xvfb wrapper, screenshot tooling
 
 Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
 
-## Icons
+## Icons and screenshot
 
 `media/icon.svg` is the source of the extension icon `media/icon.png`
 (256×256). `media/strata-mono.svg` is the monochrome design of the product
@@ -106,6 +106,15 @@ cp artifacts/icon-font/strata-icons.woff media/
 `artifacts/icon-font/strata-icons.json` must still map `strata-graph` to
 `61697` (U+F101); a second SVG in `media/product-icons/` takes the next code
 point.
+
+`media/screenshot.png`, the README's screenshot, comes from `npm run shot`
+(`artifacts/shots/readme.png`, on the default 1600×1000 screen) without the
+window title bar, reduced to 256 colors:
+
+```bash
+convert artifacts/shots/readme.png -crop 1440x864+80+86 +repage -strip \
+  -dither None -colors 256 PNG8:media/screenshot.png
+```
 
 ## Continuous integration
 
