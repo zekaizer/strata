@@ -30,7 +30,7 @@ import type {
 import { cardRefs, fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
-import { el, formatDate, formatShortDate, shortHash } from './format.ts';
+import { codicon, el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, laneX, LANE_WIDTH, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
 import { BadgeFilter } from './badge-filter.ts';
@@ -281,6 +281,7 @@ class App {
     this.metaOpen = this.saved.metaOpen ?? false;
     const refresh = el('button', 'icon-button codicon codicon-refresh');
     refresh.title = 'Refresh';
+    refresh.setAttribute('aria-label', refresh.title);
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
@@ -303,7 +304,7 @@ class App {
       },
     });
     this.stashButton.append(
-      el('span', 'codicon codicon-git-stash'),
+      codicon('git-stash'),
       el('span', 'tool-label stash-count'),
       el('span', 'stash-count-narrow'),
     );
@@ -311,12 +312,12 @@ class App {
     this.stashButton.addEventListener('click', () => {
       this.pickStash();
     });
-    this.headButton.append(el('span', 'codicon codicon-target'), el('span', 'tool-label', 'HEAD'));
+    this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'));
     this.headButton.addEventListener('click', () => {
       this.goToHead();
     });
     this.updateHeadButton();
-    this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
+    this.firstParentButton.append(codicon('git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
     this.firstParentButton.addEventListener('click', () => {
       this.setOptions({ ...this.options, firstParent: !this.options.firstParent });
@@ -1635,11 +1636,7 @@ class App {
     if (note) {
       const e = el('span', note.warning ? 'operation-note warning' : 'operation-note');
       e.append(el('span', 'operation-note-text', note.text));
-      if (note.warning) {
-        const mark = el('span', 'codicon codicon-warning');
-        mark.setAttribute('aria-hidden', 'true');
-        e.prepend(mark);
-      }
+      if (note.warning) e.prepend(codicon('warning'));
       subject.append(e);
     }
     row.append(
@@ -1857,6 +1854,8 @@ class App {
     const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
+    close.setAttribute('aria-label', 'Fold');
+    close.setAttribute('aria-keyshortcuts', 'Escape');
     close.addEventListener('click', (e) => {
       e.stopPropagation();
       this.userCollapse();
@@ -1931,9 +1930,7 @@ class App {
   private bylineOf(d: CommitDetails, toggleTitle: string, ...parts: Node[]): HTMLElement {
     const line = el('div', 'byline');
     const hash = el('button', 'byline-hash');
-    const icon = el('span', 'codicon codicon-copy hash-icon');
-    icon.setAttribute('aria-hidden', 'true');
-    hash.append(el('span', 'hash-text', shortHash(d.hash)), icon);
+    hash.append(el('span', 'hash-text', shortHash(d.hash)), codicon('copy', 'hash-icon'));
     hash.title = `${d.hash}\nClick to copy`;
     hash.setAttribute('aria-label', `Copy full commit hash ${shortHash(d.hash)}`);
     hash.addEventListener('click', () => {
@@ -2233,7 +2230,7 @@ class App {
         li.setAttribute('aria-level', String(depth + 1));
         li.style.setProperty('--depth', String(depth));
         li.title = n.path;
-        li.append(el('span', 'codicon codicon-chevron-down folder-chevron'), el('span', 'folder-name', n.name));
+        li.append(codicon('chevron-down', 'folder-chevron'), el('span', 'folder-name', n.name));
         li.addEventListener('click', () => {
           this.toggleFolder(list, n.path);
         });
@@ -2569,6 +2566,10 @@ class App {
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       refFilterButton: this.refFilter.button.textContent,
+      buttonNames: {
+        toolbar: [...this.toolbar.querySelectorAll<HTMLElement>(':scope > button:not([hidden])')].map(accessibleName),
+        details: [...this.expansion.querySelectorAll<HTMLElement>('button')].map(accessibleName),
+      },
       badgeFilter: this.badgeFilter.probe(),
       refCard: this.refCard.probe(),
       badgeRules: this.badgeRules,
@@ -2843,8 +2844,7 @@ function renderBadge(b: Badge): HTMLElement {
 /** "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. */
 function remoteSegment(b: Badge): HTMLElement {
   const seg = el('span', 'badge-remotes');
-  const icon = el('span', 'codicon codicon-cloud');
-  icon.setAttribute('aria-hidden', 'true');
+  const icon = codicon('cloud');
   const names = el('span', 'badge-remote-names');
   names.setAttribute('aria-hidden', 'true');
   b.remotes.forEach((r, i) => {
@@ -2875,10 +2875,25 @@ const contextOf = (e: HTMLElement) =>
 const ordinal = (n: number) =>
   `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
 
+/** The accessible name of a button, after the accessible name computation's main steps. */
+function accessibleName(e: HTMLElement): string {
+  const generated = (n: Element, pseudo: '::before' | '::after') => {
+    const c = getComputedStyle(n, pseudo).content;
+    return c === 'none' || c === 'normal' ? '' : c.replace(/^"|"$/g, '');
+  };
+  const content = (n: Node): string => {
+    if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? '';
+    if (!(n instanceof HTMLElement) || n.hidden || n.getAttribute('aria-hidden') === 'true') return '';
+    return generated(n, '::before') + [...n.childNodes].map(content).join('') + generated(n, '::after');
+  };
+  const name = e.getAttribute('aria-label') ?? content(e).replace(/\s+/g, ' ').trim();
+  return name === '' ? e.title : name;
+}
+
 function badge(kind: string, icon: string, text: string, title: string): HTMLElement {
   const b = el('span', `badge badge-${kind}`);
   b.title = title;
-  b.append(el('span', `codicon codicon-${icon}`), el('span', 'badge-text', text));
+  b.append(codicon(icon), el('span', 'badge-text', text));
   return b;
 }
 

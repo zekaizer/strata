@@ -13,6 +13,13 @@ export const formatShortDate = (unixSeconds: number) => shortDateFormat.format(n
 /** Seven characters, like git's default abbreviation. */
 export const shortHash = (hash: string) => hash.slice(0, 7);
 
+/** A decorative icon, hidden from screen readers: its glyph is not a word. `className` adds classes. */
+export function codicon(name: string, className?: string): HTMLSpanElement {
+  const e = el('span', `codicon codicon-${name}${className ? ` ${className}` : ''}`);
+  e.setAttribute('aria-hidden', 'true');
+  return e;
+}
+
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string,

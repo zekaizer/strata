@@ -1,7 +1,7 @@
 import { addRule, isPattern, matcher, ruleCounts, type BadgeRule } from '../core/badge-rules.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
 import type { BadgeFilterProbe } from '../shared/protocol.ts';
-import { el } from './format.ts';
+import { codicon, el } from './format.ts';
 import { dismissable, keepingFocus } from './popover.ts';
 
 const GROUPS: { kind: Ref['kind']; label: string; icon: string; one: string; many: string }[] = [
@@ -50,9 +50,7 @@ export class BadgeFilter {
 
   constructor(host: HTMLElement, events: BadgeFilterEvents) {
     this.events = events;
-    const icon = el('span', 'codicon codicon-eye-closed');
-    icon.setAttribute('aria-hidden', 'true');
-    this.button.append(icon, this.label, this.narrowCount);
+    this.button.append(codicon('eye-closed'), this.label, this.narrowCount);
     this.button.setAttribute('aria-haspopup', 'dialog');
     this.button.setAttribute('aria-expanded', 'false');
     this.button.addEventListener('click', () => {
@@ -96,7 +94,7 @@ export class BadgeFilter {
       events.onShowHidden(this.showHiddenBox.checked);
     });
     const showHiddenItem = el('label', 'popover-item');
-    showHiddenItem.append(this.showHiddenBox, el('span', 'codicon codicon-eye'), this.showHiddenLabel);
+    showHiddenItem.append(this.showHiddenBox, codicon('eye'), this.showHiddenLabel);
     const showHidden = el('div', 'popover-section');
     showHidden.append(showHiddenItem);
 
@@ -258,8 +256,7 @@ export class BadgeFilter {
     this.ruleList.replaceChildren(
       ...rules.map((rule, i) => {
         const row = el('div', rule.keep ? 'popover-rule keep' : 'popover-rule');
-        const icon = el('span', `codicon codicon-${rule.keep ? 'eye' : 'eye-closed'}`);
-        icon.setAttribute('aria-hidden', 'true');
+        const icon = codicon(rule.keep ? 'eye' : 'eye-closed');
         const n = counts[i]!;
         const what = `${rule.keep ? 'Shows' : 'Hides'} ${n} ${n === 1 ? 'badge' : 'badges'}`;
         row.title = `${rule.pattern}: ${what.toLowerCase()}${rule.keep ? ' that rules above hide' : ''}`;
@@ -303,9 +300,7 @@ export class BadgeFilter {
     const row = el('div', hiding ? 'badge-ref badge-hidden' : 'badge-ref');
     row.dataset['short'] = r.short;
     row.title = hiding ? `${r.name}\nHidden by ${hiding.pattern}` : r.name;
-    const kind = el('span', `codicon codicon-${icon}`);
-    kind.setAttribute('aria-hidden', 'true');
-    row.append(kind, el('span', 'popover-item-text', r.short));
+    row.append(codicon(icon), el('span', 'popover-item-text', r.short));
     if (hiding) row.append(el('span', 'badge-ref-note', `by ${hiding.pattern}`));
     if (this.isCurrent(r)) {
       row.append(el('span', 'badge-ref-note', 'current branch, always shown'));

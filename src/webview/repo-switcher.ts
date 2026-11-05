@@ -1,5 +1,5 @@
 import type { RepoItem } from '../shared/protocol.ts';
-import { el } from './format.ts';
+import { codicon, el } from './format.ts';
 import { dismissable } from './popover.ts';
 
 /** Above this many repositories the popover has a search box. */
@@ -29,7 +29,7 @@ export class RepoSwitcher {
 
   constructor(host: HTMLElement, events: RepoSwitcherEvents) {
     this.events = events;
-    this.button.append(this.buttonText, el('span', 'codicon codicon-chevron-down'));
+    this.button.append(this.buttonText, codicon('chevron-down'));
     this.button.setAttribute('aria-haspopup', 'dialog');
     this.button.setAttribute('aria-expanded', 'false');
     this.button.hidden = true;
@@ -145,9 +145,8 @@ export class RepoSwitcher {
         // A repository at the top of its workspace folder is where its name says.
         if (r.path !== r.name) text.append(el('span', 'repo-row-path', r.path));
         const head = el('span', 'repo-row-head');
-        if (r.head !== undefined)
-          head.append(el('span', 'codicon codicon-git-branch'), el('span', 'repo-row-branch', r.head));
-        row.append(el('span', `codicon ${shown ? 'codicon-check' : 'codicon-blank'}`), text, head);
+        if (r.head !== undefined) head.append(codicon('git-branch'), el('span', 'repo-row-branch', r.head));
+        row.append(codicon(shown ? 'check' : 'blank'), text, head);
         row.addEventListener('click', () => {
           this.close();
           this.button.focus();

@@ -1,5 +1,5 @@
 import type { Ref, RefSnapshot } from '../core/refs.ts';
-import { el } from './format.ts';
+import { codicon, el } from './format.ts';
 import { dismissable, keepingFocus } from './popover.ts';
 
 const GROUPS: { kind: Ref['kind']; label: string; icon: string }[] = [
@@ -34,11 +34,7 @@ export class RefFilter {
 
   constructor(host: HTMLElement, events: RefFilterEvents) {
     this.events = events;
-    this.button.append(
-      el('span', 'codicon codicon-git-branch'),
-      this.label,
-      el('span', 'codicon codicon-chevron-down'),
-    );
+    this.button.append(codicon('git-branch'), this.label, codicon('chevron-down'));
     this.button.title = 'Show history of selected branches and tags';
     this.button.setAttribute('aria-haspopup', 'dialog');
     this.button.setAttribute('aria-expanded', 'false');
@@ -71,7 +67,7 @@ export class RefFilter {
       events.onShowStashes(this.stashBox.checked);
     });
     const stashItem = el('label', 'popover-item');
-    stashItem.append(this.stashBox, el('span', 'codicon codicon-git-stash'), this.stashLabel);
+    stashItem.append(this.stashBox, codicon('git-stash'), this.stashLabel);
     this.stashes.append(el('div', 'popover-group', 'Stashes'), stashItem);
     this.stashes.hidden = true;
     this.popover.append(this.search, actions, this.list, this.stashes);
@@ -140,6 +136,7 @@ export class RefFilter {
     if (!s) this.label.textContent = 'All';
     else if (s.size === 1) this.label.textContent = shortName([...s][0]!);
     else this.label.textContent = `${s.size} refs`;
+    this.button.setAttribute('aria-label', `Filter refs: ${this.label.textContent}`);
     this.button.classList.toggle('active', s !== null);
   }
 
@@ -179,7 +176,7 @@ export class RefFilter {
       else next.delete(r.name);
       this.commit(next);
     });
-    label.append(box, el('span', `codicon codicon-${icon}`), el('span', 'popover-item-text', r.short));
+    label.append(box, codicon(icon), el('span', 'popover-item-text', r.short));
     return label;
   }
 }

@@ -185,6 +185,12 @@ export interface ProbeState {
   operationNotes: Record<string, string>;
   /** Text of the toolbar's ref filter button, e.g. "All". */
   refFilterButton: string;
+  /**
+   * Accessible names of the shown buttons in the toolbar and the inline details, as a screen reader
+   * reads them: aria-label, else the text and CSS-generated content (icon glyphs) of what is not
+   * aria-hidden, else the title.
+   */
+  buttonNames: { toolbar: string[]; details: string[] };
   badgeFilter: BadgeFilterProbe;
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;

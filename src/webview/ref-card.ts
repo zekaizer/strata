@@ -1,5 +1,5 @@
 import type { CardRef } from './badges.ts';
-import { el } from './format.ts';
+import { codicon, el } from './format.ts';
 
 /** How long the pointer rests on a node before its card shows. */
 const SHOW_DELAY_MS = 300;
@@ -75,9 +75,7 @@ export class RefCard {
   private show(target: CardTarget): void {
     const lines = target.refs.slice(0, target.refs.length > MAX_LINES ? MAX_LINES - 1 : MAX_LINES).map((r) => {
       const line = el('div', `ref-card-line ref-card-${r.look}${r.hiddenBy === undefined ? '' : ' hidden-badge'}`);
-      const icon = el('span', `codicon codicon-${ICON[r.look]}`);
-      icon.setAttribute('aria-hidden', 'true');
-      line.append(icon, el('span', 'ref-card-text', r.text));
+      line.append(codicon(ICON[r.look]), el('span', 'ref-card-text', r.text));
       if (r.note !== undefined) line.append(el('span', 'ref-card-note', r.note));
       if (r.hiddenBy !== undefined) line.append(el('span', 'ref-card-note', `hidden by ${r.hiddenBy}`));
       return line;
