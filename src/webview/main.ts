@@ -1596,11 +1596,9 @@ class App {
     const c = r.commit;
     const badgeRefs = this.badgeRefsByHash.get(c.hash) ?? [];
     const badges = rowBadges(c.hash, badgeRefs, this.refs, (all) => this.fitBand(all));
+    const hidden = (this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r));
     // The row's menu still offers the refs whose badges are hidden.
-    const refs = [
-      ...badges.flatMap((b) => b.refs),
-      ...(this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r)).map((r) => r.name),
-    ];
+    const refs = [...badges.flatMap((b) => b.refs), ...hidden.map((r) => r.name)];
     const branches = (this.refsByHash.get(c.hash) ?? []).filter(
       (r) => r.kind === 'branch' && r.short !== this.refs.headBranch,
     );
@@ -1654,6 +1652,7 @@ class App {
     const said = [
       c.subject,
       refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
+      hidden.length > 0 ? `Hidden: ${hidden.map((r) => r.short).join(', ')}` : undefined,
       note?.text,
       `${c.author}, ${formatDate(c.authorTime)}, ${shortHash(c.hash)}`,
     ];

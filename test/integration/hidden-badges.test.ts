@@ -69,6 +69,7 @@ describe('hidden badges', () => {
     s = await until('cross badges hidden', (p) => !shows(p, 'cross/x') && !shows(p, 'cross/y'));
     assert.ok(shows(s, 'feature/search'), 'other badges stay');
     assert.match(s.rowLabels[git('rev-parse', 'main')] ?? '', /Current branch main\./);
+    assert.match(label(s, 'cross/x'), /^Merge y into x\. Hidden: cross\/x\. /, 'screen readers hear hidden refs');
     assert.equal(s.badgeFilter.button, '2 hidden');
     assert.deepEqual(s.badgeFilter.rules, ['cross/*']);
     assert.deepEqual(s.badgeFilter.refs, ['cross/x (hidden)', 'cross/y (hidden)']);
@@ -148,6 +149,7 @@ describe('hidden badges', () => {
     await panel.simulate({ kind: 'click', selector: 'input[data-option="showHiddenBadges"]' });
     let s = await until('all shown', (p) => shows(p, 'cross/x') && shows(p, 'wip/experiment'));
     assert.equal(s.badgeFilter.button, 'Badges');
+    assert.doesNotMatch(label(s, 'cross/x'), /Hidden:/);
     await panel.simulate({ kind: 'click', selector: 'input[data-option="showHiddenBadges"]' });
     s = await until('hidden again', (p) => !shows(p, 'cross/x'));
     assert.equal(s.badgeFilter.button, '2 hidden');
