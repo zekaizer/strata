@@ -9,6 +9,12 @@ export interface CommitRef {
   subject: string;
 }
 
+/** Commits, newest first: the first of them by name, and how many there are in all. */
+export interface CommitList {
+  newest: CommitRef[];
+  count: number;
+}
+
 /** A modal question: the first button is the default; Cancel is always offered by VS Code. */
 export interface Confirmation<B extends string = string> {
   message: string;
@@ -28,9 +34,9 @@ export function fileList(paths: readonly string[], shown = 5): string {
   return head.length <= 1 ? (head[0] ?? '') : `${head.slice(0, -1).join(', ')} and ${head[head.length - 1]!}`;
 }
 
-const quoted = (commits: readonly CommitRef[], shown = 2): string => {
-  const names = commits.slice(0, shown).map((c) => `"${c.subject}"`);
-  const rest = commits.length - names.length;
+const quoted = (commits: CommitList, shown = 2): string => {
+  const names = commits.newest.slice(0, shown).map((c) => `"${c.subject}"`);
+  const rest = commits.count - names.length;
   return rest > 0 ? `${names.join(', ')} and ${rest} more` : fileList(names);
 };
 
@@ -80,7 +86,7 @@ export interface ResetFacts {
   branch: string | undefined;
   target: CommitRef;
   /** Commits that leave the branch, newest first. */
-  dropped: CommitRef[];
+  dropped: CommitList;
   /** Commits the branch gains (reset to a commit on another line). */
   gained: number;
   /** Of the dropped commits: how many are on the upstream, and how many on no other ref. */
@@ -102,9 +108,9 @@ const MODE_LINE: Record<ResetMode, (dirtyFiles: number) => string> = {
 
 /** Asks only when commits leave the branch or work is discarded, or when `ask` (changes need an answer). */
 export function resetConfirmation(f: ResetFacts, mode: ResetMode, ask = false): Confirmation<'reset'> | undefined {
-  if (!ask && f.dropped.length === 0 && !(mode === 'hard' && f.dirtyFiles > 0)) return undefined;
+  if (!ask && f.dropped.count === 0 && !(mode === 'hard' && f.dirtyFiles > 0)) return undefined;
   const name = f.branch === undefined ? 'HEAD' : `'${f.branch}'`;
-  const n = f.dropped.length;
+  const n = f.dropped.count;
   const moves =
     n === 0
       ? `${name} stays at ${f.target.short}.`
@@ -132,18 +138,18 @@ export function resetConfirmation(f: ResetFacts, mode: ResetMode, ask = false): 
 export function deleteBranchConfirmation(
   branch: string,
   tip: CommitRef,
-  unreachable: CommitRef[],
+  unreachable: CommitList,
   upstream: string | undefined,
 ): Confirmation<'delete'> {
   const remote = upstream ? ` The remote branch ${upstream} is not deleted.` : '';
-  const newest = unreachable[0];
+  const newest = unreachable.newest[0];
   if (!newest)
     return {
       message: `Delete branch '${branch}'?`,
       detail: `It points at ${tip.short} "${tip.subject}", which is also on another branch. No commits are lost.${remote}`,
       buttons: [{ id: 'delete', label: 'Delete Branch' }],
     };
-  const n = unreachable.length;
+  const n = unreachable.count;
   return {
     message: `Delete branch '${branch}' and its ${plural(n, 'unmerged commit')}?`,
     detail: `${plural(n, 'commit')} would be on no branch, newest "${newest.subject}" (${newest.short}). Undo restores the branch; otherwise only the reflog can.${remote}`,

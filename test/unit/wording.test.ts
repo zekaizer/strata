@@ -42,7 +42,7 @@ describe('wording', () => {
   const reset: ResetFacts = {
     branch: 'main',
     target: c('a1b2c3d', 'Base'),
-    dropped: [c('1111111', 'Two'), c('2222222', 'One')],
+    dropped: { newest: [c('1111111', 'Two'), c('2222222', 'One')], count: 2 },
     gained: 0,
     onUpstream: 0,
     unreachable: 2,
@@ -63,7 +63,7 @@ describe('wording', () => {
 
   it('warns about discarded work on a hard reset and about the upstream', () => {
     const r = resetConfirmation(
-      { ...reset, dropped: [c('1111111', 'Two')], onUpstream: 1, unreachable: 0, dirtyFiles: 4 },
+      { ...reset, dropped: { newest: [c('1111111', 'Two')], count: 1 }, onUpstream: 1, unreachable: 0, dirtyFiles: 4 },
       'hard',
     );
     assert.match(r!.detail, /1 of them is on origin\/main; 'main' will be 1 behind it \(a pull brings it back\)\./);
@@ -73,13 +73,20 @@ describe('wording', () => {
     );
   });
 
+  it('counts the commits a reset drops beyond those it names', () => {
+    const r = resetConfirmation({ ...reset, dropped: { newest: reset.dropped.newest, count: 60 } }, 'mixed');
+    assert.match(r!.detail, /^'main' moves back 60 commits: "Two", "One" and 58 more\./);
+  });
+
   it('asks nothing for a reset that drops nothing and discards nothing', () => {
-    assert.equal(resetConfirmation({ ...reset, dropped: [], unreachable: 0 }, 'soft'), undefined);
-    assert.ok(resetConfirmation({ ...reset, dropped: [], unreachable: 0, dirtyFiles: 1 }, 'hard'));
+    assert.equal(resetConfirmation({ ...reset, dropped: { newest: [], count: 0 }, unreachable: 0 }, 'soft'), undefined);
+    assert.ok(
+      resetConfirmation({ ...reset, dropped: { newest: [], count: 0 }, unreachable: 0, dirtyFiles: 1 }, 'hard'),
+    );
   });
 
   it('says when deleting a branch loses commits', () => {
-    const safe = deleteBranchConfirmation('topic', c('abc1234', 'Tip'), [], 'origin/topic');
+    const safe = deleteBranchConfirmation('topic', c('abc1234', 'Tip'), { newest: [], count: 0 }, 'origin/topic');
     assert.equal(safe.message, "Delete branch 'topic'?");
     assert.equal(
       safe.detail,
@@ -88,12 +95,19 @@ describe('wording', () => {
     const lossy = deleteBranchConfirmation(
       'topic',
       c('abc1234', 'Tip'),
-      [c('abc1234', 'Tip'), c('def5678', 'Older')],
+      { newest: [c('abc1234', 'Tip'), c('def5678', 'Older')], count: 2 },
       undefined,
     );
     assert.equal(lossy.message, "Delete branch 'topic' and its 2 unmerged commits?");
     assert.match(lossy.detail, /^2 commits would be on no branch, newest "Tip" \(abc1234\)\./);
     assert.deepEqual(lossy.buttons, [{ id: 'delete', label: 'Delete Branch and Commits' }]);
+    const long = deleteBranchConfirmation(
+      'topic',
+      c('abc1234', 'Tip'),
+      { newest: [c('abc1234', 'Tip')], count: 60 },
+      undefined,
+    );
+    assert.equal(long.message, "Delete branch 'topic' and its 60 unmerged commits?");
   });
 
   it('says what aborting gives back', () => {

@@ -67,10 +67,11 @@ describe('confirmation facts', () => {
     assert.equal(f.branch, 'main');
     assert.equal(f.target.subject, 'one');
     assert.deepEqual(
-      f.dropped.map((c) => c.subject),
+      f.dropped.newest.map((c) => c.subject),
       ['four', 'three', 'two'],
     );
-    assert.equal(f.dropped[0]!.short, run(dir, 'rev-parse', '--short', 'main'));
+    assert.equal(f.dropped.count, 3);
+    assert.equal(f.dropped.newest[0]!.short, run(dir, 'rev-parse', '--short', 'main'));
     assert.equal(f.gained, 0);
     assert.equal(f.upstream, 'origin/main');
     assert.equal(f.onUpstream, 1, '"two" is on origin/main');
@@ -81,15 +82,34 @@ describe('confirmation facts', () => {
   it('counts what a reset to another line gains', async () => {
     const f = await readResetFacts('git', dir, run(dir, 'rev-parse', 'topic'), 0);
     assert.equal(f.gained, 2);
-    assert.equal(f.dropped.length, 3);
+    assert.equal(f.dropped.count, 3);
   });
 
   it("lists a branch's commits that no other ref has", async () => {
+    const topic = await readUnmergedCommits('git', dir, 'topic');
     assert.deepEqual(
-      (await readUnmergedCommits('git', dir, 'topic')).map((c) => c.subject),
+      topic.newest.map((c) => c.subject),
       ['topic two', 'topic one'],
     );
-    assert.deepEqual(await readUnmergedCommits('git', dir, 'keep'), []);
+    assert.equal(topic.count, 2);
+    assert.deepEqual(await readUnmergedCommits('git', dir, 'keep'), { newest: [], count: 0 });
+  });
+
+  it('counts every commit a reset or a branch deletion loses, beyond those it names', async () => {
+    const many = join(root, 'many');
+    mkdirSync(many);
+    run(many, 'init', '--quiet', '-b', 'main');
+    commit(many, 'a.txt', 'base');
+    run(many, 'checkout', '--quiet', '-b', 'long');
+    for (let i = 1; i <= 60; i++) run(many, 'commit', '--quiet', '--allow-empty', '-m', `long ${i}`);
+    const unmerged = await readUnmergedCommits('git', many, 'long');
+    assert.equal(unmerged.count, 60);
+    assert.equal(unmerged.newest.length, 50);
+    assert.equal(unmerged.newest[0]!.subject, 'long 60');
+    const reset = await readResetFacts('git', many, 'main', 0);
+    assert.equal(reset.dropped.count, 60);
+    assert.equal(reset.dropped.newest.length, 50);
+    assert.equal(reset.unreachable, 60);
   });
 
   it('finds dirty files a switch would have to touch', async () => {
