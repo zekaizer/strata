@@ -285,6 +285,22 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), tip);
   });
 
+  it('undoes a rebase that stopped and then finished with Skip, back to where it started', async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    const tip = git('rev-parse', 'HEAD');
+    ui.press('Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+    ui.press('Skip Commit');
+    await run('strata.operation.skip');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'main'));
+    assert.equal(api().contextValue('strata.canUndo'), true);
+    await run('strata.undo');
+    assert.equal(git('branch', '--show-current'), 'strata-topic');
+    assert.equal(git('rev-parse', 'HEAD'), tip);
+  });
+
   it('undoes a merge and a cherry pick that stopped and then finished with Continue', async () => {
     const before = git('rev-parse', 'HEAD');
     const picked = await conflicting();

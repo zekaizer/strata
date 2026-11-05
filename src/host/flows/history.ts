@@ -586,5 +586,9 @@ export async function skipCommit(host: FlowHost): Promise<void> {
   if (answer === undefined) return;
   const op: Operation = { kind: 'skip', operation: state.kind };
   const keep = answer === 'stash' ? `Strata: before skip of ${c.short}` : undefined;
-  await settle(host, state, HISTORY_DOING.skipping(c.short), op, (k) => HISTORY_DONE.skipped(c.short, k), { keep });
+  const started = await readAbortTarget(host.git, host.cwd, state.kind);
+  await settle(host, state, HISTORY_DOING.skipping(c.short), op, (k) => HISTORY_DONE.skipped(c.short, k), {
+    keep,
+    started,
+  });
 }
