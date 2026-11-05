@@ -156,9 +156,9 @@ export class RefFilter {
       items.push(el('div', 'popover-group', g.label));
       for (const r of refs.slice(0, MAX_PER_GROUP)) items.push(this.item(r, g.icon));
       if (refs.length > MAX_PER_GROUP)
-        items.push(el('div', 'popover-more', `${refs.length - MAX_PER_GROUP} more — type to narrow`));
+        items.push(el('div', 'popover-more', `${refs.length - MAX_PER_GROUP} more; type to narrow`));
     }
-    if (items.length === 0) items.push(el('div', 'popover-more', 'No matching refs'));
+    if (items.length === 0) items.push(el('div', 'popover-more', 'No refs match'));
     this.list.replaceChildren(...items);
   }
 
