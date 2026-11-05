@@ -219,6 +219,14 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.hideSimilarBadges',
       'strata.deleteBranch',
     ]);
+    assert.deepEqual(refActions('branch', { strataIsCurrent: false, strataUpstream: true, strataInWorktree: true }), [
+      'strata.merge',
+      'strata.rebase',
+      'strata.push',
+      'strata.copyRefName',
+      'strata.hideBadge',
+      'strata.hideSimilarBadges',
+    ]);
     assert.deepEqual(refActions('remoteBranch', {}), [
       'strata.checkout',
       'strata.merge',

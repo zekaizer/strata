@@ -14,7 +14,7 @@ export type Section = 'commit' | 'stash' | 'branch' | 'remoteBranch' | 'tag' | '
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
   commit: ['strataIsHead', 'strataHasRefs', 'strataBranch'],
   stash: ['strataLeftover'],
-  branch: ['strataIsCurrent', 'strataUpstream'],
+  branch: ['strataIsCurrent', 'strataUpstream', 'strataInWorktree'],
   remoteBranch: [],
   tag: [],
   head: [],
@@ -85,7 +85,7 @@ export const COMMANDS = {
     title: 'Checkout',
     menus: [
       commit('2_checkout@1', 'strataBranch'),
-      { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent' },
+      { section: 'branch', group: '1_checkout@1', when: '!strataIsCurrent && !strataInWorktree' },
       { section: 'remoteBranch', group: '1_checkout@1' },
     ],
     writes: true,
@@ -172,7 +172,11 @@ export const COMMANDS = {
     writes: 'whileStopped',
   },
   'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
-  'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
+  'strata.renameBranch': {
+    title: 'Rename Branch...',
+    menus: [{ section: 'branch', group: '4_edit@1', when: '!strataInWorktree' }],
+    writes: true,
+  },
   'strata.copyRefName': {
     title: 'Copy Name',
     menus: [
@@ -199,7 +203,7 @@ export const COMMANDS = {
   },
   'strata.deleteBranch': {
     title: 'Delete Branch...',
-    menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent' }],
+    menus: [{ section: 'branch', group: '9_delete@1', when: '!strataIsCurrent && !strataInWorktree' }],
     writes: true,
   },
   'strata.deleteTag': { title: 'Delete Tag...', menus: [{ section: 'tag', group: '9_delete@1' }], writes: true },

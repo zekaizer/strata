@@ -426,6 +426,7 @@ export async function refActionsOf(host: FlowHost, names: readonly string[]): Pr
       ? {
           strataIsCurrent: ref.short === host.refs.headBranch,
           strataUpstream: ref.tracks === true,
+          strataInWorktree: holders(host.refs.worktrees).has(ref.name),
         }
       : {};
   const id = await host.ui.pick({

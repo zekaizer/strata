@@ -467,7 +467,7 @@
         },
         {
           "command": "strata.checkout",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent && !strataInWorktree",
           "group": "1_checkout@1"
         },
         {
@@ -602,7 +602,7 @@
         },
         {
           "command": "strata.renameBranch",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataInWorktree",
           "group": "4_edit@1"
         },
         {
@@ -652,7 +652,7 @@
         },
         {
           "command": "strata.deleteBranch",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && !strataIsCurrent && !strataInWorktree",
           "group": "9_delete@1"
         },
         {
