@@ -88,6 +88,11 @@ export class GraphPanel implements vscode.Disposable {
 
   private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, initialState?: unknown) {
     this.panel = panel;
+    // Tab icons are drawn as images, not tinted by the theme: one file per theme kind.
+    panel.iconPath = {
+      light: vscode.Uri.joinPath(extensionUri, 'media', 'strata-graph-light.svg'),
+      dark: vscode.Uri.joinPath(extensionUri, 'media', 'strata-graph-dark.svg'),
+    };
     this.ready = new Promise((resolve) => {
       const sub = this.onDidReceiveMessage((m) => {
         if (m.type !== 'ready') return;
