@@ -178,4 +178,9 @@ the offer is the way to a fast path history.
 
 - Chromium caps element height at about 33.5M px; at 24 px per row the list
   cannot scroll past roughly 1.4M commits.
-- Commits reachable only from another worktree's detached HEAD are not shown.
+- In a file or folder history, another worktree's detached HEAD that leaves the
+  paths alone has no row, so its worktree badge is not shown. Branch tips keep
+  their rows because `--simplify-by-decoration` keeps decorated commits, but
+  git does not decorate other worktrees' HEADs (`--decorate-refs=worktrees/…`
+  matches nothing, git 2.56), and adding the row afterwards would need the
+  simplified parent computed apart.
