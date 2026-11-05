@@ -19,6 +19,7 @@ import {
   REMOTE_DOING,
   REMOTE_DONE,
   tagExistsOnRemote,
+  upstreamGone,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -33,21 +34,25 @@ import {
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { fail, finish, notify, run, type Expect, type FlowHost } from '../flow.ts';
-import { merge, rebase, refSource } from './history.ts';
+import { merge, rebase, refSource, type Source } from './history.ts';
 
-/** Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it ran. */
+/**
+ * Runs a remote operation; a failed sign-in becomes the Run in Terminal question. Resolves whether it
+ * ran. `rerun`: the command `op` is only the first step of.
+ */
 async function remoteRun(
   host: FlowHost,
   label: string,
   remote: string | undefined,
   op: Operation,
-  expect?: readonly Expect[],
+  opts: { expect?: readonly Expect[]; rerun?: string } = {},
 ): Promise<boolean> {
+  const { expect, rerun } = opts;
   try {
     return (await run(host, label, (exec) => exec(op), { remote: true, ...(expect ? { expect } : {}) })) !== undefined;
   } catch (e) {
     if (e instanceof GitOpError && (e.kind === 'auth' || e.kind === 'hostKey')) {
-      await fail(host, e, { name: remote, op, cwd: host.cwd });
+      await fail(host, e, { name: remote, op, cwd: host.cwd, ...(rerun ? { rerun } : {}) });
       return false;
     }
     throw e;
@@ -92,8 +97,15 @@ export async function pull(host: FlowHost): Promise<void> {
     return;
   }
   const fetch: Operation = { kind: 'fetch', remote: upstream.remote, ref: `refs/heads/${upstream.remoteBranch}` };
-  if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch))) return;
-  const tracking = upstream.ref;
+  try {
+    if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch, { rerun: 'Pull' })))
+      return;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'noRemoteRef')) throw e;
+    goneUpstream(host, branch, upstream.name);
+    return;
+  }
+  const tracking = upstream.ref ?? (await fetched(host));
   const [ahead, behind] = await Promise.all([
     countCommits(host.git, host.cwd, [`${tracking}..HEAD`]),
     countCommits(host.git, host.cwd, [`HEAD..${tracking}`]),
@@ -103,7 +115,9 @@ export async function pull(host: FlowHost): Promise<void> {
     host.done(REMOTE_DONE.upToDate);
     return;
   }
-  const src = await refSource(host, { name: tracking, short: upstream.name });
+  const src: Source = upstream.ref
+    ? await refSource(host, { name: upstream.ref, short: upstream.name })
+    : { rev: tracking, arg: tracking, name: quote(upstream.name) };
   if (ahead === 0) return merge(host, src, 'whenDirty');
   const [rebaseCfg, ff] = await Promise.all([
     readConfig(host.git, host.cwd, `branch.${branch}.rebase`).then(
@@ -124,6 +138,16 @@ export async function pull(host: FlowHost): Promise<void> {
   );
   if (answer === 'rebase') await rebaseOnto();
   else if (answer === 'merge') await merge(host, src, 'whenDirty');
+}
+
+/** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */
+function goneUpstream(host: FlowHost, branch: string, upstream: string): void {
+  notify(host, 'info', upstreamGone(branch, upstream), ['Publish Branch...', 'Unset Upstream'], async (a) => {
+    if (a === 'Publish Branch...') return publish(host, branch);
+    const op: Operation = { kind: 'unsetUpstream', branch };
+    if (await run(host, REMOTE_DOING.unsettingUpstream(branch), (exec) => exec(op)))
+      await finish(host, { message: REMOTE_DONE.upstreamUnset(branch) });
+  });
 }
 
 /** Pushes `branch` to its upstream (or where push.default and pushRemote say), or publishes it. */
@@ -153,18 +177,26 @@ export async function push(host: FlowHost, branch: string | undefined): Promise<
     }
   }
   const dest = `refs/heads/${destBranch}`;
-  const destName = `${remote}/${destBranch}`;
-  // Where fetching dest from remote lands: the upstream's own ref (a local branch for remote ".").
-  const tracking =
-    remote === upstream.remote && destBranch === upstream.remoteBranch ? upstream.ref : `refs/remotes/${destName}`;
+  const destName =
+    remote === upstream.remote && destBranch === upstream.remoteBranch ? upstream.name : `${remote}/${destBranch}`;
   const op: Operation = { kind: 'push', branch, remote, dest, setUpstream: false, forceWithLease: undefined };
   try {
     if (!(await remoteRun(host, REMOTE_DOING.pushing(branch, destName), remote, op))) return;
   } catch (e) {
-    if (e instanceof GitOpError && e.kind === 'rejected') return rejected(host, op, destName, tracking, local.hash);
+    if (e instanceof GitOpError && e.kind === 'rejected') return rejected(host, op, destName, local.hash);
     throw e;
   }
   await finish(host, { message: REMOTE_DONE.pushed(branch, destName) });
+}
+
+/** The commit the fetch just run got: a remote-tracking branch may not exist (a URL remote, a narrow refspec). */
+async function fetched(host: FlowHost): Promise<string> {
+  const hash = await runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', 'FETCH_HEAD^{commit}']).then(
+    (s) => s.trim(),
+    () => undefined,
+  );
+  if (!hash) throw new Error('git did not fetch the branch; see the output.');
+  return hash;
 }
 
 /**
@@ -175,16 +207,11 @@ async function rejected(
   host: FlowHost,
   op: Extract<Operation, { kind: 'push' }>,
   destName: string,
-  tracking: string,
   local: string,
 ): Promise<void> {
   const fetch: Operation = { kind: 'fetch', remote: op.remote, ref: op.dest };
   if (!(await remoteRun(host, REMOTE_DOING.fetching(op.remote), op.remote, fetch))) return;
-  const theirs = await runGit(host.git, host.cwd, ['rev-parse', '--verify', '--quiet', tracking]).then(
-    (s) => s.trim(),
-    () => undefined,
-  );
-  if (theirs === undefined) throw new Error(`git did not fetch ${destName}; see the output.`);
+  const theirs = await fetched(host);
   const [count, newest, h] = await Promise.all([
     countCommits(host.git, host.cwd, [`${local}..${theirs}`]),
     readCommit(host.git, host.cwd, theirs),
@@ -275,7 +302,11 @@ export async function deleteRemoteBranch(host: FlowHost, ref: Ref, moved = false
   const op: Operation = { kind: 'deleteRemoteRef', remote, ref: dest, lease: tip.hash };
   const label = REMOTE_DOING.deletingBranch(branch, remote);
   try {
-    if (!(await remoteRun(host, label, remote, op, [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }])))
+    if (
+      !(await remoteRun(host, label, remote, op, {
+        expect: [{ rev: ref.name, hash: tip.hash, name: quote(ref.short) }],
+      }))
+    )
       return;
   } catch (e) {
     if (!(e instanceof GitOpError && e.kind === 'rejected')) throw e;

@@ -24,7 +24,7 @@ export interface OpOptions {
 
 /**
  * Runs a git command that changes the repository and resolves with its output. Rejects with a
- * classified GitOpError; an abort kills git and rejects with an AbortError.
+ * classified GitOpError; an abort kills git and rejects with an AbortError once it has exited.
  */
 export function runGitOp(
   git: string,
@@ -65,16 +65,17 @@ export function runGitOp(
     });
     const onAbort = () => {
       killGroup(proc);
-      reject(abortError());
     };
     signal?.addEventListener('abort', onAbort, { once: true });
     proc.on('error', (e) => {
       signal?.removeEventListener('abort', onAbort);
       reject(e);
     });
+    // After git and what it started closed their output: until then they may still hold locks.
     proc.on('close', (code) => {
       signal?.removeEventListener('abort', onAbort);
       if (code === 0) resolve({ stdout, stderr });
+      else if (signal?.aborted) reject(abortError());
       else reject(new GitOpError(classify(stdout, stderr), stdout, stderr));
     });
   });

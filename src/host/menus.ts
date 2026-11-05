@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
-import { canWrite, parseGitVersion, type GitVersion } from '../core/git-version.ts';
+import { canWrite } from '../core/git-version.ts';
 import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../core/wording.ts';
 import { isCommitId } from '../git/details.ts';
-import { readUnmerged } from '../git/facts.ts';
-import { runGit } from '../git/run.ts';
+import { readGitVersion, readUnmerged } from '../git/facts.ts';
 import { readOperationState } from '../git/state.ts';
 import { COMMAND_IDS, type CommandId } from '../shared/commands.ts';
 import { isRepoPath } from './controller.ts';
@@ -89,13 +88,11 @@ const copy =
 
 const shortOf = (ctx: MenuArg) => panel().shortHash(commitArg(ctx).hash);
 
-let gitVersion: Promise<GitVersion | undefined> | undefined;
 let toldGitTooOld = false;
 
 /** Write operations need git 2.27; an older one is named once per session, then in the status bar. */
 async function gitCanWrite(host: FlowHost): Promise<boolean> {
-  gitVersion ??= runGit(host.git, host.cwd, ['version']).then(parseGitVersion);
-  const v = await gitVersion;
+  const v = await readGitVersion(host.git, host.cwd);
   // An unparsable version is left for git itself to judge.
   if (!v || canWrite(v)) return true;
   const message = gitTooOld(v.join('.'));

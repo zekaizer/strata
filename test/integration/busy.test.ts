@@ -1,6 +1,9 @@
 import * as assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import { git, strata, waitFor, workspaceRoot } from './helpers.ts';
@@ -81,6 +84,36 @@ describe('while an operation runs', () => {
       return p.generation > generation && p.done && p;
     });
     assert.equal(s.selected, order()[7], "the user's choice stays");
+  });
+});
+
+describe('while a command runs', () => {
+  let panel: GraphPanel;
+  const root = mkdtempSync(join(tmpdir(), 'strata-pin-'));
+  const other = join(root, 'other');
+
+  before(async () => {
+    panel = (await strata()).show();
+    await panel.whenReady();
+    await waitFor('history', async () => (await panel.probe()).done);
+    execFileSync('git', ['init', '--quiet', '-b', 'main', other]);
+    writeFileSync(join(other, 'other.txt'), 'other\n');
+  });
+  after(async () => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.commands.executeCommand('git.close', vscode.Uri.file(other));
+    panel.dispose();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('keeps it in the repository it started in when the graph switches to another', async () => {
+    const host = panel.flowHost();
+    const started = host.cwd;
+    await vscode.commands.executeCommand('git.openRepository', other);
+    await vscode.window.showTextDocument(vscode.Uri.file(join(other, 'other.txt')));
+    await vscode.commands.executeCommand('workbench.action.webview.reloadWebviewAction');
+    await waitFor('the graph on the other repository', () => panel.flowHost().cwd === other);
+    assert.equal(host.cwd, started);
   });
 });
 

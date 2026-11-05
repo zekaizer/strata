@@ -238,18 +238,23 @@ export const gitFailure = (message: string): string => message.trim().split('\n'
 export const gitTooOld = (found: string): string =>
   `Strata needs git 2.27 or newer to change repositories (found ${found}).`;
 
-/** A remote operation that git could not authenticate (auth) or whose host it does not know yet (hostKey). */
+/**
+ * A remote operation that git could not authenticate (auth) or whose host it does not know yet
+ * (hostKey). `rerun`: the command to run again afterwards, when the terminal runs only part of it.
+ */
 export function signInConfirmation(
   remote: string | undefined,
   kind: 'auth' | 'hostKey',
+  rerun?: string,
 ): Confirmation<'terminal' | 'output'> {
   const name = remote === undefined ? 'a remote' : `'${remote}'`;
+  const then = rerun === undefined ? '.' : `, then run ${rerun} again.`;
   return {
     message: kind === 'auth' ? `Strata couldn't sign in to ${name}.` : `Strata couldn't connect to ${name}.`,
     detail:
       kind === 'auth'
-        ? 'git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there.'
-        : 'Connect to the host once from a terminal to accept its key.',
+        ? `git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there${then}`
+        : `Connect to the host once from a terminal to accept its key${then}`,
     buttons: [
       { id: 'terminal', label: 'Run in Terminal' },
       { id: 'output', label: 'Show Output' },
@@ -856,6 +861,9 @@ export const NO_REMOTE = 'This repository has no remote.';
 
 export const noUpstream = (branch: string): string => `'${branch}' has no upstream branch.`;
 
+export const upstreamGone = (branch: string, upstream: string): string =>
+  `'${upstream}', the upstream of '${branch}', is gone from its remote. Publish the branch again, or unset its upstream.`;
+
 /** A detached HEAD has no branch to pull into or push. */
 export const detachedNoBranch = (action: 'pull' | 'push'): string =>
   `HEAD is detached: switch to a branch to ${action}.`;
@@ -992,6 +1000,7 @@ export const REMOTE_DONE = {
   tagPushed: (tag: string, remote: string): string => `Pushed tag '${tag}' to ${remote}`,
   remoteTagDeleted: (tag: string, remote: string): string => `Deleted tag '${tag}' from ${remote}`,
   remoteBranchGone: (name: string, remote: string): string => `'${name}' was already gone from ${remote}`,
+  upstreamUnset: (branch: string): string => `Unset the upstream of '${branch}'`,
   upToDate: 'Already up to date',
 };
 
@@ -1002,6 +1011,7 @@ export const REMOTE_DOING = {
   pushingTag: (tag: string, remote: string): string => `Pushing tag '${tag}' to ${remote}`,
   deletingTag: (tag: string, remote: string): string => `Deleting tag '${tag}' from ${remote}`,
   deletingBranch: (branch: string, remote: string): string => `Deleting '${branch}' from ${remote}`,
+  unsettingUpstream: (branch: string): string => `Unsetting the upstream of '${branch}'`,
 };
 
 /** Why a diverged pull offers less than Rebase and Merge, or rebases differently than configured. */

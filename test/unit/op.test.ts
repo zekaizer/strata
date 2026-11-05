@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { GitOpError, runGitOp } from '../../src/git/op.ts';
@@ -91,6 +91,18 @@ describe('runGitOp', () => {
     const started = Date.now();
     await assert.rejects(p, { name: 'AbortError' });
     assert.ok(Date.now() - started < 5000);
+  });
+
+  it('rejects on abort only once git and what it started have exited', async () => {
+    const marker = join(root, 'exited');
+    const slow = `!trap 'sleep 0.3; echo > "${marker}"; exit 1' TERM; sleep 10 & wait`;
+    const ac = new AbortController();
+    const p = runGitOp('git', dir, ['-c', `alias.slow=${slow}`, 'slow'], { signal: ac.signal });
+    setTimeout(() => {
+      ac.abort();
+    }, 100);
+    await assert.rejects(p, { name: 'AbortError' });
+    assert.ok(existsSync(marker), 'still running when the abort rejected');
   });
 
   it('never opens an editor or prompts', async () => {
