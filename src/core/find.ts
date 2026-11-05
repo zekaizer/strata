@@ -1,5 +1,6 @@
 import type { Commit } from './commit.ts';
 import type { Ref, RefSnapshot } from './refs.ts';
+import type { WorktreeInfo } from './worktrees.ts';
 
 /** A parsed find query; `text` and `author` are fixed strings, compared case-insensitively. */
 export interface FindQuery {
@@ -36,6 +37,13 @@ export function matchRefs(refs: RefSnapshot, text: string): Ref[] {
   const needle = text.toLowerCase();
   const rank = (r: Ref) => (r.kind === 'branch' && r.short === refs.headBranch ? -1 : KIND_ORDER[r.kind]);
   return refs.refs.filter((r) => r.short.toLowerCase().includes(needle)).sort((a, b) => rank(a) - rank(b));
+}
+
+/** The other worktrees with a commit whose folder name contains `text`. */
+export function matchWorktrees(refs: RefSnapshot, text: string): WorktreeInfo[] {
+  if (text === '') return [];
+  const needle = text.toLowerCase();
+  return refs.worktrees.filter((w) => w.head !== undefined && w.name.toLowerCase().includes(needle));
 }
 
 /** Where `needle` occurs in `text`, ignoring case, as [start, end) offsets that do not overlap. */

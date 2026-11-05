@@ -7,6 +7,7 @@ import {
   matchCount,
   matchRanges,
   matchRefs,
+  matchWorktrees,
   nextMatch,
   outOfView,
   parseFindQuery,
@@ -111,6 +112,8 @@ interface Search {
   matchSet: Set<string>;
   /** Full names of the refs whose short names contain the text: their badges are marked. */
   refs: Set<string>;
+  /** Paths of the other worktrees whose names contain the text: marked like refs. */
+  worktrees: Set<string>;
   done: boolean;
   capped: boolean;
   /** The user typed the query: its first hits show a match. */
@@ -1148,6 +1151,7 @@ class App {
         matches: [],
         matchSet: new Set(),
         refs: new Set(query.author === undefined ? matchRefs(this.refs, query.text).map((r) => r.name) : []),
+        worktrees: new Set(query.author === undefined ? matchWorktrees(this.refs, query.text).map((w) => w.path) : []),
         done: false,
         capped: false,
         typed,
@@ -1375,6 +1379,7 @@ class App {
         ),
       );
     const refs = this.refs.refs.filter((r) => search.refs.has(r.name));
+    const worktrees = this.refs.worktrees.filter((w) => search.worktrees.has(w.path));
     if (refs.length > 0) {
       rows.push(el('div', 'section-title', 'Branches and tags'));
       for (const r of refs.slice(0, LIST_FIRST)) {
@@ -1394,6 +1399,22 @@ class App {
       }
       if (refs.length > LIST_FIRST)
         rows.push(el('div', 'popover-note', `${refs.length - LIST_FIRST} more; type to narrow`));
+    }
+    if (worktrees.length > 0) {
+      rows.push(el('div', 'section-title', 'Worktrees'));
+      for (const w of worktrees) {
+        const row = el('button', 'list-row clickable find-row');
+        const at = this.commits[this.position(w.head!) ?? -1];
+        row.append(
+          chip('worktree', BADGE_ICON.worktree, w.name, w.path),
+          el('span', 'list-row-text', at ? `on ${at.subject}` : ''),
+          el('span', 'list-row-note', shortHash(w.head!)),
+        );
+        row.addEventListener('click', () => {
+          this.goToMatch(w.head!);
+        });
+        rows.push(row);
+      }
     }
     const more = !search.done || search.capped;
     if (search.hits.length > 0) {
@@ -2212,6 +2233,9 @@ class App {
         ...badges.map((b) => {
           const e = renderBadge(b);
           if (b.refs.some((name) => this.search?.refs.has(name))) e.classList.add('find-match');
+          const w = b.worktree?.context.strataWorktree;
+          if (w !== undefined && this.search?.worktrees.has(w))
+            (b.look === 'worktree' ? e : e.querySelector('.chip-part'))?.classList.add('find-match');
           const refs = b.context.webviewSection === 'head' ? ['HEAD'] : b.refs;
           if (refs.some((name) => this.landing?.refs.has(name))) this.markLanded(e);
           return e;

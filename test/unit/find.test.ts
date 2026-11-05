@@ -1,7 +1,16 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { matchCount, matchRanges, matchRefs, nextMatch, outOfView, parseFindQuery } from '../../src/core/find.ts';
+import {
+  matchCount,
+  matchRanges,
+  matchRefs,
+  matchWorktrees,
+  nextMatch,
+  outOfView,
+  parseFindQuery,
+} from '../../src/core/find.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
+import type { WorktreeInfo } from '../../src/core/worktrees.ts';
 
 describe('parseFindQuery', () => {
   it('reads plain text as a fixed string, trimmed', () => {
@@ -83,6 +92,32 @@ describe('matchRefs', () => {
 
   it('matches nothing for empty text', () => {
     assert.deepEqual(matchRefs(snapshot, ''), []);
+  });
+});
+
+describe('matchWorktrees', () => {
+  const wt = (name: string, head: string | undefined): WorktreeInfo => ({
+    path: `/w/${name}`,
+    name,
+    head,
+    branch: undefined,
+    state: { kind: 'active' },
+    main: false,
+  });
+  const snapshot: RefSnapshot = {
+    head: undefined,
+    headBranch: 'main',
+    refs: [],
+    remotes: [],
+    worktrees: [wt('review-B384', '1'.repeat(40)), wt('bisect', '2'.repeat(40)), wt('b384-new', undefined)],
+  };
+
+  it('lists the other worktrees with a commit whose name contains the text', () => {
+    assert.deepEqual(
+      matchWorktrees(snapshot, 'b384').map((w) => w.name),
+      ['review-B384'],
+    );
+    assert.deepEqual(matchWorktrees(snapshot, ''), []);
   });
 });
 
