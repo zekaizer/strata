@@ -22,6 +22,7 @@ npm ci
 | Everything                             | `npm test`                                          |
 | Screenshot the context menus           | `STRATA_MENU_SHOT_DIR=<dir>` with `npm run shot`    |
 | Screenshot the panel in all themes     | `npm run shot` → `artifacts/shots/*.png`            |
+| Screenshot for the README              | `npm run shot:readme` → `artifacts/shots/`          |
 | Webview playground in a browser        | `npm run playground` → http://localhost:5173/       |
 | Playground screenshots (Playwright)    | `npm run playground:shot` → `artifacts/playground/` |
 | Re-capture VS Code theme variables     | `npm run capture-themes` → `playground/themes/`     |
@@ -56,7 +57,7 @@ the single-repository tests.
 It also writes `showcase`, holding `quillboard` (`test/fixtures/showcase.ts`):
 49 commits of an invented web app by six invented authors, with pull request
 merges, release tags, a release branch and remote-tracking branches. Only the
-README screenshot uses it.
+README screenshot uses it, under the `readme` label (`test/readme/`).
 
 ## Headless environments
 
@@ -112,9 +113,9 @@ cp artifacts/icon-font/strata-icons.woff media/
 `61697` (U+F101); a second SVG in `media/product-icons/` takes the next code
 point.
 
-`media/screenshot.png`, the README's screenshot, comes from `npm run shot`
-(`artifacts/shots/readme.png`, on the default 1600×1000 screen) without the
-window title bar, reduced to 256 colors:
+`media/screenshot.png`, the README's screenshot, comes from
+`npm run shot:readme` (`artifacts/shots/readme.png`, on the default 1600×1000
+screen, dates in UTC) without the window title bar, reduced to 256 colors:
 
 ```bash
 convert artifacts/shots/readme.png -crop 1440x864+80+86 +repage -strip \

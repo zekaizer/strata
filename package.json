@@ -1030,6 +1030,7 @@
     "test": "npm run check && npm run test:integration",
     "playground": "node scripts/build.mjs --playground",
     "shot": "npm run build && node test/fixtures/cli.ts branchy && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots -- vscode-test --label stable",
+    "shot:readme": "npm run build && node test/fixtures/cli.ts showcase && node scripts/xvfb.mjs STRATA_SHOT_DIR=artifacts/shots TZ=UTC -- vscode-test --label readme",
     "package": "node -e \"require('fs').mkdirSync('artifacts',{recursive:true})\" && vsce package --no-dependencies -o artifacts/strata.vsix",
     "vscode:prepublish": "node scripts/build.mjs --production",
     "format": "prettier --write .",
