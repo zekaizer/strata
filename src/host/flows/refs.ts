@@ -40,7 +40,15 @@ import {
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { finish, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
-import { changes, reportRestore, resolveConflicts, runMovingUntracked, stashAround, type Restored } from './changes.ts';
+import {
+  changes,
+  execAutostash,
+  reportRestore,
+  resolveConflicts,
+  runMovingUntracked,
+  stashAround,
+  type Restored,
+} from './changes.ts';
 
 /** A move of HEAD: checkout of a branch or commit, or creating a branch and switching to it. */
 interface SwitchTo {
@@ -88,7 +96,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
       (exec) =>
         choice === 'stash'
           ? stashAround(host, exec, autostashMessage('switch', `to ${s.to}`), () => exec(s.op(false)))
-          : exec(s.op(choice === 'migrate')).then((): Restored => ({ kind: 'none' })),
+          : execAutostash(host, exec, s.op(choice === 'migrate')),
       expect,
     );
   } catch (e) {
@@ -101,7 +109,8 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
   if (restored === undefined) return;
   await finish(host, { message: s.done, focus: s.commit, ...(s.undo ? { undo: s.undo } : {}) });
   await reportRestore(host, s.done, restored);
-  if (choice === 'migrate') {
+  // Since git 2.55 a conflicting switch --merge keeps the changes in a stash, reported above.
+  if (choice === 'migrate' && restored.kind === 'none') {
     // switch --merge exits 0 even when it leaves conflicts.
     const paths = await readUnmerged(host.git, host.cwd);
     if (paths.length > 0)
