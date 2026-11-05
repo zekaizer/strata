@@ -17,6 +17,9 @@ to get started and the requirements.
   commit is no longer on its branch (after a rebase or amend) sits above the
   branch's tip and says so; an autostash git left behind shows in the warning
   color. Stashing or dropping updates the rows without reloading the history.
+- Uncommitted changes are a row of their own above HEAD (and above the stashes
+  on HEAD), with a dashed node and the counts of conflicts, staged, changed and
+  untracked files. See [Uncommitted changes](#uncommitted-changes).
 - Other worktrees of the repository: a branch checked out in another worktree
   names it inside its badge (`feature │ review`), with a lock when the worktree
   is locked and struck through when its folder is gone; a worktree on a
@@ -165,6 +168,31 @@ to get started and the requirements.
   for its diff) and its untracked files. **Show stash rows** in the branch
   button's menu hides or shows the rows.
 - Use the refresh button after changing the repository outside VS Code.
+
+## Uncommitted changes
+
+When the work tree has changes, a row above HEAD says `Uncommitted changes` with
+how many files have conflicts, are staged, are changed and are untracked, as the
+Source Control view counts them (an untracked folder counts once). The row
+follows the work tree as you edit, save and stage; while the graph is hidden
+behind another editor it waits and catches up when you come back.
+
+- Click it to unfold the files by group: Conflicts, Staged (HEAD against the
+  index), Changes (the index against the file) and Untracked. Click a file to
+  open it as Source Control would: a diff, the file itself, or Resolve Conflicts
+  for a conflicted one; <kbd>Alt</kbd>+click opens it to the side.
+- **Commit...** opens the Source Control view, where you write the message and
+  commit. **Stash Changes...** and **Stash Changes (Include Untracked)...** stash
+  them; the new stash shows as a row above HEAD. Right-click the row for the
+  same commands.
+- When HEAD is not in the graph (the branch filter leaves it out, or it is not
+  loaded yet), the toolbar's **HEAD** button carries a dot; its tooltip counts
+  the changes.
+- In a file or folder history the row counts only changes to that path.
+- `git.untrackedChanges` set to `hidden` leaves untracked files out. When
+  counting them takes over a second (a huge folder git does not ignore), Strata
+  stops counting them for the rest of the session and says so in the row's
+  tooltip.
 
 ## File and folder history
 

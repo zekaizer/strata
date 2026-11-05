@@ -31,6 +31,8 @@
   the graph's title bar.
 - Stash, apply, pop and drop stashes, shown as rows above the commits they
   were made on.
+- Uncommitted changes are a row of their own above HEAD: unfold it to see what
+  is staged, changed or untracked, then stash it or commit in Source Control.
 - See which branches other worktrees have checked out, open or remove them.
 - Tidy recent commits before you push: edit a message in place, squash a
   Shift-click selection, fix up or drop a commit.
