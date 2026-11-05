@@ -67,7 +67,9 @@ interface Restore extends RepoView {
   reveal?: boolean | undefined;
   /** Loaded commits past which a restore stops looking; default RESTORE_SEARCH_LIMIT. */
   searchLimit?: number | undefined;
-  /** Go to HEAD: the selection is HEAD, centred when far away; not finding it offers to show it. */
+  /** The selection is centred when it was out of view, instead of scrolled to the nearest edge. */
+  centre?: boolean | undefined;
+  /** The selection is HEAD: not finding it under a branch filter offers to show it. */
   head?: boolean | undefined;
 }
 
@@ -759,10 +761,10 @@ class App {
         // Reveal it only when no scroll position is being restored with it. Older saved states have no
         // `expanded`; a selection then meant visible details.
         this.select(index, {
-          reveal: r.head !== true && (r.reveal === true || (r.scrollTop === undefined && !r.keepScroll)),
+          reveal: r.centre !== true && (r.reveal === true || (r.scrollTop === undefined && !r.keepScroll)),
           expand: r.expanded ?? true,
         });
-        if (r.head === true) this.revealCentred(index);
+        if (r.centre === true) this.revealCentred(index);
         r.selectedHash = undefined;
       } else if (searchable) {
         this.loadMore(NEXT_PAGE);
@@ -914,7 +916,7 @@ class App {
     this.scroller.focus({ preventScroll: true });
     // The keyboard's focus outline marks the row.
     document.body.classList.add('keyboard-nav');
-    const restore: Restore = { selectedHash: head, head: true, expanded: this.expanded };
+    const restore: Restore = { selectedHash: head, centre: true, head: true, expanded: this.expanded };
     if (include && this.options.refs !== null) {
       const branch = this.refs.headBranch;
       this.restore = restore;

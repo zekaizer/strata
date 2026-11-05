@@ -16,6 +16,36 @@ export interface LogOptions {
   refs?: string[] | undefined;
 }
 
+/**
+ * The revision arguments of the view `opts` describes: its commits and their order. Every git
+ * command that lists or counts the graph's commits uses them, so they agree with the graph's order.
+ * Rejects ref names that are not full names and a missing `cwd`.
+ */
+export async function viewArgs(opts: LogOptions): Promise<string[]> {
+  const { git, cwd, firstParent, refs } = opts;
+  // Refs come from the webview; only full ref names may reach git, never options.
+  const bad = refs?.find((r) => !/^refs\/[^\s]+$/.test(r) || r.includes('..'));
+  if (bad !== undefined) throw new Error(`invalid ref name: ${bad}`);
+  // Otherwise spawn reports a missing cwd as "spawn git ENOENT", blaming git.
+  if (!existsSync(cwd)) throw new Error(`repository folder not found: ${cwd}`);
+  // HEAD is listed explicitly so a detached HEAD shows up, but only when it
+  // resolves: on an unborn branch `git log HEAD` fails.
+  const head = refs
+    ? []
+    : await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).then(
+        () => ['HEAD'],
+        () => [],
+      );
+  return [
+    // Topological order keeps each branch's commits together, which keeps the graph narrow.
+    '--topo-order',
+    ...(firstParent ? ['--first-parent'] : []),
+    // Tags are not start points: hundreds of old release tags make git's topological walk cover nearly
+    // all history before the first commit is printed. Tags still label commits reachable from branches.
+    ...(refs ?? ['--branches', '--remotes', ...head]),
+  ];
+}
+
 export interface Page {
   commits: Commit[];
   /**
@@ -71,20 +101,8 @@ export class LogReader {
   }
 
   private async start(): Promise<void> {
-    const { git, cwd, firstParent, refs } = this.opts;
-    // Refs come from the webview; only full ref names may reach git, never options.
-    const bad = refs?.find((r) => !/^refs\/[^\s]+$/.test(r) || r.includes('..'));
-    if (bad !== undefined) throw new Error(`invalid ref name: ${bad}`);
-    // Otherwise spawn reports a missing cwd as "spawn git ENOENT", blaming git.
-    if (!existsSync(cwd)) throw new Error(`repository folder not found: ${cwd}`);
-    // HEAD is listed explicitly so a detached HEAD shows up, but only when it
-    // resolves: on an unborn branch `git log HEAD` fails.
-    const head = refs
-      ? []
-      : await runGit(git, cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}']).then(
-          () => ['HEAD'],
-          () => [],
-        );
+    const { git, cwd, firstParent } = this.opts;
+    const view = await viewArgs(this.opts);
     if (this.error) return;
     const args = [
       '-c',
@@ -92,15 +110,10 @@ export class LogReader {
       'log',
       // Output is decoded as UTF-8 whatever i18n.logOutputEncoding is configured to.
       '--encoding=UTF-8',
-      // Topological order keeps each branch's commits together, which keeps the graph narrow.
-      '--topo-order',
       '-z',
       `--format=${LOG_FORMAT}`,
       '--no-color',
-      ...(firstParent ? ['--first-parent'] : []),
-      // Tags are not start points: hundreds of old release tags make git's topological walk cover nearly
-      // all history before the first commit is printed. Tags still label commits reachable from branches.
-      ...(refs ?? ['--branches', '--remotes', ...head]),
+      ...view,
       '--',
     ];
     const proc = spawn(git, args, {
