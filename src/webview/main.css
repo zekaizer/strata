@@ -72,8 +72,8 @@ body {
  * One language for every button: toolbar hover background, toolbar active background while
  * pressed, a dashed outline in high contrast themes, a solid focus ring for the keyboard.
  */
-body:not(.hover-off) .tool-button:hover,
-body:not(.hover-off) .icon-button:hover,
+body:not(.hover-off) .tool-button:not(:disabled):hover,
+body:not(.hover-off) .icon-button:not(:disabled):hover,
 body:not(.hover-off) .file-action:hover,
 body:not(.hover-off) .byline-hash:hover,
 body:not(.hover-off) .byline-toggle:hover {
@@ -82,8 +82,8 @@ body:not(.hover-off) .byline-toggle:hover {
   outline-offset: -1px;
 }
 
-body:not(.hover-off) .tool-button:not(.active):active,
-body:not(.hover-off) .icon-button:active,
+body:not(.hover-off) .tool-button:not(.active, :disabled):active,
+body:not(.hover-off) .icon-button:not(:disabled):active,
 body:not(.hover-off) .file-action:active,
 body:not(.hover-off) .byline-hash:active,
 body:not(.hover-off) .byline-toggle:active,
@@ -443,11 +443,6 @@ body:not(.hover-off) .popover-button.primary:not(:disabled):hover {
 .popover-rule .icon-button:disabled {
   opacity: 0.4;
   cursor: default;
-}
-
-body:not(.hover-off) .popover-rule .icon-button:not(:disabled):hover,
-body:not(.hover-off) .badge-eye:hover {
-  background: var(--vscode-toolbar-hoverBackground);
 }
 
 /* Narrow toolbars keep the icons and drop the labels. */
