@@ -2180,6 +2180,7 @@ class App {
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,
+      restoring: this.restore !== undefined,
       selected: this.selectedHash(),
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),

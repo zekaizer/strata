@@ -122,6 +122,8 @@ describe('stash operations', () => {
       time: 9001,
     });
     await reload(panel());
+    // The reload looks for the commit an earlier test selected; its outcome would be announced last.
+    await waitFor('the selection restored or given up', async () => !(await panel().probe()).restoring);
     assert.equal((await panel().probe()).done, false, 'more history to load');
     const shown: Record<string, unknown>[] = [];
     const pages: unknown[] = [];

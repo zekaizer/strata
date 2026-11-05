@@ -107,6 +107,8 @@ export interface ProbeState {
   commits: number;
   laidOut: number;
   done: boolean;
+  /** A reload is still looking for the selection or scroll position it restores. */
+  restoring: boolean;
   selected: string | undefined;
   detailsShown: string | undefined;
   /** Subjects of the rendered (visible) rows, top to bottom. */
