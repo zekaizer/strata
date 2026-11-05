@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RepoBuilder } from './builder.ts';
+import { showcase } from './showcase.ts';
 
 function repo(name: string, commits: number): RepoBuilder {
   const b = new RepoBuilder();
@@ -26,4 +27,9 @@ export function multiRepo(dir: string): void {
   repo('Gamma', 3).write(join(dir, 'beta', 'vendor', 'gamma'));
 }
 
-export const workspaces = { 'multi-repo': multiRepo } as const;
+/** The showcase repository in a folder named like the project, which the graph's header shows. */
+function showcaseWorkspace(dir: string): void {
+  showcase().write(join(dir, 'quillboard'));
+}
+
+export const workspaces = { 'multi-repo': multiRepo, showcase: showcaseWorkspace } as const;

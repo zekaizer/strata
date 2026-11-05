@@ -53,6 +53,11 @@ repository holding `alpha` and `beta` and `gamma` nested in `beta`. The tests in
 restored. `npm run test:integration` and `test:integration:min` run them after
 the single-repository tests.
 
+It also writes `showcase`, holding `quillboard` (`test/fixtures/showcase.ts`):
+49 commits of an invented web app by six invented authors, with pull request
+merges, release tags, a release branch and remote-tracking branches. Only the
+README screenshot uses it.
+
 ## Headless environments
 
 Integration tests, screenshots and theme capture start a real VS Code. Without
