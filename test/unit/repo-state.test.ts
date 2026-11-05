@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { readDiscardedByAbort } from '../../src/git/facts.ts';
-import { readOperationState, readWorktree } from '../../src/git/state.ts';
+import { readAbortTarget, readOperationState, readWorktree } from '../../src/git/state.ts';
 import { createStash } from '../../src/git/stash.ts';
 import { tempDir } from './helpers.ts';
 
@@ -179,5 +179,32 @@ describe('repository state', () => {
     run(d, 'stash', 'apply', '--index', '--quiet');
     assert.equal(run(d, 'status', '--porcelain'), 'A  new.txt\n M other.txt');
     assert.equal(readFileSync(join(d, 'other.txt'), 'utf8'), 'edited\n');
+  });
+
+  it('reads where Abort goes, as git does: not ORIG_HEAD, and for a sequence its start', async () => {
+    const r = repo();
+    run(r, 'checkout', '--quiet', 'topic');
+    stop(r, 'rebase', 'main');
+    run(r, 'update-ref', 'ORIG_HEAD', 'main');
+    assert.equal(await readAbortTarget('git', r, 'rebase'), run(r, 'rev-parse', 'topic'));
+
+    const m = repo();
+    stop(m, 'merge', 'topic');
+    assert.equal(await readAbortTarget('git', m, 'merge'), run(m, 'rev-parse', 'main'));
+
+    const one = repo();
+    stop(one, 'cherry-pick', 'topic~1');
+    assert.equal(await readAbortTarget('git', one, 'cherryPick'), run(one, 'rev-parse', 'main'));
+
+    const seq = repo();
+    const start = run(seq, 'rev-parse', 'main');
+    stop(seq, 'cherry-pick', 'topic', 'topic~1');
+    assert.notEqual(run(seq, 'rev-parse', 'HEAD'), start, 'the first was picked');
+    assert.equal(await readAbortTarget('git', seq, 'cherryPick'), start);
+    const moved = run(seq, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'moved');
+    run(seq, 'update-ref', 'HEAD', moved);
+    assert.equal(await readAbortTarget('git', seq, 'cherryPick'), moved);
+    spawnSync('git', ['cherry-pick', '--abort'], { cwd: seq, env });
+    assert.equal(run(seq, 'rev-parse', 'HEAD'), moved, 'git leaves a moved HEAD alone');
   });
 });

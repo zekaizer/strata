@@ -166,20 +166,29 @@ function discardedChanges(
   };
 }
 
-/** `discards`: paths with uncommitted changes the abort would throw away (readDiscardedByAbort). */
+/**
+ * `back`: where the abort resets to; `dropped`: commits the operation made since it started, which
+ * the abort drops (a rebase's replayed so far); `discards`: paths with uncommitted changes the
+ * abort would throw away (readDiscardedByAbort).
+ */
 export function abortConfirmation(
   op: OperationKind,
   branch: string | undefined,
   back: string,
   autostash: boolean,
   discards: readonly string[] = [],
+  dropped = 0,
 ): Confirmation<'abort' | 'stash' | 'discard'> {
   const name = branch === undefined ? 'HEAD' : `'${branch}'`;
   const discarded = discards.length > 0 ? discardedChanges('Abort', discards) : undefined;
+  const drops =
+    dropped > 0
+      ? `, dropping the ${plural(dropped, 'commit')} it has ${op === 'rebase' ? 'replayed' : 'made'} so far`
+      : '';
   return {
     message: `Abort the ${OP_NAME[op]}?`,
     detail: [
-      `${name} goes back to ${back} as before the ${OP_NAME[op]}.`,
+      `${name} goes back to ${back} as before the ${OP_NAME[op]}${drops}.`,
       "Conflict resolutions you've made are discarded.",
       ...(discarded ? [discarded.line] : []),
       ...(autostash ? ['Your stashed changes are restored.'] : []),

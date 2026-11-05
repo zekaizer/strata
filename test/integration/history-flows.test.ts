@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -203,6 +203,45 @@ describe('history operations', () => {
     assert.equal(api().contextValue('strata.operation'), '');
     assert.equal(read('NOTES.md'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
+  });
+
+  it('names where Abort really goes for a cherry pick of several commits, and the commits it drops', async () => {
+    const start = git('rev-parse', 'HEAD');
+    branchWith('strata-picks', 'main~1', 'first.txt', 'first\n');
+    write('main.txt', 'picked\n');
+    git('commit', '--quiet', '-am', 'main.txt: picked');
+    write('third.txt', 'third\n');
+    git('add', 'third.txt');
+    git('commit', '--quiet', '-m', 'third');
+    git('switch', '--quiet', 'main');
+    spawnSync('git', ['cherry-pick', 'strata-picks~2', 'strata-picks~1', 'strata-picks'], { cwd: workspaceRoot() });
+    assert.equal(git('rev-parse', 'HEAD~1'), start, 'stopped at the second, the first picked');
+    await reload(panel());
+    ui.press('Abort Cherry Pick');
+    await run('strata.operation.abort');
+    assert.match(
+      ui.first('confirm').detail,
+      new RegExp(
+        `^'main' goes back to ${git('rev-parse', '--short', start)} as before the cherry pick, dropping the 1 commit it has made so far\\.`,
+      ),
+    );
+    assert.equal(git('rev-parse', 'HEAD'), start);
+  });
+
+  it('names where a rebase started even when ORIG_HEAD moved while it was stopped', async () => {
+    branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
+    const tip = git('rev-parse', 'HEAD');
+    ui.press('Rebase');
+    await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
+    git('update-ref', 'ORIG_HEAD', 'main~1');
+    ui.clear();
+    ui.press('Abort Rebase');
+    await run('strata.operation.abort');
+    assert.match(
+      ui.first('confirm').detail,
+      new RegExp(`^'strata-topic' goes back to ${git('rev-parse', '--short', tip)} as before the rebase\\.`),
+    );
+    assert.equal(git('rev-parse', 'HEAD'), tip);
   });
 
   it('continues a rebase once its conflict is resolved, not before, and the banner goes', async () => {

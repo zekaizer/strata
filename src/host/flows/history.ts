@@ -51,7 +51,7 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { readOperationState } from '../../git/state.ts';
+import { readAbortTarget, readOperationState } from '../../git/state.ts';
 import { createStash } from '../../git/stash.ts';
 import { finish, headRef, notify, run, type Expect, type FlowHost, type Undo } from '../flow.ts';
 import type { Exec } from '../runner.ts';
@@ -536,13 +536,19 @@ export async function continueOperation(host: FlowHost): Promise<void> {
 export async function abortOperation(host: FlowHost): Promise<void> {
   const state = await inProgress(host);
   if (!state) return;
-  // Rebase and merge go back to ORIG_HEAD (the tip before they started); a pick stops on HEAD itself.
-  const [back, discards] = await Promise.all([
-    readCommit(host.git, host.cwd, state.kind === 'rebase' || state.kind === 'merge' ? 'ORIG_HEAD' : 'HEAD'),
+  const [target, discards] = await Promise.all([
+    readAbortTarget(host.git, host.cwd, state.kind),
     readDiscardedByAbort(host.git, host.cwd, state),
   ]);
+  // A rebase's commits so far are on top of onto; a cherry pick's or revert's on top of where it started.
+  const [back, dropped] = await Promise.all([
+    readCommit(host.git, host.cwd, target),
+    countCommits(host.git, host.cwd, [`${state.kind === 'rebase' ? (state.onto ?? target) : target}..HEAD`]),
+  ]);
   const held = state.autostash || (await heldStash(host, state)) !== undefined;
-  const answer = await host.ui.confirm(abortConfirmation(state.kind, state.branch, back.short, held, discards));
+  const answer = await host.ui.confirm(
+    abortConfirmation(state.kind, state.branch, back.short, held, discards, dropped),
+  );
   if (answer === undefined) return;
   const op: Operation = { kind: 'abort', operation: state.kind };
   const keep = answer === 'stash' ? `Strata: before abort of the ${opName(state.kind)}` : undefined;

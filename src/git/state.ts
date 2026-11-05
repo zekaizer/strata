@@ -9,7 +9,7 @@ import {
 } from '../core/repo-state.ts';
 import { runGit } from './run.ts';
 
-/** Files git keeps while an operation is stopped; --git-path finds them in linked worktrees too. */
+/** Files git keeps while an operation is stopped. */
 const MARKERS = [
   'rebase-merge',
   'rebase-apply',
@@ -32,14 +32,15 @@ const exists = (path: string) =>
   );
 const firstLine = (s: string | undefined) => s?.split('\n')[0];
 
+/** Where git keeps `names` under the git directory; --git-path finds them in linked worktrees too. */
+async function gitPaths<N extends string>(git: string, cwd: string, names: readonly N[]): Promise<Record<N, string>> {
+  const lines = (await runGit(git, cwd, ['rev-parse', ...names.flatMap((m) => ['--git-path', m])])).split('\n');
+  return Object.fromEntries(names.map((m, i) => [m, resolve(cwd, lines[i]!)])) as Record<N, string>;
+}
+
 /** The operation in progress, if any. */
 export async function readOperationState(git: string, cwd: string): Promise<OperationState | undefined> {
-  const out = await runGit(git, cwd, ['rev-parse', ...MARKERS.flatMap((m) => ['--git-path', m])]);
-  const lines = out.split('\n');
-  const at = Object.fromEntries(MARKERS.map((m, i) => [m, resolve(cwd, lines[i]!)])) as Record<
-    (typeof MARKERS)[number],
-    string
-  >;
+  const at = await gitPaths(git, cwd, MARKERS);
 
   let kind: OperationKind | undefined;
   let state: Pick<OperationState, 'branch' | 'onto' | 'step' | 'applying' | 'autostash'> | undefined;
@@ -106,6 +107,24 @@ export async function readOperationState(git: string, cwd: string): Promise<Oper
       () => false,
     ));
   return { kind, ...state, conflicts: conflicts.slice(0, CONFLICTS_SHOWN), conflictCount: conflicts.length, empty };
+}
+
+/**
+ * The commit Abort of the stopped operation `kind` resets to: where a rebase started, where a
+ * cherry pick or revert of several commits started (unless HEAD moved since git last stopped, when
+ * git leaves HEAD alone), or HEAD for a merge or a single cherry pick or revert.
+ */
+export async function readAbortTarget(git: string, cwd: string, kind: OperationKind): Promise<string> {
+  const at = await gitPaths(git, cwd, ['rebase-merge/orig-head', 'rebase-apply/orig-head', 'sequencer'] as const);
+  const head = (await runGit(git, cwd, ['rev-parse', '--verify', 'HEAD'])).trim();
+  if (kind === 'rebase')
+    return (await text(at['rebase-merge/orig-head'])) ?? (await text(at['rebase-apply/orig-head'])) ?? head;
+  if (kind === 'merge') return head;
+  const [start, safety] = await Promise.all([
+    text(resolve(at.sequencer, 'head')),
+    text(resolve(at.sequencer, 'abort-safety')),
+  ]);
+  return start !== undefined && safety === head ? start : head;
 }
 
 /** Uncommitted changes to tracked files. Untracked files are not scanned: slow on huge trees, and autostash ignores them. */

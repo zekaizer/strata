@@ -112,6 +112,17 @@ describe('wording', () => {
     );
   });
 
+  it('counts the commits an Abort drops', () => {
+    assert.match(
+      abortConfirmation('rebase', 'topic', '9f8e7d6', false, [], 2).detail,
+      /^'topic' goes back to 9f8e7d6 as before the rebase, dropping the 2 commits it has replayed so far\./,
+    );
+    assert.match(
+      abortConfirmation('revert', 'main', '9f8e7d6', false, [], 1).detail,
+      /^'main' goes back to 9f8e7d6 as before the revert, dropping the 1 commit it has made so far\./,
+    );
+  });
+
   it('names the uncommitted changes an Abort or Skip would discard, and offers to stash them', () => {
     const a = abortConfirmation('merge', 'main', '9f8e7d6', false, ['a.ts']);
     assert.equal(
