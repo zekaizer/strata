@@ -7,7 +7,7 @@ import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { addBranchyStashes } from '../../fixtures/stashes.ts';
 import { delay, git, screenshot, setTheme, strata, THEMES, waitFor, workspaceRoot, type ThemeId } from '../helpers.ts';
-import { gitRetry, setIdentity, snapshotRepo } from '../repo-snapshot.ts';
+import { gitRetry, gitSettled, setIdentity, snapshotRepo } from '../repo-snapshot.ts';
 
 const themeIds = Object.keys(THEMES) as ThemeId[];
 const themesDir = process.env['STRATA_CAPTURE_THEMES'];
@@ -107,6 +107,7 @@ after(() => setTheme('dark'));
     await gitRetry('add', 'other.txt');
     await gitRetry('commit', '--quiet', '-m', 'Topic two');
     await gitRetry('rebase', 'strata-onto').catch(() => undefined);
+    await gitSettled();
   });
   after(() => restore());
 
@@ -142,17 +143,26 @@ after(() => setTheme('dark'));
       const panel = (await strata()).show();
       await panel.whenReady();
       await waitFor('history', async () => (await panel.probe()).done);
-      // A rule in the Hidden badges section and the toolbar's count, with the next glob previewed.
-      await panel.simulate({ kind: 'click', selector: '.ref-filter-button' });
-      await panel.simulate({ kind: 'type', selector: '.popover-search', text: 'cross/*' });
-      await panel.simulate({ kind: 'click', selector: '.popover-hide' });
-      await waitFor('rule applied', async () => (await panel.probe()).refFilterButton.includes('hidden'));
-      await panel.simulate({ kind: 'type', selector: '.popover-search', text: 'feature/*' });
+      // A rule in the badge filter and the toolbar's count, with the next pattern previewed.
+      await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
+      await panel.simulate({ kind: 'type', selector: '.badge-pattern', text: 'cross/*' });
+      await panel.simulate({ kind: 'click', selector: '.badge-hide' });
+      await waitFor('rule applied', async () => (await panel.probe()).badgeFilter.button.includes('hidden'));
+      await panel.simulate({ kind: 'type', selector: '.badge-pattern', text: 'feature/*' });
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `hidden-badges-${id}.png`));
+      // The ref card of a commit whose badge the rule hides.
+      await panel.simulate({ kind: 'key', key: 'Escape' });
+      const x = git('rev-parse', 'cross/x');
+      const row = Number(Object.entries((await panel.probe()).rowHashes).find(([, h]) => h === x)?.[0]);
+      await panel.simulate({ kind: 'hoverNode', index: row });
+      await waitFor('ref card', async () => (await panel.probe()).refCard !== undefined);
+      await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+      await screenshot(join(shotDir!, `ref-card-${id}.png`));
+      await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
       await panel.simulate({ kind: 'click', selector: '.popover-rule button[aria-label^="Remove"]' });
-      await waitFor('rule removed', async () => !(await panel.probe()).refFilterButton.includes('hidden'));
+      await waitFor('rule removed', async () => !(await panel.probe()).badgeFilter.button.includes('hidden'));
       panel.dispose();
     });
   }

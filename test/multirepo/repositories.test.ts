@@ -59,6 +59,24 @@ describe('several repositories', () => {
     }
   });
 
+  it('offers only Refresh while no repository is open', async () => {
+    const roots = [gamma, beta, alpha];
+    try {
+      for (const root of roots) await closeRepo(root);
+      const s = await waitFor('no repository', async () => {
+        const p = await panel.probe();
+        return p.repoSwitcher.text === 'No git repository' && p;
+      });
+      assert.deepEqual(s.buttonNames.toolbar, ['Refresh']);
+    } finally {
+      for (const root of roots) await openRepo(root);
+    }
+    await waitFor('the toolbar back', async () => {
+      const p = await panel.probe();
+      return p.done && p.buttonNames.toolbar.some((name) => name.startsWith('Go to HEAD'));
+    });
+  });
+
   it('shows the repository it showed last when it starts again, not the active editor’s', async () => {
     await switchTo(panel, gamma);
     await editIn(alpha);

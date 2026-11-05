@@ -1,5 +1,6 @@
 import type { RepoItem } from '../shared/protocol.ts';
-import { el } from './format.ts';
+import { codicon, el } from './format.ts';
+import { dismissable } from './popover.ts';
 
 /** Above this many repositories the popover has a search box. */
 const SEARCH_FROM = 8;
@@ -28,7 +29,7 @@ export class RepoSwitcher {
 
   constructor(host: HTMLElement, events: RepoSwitcherEvents) {
     this.events = events;
-    this.button.append(this.buttonText, el('span', 'codicon codicon-chevron-down'));
+    this.button.append(this.buttonText, codicon('chevron-down'));
     this.button.setAttribute('aria-haspopup', 'dialog');
     this.button.setAttribute('aria-expanded', 'false');
     this.button.hidden = true;
@@ -60,22 +61,8 @@ export class RepoSwitcher {
     this.popover.setAttribute('aria-label', 'Show repository');
     this.popover.append(this.search, this.list);
     host.append(this.popover);
-    window.addEventListener('blur', () => {
-      if (!this.popover.hidden) this.close();
-    });
-    this.popover.addEventListener('focusout', (e) => {
-      const next = e.relatedTarget as Node | null;
-      if (next && !this.popover.contains(next) && !this.button.contains(next)) this.close();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !this.popover.hidden) {
-        this.close();
-        this.button.focus();
-      }
-    });
-    document.addEventListener('pointerdown', (e) => {
-      if (!this.popover.hidden && !this.popover.contains(e.target as Node) && !this.button.contains(e.target as Node))
-        this.close();
+    dismissable(this.popover, this.button, () => {
+      this.close();
     });
   }
 
@@ -158,9 +145,8 @@ export class RepoSwitcher {
         // A repository at the top of its workspace folder is where its name says.
         if (r.path !== r.name) text.append(el('span', 'repo-row-path', r.path));
         const head = el('span', 'repo-row-head');
-        if (r.head !== undefined)
-          head.append(el('span', 'codicon codicon-git-branch'), el('span', 'repo-row-branch', r.head));
-        row.append(el('span', `codicon ${shown ? 'codicon-check' : 'codicon-blank'}`), text, head);
+        if (r.head !== undefined) head.append(codicon('git-branch'), el('span', 'repo-row-branch', r.head));
+        row.append(codicon(shown ? 'check' : 'blank'), text, head);
         row.addEventListener('click', () => {
           this.close();
           this.button.focus();

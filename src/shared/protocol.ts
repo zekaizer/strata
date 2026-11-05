@@ -67,10 +67,17 @@ export type HostToWebview =
   | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
-  /** Opens the ref filter searching for `search`, selected (Hide Similar Badges...). */
-  | { type: 'findRefs'; search: string }
+  /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */
+  | { type: 'openBadgeFilter'; pattern: string }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
+  /**
+   * Go to HEAD from the command palette, or after headNotShown: `include` first adds the current
+   * branch to the branch filter, or shows every branch with HEAD detached.
+   */
+  | { type: 'goToHead'; include?: true }
+  /** Whether the branch filter's refs reach HEAD, commit `hash`; true when git could not tell. */
+  | { type: 'headReached'; generation: number; hash: string; reached: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -125,6 +132,13 @@ export type WebviewToHost =
   | { type: 'switchRepository'; root: string }
   /** Replaces the repository's badge rules. */
   | { type: 'setBadgeRules'; rules: BadgeRule[] }
+  /**
+   * Go to HEAD under a branch filter, before loading further history to find HEAD, commit `hash`:
+   * answered with headReached.
+   */
+  | { type: 'reachesHead'; generation: number; hash: string }
+  /** Go to HEAD found HEAD outside the branch filter: answered with goToHead (include) on request. */
+  | { type: 'headNotShown'; branch: string | undefined; hash: string }
   /** The stash count button: whether each stash's row is in the graph, which only the webview knows. */
   | { type: 'pickStash'; shown: Record<string, StashShown> }
   /** Runs a command of the table from a keyboard shortcut or a button, with the element's menu context. */
@@ -135,6 +149,23 @@ export type WebviewToHost =
   | { type: 'themeVars'; vars: Record<string, string> }
   | { type: 'probe'; state: ProbeState }
   | { type: 'error'; message: string };
+
+/** The toolbar's badge filter: its button text, and while its popover is open what that shows. */
+export interface BadgeFilterProbe {
+  button: string;
+  pattern: string | undefined;
+  /** What the pattern matches, e.g. "Matches 2 branches · 1 hidden". */
+  summary: string | undefined;
+  /** Whether Hide and Show are enabled. */
+  hide: boolean | undefined;
+  show: boolean | undefined;
+  /** Rule patterns in order, "!" before an exception. */
+  rules: string[] | undefined;
+  /** Listed refs by short name, " (hidden)" after those whose badge is hidden. */
+  refs: string[] | undefined;
+  /** The "Show hidden badges (N)" option's text while it is offered. */
+  showHidden: string | undefined;
+}
 
 /** Webview state reported for integration tests. */
 export interface ProbeState {
@@ -161,10 +192,17 @@ export interface ProbeState {
   rowLabels: Record<string, string>;
   /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
   operationNotes: Record<string, string>;
-  /** Text of the toolbar's ref filter button, e.g. "All · 2 hidden". */
+  /** Text of the toolbar's ref filter button, e.g. "All". */
   refFilterButton: string;
-  /** The ref filter's search text while its popover is open. */
-  refFilterSearch: string | undefined;
+  /**
+   * Accessible names of the shown buttons in the toolbar and the inline details, as a screen reader
+   * reads them: aria-label, else the text and CSS-generated content (icon glyphs) of what is not
+   * aria-hidden, else the title.
+   */
+  buttonNames: { toolbar: string[]; details: string[] };
+  badgeFilter: BadgeFilterProbe;
+  /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
+  refCard: { hash: string; lines: string[] } | undefined;
   /** The repository's badge rules as the host last sent them. */
   badgeRules: BadgeRule[];
   /** Label of the toolbar's stash count button; empty while it is hidden. */
@@ -199,8 +237,12 @@ export interface ProbeState {
   detailsSubject: string | undefined;
   /** Whether hover highlights are off because the pointer left the webview (or it was hidden). */
   hoverSuppressed: boolean;
+  /** Computed background and box-shadow of each rendered commit row, by row index. */
+  rowPaint: Record<number, { background: string; boxShadow: string }>;
   /** Width of the commit list in CSS px. */
   listWidth: number;
+  /** Height of the commit list's visible part in CSS px. */
+  listHeight: number;
   /** Height in px of the details expanded under the selected row; 0 when collapsed. */
   expandedHeight: number;
   /** Top offset in px of each rendered row within the list, by row index. */
@@ -320,6 +362,8 @@ export type SimulatedAction =
   | { kind: 'clickRow'; index: number; y?: number }
   /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
   | { kind: 'scrollToRow'; index: number }
+  /** Moves the pointer onto row `index`'s graph node, or `dx` px right of it. */
+  | { kind: 'hoverNode'; index: number; dx?: number }
   | { kind: 'clickFile'; index: number; altKey?: boolean; view?: FileView }
   | {
       kind: 'key';

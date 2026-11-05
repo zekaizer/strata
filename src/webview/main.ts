@@ -27,12 +27,14 @@ import type {
   SimulatedAction,
   ViewOptions,
 } from '../shared/protocol.ts';
-import { fitBadges, landedRefs, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
+import { cardRefs, fitBadges, landedRefs, leavesOut, refsLabel, rowBadges, shownRefs, type Badge } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
-import { el, formatDate, formatShortDate, shortHash } from './format.ts';
-import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
+import { codicon, el, formatDate, formatShortDate, shortHash } from './format.ts';
+import { drawGraph, graphWidth, laneX, LANE_WIDTH, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
+import { BadgeFilter } from './badge-filter.ts';
+import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
@@ -64,6 +66,8 @@ interface Restore extends RepoView {
   reveal?: boolean | undefined;
   /** Loaded commits past which a restore stops looking; default RESTORE_SEARCH_LIMIT. */
   searchLimit?: number | undefined;
+  /** Go to HEAD: the selection is HEAD, centred when far away; not finding it offers to show it. */
+  head?: boolean | undefined;
 }
 
 /** Details that take longer than this are reported as not coming (the extension host went away). */
@@ -147,9 +151,17 @@ class App {
   /** A view saved before views were kept per repository: the first repository shown restores it. */
   private unkeyed: RepoView | undefined;
   private restore: Restore | undefined;
+  /** Go to HEAD under a branch filter, until the host says whether the filter's refs reach HEAD. */
+  private headQuery: { generation: number; restore: Restore } | undefined;
   private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
+  private readonly badgeFilter: BadgeFilter;
+  /** The refs of the commit whose graph node the pointer rests on. */
+  private readonly refCard = new RefCard();
+  /** A pointer press on a node closes its card until the pointer leaves that node. */
+  private cardDismissed: string | undefined;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
+  private readonly headButton = el('button', 'tool-button head-button');
   /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
   private readonly stashButton = el('button', 'tool-button stash-button');
   /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
@@ -271,6 +283,7 @@ class App {
     this.metaOpen = this.saved.metaOpen ?? false;
     const refresh = el('button', 'icon-button codicon codicon-refresh');
     refresh.title = 'Refresh';
+    refresh.setAttribute('aria-label', refresh.title);
     refresh.addEventListener('click', () => {
       vscode.postMessage({ type: 'refresh' });
     });
@@ -281,17 +294,19 @@ class App {
       onShowStashes: (show) => {
         this.setShowStashes(show);
       },
-      onBadgeRules: (rules) => {
+    });
+    this.badgeFilter = new BadgeFilter(this.toolbar, {
+      onRules: (rules) => {
         vscode.postMessage({ type: 'setBadgeRules', rules });
       },
-      onShowHiddenBadges: (show) => {
+      onShowHidden: (show) => {
         this.showHiddenBadges = show;
         this.applyBadgeRules();
         this.relist();
       },
     });
     this.stashButton.append(
-      el('span', 'codicon codicon-git-stash'),
+      codicon('git-stash'),
       el('span', 'tool-label stash-count'),
       el('span', 'stash-count-narrow'),
     );
@@ -299,7 +314,12 @@ class App {
     this.stashButton.addEventListener('click', () => {
       this.pickStash();
     });
-    this.firstParentButton.append(el('span', 'codicon codicon-git-commit'), el('span', 'tool-label', 'First parent'));
+    this.headButton.append(codicon('target'), el('span', 'tool-label', 'HEAD'));
+    this.headButton.addEventListener('click', () => {
+      this.goToHead();
+    });
+    this.updateHeadButton();
+    this.firstParentButton.append(codicon('git-commit'), el('span', 'tool-label', 'First parent'));
     this.firstParentButton.title = 'Follow only the first parent of merges';
     this.firstParentButton.addEventListener('click', () => {
       this.setOptions({ ...this.options, firstParent: !this.options.firstParent });
@@ -318,8 +338,10 @@ class App {
       this.switcher.button,
       this.status,
       el('span', 'spacer'),
+      this.headButton,
       this.stashButton,
       this.refFilter.button,
+      this.badgeFilter.button,
       this.firstParentButton,
       refresh,
     );
@@ -337,7 +359,14 @@ class App {
     this.announcer.setAttribute('role', 'status');
     this.announcer.setAttribute('aria-live', 'polite');
     this.alert.setAttribute('role', 'alert');
-    root.replaceChildren(this.toolbar, this.banner.element, this.viewport, this.announcer, this.alert);
+    root.replaceChildren(
+      this.toolbar,
+      this.banner.element,
+      this.viewport,
+      this.refCard.element,
+      this.announcer,
+      this.alert,
+    );
     // Escape from anywhere in the details goes back to the list; the selection stays.
     this.expansion.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -365,9 +394,11 @@ class App {
     });
 
     this.scroller.addEventListener('scroll', () => {
+      this.pointNode(undefined);
       this.queueRender();
       this.saveState();
     });
+    this.trackNodeHover();
     // Rows are rebuilt on every render, so the clicked element may be gone by mouseup; use the position.
     this.scroller.addEventListener('click', (e) => {
       // By the dispatch path: the target may already be detached (a fold or a parent link
@@ -505,8 +536,8 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
-      case 'findRefs':
-        this.refFilter.openWith(m.search);
+      case 'openBadgeFilter':
+        this.badgeFilter.openWith(m.pattern);
         break;
       case 'reveal':
         this.reveal(m.hash);
@@ -514,6 +545,24 @@ class App {
       case 'pickStash':
         this.pickStash();
         break;
+      case 'goToHead':
+        this.goToHead(m.include === true);
+        break;
+      case 'headReached': {
+        const q = this.headQuery;
+        const asked = q?.generation === m.generation && q.restore.selectedHash === m.hash;
+        // A user's selection drops the query; a restore started since then takes over.
+        if (!q || !asked || m.generation !== this.generation || this.restore) return;
+        this.headQuery = undefined;
+        if (m.reached) {
+          this.restore = q.restore;
+          this.applyRestore();
+        } else {
+          this.updateStatus();
+          this.headNotShown(m.hash);
+        }
+        break;
+      }
       case 'activeFile':
         // The host says which file's tab is on screen; the marker follows it and goes when it closes.
         this.markOpenedFile(m.path);
@@ -521,15 +570,20 @@ class App {
       case 'hidden':
         document.body.classList.add('hover-off');
         this.refFilter.close();
+        this.badgeFilter.close();
         break;
       case 'noRepository':
         this.generation = -1;
         this.noRepository = true;
         this.switcher.setShown(undefined, 'No git repository');
+        this.showRepoControls(false);
         this.status.classList.remove('error');
-        this.status.textContent = 'Open a folder that contains a git repository.';
+        // The list says what to do; the toolbar's name already says there is no repository.
+        this.status.textContent = '';
         this.refFilter.close();
+        this.badgeFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
+        this.updateHeadButton();
         this.refsByHash = new Map();
         this.badgeRules = [];
         this.applyBadgeRules();
@@ -627,6 +681,7 @@ class App {
     this.generation = generation;
     this.repo = repo;
     this.refs = refs;
+    this.updateHeadButton();
     this.options = options;
     this.refsByHash = new Map();
     for (const r of refs.refs) {
@@ -649,6 +704,7 @@ class App {
     this.shownLanes = 1;
     this.textWidths = { author: 0, dateFull: 0, dateShort: 0 };
     this.noRepository = false;
+    this.showRepoControls(true);
     this.done = false;
     this.selected = -1;
     this.updateOptionControls();
@@ -695,9 +751,10 @@ class App {
         // Reveal it only when no scroll position is being restored with it. Older saved states have no
         // `expanded`; a selection then meant visible details.
         this.select(index, {
-          reveal: r.reveal === true || (r.scrollTop === undefined && !r.keepScroll),
+          reveal: r.head !== true && (r.reveal === true || (r.scrollTop === undefined && !r.keepScroll)),
           expand: r.expanded ?? true,
         });
+        if (r.head === true) this.revealCentred(index);
         r.selectedHash = undefined;
       } else if (searchable) {
         this.loadMore(NEXT_PAGE);
@@ -706,6 +763,11 @@ class App {
         const missing = r.selectedHash;
         r.selectedHash = undefined;
         this.updateStatus();
+        if (r.head === true && this.options.refs !== null) {
+          this.restore = undefined;
+          this.headNotShown(missing);
+          return;
+        }
         const stash = this.stashes.find((s) => s.hash === missing);
         this.announce(`${stash ? `stash@{${stash.index}}` : shortHash(missing)} is not in this view`);
       }
@@ -763,7 +825,7 @@ class App {
   private applyBadgeRules(): void {
     this.hiddenBadges = hiddenRefs(this.badgeRules, this.refs);
     this.badgeRefsByHash = shownRefs(this.refsByHash, this.showHiddenBadges ? new Set() : this.hiddenBadges);
-    this.refFilter.updateBadges({
+    this.badgeFilter.update(this.refs, {
       rules: this.badgeRules,
       hidden: this.hiddenBadges,
       showHidden: this.showHiddenBadges,
@@ -815,6 +877,82 @@ class App {
     this.stashButton.setAttribute('aria-label', this.stashButton.title);
   }
 
+  /** The toolbar buttons that act on a repository; without one, Refresh stays. */
+  private showRepoControls(shown: boolean): void {
+    for (const b of [this.headButton, this.refFilter.button, this.badgeFilter.button, this.firstParentButton])
+      b.hidden = !shown;
+  }
+
+  private updateHeadButton(): void {
+    const head = this.refs.head;
+    this.headButton.disabled = head === undefined;
+    this.headButton.title =
+      head === undefined
+        ? 'Go to HEAD: nothing is checked out yet'
+        : `Go to HEAD (${this.refs.headBranch ?? `detached at ${shortHash(head)}`})`;
+    this.headButton.setAttribute('aria-label', this.headButton.title);
+  }
+
+  /**
+   * Selects HEAD's row as the keyboard would, loading further history until it shows up, and
+   * centres it when it was out of view. With `include`, HEAD's branch joins the branch filter
+   * first (all branches with HEAD detached), which reloads the history.
+   */
+  private goToHead(include = false): void {
+    const head = this.refs.head;
+    if (head === undefined) return;
+    this.selections++;
+    this.clearActionError();
+    this.scroller.focus({ preventScroll: true });
+    // The keyboard's focus outline marks the row.
+    document.body.classList.add('keyboard-nav');
+    const restore: Restore = { selectedHash: head, head: true, expanded: this.expanded };
+    if (include && this.options.refs !== null) {
+      const branch = this.refs.headBranch;
+      this.restore = restore;
+      this.setOptions({
+        ...this.options,
+        refs: branch === undefined ? null : [...new Set([...this.options.refs, `refs/heads/${branch}`])],
+      });
+      return;
+    }
+    const index = this.indexOf(head);
+    if (index >= 0) {
+      this.restore = undefined;
+      this.select(index, { reveal: false });
+      this.revealCentred(index);
+      return;
+    }
+    this.status.textContent = 'Looking for HEAD…';
+    if (this.options.refs !== null && !this.done) {
+      // The host tells at once whether the filter leaves HEAD out; paging could read thousands of commits first.
+      this.restore = undefined;
+      this.headQuery = { generation: this.generation, restore };
+      vscode.postMessage({ type: 'reachesHead', generation: this.generation, hash: head });
+      return;
+    }
+    this.restore = restore;
+    this.applyRestore();
+  }
+
+  /** Says that the branch filter leaves HEAD, commit `hash`, out; the host offers to add its branch. */
+  private headNotShown(hash: string): void {
+    this.announce('HEAD is not in the graph: the branch filter leaves it out');
+    vscode.postMessage({ type: 'headNotShown', branch: this.refs.headBranch, hash });
+  }
+
+  /** Scrolls row `index` to the middle of the list unless it is in view already. */
+  private revealCentred(index: number): void {
+    const top = this.rowTop(index);
+    const height = this.geometry.height(index);
+    const view = this.scroller.clientHeight;
+    if (top >= this.scroller.scrollTop && top + height <= this.scroller.scrollTop + view) return;
+    this.syncSizer();
+    this.scroller.scrollTop = Math.max(0, top - (view - height) / 2);
+    this.saveState();
+    this.queueRender();
+  }
+
   /** Opens Show Stashes, telling the host which stash rows are drawn and why the others are not. */
   private pickStash(): void {
     vscode.postMessage({ type: 'pickStash', shown: this.stashShown() });
@@ -845,7 +983,14 @@ class App {
       },
       hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
     });
+    const shown = !this.banner.element.hidden;
     this.banner.show(banner);
+    if (
+      shown !== !this.banner.element.hidden &&
+      this.busyLabel !== undefined &&
+      !this.status.classList.contains('error')
+    )
+      this.updateStatus();
     const said = banner
       ? JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null])
       : '';
@@ -975,6 +1120,66 @@ class App {
   }
 
   /**
+   * Shows the ref card of the commit whose node the pointer rests on. Hover highlights going off
+   * (the pointer may have left, keys moved the rows) close it.
+   */
+  private trackNodeHover(): void {
+    this.scroller.addEventListener('pointermove', (e) => {
+      // Chromium sends moves without movement when content changes under a still pointer.
+      if (e.movementX === 0 && e.movementY === 0) return;
+      const target = this.nodeAt(e.clientX, e.clientY);
+      if (target?.hash !== this.cardDismissed) this.cardDismissed = undefined;
+      this.pointNode(this.cardDismissed === undefined ? target : undefined);
+    });
+    this.scroller.addEventListener('pointerleave', () => {
+      this.pointNode(undefined);
+    });
+    this.scroller.addEventListener('pointerdown', () => {
+      this.cardDismissed = this.refCard.hash;
+      this.pointNode(undefined);
+    });
+    new MutationObserver(() => {
+      if (document.body.classList.contains('hover-off')) this.pointNode(undefined);
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }
+
+  /** Points the ref card at a node, restoring the tooltip of the row it leaves. */
+  private pointNode(target: CardTarget | undefined): void {
+    const was = this.refCard.hash;
+    this.refCard.point(target);
+    if (this.refCard.hash === was) return;
+    for (const row of this.rowsLayer.querySelectorAll<HTMLElement>('.row')) {
+      const item = this.list[Number(row.dataset['index'])];
+      if (item?.kind !== 'commit' || (item.commit.hash !== was && item.commit.hash !== this.refCard.hash)) continue;
+      if (item.commit.hash === this.refCard.hash) row.removeAttribute('title');
+      else row.title = commitTitle(item.commit);
+    }
+  }
+
+  /** The commit node within reach of a client position, with its refs and centre. */
+  private nodeAt(clientX: number, clientY: number): CardTarget | undefined {
+    const box = this.scroller.getBoundingClientRect();
+    const index = this.rowAt(clientY - box.top + this.scroller.scrollTop);
+    const item = this.list[index];
+    const row = item && this.rows[item.row];
+    if (item?.kind !== 'commit' || !row) return undefined;
+    const x = laneX(row.lane);
+    // A node scrolled out of the clipped graph column is not on screen.
+    if (x > this.canvas.clientWidth) return undefined;
+    const centre = {
+      x: box.left + x,
+      y: box.top + this.rowTop(index) + this.geometry.height(index) - ROW_HEIGHT / 2 - this.scroller.scrollTop,
+    };
+    if (Math.abs(clientX - centre.x) > NODE_REACH || Math.abs(clientY - centre.y) > NODE_REACH) return undefined;
+    const hash = item.commit.hash;
+    const refs = this.refsByHash.get(hash) ?? [];
+    const badges = rowBadges(hash, this.badgeRefsByHash.get(hash) ?? [], this.refs, (all) => this.fitBand(all));
+    // A card only for a node whose badges leave something out.
+    const card = leavesOut(badges, refs) ? cardRefs(hash, refs, this.refs, this.hiddenBadges) : [];
+    return { hash, refs: card, ...centre };
+  }
+
+  /**
    * Turns hover highlights off when the pointer may have left without the webview noticing
    * (focus moves to an editor, the panel is hidden, the pointer leaves the iframe) and back on
    * at the next pointer movement.
@@ -1063,12 +1268,14 @@ class App {
   }
 
   private updateStatus(): void {
+    // The banner, while shown, says what runs in its place.
+    const busy = this.banner.element.hidden ? this.busyLabel : undefined;
     this.status.classList.remove('error');
-    this.status.classList.toggle('busy', this.busyLabel !== undefined);
+    this.status.classList.toggle('busy', busy !== undefined);
     // The toolbar may be too narrow for all of it.
-    this.status.title = this.busyLabel ?? '';
-    if (this.busyLabel !== undefined) {
-      this.status.textContent = `${this.busyLabel}…`;
+    this.status.title = busy ?? '';
+    if (busy !== undefined) {
+      this.status.textContent = `${busy}…`;
       return;
     }
     const n = this.commits.length.toLocaleString();
@@ -1146,6 +1353,7 @@ class App {
     this.selections++;
     this.clearActionError();
     this.restore = undefined;
+    this.headQuery = undefined;
     this.select(index, opts);
   }
 
@@ -1439,11 +1647,9 @@ class App {
     const c = r.commit;
     const badgeRefs = this.badgeRefsByHash.get(c.hash) ?? [];
     const badges = rowBadges(c.hash, badgeRefs, this.refs, (all) => this.fitBand(all));
+    const hidden = (this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r));
     // The row's menu still offers the refs whose badges are hidden.
-    const refs = [
-      ...badges.flatMap((b) => b.refs),
-      ...(this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r)).map((r) => r.name),
-    ];
+    const refs = [...badges.flatMap((b) => b.refs), ...hidden.map((r) => r.name)];
     const branches = (this.refsByHash.get(c.hash) ?? []).filter(
       (r) => r.kind === 'branch' && r.short !== this.refs.headBranch,
     );
@@ -1480,11 +1686,7 @@ class App {
     if (note) {
       const e = el('span', note.warning ? 'operation-note warning' : 'operation-note');
       e.append(el('span', 'operation-note-text', note.text));
-      if (note.warning) {
-        const mark = el('span', 'codicon codicon-warning');
-        mark.setAttribute('aria-hidden', 'true');
-        e.prepend(mark);
-      }
+      if (note.warning) e.prepend(codicon('warning'));
       subject.append(e);
     }
     row.append(
@@ -1494,12 +1696,14 @@ class App {
       this.dateCell(c.authorTime),
       el('span', 'hash', shortHash(c.hash)),
     );
-    row.title = `${c.subject}\n${c.author} <${c.authorEmail}>`;
+    // On the node the ref card stands in for the row's tooltip.
+    if (this.refCard.hash !== c.hash) row.title = commitTitle(c);
     // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
     const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length));
     const said = [
       c.subject,
       refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
+      hidden.length > 0 ? `Hidden: ${hidden.map((r) => r.short).join(', ')}` : undefined,
       note?.text,
       `${c.author}, ${formatDate(c.authorTime)}, ${shortHash(c.hash)}`,
     ];
@@ -1701,6 +1905,8 @@ class App {
     const body = rest.join('\n').trim();
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
+    close.setAttribute('aria-label', 'Fold');
+    close.setAttribute('aria-keyshortcuts', 'Escape');
     close.addEventListener('click', (e) => {
       e.stopPropagation();
       this.userCollapse();
@@ -1775,9 +1981,7 @@ class App {
   private bylineOf(d: CommitDetails, toggleTitle: string, ...parts: Node[]): HTMLElement {
     const line = el('div', 'byline');
     const hash = el('button', 'byline-hash');
-    const icon = el('span', 'codicon codicon-copy hash-icon');
-    icon.setAttribute('aria-hidden', 'true');
-    hash.append(el('span', 'hash-text', shortHash(d.hash)), icon);
+    hash.append(el('span', 'hash-text', shortHash(d.hash)), codicon('copy', 'hash-icon'));
     hash.title = `${d.hash}\nClick to copy`;
     hash.setAttribute('aria-label', `Copy full commit hash ${shortHash(d.hash)}`);
     hash.addEventListener('click', () => {
@@ -2077,7 +2281,7 @@ class App {
         li.setAttribute('aria-level', String(depth + 1));
         li.style.setProperty('--depth', String(depth));
         li.title = n.path;
-        li.append(el('span', 'codicon codicon-chevron-down folder-chevron'), el('span', 'folder-name', n.name));
+        li.append(codicon('chevron-down', 'folder-chevron'), el('span', 'folder-name', n.name));
         li.addEventListener('click', () => {
           this.toggleFolder(list, n.path);
         });
@@ -2240,7 +2444,7 @@ class App {
       commits: this.commits.length,
       laidOut: this.rows.length,
       done: this.done,
-      restoring: this.restore !== undefined,
+      restoring: this.restore !== undefined || this.headQuery !== undefined,
       selected: this.selectedHash(),
       detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
@@ -2288,7 +2492,14 @@ class App {
         ? (this.expansion.querySelector('.details-subject')?.textContent ?? undefined)
         : undefined,
       hoverSuppressed: document.body.classList.contains('hover-off'),
+      rowPaint: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row:not(.stash)')].map((r) => {
+          const style = getComputedStyle(r);
+          return [Number(r.dataset['index']), { background: style.backgroundColor, boxShadow: style.boxShadow }];
+        }),
+      ),
       listWidth: this.scroller.clientWidth,
+      listHeight: this.scroller.clientHeight,
       menuContexts: {
         files: [...this.expansion.querySelectorAll<HTMLElement>('.file')].map(
           (li) => JSON.parse(li.getAttribute('data-vscode-context') ?? '{}') as Record<string, unknown>,
@@ -2406,7 +2617,12 @@ class App {
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       refFilterButton: this.refFilter.button.textContent,
-      refFilterSearch: this.refFilter.searchText(),
+      buttonNames: {
+        toolbar: [...this.toolbar.querySelectorAll<HTMLElement>(':scope > button:not([hidden])')].map(accessibleName),
+        details: [...this.expansion.querySelectorAll<HTMLElement>('button')].map(accessibleName),
+      },
+      badgeFilter: this.badgeFilter.probe(),
+      refCard: this.refCard.probe(),
       badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>
@@ -2508,6 +2724,21 @@ class App {
         }
         break;
       }
+      case 'hoverNode': {
+        this.ensureVisible(a.index);
+        this.render();
+        const box = this.scroller.getBoundingClientRect();
+        const item = this.list[a.index];
+        const row = item && this.rows[item.row];
+        if (!row) break;
+        const x = box.left + laneX(row.lane) + (a.dx ?? 0);
+        const y =
+          box.top + this.rowTop(a.index) + this.geometry.height(a.index) - ROW_HEIGHT / 2 - this.scroller.scrollTop;
+        (document.elementFromPoint(x, y) ?? this.scroller).dispatchEvent(
+          new PointerEvent('pointermove', { bubbles: true, clientX: x, clientY: y, movementX: 1 }),
+        );
+        break;
+      }
       case 'scrollToRow':
         this.scroller.scrollTop = this.rowTop(a.index);
         this.render();
@@ -2586,6 +2817,11 @@ class App {
   }
 }
 
+/** How far from a node's centre, in px across and down, the pointer still rests on it. */
+const NODE_REACH = LANE_WIDTH / 2 + 1;
+
+const commitTitle = (c: Commit) => `${c.subject}\n${c.author} <${c.authorEmail}>`;
+
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 
 /** One stop of an operation: a later stop at another commit or step is another. */
@@ -2659,8 +2895,7 @@ function renderBadge(b: Badge): HTMLElement {
 /** "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. */
 function remoteSegment(b: Badge): HTMLElement {
   const seg = el('span', 'badge-remotes');
-  const icon = el('span', 'codicon codicon-cloud');
-  icon.setAttribute('aria-hidden', 'true');
+  const icon = codicon('cloud');
   const names = el('span', 'badge-remote-names');
   names.setAttribute('aria-hidden', 'true');
   b.remotes.forEach((r, i) => {
@@ -2691,10 +2926,25 @@ const contextOf = (e: HTMLElement) =>
 const ordinal = (n: number) =>
   `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
 
+/** The accessible name of a button, after the accessible name computation's main steps. */
+function accessibleName(e: HTMLElement): string {
+  const generated = (n: Element, pseudo: '::before' | '::after') => {
+    const c = getComputedStyle(n, pseudo).content;
+    return c === 'none' || c === 'normal' ? '' : c.replace(/^"|"$/g, '');
+  };
+  const content = (n: Node): string => {
+    if (n.nodeType === Node.TEXT_NODE) return n.textContent ?? '';
+    if (!(n instanceof HTMLElement) || n.hidden || n.getAttribute('aria-hidden') === 'true') return '';
+    return generated(n, '::before') + [...n.childNodes].map(content).join('') + generated(n, '::after');
+  };
+  const name = e.getAttribute('aria-label') ?? content(e).replace(/\s+/g, ' ').trim();
+  return name === '' ? e.title : name;
+}
+
 function badge(kind: string, icon: string, text: string, title: string): HTMLElement {
   const b = el('span', `badge badge-${kind}`);
   b.title = title;
-  b.append(el('span', `codicon codicon-${icon}`), el('span', 'badge-text', text));
+  b.append(codicon(icon), el('span', 'badge-text', text));
   return b;
 }
 

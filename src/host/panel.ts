@@ -140,13 +140,17 @@ export class GraphPanel implements vscode.Disposable {
     return this.session().hideBadge(ref);
   }
 
-  /** Opens the graph's ref filter searching for `search`. */
-  findRefs(search: string): void {
-    this.post({ type: 'findRefs', search });
+  /** Opens the graph's badge filter with `pattern` typed. */
+  openBadgeFilter(pattern: string): void {
+    this.post({ type: 'openBadgeFilter', pattern });
   }
 
   copyStashPatch(hash: string): Promise<void> {
     return this.session().copyStashPatch(hash);
+  }
+
+  goToHead(): void {
+    this.post({ type: 'goToHead' });
   }
 
   showStashes(): void {

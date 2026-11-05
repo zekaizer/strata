@@ -121,6 +121,7 @@ describe('operation banner', () => {
         });
         assert.equal(s.banner?.busy, 'Continuing rebase…');
         assert.equal(s.announced, 'Continuing rebase…');
+        assert.match(s.status, /^\d+ commits$/, 'the banner says what runs, the toolbar does not repeat it');
         await panel.simulate({ kind: 'click', selector: '.banner-button:last-child' });
         await panel.probe();
         assert.deepEqual(sent, [], 'a held button sends nothing');

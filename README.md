@@ -24,7 +24,7 @@ page, so it opens quickly even on very large repositories.
   remote-tracking branches; tags label their commits, and a tag that is on no
   branch shows when you select it in the filter.
 - Hide the badges of noisy refs, such as CI tags, without changing the
-  history: glob rules per repository (`IR*`), with exceptions, that leave the
+  history: glob rules per repository (`*-rc*`), with exceptions, that leave the
   commits and lines in place. Strata keeps the rules itself; nothing is written
   to the repository or its git config.
 - Several repositories in one workspace: switch between them from the
@@ -94,18 +94,29 @@ page, so it opens quickly even on very large repositories.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show all** to reset), and **First parent** to follow only the main line of
   merges.
-- To hide badges, type a pattern in the branch button's search: `*` matches
-  any text (slashes too), `?` one character, and the rest is compared exactly,
-  case included. The list shows the refs it matches; **Hide N badges** (or
-  <kbd>Enter</kbd>) adds a rule, and **Show N again** adds an exception for
-  refs it already hides. The eye beside a ref hides or shows just its badge.
-  **Hidden badges** lists the rules, the last matching one deciding; move or
-  remove them there, or tick **Show hidden badges** to see every badge until
-  you close the graph. The toolbar button says how many badges are hidden. The
-  current branch's badge is never hidden.
+- To hide badges, click **Badges** in the toolbar (it says **N hidden** once
+  some are) and type a pattern under **Hide badges matching**: `*` matches any
+  text (slashes too), `?` one character, and the rest is compared exactly,
+  case included, so a plain name hides just that ref. It says how many refs
+  the pattern matches and lists them; **Hide** (or <kbd>Enter</kbd>) adds a
+  rule, and **Show** adds an exception for refs it already hides. The eye
+  beside each listed ref hides or shows just its badge; with nothing typed,
+  the list shows the hidden badges. **Rules** lists the rules, the last
+  matching one deciding; move or remove them there, or tick **Show hidden
+  badges** to see every badge until you close the graph. The current branch's
+  badge is never hidden.
 - Right-click a branch, remote branch or tag badge for **Hide Badge**, or for
-  **Hide Similar Badges...**, which opens the search with a pattern for refs
-  named like it (`IR-1.2.3` gives `IR*`) to check before hiding.
+  **Hide Similar Badges...**, which opens the badge popover with a pattern for
+  refs named like it (`release/2.1` gives `release/*`) to check before hiding.
+- In the graph, rest the pointer on a commit's node for a card with all of its
+  refs: a detached HEAD, branches (the current one marked), remote branches
+  and tags, including those collapsed into `+N`. Badges a rule hides are
+  dimmed and name the rule, for example _hidden by `*-rc*`_.
+- The commit checked out has a tinted row with a bar at its left edge.
+  **HEAD** in the toolbar (or **Strata: Go to HEAD** in the Command Palette)
+  selects it, loading more history if needed. When the
+  branch filter leaves it out, Strata says so and offers to add the current
+  branch to the filter (or to show all branches with HEAD detached).
 - With stashes in the repository, the toolbar counts them and how many are not
   in the graph (their commit is not loaded yet, filtered out, or on no branch).
   Click it for **Show Stashes**: pick one to select it and open its details,

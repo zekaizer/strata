@@ -29,6 +29,7 @@ import {
   readUntrackedIn,
   readUpstream,
   readWorktreeBranches,
+  refsReach,
 } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
 
@@ -206,6 +207,14 @@ describe('confirmation facts', () => {
     assert.equal(await countCommits('git', dir, ['main', '--not', 'origin/main']), 2);
     assert.equal(await isAncestor('git', dir, 'origin/main', 'main'), true);
     assert.equal(await isAncestor('git', dir, 'topic', 'main'), false);
+  });
+
+  it('tells whether any of a set of refs reaches a commit', async () => {
+    const main = run(dir, 'rev-parse', 'main');
+    assert.equal(await refsReach('git', dir, ['refs/heads/topic'], main), false);
+    assert.equal(await refsReach('git', dir, ['refs/heads/topic', 'refs/heads/main'], main), true);
+    assert.equal(await refsReach('git', dir, ['refs/remotes/origin/main'], run(dir, 'rev-parse', 'main~3')), true);
+    assert.equal(await refsReach('git', dir, ['refs/heads/gone'], main), false);
   });
 
   it('reads boolean git config, undefined when unset', async () => {

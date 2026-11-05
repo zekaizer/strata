@@ -72,8 +72,8 @@ body {
  * One language for every button: toolbar hover background, toolbar active background while
  * pressed, a dashed outline in high contrast themes, a solid focus ring for the keyboard.
  */
-body:not(.hover-off) .tool-button:hover,
-body:not(.hover-off) .icon-button:hover,
+body:not(.hover-off) .tool-button:not(:disabled):hover,
+body:not(.hover-off) .icon-button:not(:disabled):hover,
 body:not(.hover-off) .file-action:hover,
 body:not(.hover-off) .byline-hash:hover,
 body:not(.hover-off) .byline-toggle:hover {
@@ -82,13 +82,18 @@ body:not(.hover-off) .byline-toggle:hover {
   outline-offset: -1px;
 }
 
-body:not(.hover-off) .tool-button:not(.active):active,
-body:not(.hover-off) .icon-button:active,
+body:not(.hover-off) .tool-button:not(.active, :disabled):active,
+body:not(.hover-off) .icon-button:not(:disabled):active,
 body:not(.hover-off) .file-action:active,
 body:not(.hover-off) .byline-hash:active,
 body:not(.hover-off) .byline-toggle:active,
 .tool-button[aria-expanded='true']:not(.active) {
   background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+.tool-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .tool-button:focus-visible {
@@ -255,7 +260,7 @@ body:not(.hover-off) .popover-item:hover {
   color: var(--vscode-descriptionForeground);
 }
 
-.stash-button[hidden] {
+.tool-button[hidden] {
   display: none;
 }
 
@@ -272,49 +277,135 @@ body:not(.hover-off) .popover-item:hover {
 }
 
 .popover-section[hidden],
-.popover-actions[hidden],
-.ref-filter-hidden[hidden] {
+.popover-actions[hidden] {
   display: none;
 }
 
-/* The ref name may ellipsize; the hidden count stays readable. */
-.ref-filter-hidden {
+.badge-top {
+  display: flex;
   flex: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 6px 4px;
+}
+
+.badge-top .popover-search {
+  margin: 0;
+}
+
+.badge-pattern-label {
+  padding: 0 1px;
+  font-weight: 600;
+}
+
+.badge-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.badge-summary {
+  flex: 1;
+  min-width: 0;
   color: var(--vscode-descriptionForeground);
 }
 
-.popover-pattern {
-  padding-bottom: 0;
+.popover-button {
+  flex: none;
+  padding: 1px 10px;
+  border: 1px solid var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  font: inherit;
+  line-height: 18px;
+  cursor: pointer;
 }
 
-.popover-row {
+.popover-button.primary {
+  border-color: var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+body:not(.hover-off) .popover-button:not(:disabled):hover {
+  background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+body:not(.hover-off) .popover-button.primary:not(:disabled):hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.popover-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* A disabled primary button keeps no fill: at half opacity it would still stand out. */
+.popover-button.primary:disabled {
+  border-color: var(--vscode-button-secondaryBorder, var(--vscode-button-border, transparent));
+  background: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+
+.popover-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+/* The matching refs scroll; the pattern, the rules and the checkbox stay in view. */
+.badge-popover .badge-listed {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.badge-refs {
+  min-height: 0;
+}
+
+.badge-ref {
   display: flex;
   align-items: center;
-  margin-right: 6px;
+  gap: 6px;
+  margin: 0 6px;
+  padding: 0 0 0 7px;
 }
 
-.popover-row .popover-item {
+.badge-ref-note {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.92em;
+}
+
+.badge-ref > .popover-item-text {
   flex: 1;
   min-width: 0;
 }
 
-.popover-eye {
-  flex: none;
-  width: 20px;
-  height: 20px;
-}
-
-/* The eye shows on hover and focus, and stays on rows whose badge is hidden. */
-.popover-row:not(.badge-hidden) .popover-eye {
-  opacity: 0;
-}
-body:not(.hover-off) .popover-row:hover .popover-eye,
-.popover-row .popover-eye:focus-visible {
-  opacity: 1;
-}
-
-.popover-row.badge-hidden .popover-item {
+.badge-ref.badge-hidden > .popover-item-text,
+.badge-ref.badge-hidden > .codicon:not(.badge-eye) {
   color: var(--vscode-disabledForeground);
+}
+
+.badge-eye {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.badge-rules-empty {
+  white-space: normal;
+}
+
+.badge-count-narrow {
+  display: none;
 }
 
 .popover-rules {
@@ -354,18 +445,16 @@ body:not(.hover-off) .popover-row:hover .popover-eye,
   cursor: default;
 }
 
-body:not(.hover-off) .popover-rule .icon-button:not(:disabled):hover,
-body:not(.hover-off) .popover-eye:hover {
-  background: var(--vscode-toolbar-hoverBackground);
-}
-
 /* Narrow toolbars keep the icons and drop the labels. */
 @container toolbar (max-width: 420px) {
   .first-parent-button .tool-label,
-  .stash-button .tool-label {
+  .stash-button .tool-label,
+  .badge-filter-button .tool-label,
+  .head-button .tool-label {
     display: none;
   }
-  .stash-count-narrow {
+  .stash-count-narrow,
+  .badge-count-narrow:not(:empty) {
     display: inline;
   }
   /* The commit count goes; a running operation and an error stay. */
@@ -383,7 +472,6 @@ body:not(.hover-off) .popover-eye:hover {
   margin-left: -7px;
 }
 
-.repo-button[hidden],
 .toolbar .repo[hidden] {
   display: none;
 }
@@ -707,6 +795,30 @@ body:not(.hover-off) .row:hover {
   outline-offset: -1px;
 }
 
+/*
+ * The commit checked out: a tint across the row and a bar at its left edge, left of the graph's
+ * first lane. Before .row.selected, whose background wins; the bar stays. Light themes draw no
+ * tint: it would outshine an unfocused list's grey selection. High contrast themes draw no tint
+ * either: an inner border and a bar in their border colors, which the selection's outline still
+ * covers.
+ */
+.row.head {
+  background: color-mix(in srgb, var(--badge-head) 10%, transparent);
+  box-shadow: inset 3px 0 0 var(--badge-head);
+}
+
+/* :where weighs no more than .row.head, so the selection and hover still paint the row. */
+:where(body.vscode-light) .row.head {
+  background: none;
+}
+
+body.vscode-high-contrast .row.head {
+  background: none;
+  box-shadow:
+    inset 3px 0 0 var(--vscode-contrastActiveBorder, var(--badge-head)),
+    inset 0 0 0 1px var(--vscode-contrastBorder, var(--badge-head));
+}
+
 .row.selected {
   background: var(--vscode-list-inactiveSelectionBackground);
   color: var(--vscode-list-inactiveSelectionForeground, inherit);
@@ -728,6 +840,12 @@ body.keyboard-nav .scroller:focus .row.selected,
 body.keyboard-nav .scroller:focus .row.cursor {
   outline: 1px solid
     var(--vscode-list-focusAndSelectionOutline, var(--vscode-list-focusOutline, var(--vscode-focusBorder)));
+  outline-offset: -1px;
+}
+
+/* Focus reached the list with no row to mark (none selected, or it is scrolled away): the list shows it. */
+body.keyboard-nav .scroller:focus:not(:has(.row.selected, .row.cursor)) {
+  outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder));
   outline-offset: -1px;
 }
 
@@ -1729,4 +1847,71 @@ body:not(.hover-off) .file:hover .file-actions,
   font-size: 0.85em;
   line-height: 14px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* The refs of the commit whose graph node the pointer rests on (ref-card.ts). */
+.ref-card {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: min(360px, calc(100vw - 8px));
+  padding: 4px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, transparent));
+  border-radius: 4px;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  pointer-events: none;
+}
+
+.ref-card[hidden] {
+  display: none;
+}
+
+.ref-card-line {
+  --badge-color: var(--badge-branch);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.ref-card-line .codicon {
+  flex: none;
+  color: var(--badge-color);
+}
+
+.ref-card-remote {
+  --badge-color: var(--badge-remote);
+}
+
+.ref-card-tag {
+  --badge-color: var(--badge-tag);
+}
+
+.ref-card-head .ref-card-text {
+  font-weight: 600;
+}
+
+.ref-card-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ref-card-note,
+.ref-card-more {
+  flex: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.92em;
+}
+
+.ref-card-line.hidden-badge .ref-card-text,
+.ref-card-line.hidden-badge .codicon {
+  color: var(--vscode-disabledForeground);
 }

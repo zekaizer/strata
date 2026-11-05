@@ -185,3 +185,53 @@ export function landedRefs(before: RefSnapshot, after: RefSnapshot): string[] {
   const detached = after.headBranch === undefined && after.head !== before.head ? ['HEAD'] : [];
   return [...new Set([...moved, ...switched, ...detached])];
 }
+
+/**
+ * Whether a commit's `badges`, as rowBadges laid them out, leave any of its `refs` out of sight:
+ * collapsed into "+N" or a branch's "+k" remote names, or given no badge (hidden by a rule).
+ */
+export function leavesOut(badges: readonly Badge[], refs: readonly Ref[]): boolean {
+  const collapsed = (b: Badge) => b.look === 'more' || b.remotes.some((r) => r.context.webviewSection === 'refs');
+  if (badges.some(collapsed)) return true;
+  const shown = new Set(badges.flatMap((b) => b.refs));
+  return refs.some((r) => !shown.has(r.name));
+}
+
+/** One line of a commit's ref card. */
+export interface CardRef {
+  look: Exclude<Badge['look'], 'more'>;
+  text: string;
+  /** "detached", "current branch" or "upstream". */
+  note: string | undefined;
+  /** Pattern of the rule hiding its badge. */
+  hiddenBy: string | undefined;
+}
+
+/**
+ * Every ref of one commit for its ref card: a detached HEAD, then `refs` (in badgeOrder) one by
+ * one, those whose badges are collapsed into "+N" or hidden by a rule included.
+ */
+export function cardRefs(
+  hash: string,
+  refs: readonly Ref[],
+  snapshot: RefSnapshot,
+  hidden: { get(name: string): { pattern: string } | undefined },
+): CardRef[] {
+  const upstream = headUpstream(snapshot);
+  const head: CardRef[] =
+    hash === snapshot.head && snapshot.headBranch === undefined
+      ? [{ look: 'head', text: 'HEAD', note: 'detached', hiddenBy: undefined }]
+      : [];
+  return [
+    ...head,
+    ...refs.map((r): CardRef => {
+      const current = r.kind === 'branch' && r.short === snapshot.headBranch;
+      return {
+        look: current ? 'head' : r.kind,
+        text: r.short,
+        note: current ? 'current branch' : r.name === upstream ? 'upstream' : undefined,
+        hiddenBy: hidden.get(r.name)?.pattern,
+      };
+    }),
+  ];
+}

@@ -1,5 +1,5 @@
 import type { Banner, BannerAction } from './banner.ts';
-import { el } from './format.ts';
+import { codicon, el } from './format.ts';
 
 /**
  * Makes the buttons of `bar` one tab stop (the one focused last, at first the first) that the
@@ -70,8 +70,7 @@ export class BannerView {
     this.element.classList.toggle('warning', banner.warning);
     this.element.dataset['state'] = banner.state;
     this.element.setAttribute('aria-label', banner.label);
-    const icon = el('span', `codicon codicon-${banner.warning ? 'warning' : 'info'} banner-icon`);
-    icon.setAttribute('aria-hidden', 'true');
+    const icon = codicon(banner.warning ? 'warning' : 'info', 'banner-icon');
     const lead = el('span', 'banner-lead');
     for (const part of banner.parts) {
       if (typeof part === 'string') {

@@ -2,7 +2,15 @@ import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { hiddenRefs } from '../../src/core/badge-rules.ts';
 import type { Ref, RefSnapshot } from '../../src/core/refs.ts';
-import { fitBadges, landedRefs, refsLabel, rowBadges, shownRefs } from '../../src/webview/badges.ts';
+import {
+  cardRefs,
+  fitBadges,
+  landedRefs,
+  leavesOut,
+  refsLabel,
+  rowBadges,
+  shownRefs,
+} from '../../src/webview/badges.ts';
 
 const h = (c: string) => c.repeat(40);
 const at = h('c');
@@ -296,5 +304,88 @@ describe('shownRefs', () => {
   it('drops a commit whose refs are all hidden', () => {
     const shown = shownRefs(new Map([[at, [ref('refs/tags/IR-1')]]]), new Set(['refs/tags/IR-1']));
     assert.equal(shown.has(at), false);
+  });
+});
+
+describe('leavesOut', () => {
+  const merged = [
+    ref('refs/heads/main', 'refs/remotes/origin/main'),
+    ref('refs/remotes/origin/main'),
+    ref('refs/tags/v1'),
+  ];
+
+  it('is false when every ref has a badge in sight, merged remote names included', () => {
+    assert.equal(leavesOut(badgesOf(merged), merged), false);
+  });
+
+  it('is true when badges collapse into "+N"', () => {
+    assert.equal(
+      leavesOut(
+        badgesOf(merged, 'main', () => 1),
+        merged,
+      ),
+      true,
+    );
+  });
+
+  it('is true when a branch shows "+k" for remote names', () => {
+    const refs = [
+      ref('refs/heads/topic'),
+      ref('refs/remotes/origin/topic'),
+      ref('refs/remotes/upstream/topic'),
+      ref('refs/remotes/fork/topic'),
+    ];
+    assert.equal(leavesOut(badgesOf(refs), refs), true);
+  });
+
+  it('is true when a rule hides a ref', () => {
+    const tag = ref('refs/tags/v1-rc1');
+    assert.equal(leavesOut(badgesOf(merged), [...merged, tag]), true);
+  });
+
+  it('counts a detached HEAD as in sight unless it collapses', () => {
+    const refs = [ref('refs/tags/v1')];
+    assert.equal(leavesOut(detached(refs), refs), false);
+    assert.equal(
+      leavesOut(
+        rowBadges(at, refs, snapshot(refs, undefined), () => 1),
+        refs,
+      ),
+      true,
+    );
+  });
+});
+
+describe('cardRefs', () => {
+  const lines = (refs: Ref[], headBranch: string | undefined, hidden = new Map<string, { pattern: string }>()) =>
+    cardRefs(at, refs, snapshot(refs, headBranch), hidden).map((r) =>
+      [r.look, r.text, r.note ?? '-', r.hiddenBy ?? '-'].join(' '),
+    );
+
+  it('lists every ref on its own, merged remote names and the current branch marked', () => {
+    const refs = [
+      ref('refs/heads/main', 'refs/remotes/origin/main'),
+      ref('refs/remotes/origin/main'),
+      ref('refs/heads/topic'),
+      ref('refs/tags/v1'),
+    ];
+    assert.deepEqual(lines(refs, 'main'), [
+      'head main current branch -',
+      'remote origin/main upstream -',
+      'branch topic - -',
+      'tag v1 - -',
+    ]);
+  });
+
+  it('starts with a detached HEAD', () => {
+    assert.deepEqual(lines([ref('refs/tags/v1')], undefined), ['head HEAD detached -', 'tag v1 - -']);
+  });
+
+  it('says which rule hides a badge', () => {
+    const refs = [ref('refs/heads/topic'), ref('refs/tags/v1-rc1')];
+    assert.deepEqual(lines(refs, 'main', new Map([['refs/tags/v1-rc1', { pattern: '*-rc*' }]])), [
+      'branch topic - -',
+      'tag v1-rc1 - *-rc*',
+    ]);
   });
 });

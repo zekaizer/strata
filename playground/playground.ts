@@ -3,7 +3,7 @@
 // Query: ?theme=dark|light|high-contrast|high-contrast-light&repo=<scenario>&select=<row>&showStashes=0
 //   &menu=<selector>: right-click that element, shown as while VS Code's menu is open
 //   &busy=<label>: a Strata operation running
-//   &badgeRules=IR*,!IR*release*: the repository's badge rules (! keeps); &search=<text> typed into the open filter
+//   &badgeRules=*-rc*,!v2*-rc*: the repository's badge rules (! keeps); &search=<text> typed into the open popover
 //   &land=<branch>: an operation moved that branch (to where it is); &reduceMotion=1 as VS Code's setting
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
 import { autostashMessage } from '../src/core/autostash.ts';
@@ -41,7 +41,7 @@ const params = new URLSearchParams(location.search);
 const theme = (params.get('theme') ?? 'dark') as ThemeKind;
 const repo = params.get('repo') ?? 'branchy';
 const selectRow = params.get('select');
-/** `open=filter` opens the ref filter popover for screenshots. */
+/** `open=filter` opens the ref filter popover, `open=badges` the badge filter, for screenshots. */
 const openPopover = params.get('open');
 const menuAt = params.get('menu');
 const busy = params.get('busy');
@@ -162,11 +162,15 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       const commits = visible.slice(offset, offset + m.count);
       offset += commits.length;
       toWebview({ type: 'commits', generation, commits, done: offset >= visible.length });
-      if (openPopover === 'filter' && offset === commits.length) {
+      const popover = { filter: '.ref-filter-button', badges: '.badge-filter-button' }[openPopover ?? ''];
+      if (popover !== undefined && offset === commits.length) {
         setTimeout(() => {
-          toWebview({ type: 'simulate', action: { kind: 'click', selector: '.ref-filter-button' } });
+          toWebview({ type: 'simulate', action: { kind: 'click', selector: popover } });
           if (search !== null)
-            toWebview({ type: 'simulate', action: { kind: 'type', selector: '.popover-search', text: search } });
+            toWebview({
+              type: 'simulate',
+              action: { kind: 'type', selector: '.popover:not([hidden]) input', text: search },
+            });
         }, 50);
       }
       if (openPopover === 'repos' && offset === commits.length) {
@@ -224,6 +228,14 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       }
       break;
     }
+    case 'reachesHead':
+      toWebview({
+        type: 'headReached',
+        generation,
+        hash: m.hash,
+        reached: data !== undefined && select(data, { ...options, firstParent: false }).some((c) => c.hash === m.hash),
+      });
+      break;
     case 'setBadgeRules':
       badgeRules = m.rules;
       toWebview({ type: 'badgeRules', rules: badgeRules });
