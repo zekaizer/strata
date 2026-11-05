@@ -798,13 +798,19 @@ body:not(.hover-off) .row:hover {
 
 /*
  * The commit checked out: a tint across the row and a bar at its left edge, left of the graph's
- * first lane. Before .row.selected, whose background wins; the bar stays. High contrast themes
- * draw no tint: an inner border and a bar in their border colors, which the selection's outline
- * still covers.
+ * first lane. Before .row.selected, whose background wins; the bar stays. Light themes draw no
+ * tint: it would outshine an unfocused list's grey selection. High contrast themes draw no tint
+ * either: an inner border and a bar in their border colors, which the selection's outline still
+ * covers.
  */
 .row.head {
   background: color-mix(in srgb, var(--badge-head) 10%, transparent);
   box-shadow: inset 3px 0 0 var(--badge-head);
+}
+
+/* :where weighs no more than .row.head, so the selection and hover still paint the row. */
+:where(body.vscode-light) .row.head {
+  background: none;
 }
 
 body.vscode-high-contrast .row.head {
