@@ -149,16 +149,9 @@ export class GraphPanel implements vscode.Disposable {
     return this.requireController().copyFilePatch(hash, base, file);
   }
 
-  /**
-   * The graph a command changes the repository through, pinned to the repository and git shown
-   * now: the graph may switch repositories while the command runs, its steps never do.
-   */
+  /** The graph flows change the repository through. */
   flowHost(): FlowHost {
-    const c = this.requireController();
-    const { git, cwd } = c;
-    return new Proxy(c, {
-      get: (t, p, r) => (p === 'git' ? git : p === 'cwd' ? cwd : (Reflect.get(t, p, r) as unknown)),
-    });
+    return this.requireController();
   }
 
   private requireController(): GraphController {

@@ -179,9 +179,12 @@ describe('remote operations', () => {
   });
 
   it('pulls from and pushes to an upstream configured with a URL, keeping that configuration', async () => {
-    git('push', '--quiet', bare, 'main:refs/heads/strata-url');
+    // A repository no remote names, like a fork a pull request comes from.
+    const fork = join(root, 'fork.git');
+    execFileSync('git', ['init', '--quiet', '--bare', fork]);
+    git('push', '--quiet', fork, 'main:refs/heads/strata-url');
     git('switch', '--quiet', '--create', 'strata-url', 'main~1');
-    git('config', 'branch.strata-url.remote', bare);
+    git('config', 'branch.strata-url.remote', fork);
     git('config', 'branch.strata-url.merge', 'refs/heads/strata-url');
     await reload(panel());
     await run('strata.pull');
@@ -193,9 +196,12 @@ describe('remote operations', () => {
     await run('strata.push');
     assert.deepEqual(errors(), []);
     assert.equal(ui.of('pick').length, 0, 'pushed where configured, not published');
-    assert.equal(remote('rev-parse', 'strata-url'), git('rev-parse', 'strata-url'));
-    assert.equal(git('config', 'branch.strata-url.remote'), bare);
-    assert.equal(tracked('origin/strata-url'), '');
+    assert.equal(
+      execFileSync('git', ['rev-parse', 'strata-url'], { cwd: fork, encoding: 'utf8' }).trim(),
+      git('rev-parse', 'strata-url'),
+    );
+    assert.equal(git('config', 'branch.strata-url.remote'), fork);
+    assert.equal(tracked('origin/strata-url'), '', 'not published to origin');
   });
 
   it('says when the upstream is gone from the remote, and unsets it on request', async () => {
@@ -336,6 +342,11 @@ describe('remote operations', () => {
   });
 
   const tracked = (name: string) => git('for-each-ref', `refs/remotes/${name}`);
+  /** Branch `name` at main in the repository at `url`, without touching remote-tracking refs here. */
+  const onRemote = (url: string, name: string) => {
+    git('push', '--quiet', url, `main:refs/strata-test/${name}`);
+    execFileSync('git', ['update-ref', `refs/heads/${name}`, `refs/strata-test/${name}`], { cwd: url });
+  };
   /** A branch on the remote at a commit of its own, fetched: `name` as in strata-x. */
   const remoteOnly = async (name: string) => {
     const only = git('commit-tree', 'main^{tree}', '-p', 'main', '-m', 'Only there');
@@ -459,9 +470,10 @@ describe('remote operations', () => {
     const second = join(root, 'second.git');
     execFileSync('git', ['init', '--quiet', '--bare', second]);
     git('remote', 'add', 'second', second);
-    // By URL: a push to a remote by name would update its remote-tracking ref itself.
-    git('push', '--quiet', bare, 'main:refs/heads/strata-o');
-    git('push', '--quiet', second, 'main:refs/heads/strata-s');
+    // Written in the remotes themselves: git 2.56 updates the remote-tracking ref of a push that
+    // names the remote by URL (2.53 does not).
+    onRemote(bare, 'strata-o');
+    onRemote(second, 'strata-s');
     await reload(panel());
     await run('strata.fetchRemote', remoteMenu('origin/strata-pub'));
     assert.notEqual(tracked('origin/strata-o'), '');
