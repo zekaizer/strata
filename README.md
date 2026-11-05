@@ -146,7 +146,8 @@ operation is stopped, Continue, Abort and Skip.
   and asks first if that branch moved since.
 - When an operation stops at conflicts, Strata says where and in which files;
   **Resolve...** opens them, and other changes wait until you continue or
-  abort. If bringing back stashed changes conflicts, the stash is kept and
+  abort. A Continue that stops again (at the next conflict, or at an `edit`
+  or `break` of a rebase you started with `git rebase -i`) says so. If bringing back stashed changes conflicts, the stash is kept and
   Strata says where it is. Abort and Skip name the changes you made while the
   operation was stopped that git would throw away (any change during a rebase;
   staged ones during a merge, cherry pick or revert), and keep them in a stash

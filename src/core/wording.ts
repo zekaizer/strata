@@ -624,6 +624,12 @@ export function stoppedMessage(
   ].join(' ');
 }
 
+/** What Continue of a rebase stopped at `step` does next. */
+export function rebaseContinues(step: { current: number; total: number } | undefined): string {
+  const remaining = step ? step.total - step.current : 0;
+  return remaining > 0 ? `replays the remaining ${plural(remaining, 'commit')}` : 'completes the rebase';
+}
+
 export const abortButton = (kind: OperationKind): string => `Abort ${OP_TITLE[kind]}...`;
 
 /** Continue while files still have conflicts. */

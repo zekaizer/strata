@@ -18,6 +18,24 @@ const branchWith = (branch: string, from: string, file: string, content: string)
   git('add', file);
   git('commit', '--quiet', '-m', `${file}: ${content.trim()}`);
 };
+/** A commit on HEAD writing `file`; resolves its id. */
+const commitFile = (file: string, content: string) => {
+  write(file, content);
+  git('add', file);
+  git('commit', '--quiet', '-m', `${file}: ${content.trim()}`);
+  return git('rev-parse', 'HEAD');
+};
+/** Runs `git rebase -i onto` from the command line with `todo` as its todo list. */
+const rebaseInteractive = (onto: string, todo: string[]) => {
+  const dir = mkdtempSync(join(tmpdir(), 'strata-todo-'));
+  const file = join(dir, 'todo');
+  writeFileSync(file, `${todo.join('\n')}\n`);
+  spawnSync('git', ['rebase', '-i', onto], {
+    cwd: workspaceRoot(),
+    env: { ...process.env, GIT_SEQUENCE_EDITOR: `cp '${file}'`, GIT_EDITOR: 'true' },
+  });
+  rmSync(dir, { recursive: true });
+};
 
 describe('history operations', () => {
   const { api, panel, ui } = flowSuite();
@@ -283,6 +301,30 @@ describe('history operations', () => {
     await run('strata.undo');
     assert.equal(git('branch', '--show-current'), 'strata-topic');
     assert.equal(git('rev-parse', 'HEAD'), tip);
+  });
+
+  it('reports a Continue that stops at the next edit as a stop, then finishes with the next Continue', async () => {
+    git('switch', '--quiet', '--create', 'strata-topic', 'main');
+    const [a, b, c] = [commitFile('a.txt', 'a\n'), commitFile('b.txt', 'b\n'), commitFile('c.txt', 'c\n')];
+    rebaseInteractive('main', [`edit ${a}`, `edit ${b}`, `pick ${c}`]);
+    await reload(panel());
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.deepEqual(ui.of('notify').at(-1), {
+      kind: 'notify',
+      level: 'warning',
+      message: 'Rebase stopped at 2 of 3 ("b.txt: b"): Continue replays the remaining 1 commit.',
+      actions: ['Continue', 'Abort Rebase...'],
+    });
+    assert.equal(api().contextValue('strata.operation'), 'rebase');
+
+    ui.clear();
+    await run('strata.operation.continue');
+    assert.equal(ui.of('notify').at(-1)?.message, 'Finished the rebase');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('rev-parse', 'HEAD'), c);
   });
 
   it('undoes a rebase that stopped and then finished with Skip, back to where it started', async () => {

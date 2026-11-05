@@ -22,6 +22,7 @@ import {
   pickConfirmation,
   quote,
   rebaseConfirmation,
+  rebaseContinues,
   RESET_MODES,
   resetConfirmation,
   resetPick,
@@ -204,17 +205,16 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
     held && stashLabel(held.index, held.message),
     reason,
   );
-  const skips = state.kind === 'cherryPick' || state.kind === 'revert';
-  const actions =
-    state.conflictCount > 0
-      ? ['Resolve...', abortButton(state.kind)]
-      : [...(skips ? ['Skip...'] : []), abortButton(state.kind)];
+  const next = state.kind === 'rebase' ? ['Continue'] : state.kind === 'merge' ? [] : ['Skip...'];
+  const actions = [...(state.conflictCount > 0 ? ['Resolve...'] : next), abortButton(state.kind)];
   notify(host, 'warning', message, actions, (a) =>
     a === 'Resolve...'
       ? resolveConflicts(host, state.conflicts)
-      : a === 'Skip...'
-        ? skipCommit(host)
-        : abortOperation(host),
+      : a === 'Continue'
+        ? continueOperation(host)
+        : a === 'Skip...'
+          ? skipCommit(host)
+          : abortOperation(host),
   );
 }
 
@@ -526,18 +526,24 @@ async function settle(
     }),
   );
   if (!r) return;
-  const [after, stash, still] = await Promise.all([
-    readHead(host.git, host.cwd),
-    kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
-    // A rebase's Continue exits 0 when it stops at its next edit.
+  // A rebase's Continue or Skip exits 0 when it stops at its next edit or break.
+  const [still, stash] = await Promise.all([
     started === undefined ? undefined : readOperationState(host.git, host.cwd),
+    kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
   ]);
+  const keptIn = stash && stashLabel(stash.index, stash.message);
+  if (still) {
+    const where = keptIn === undefined ? '' : ` Your uncommitted changes are in ${keptIn}.`;
+    await stopped(host, still, `Continue ${rebaseContinues(still.step)}.${where}`);
+    return;
+  }
+  const after = await readHead(host.git, host.cwd);
   const undo =
-    started === undefined || still !== undefined
+    started === undefined
       ? undefined
       : moveUndo(host, opName(state.kind), { branch: state.branch, hash: started }, after.hash);
   await finishWithRestore(host, r, {
-    message: done(stash && stashLabel(stash.index, stash.message)),
+    message: done(keptIn),
     focus: after.hash,
     ...(undo ? { undo } : {}),
   });

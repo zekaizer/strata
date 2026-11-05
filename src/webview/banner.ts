@@ -1,5 +1,5 @@
 import type { Leftover, OperationKind, OperationState } from '../core/repo-state.ts';
-import { fileList, plural } from '../core/wording.ts';
+import { fileList, plural, rebaseContinues } from '../core/wording.ts';
 import type { CommandId } from '../shared/commands.ts';
 
 /** Which of the banner's sentences shows (design §7.2); "Resolved" and "Stopped" have no conflicts left. */
@@ -155,8 +155,7 @@ function stopped(op: OperationState, leftover: Leftover | undefined, facts: Bann
     case 'rebase': {
       const step = op.step;
       const at = step ? ` at ${step.current} of ${step.total}` : '';
-      const remaining = step ? step.total - step.current : 0;
-      const rest = remaining > 0 ? `replays the remaining ${plural(remaining, 'commit')}` : 'completes the rebase';
+      const rest = rebaseContinues(step);
       if (kind === 'stop') {
         const what: BannerPart[] =
           op.applying === undefined
