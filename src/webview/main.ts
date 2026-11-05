@@ -502,6 +502,7 @@ class App {
       case 'error':
         this.loading = false;
         this.status.textContent = m.message;
+        this.status.title = m.message;
         this.status.classList.add('error');
         this.status.classList.remove('busy');
         this.alerted = m.message;
@@ -995,6 +996,8 @@ class App {
   private updateStatus(): void {
     this.status.classList.remove('error');
     this.status.classList.toggle('busy', this.busyLabel !== undefined);
+    // The toolbar may be too narrow for all of it.
+    this.status.title = this.busyLabel ?? '';
     if (this.busyLabel !== undefined) {
       this.status.textContent = `${this.busyLabel}…`;
       return;

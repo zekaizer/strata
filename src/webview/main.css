@@ -284,7 +284,8 @@ body:not(.hover-off) .popover-item:hover {
   .stash-count-narrow {
     display: inline;
   }
-  .toolbar .status {
+  /* The commit count goes; a running operation and an error stay. */
+  .toolbar .status:not(.busy, .error) {
     display: none;
   }
 }
@@ -294,6 +295,10 @@ body:not(.hover-off) .popover-item:hover {
 }
 
 .toolbar .status {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--vscode-descriptionForeground);
 }
 
