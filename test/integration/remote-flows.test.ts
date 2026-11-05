@@ -118,6 +118,26 @@ describe('remote operations', () => {
     assert.notEqual(remote('rev-parse', 'strata-pub'), fix, 'the upstream of another name is untouched');
   });
 
+  it('pulls from and pushes to an upstream configured with a URL, keeping that configuration', async () => {
+    git('push', '--quiet', bare, 'main:refs/heads/strata-url');
+    git('switch', '--quiet', '--create', 'strata-url', 'main~1');
+    git('config', 'branch.strata-url.remote', bare);
+    git('config', 'branch.strata-url.merge', 'refs/heads/strata-url');
+    await reload(panel());
+    await run('strata.pull');
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'strata-url'), git('rev-parse', 'main'));
+
+    commit('url.txt', 'url\n', 'By URL');
+    await reload(panel());
+    await run('strata.push');
+    assert.deepEqual(errors(), []);
+    assert.equal(ui.of('pick').length, 0, 'pushed where configured, not published');
+    assert.equal(remote('rev-parse', 'strata-url'), git('rev-parse', 'strata-url'));
+    assert.equal(git('config', 'branch.strata-url.remote'), bare);
+    assert.equal(tracked('origin/strata-url'), '');
+  });
+
   it('pulls from an upstream that is a local branch', async () => {
     git('branch', 'strata-feat', 'main');
     git('branch', '--track', 'strata-loc', 'strata-feat');

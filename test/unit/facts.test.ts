@@ -174,6 +174,34 @@ describe('confirmation facts', () => {
     assert.equal(await readUpstream('git', dir, 'topic'), undefined);
   });
 
+  it('reads an upstream configured without a remote-tracking branch: a URL remote, or one the refspec leaves out', async () => {
+    run(dir, 'branch', 'by-url', 'main');
+    run(dir, 'config', 'branch.by-url.remote', origin);
+    run(dir, 'config', 'branch.by-url.merge', 'refs/heads/feature');
+    run(dir, 'branch', 'unfetched', 'main');
+    // As a single-branch clone fetches.
+    run(dir, 'remote', 'add', '-t', 'main', 'narrow', origin);
+    run(dir, 'config', 'branch.unfetched.remote', 'narrow');
+    run(dir, 'config', 'branch.unfetched.merge', 'refs/heads/feature');
+    try {
+      assert.deepEqual(await readUpstream('git', dir, 'by-url'), {
+        ref: undefined,
+        name: `feature of ${origin}`,
+        remote: origin,
+        remoteBranch: 'feature',
+      });
+      assert.deepEqual(await readUpstream('git', dir, 'unfetched'), {
+        ref: undefined,
+        name: 'narrow/feature',
+        remote: 'narrow',
+        remoteBranch: 'feature',
+      });
+    } finally {
+      run(dir, 'branch', '--quiet', '-D', 'by-url', 'unfetched');
+      run(dir, 'remote', 'remove', 'narrow');
+    }
+  });
+
   it('counts commits and tells ancestors', async () => {
     assert.equal(await countCommits('git', dir, ['main', '--not', 'origin/main']), 2);
     assert.equal(await isAncestor('git', dir, 'origin/main', 'main'), true);

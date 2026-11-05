@@ -239,23 +239,41 @@ export async function readStash(
 export const readStashTop = (git: string, cwd: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['rev-parse', '--quiet', '--verify', 'refs/stash']));
 
-/**
- * A branch's upstream: its ref (refs/remotes/origin/main, or refs/heads/main for a local branch,
- * whose remote is "."), its short name as git prints it, its remote and the branch on that remote.
- */
-export async function readUpstream(
-  git: string,
-  cwd: string,
-  branch: string,
-): Promise<{ ref: string; name: string; remote: string; remoteBranch: string } | undefined> {
-  const out = await runGit(git, cwd, [
-    'for-each-ref',
-    '--format=%(upstream)%00%(upstream:short)%00%(upstream:remotename)%00%(upstream:remoteref)',
-    `refs/heads/${branch}`,
+/** A branch's upstream, as `branch.<b>.remote` and `branch.<b>.merge` configure it. */
+export interface Upstream {
+  /** A remote's name, a URL, or "." for a local branch. */
+  remote: string;
+  /** The branch on that remote. */
+  remoteBranch: string;
+  /**
+   * Where fetching it lands (refs/remotes/origin/main, or refs/heads/main for remote "."); undefined
+   * when nothing does: a URL remote, or a remote whose fetch refspec leaves the branch out.
+   */
+  ref: string | undefined;
+  /** As sentences name it. */
+  name: string;
+}
+
+export async function readUpstream(git: string, cwd: string, branch: string): Promise<Upstream | undefined> {
+  const [out, config] = await Promise.all([
+    runGit(git, cwd, ['for-each-ref', '--format=%(upstream)%00%(upstream:short)', `refs/heads/${branch}`]),
+    readBranchConfig(git, cwd, branch),
   ]);
-  const [ref = '', name = '', remote = '', remoteRef = ''] = out.trim().split('\0');
-  if (ref === '' || remote === '' || !remoteRef.startsWith('refs/heads/')) return undefined;
-  return { ref, name, remote, remoteBranch: remoteRef.slice('refs/heads/'.length) };
+  // As git reads them: the last remote, the first merge.
+  const remote = config.findLast(([k]) => k === `branch.${branch}.remote`)?.[1];
+  const merge = config.find(([k]) => k === `branch.${branch}.merge`)?.[1];
+  if (!remote || !merge?.startsWith('refs/heads/')) return undefined;
+  const remoteBranch = merge.slice('refs/heads/'.length);
+  const [ref = '', short = ''] = out.trim().split('\0');
+  if (ref !== '') return { ref, name: short, remote, remoteBranch };
+  // git takes a name no remote is configured under for a URL.
+  const named = (await readConfig(git, cwd, `remote.${remote}.url`)) !== undefined;
+  return {
+    ref: undefined,
+    name: named ? `${remote}/${remoteBranch}` : `${remoteBranch} of ${remote}`,
+    remote,
+    remoteBranch,
+  };
 }
 
 /** The branch HEAD is on (undefined when detached) and its commit. */
