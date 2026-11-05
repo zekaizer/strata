@@ -280,11 +280,11 @@ describe('ref operations', () => {
     assert.equal(git('branch', '--show-current'), 'feature/search');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash@{0} (\"On main: Strata autostash: switch to 'feature/search'\").",
+      "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash \"Strata: changes set aside for the switch to 'feature/search'\".",
     );
     assert.equal(
       git('stash', 'list', '--format=%gs'),
-      "On main: Strata autostash: switch to 'feature/search'\nOn main: my own",
+      "On main: Strata: changes set aside for the switch to 'feature/search'\nOn main: my own",
       'the stash Strata made is kept, the older one untouched',
     );
   });
@@ -398,7 +398,7 @@ describe('ref operations', () => {
       // git 2.55 keeps the changes in a stash when merging them conflicts.
       assert.equal(
         warning,
-        "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash@{0} (\"autostash while switching to 'feature/search'\").",
+        "Switched to 'feature/search'; restoring your stashed changes conflicted in main.txt. They stay in stash \"autostash while switching to 'feature/search'\".",
       );
       assert.equal(git('stash', 'list', '--format=%gs'), "autostash while switching to 'feature/search'");
     } else {

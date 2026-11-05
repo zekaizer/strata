@@ -89,18 +89,23 @@ export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: Aut
 /** Operations Strata stashes around itself (git has no autostash for them). */
 export type ExplicitStashOp = 'switch' | 'cherryPick' | 'revert';
 
-const AUTOSTASH = 'Strata autostash: ';
+/** What Strata's stash messages start with, new first: older versions wrote "Strata autostash: ". */
+const PREFIXES = ['Strata: changes set aside for the ', 'Strata autostash: '];
 const EXPLICIT: Record<ExplicitStashOp, string> = { switch: 'switch', cherryPick: 'cherry pick', revert: 'revert' };
 
 /** The message of a stash Strata pushes before `op` and pops after it; `target` names what it was for. */
 export const autostashMessage = (op: ExplicitStashOp, target: string): string =>
-  `${AUTOSTASH}${EXPLICIT[op]} ${target}`;
+  `${PREFIXES[0]!}${EXPLICIT[op]} ${target}`;
 
-/** The operation a stash was Strata's autostash for, from its reflog subject ("On main: Strata autostash: …"). */
+/** Whether stash message `message` (without git's "On main: ") is one autostashMessage made. */
+export const isStrataAutostash = (message: string): boolean => PREFIXES.some((p) => message.startsWith(p));
+
+/** The operation a stash was Strata's autostash for, from its reflog subject ("On main: Strata: …"). */
 export function strataAutostashOf(reflogSubject: string): ExplicitStashOp | undefined {
   const message = /^On [^:]+: (.*)$/s.exec(reflogSubject)?.[1];
-  if (!message?.startsWith(AUTOSTASH)) return undefined;
-  const rest = message.slice(AUTOSTASH.length);
+  const prefix = message === undefined ? undefined : PREFIXES.find((p) => message.startsWith(p));
+  if (message === undefined || prefix === undefined) return undefined;
+  const rest = message.slice(prefix.length);
   return (Object.keys(EXPLICIT) as ExplicitStashOp[]).find((op) => rest.startsWith(`${EXPLICIT[op]} `));
 }
 

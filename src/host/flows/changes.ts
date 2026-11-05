@@ -209,7 +209,7 @@ export async function finishRestoring(
   // Marks are kept only for stashes the graph lists: it reads the stash git kept first.
   await host.refresh(done.focus);
   host.setUndo(done.undo);
-  const label = stashLabel(r.stash.index, r.stash.message);
+  const label = stashLabel(r.stash.message);
   if (r.kind === 'conflicted') {
     await host.leftovers.markRestoreConflicted(r.stash.hash);
     const paths = await readUnmerged(host.git, host.cwd);

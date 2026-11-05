@@ -34,7 +34,7 @@ import { absent, newName } from './refs.ts';
 async function current(host: FlowHost, hash: string) {
   const s = await readStash(host.git, host.cwd, hash);
   if (!s) throw new Outdated(staleTarget(`stash ${hash.slice(0, 7)}`));
-  return { ...s, label: stashLabel(s.index, s.message) };
+  return { ...s, label: stashLabel(s.message) };
 }
 
 const hasUntracked = async (host: FlowHost) =>
@@ -78,7 +78,7 @@ export async function stashPush(host: FlowHost, includeUntracked: boolean): Prom
   }
   const s = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
   if (!s) return;
-  await finish(host, { message: STASH_DONE.stashed(wt.paths.length, stashLabel(s.index, s.message)), focus: s.hash });
+  await finish(host, { message: STASH_DONE.stashed(wt.paths.length, stashLabel(s.message)), focus: s.hash });
 }
 
 /** Apply (`pop` false) or Pop, judged by what came back rather than by git's exit code. */

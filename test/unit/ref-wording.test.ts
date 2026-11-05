@@ -122,8 +122,8 @@ describe('wording of ref operations', () => {
     assert.equal(checkedOutElsewhere('topic', '/r/wt'), "'topic' is checked out in another worktree (/r/wt).");
     assert.equal(checkedOutElsewhere('topic', undefined), "'topic' is checked out in another worktree.");
     assert.equal(
-      popConflicted("Switched to 'topic'", ['a.txt'], stashLabel(0, 'On main: autostash')),
-      'Switched to \'topic\'; restoring your stashed changes conflicted in a.txt. They stay in stash@{0} ("On main: autostash").',
+      popConflicted("Switched to 'topic'", ['a.txt'], stashLabel('autostash')),
+      "Switched to 'topic'; restoring your stashed changes conflicted in a.txt. They stay in the stash git made.",
     );
     assert.equal(
       migrateConflicted("Switched to 'topic'", ['a.txt', 'b.txt']),
@@ -135,13 +135,24 @@ describe('wording of ref operations', () => {
 describe("Strata's autostash entries", () => {
   it('are recognised by their message, whatever branch they were made on', () => {
     const message = autostashMessage('cherryPick', "a1b2c3d onto 'main'");
-    assert.equal(message, "Strata autostash: cherry pick a1b2c3d onto 'main'");
+    assert.equal(message, "Strata: changes set aside for the cherry pick a1b2c3d onto 'main'");
     assert.equal(strataAutostashOf(`On main: ${message}`), 'cherryPick');
     assert.equal(strataAutostashOf(`On feature/x: ${autostashMessage('switch', "to 'b'")}`), 'switch');
     assert.equal(strataAutostashOf(`On main: ${autostashMessage('revert', 'a1b2c3d')}`), 'revert');
     assert.equal(strataAutostashOf('autostash'), undefined, "git's own autostash");
     assert.equal(strataAutostashOf('On main: my work'), undefined);
     assert.equal(strataAutostashOf('WIP on main: abc1234 Strata autostash: cherry pick x'), undefined);
+  });
+
+  it('are still recognised by the prefix older versions wrote', () => {
+    assert.equal(strataAutostashOf("On main: Strata autostash: cherry pick a1b2c3d onto 'main'"), 'cherryPick');
+    assert.equal(strataAutostashOf("On main: Strata autostash: switch to 'b'"), 'switch');
+  });
+
+  it("name a stash by its message, without git's prefix", () => {
+    assert.equal(stashLabel('On main: half-done lexer'), 'stash "half-done lexer"');
+    assert.equal(stashLabel('WIP on feature/x: 1a2b3c4 Add lexer'), 'stash "Add lexer"');
+    assert.equal(stashLabel('autostash'), 'the stash git made');
   });
 });
 

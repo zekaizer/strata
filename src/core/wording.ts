@@ -253,7 +253,7 @@ export function signInConfirmation(
     message: kind === 'auth' ? `Strata couldn't sign in to ${name}.` : `Strata couldn't connect to ${name}.`,
     detail:
       kind === 'auth'
-        ? `git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there${then}`
+        ? `git needs you to sign in, which Strata can't show. Run the same command in a terminal to sign in there${then}`
         : `Connect to the host once from a terminal to accept its key${then}`,
     buttons: [
       { id: 'terminal', label: 'Run in Terminal' },
@@ -425,8 +425,15 @@ export const stashConflicted = (label: string, paths: readonly string[], pop: bo
 export const stashPartial = (label: string, pop: boolean): string =>
   `Applied part of ${label}: git could not restore some files${pop ? '; the stash was kept' : ''}.`;
 
-/** A stash as messages name it: its number goes stale with the next push, its message does not. */
-export const stashLabel = (index: number, message: string): string => `stash@{${index}} ("${message}")`;
+/**
+ * A stash as messages name it, by its message without git's "On main:" or "WIP on main: 1a2b3c4"
+ * prefix (`message`: the reflog subject): its number goes stale with the next push.
+ */
+export function stashLabel(message: string): string {
+  const wip = /^WIP on [^:]+: (?:[0-9a-f]{7,} )?(.*)$/s.exec(message);
+  const text = wip ? wip[1]! : message.replace(/^On [^:]+: /s, '');
+  return text === 'autostash' ? 'the stash git made' : `stash "${text}"`;
+}
 
 export const migrateConflicted = (done: string, paths: readonly string[]): string =>
   `${done}; your changes conflicted in ${fileList(paths)}.`;
@@ -871,8 +878,8 @@ export function dropStashConfirmation(
       ? `Made on ${on}.`
       : `${plural(files.changed, 'changed file')}${files.untracked > 0 ? ` and ${files.untracked} untracked` : ''} on ${on}.`;
   return {
-    message: `Drop ${stashLabel(index, message)}?`,
-    detail: [holds, 'Undo brings it back; after that only git fsck can find it.'].join('\n'),
+    message: `Drop ${stashLabel(message)}?`,
+    detail: [holds, "Undo brings it back; after that Strata can't."].join('\n'),
     buttons: [{ id: 'drop', label: 'Drop Stash' }],
   };
 }
@@ -893,7 +900,7 @@ export function stashBranchPartial(name: string, label: string, files: readonly 
 }
 
 export const stashBranchInput = (index: number, message: string, short: string): { title: string; prompt: string } => ({
-  title: `Create Branch from ${stashLabel(index, message)}`,
+  title: `Create Branch from ${stashLabel(message)}`,
   prompt: `Creates the branch at ${short}, switches to it, restores the stash there and removes it from the stash list.`,
 });
 

@@ -245,7 +245,7 @@ describe('history operations', () => {
     assert.equal(git('show', 'stash@{0}:NOTES.md'), 'mine');
     assert.equal(git('show', 'stash@{0}^2:added.txt'), 'added', 'staged, as it was');
     await announced(
-      /^Aborted the rebase\. Your uncommitted changes are in stash@\{0\} \("On strata-topic: Strata: before abort of the rebase"\)$/,
+      /^Aborted the rebase\. Your uncommitted changes are in stash "Strata: before abort of the rebase"$/,
     );
   });
 
@@ -515,7 +515,7 @@ describe('history operations', () => {
     assert.equal(git('show', `${stash}:NOTES.md`), 'mine');
     assert.equal(
       ui.of('notify').find((n) => n.level === 'warning')?.message,
-      'Finished the merge; git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They stay in stash@{0} ("autostash").',
+      'Finished the merge; git could not restore your stashed changes: they would overwrite your changes to NOTES.md. They stay in the stash git made.',
     );
     await reload(panel());
     assert.equal(await leftover(), undefined, 'not a resolved restore conflict whose stash could be dropped');
@@ -564,7 +564,7 @@ describe('history operations', () => {
     assert.equal(warning?.level, 'warning');
     assert.match(
       warning.message,
-      /^Rebased 'strata-topic' onto 'main' \(1 commit\); restoring your stashed changes conflicted in main\.txt\. They stay in stash@\{0\} \("autostash"\)\.$/,
+      /^Rebased 'strata-topic' onto 'main' \(1 commit\); restoring your stashed changes conflicted in main\.txt\. They stay in the stash git made\.$/,
     );
     assert.deepEqual(warning.actions, ['Resolve...', 'Show Stash', 'Undo']);
     const stash = git('rev-parse', 'refs/stash');
@@ -637,7 +637,7 @@ describe('history operations', () => {
     await run('strata.cherryPick', commitMenu(picked));
     assert.match(
       ui.of('notify').at(-1)?.message ?? '',
-      /Your uncommitted changes are in stash@\{0\} \("On main: Strata autostash: cherry pick [0-9a-f]+ onto 'main'"\)\.$/,
+      /Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick of [0-9a-f]+ onto 'main'"\.$/,
     );
     await waitFor('the banner names the held stash', async () =>
       (await panel().probe()).banner?.text.includes('Your uncommitted changes are in stash@{0} (Strata autostash)'),
@@ -718,7 +718,10 @@ describe('history operations', () => {
     const stop = ui.of('notify').at(-1);
     assert.equal(stop?.level, 'warning');
     assert.match(stop.message, /^Cherry pick stopped \("Unmerged experiment"\): The previous cherry-pick is now empty/);
-    assert.match(stop.message, /Your uncommitted changes are in stash@\{0\}/);
+    assert.match(
+      stop.message,
+      /Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick of [0-9a-f]+ onto 'main'"\.$/,
+    );
     assert.deepEqual(stop.actions, ['Skip...', 'Abort Cherry Pick...']);
     assert.equal(read('NOTES.md'), notes, 'not popped into the stopped cherry pick');
 
@@ -1193,7 +1196,7 @@ describe('history operations', () => {
     assert.equal(read('u.txt'), 'untracked\n');
     assert.equal(
       ui.of('notify').at(-1)?.message,
-      `Reset 'main' to ${short}. Your changes to the files the reset changes are in stash@{0} ("On main: Strata: before reset of main to ${short}")`,
+      `Reset 'main' to ${short}. Your changes to the files the reset changes are in stash "Strata: before reset of main to ${short}"`,
     );
   });
 

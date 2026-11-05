@@ -44,10 +44,10 @@ describe('wording of stash operations', () => {
       { changed: 3, untracked: 1 },
       { short: 'abc1234', subject: 'Base' },
     );
-    assert.equal(d.message, 'Drop stash@{2} ("On main: wip")?');
+    assert.equal(d.message, 'Drop stash "wip"?');
     assert.equal(
       d.detail,
-      '3 changed files and 1 untracked on abc1234 "Base".\nUndo brings it back; after that only git fsck can find it.',
+      '3 changed files and 1 untracked on abc1234 "Base".\nUndo brings it back; after that Strata can\'t.',
     );
     assert.deepEqual(d.buttons, [{ id: 'drop', label: 'Drop Stash' }]);
     assert.match(dropStashConfirmation(0, 'x', undefined, { short: 'a', subject: 'b' }).detail, /^Made on a "b"\./);
@@ -55,7 +55,7 @@ describe('wording of stash operations', () => {
 
   it('says that creating a branch from a stash removes it from the list', () => {
     assert.deepEqual(stashBranchInput(1, 'On main: wip', 'abc1234'), {
-      title: 'Create Branch from stash@{1} ("On main: wip")',
+      title: 'Create Branch from stash "wip"',
       prompt:
         'Creates the branch at abc1234, switches to it, restores the stash there and removes it from the stash list.',
     });

@@ -180,7 +180,7 @@ describe('wording of undo and failures', () => {
     assert.equal(auth.message, "Strata couldn't sign in to 'origin'.");
     assert.equal(
       auth.detail,
-      'git needs credentials, and no credential helper or SSH agent provided them. Run the same command in a terminal to sign in there.',
+      "git needs you to sign in, which Strata can't show. Run the same command in a terminal to sign in there.",
     );
     assert.deepEqual(
       auth.buttons.map((b) => b.label),

@@ -109,15 +109,18 @@ const confirmations: [string, w.Confirmation | undefined][] = [
   ['force push', w.forcePushConfirmation('main', 'origin', 'origin/main', 2, 'Fix CI')],
   ['delete remote branch', w.deleteRemoteBranchConfirmation('origin', 'x', 'origin/x', c, [c], ['x', 'y'], true)],
   ['delete remote tag', w.deleteRemoteTagConfirmation('v1', 'origin', c)],
+  ['sign in', w.signInConfirmation('origin', 'auth', 'Pull')],
+  ['host key', w.signInConfirmation('origin', 'hostKey', 'Pull')],
 ];
 
 /** Settings the user can't get an option without changing (the only config keys a detail may name). */
 const NEEDED_SETTINGS = /pull\.ff/;
 const CONFIG_KEY = /\b(?:merge|pull|branch|rebase|strata|git)\.[a-zA-Z]+\b/;
+const JARGON = /\b(?:sequencer|ORIG_HEAD|autostash|credential helper|fsck)\b/i;
 
 describe('confirmation details', () => {
   for (const [name, q] of confirmations)
-    it(`${name}: at most 3 short lines, no button labels, no config keys`, () => {
+    it(`${name}: at most 3 short lines, no button labels, no config keys or jargon`, () => {
       assert.ok(q, 'asks');
       const lines = q.detail === '' ? [] : q.detail.split('\n');
       assert.ok(lines.length <= 3, `${lines.length} lines: ${q.detail}`);
@@ -128,5 +131,6 @@ describe('confirmation details', () => {
       }
       const keys = q.detail.replace(NEEDED_SETTINGS, '');
       assert.doesNotMatch(keys, CONFIG_KEY);
+      assert.doesNotMatch(`${q.message}\n${q.detail}`, JARGON);
     });
 });

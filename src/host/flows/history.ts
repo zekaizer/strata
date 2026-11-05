@@ -215,7 +215,7 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
     subject,
     state.conflicts,
     state.conflictCount,
-    held && stashLabel(held.index, held.message),
+    held && stashLabel(held.message),
     reason,
   );
   const skip = state.kind === 'merge' ? [] : ['Skip...'];
@@ -439,7 +439,12 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
       IN_THE_WAY_OF[kind](c.short),
       async (exec) => {
         if (choice === 'stash')
-          return stashAround(host, exec, autostashMessage(kind, `${c.short} onto ${h.name}`), () => exec(op));
+          return stashAround(
+            host,
+            exec,
+            autostashMessage(kind, `of ${c.short} ${kind === 'revert' ? 'on' : 'onto'} ${h.name}`),
+            () => exec(op),
+          );
         await exec(op);
         return { kind: 'none' } satisfies Restored;
       },
@@ -532,7 +537,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
 async function safetyStash(host: FlowHost): Promise<string | undefined> {
   const top = await readStashTop(host.git, host.cwd);
   const s = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
-  return s && stashLabel(s.index, s.message);
+  return s && stashLabel(s.message);
 }
 
 async function inProgress(host: FlowHost): Promise<OperationState | undefined> {
@@ -579,7 +584,7 @@ async function settle(
     started === undefined ? undefined : readOperationState(host.git, host.cwd),
     kept === undefined ? undefined : readStash(host.git, host.cwd, kept),
   ]);
-  const keptIn = stash && stashLabel(stash.index, stash.message);
+  const keptIn = stash && stashLabel(stash.message);
   if (still) {
     const where = keptIn === undefined ? '' : ` Your uncommitted changes are in ${keptIn}.`;
     await stopped(host, still, `Continue ${rebaseContinues(still.step)}.${where}`);
