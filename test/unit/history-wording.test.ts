@@ -19,13 +19,21 @@ import {
   skipConfirmation,
   stillConflicted,
   stoppedMessage,
+  type MergeFacts,
 } from '../../src/core/wording.ts';
 
 const labels = (b: { label: string }[]) => b.map((x) => x.label);
 const c = { short: 'abc1234', subject: 'Add lexer' };
 
 describe('wording of history operations', () => {
-  const merge = { src: "'topic'", into: "'main'", short: 'abc1234', count: 2, canFastForward: true };
+  const merge: MergeFacts = {
+    op: 'merge',
+    src: "'topic'",
+    into: "'main'",
+    short: 'abc1234',
+    count: 2,
+    canFastForward: true,
+  };
 
   it('offers fast-forward or a merge commit, merge commit first when merge.ff is false', () => {
     const ff = mergeConfirmation(merge, undefined);
@@ -54,6 +62,18 @@ describe('wording of history operations', () => {
       modes: [{ mode: 'ff', choices: ['stash'] }],
     });
     assert.equal(pull.detail, "'main' fast-forwards to abc1234 (2 commits). Uncommitted changes: 1 file.");
+  });
+
+  it('calls the merge or rebase of a pull Pull', () => {
+    const dirty = { section: '', modes: [{ mode: 'ff' as const, choices: ['stash' as const] }] };
+    const pull = mergeConfirmation({ ...merge, op: 'pullMerge', src: "'origin/main'" }, undefined, dirty);
+    assert.equal(pull.message, "Pull 'origin/main' into 'main'?");
+    assert.deepEqual(labels(pull.buttons), ['Stash & Pull']);
+    const facts = { branch: "'main'", onto: "'origin/main'", ontoShort: 'e4f5a6b', replay: 1, merges: 0 };
+    const r = rebaseConfirmation({ ...facts, op: 'pullRebase', onUpstream: 0, upstream: undefined }, '', [
+      { id: 'stash', label: 'Stash & Pull' },
+    ]);
+    assert.equal(r.message, "Pull 'origin/main' into 'main'?");
   });
 
   it('offers fast-forward or a merge commit with uncommitted changes too, each with what to do about them', () => {
@@ -86,6 +106,7 @@ describe('wording of history operations', () => {
   it('says what a rebase replays and drops', () => {
     const r = rebaseConfirmation(
       {
+        op: 'rebase',
         branch: "'feature'",
         onto: "'main'",
         ontoShort: 'e4f5a6b',
@@ -196,7 +217,7 @@ describe('wording of history operations', () => {
 
   it('names the untracked files a hard reset would overwrite instead of claiming they stay', () => {
     const dirty = { files: 1, staged: 0, overlap: false, fastForward: false };
-    const choices = resolveStashChoices('resetHard', dirty, 'gitConfig', undefined);
+    const choices = resolveStashChoices('resetHard', dirty, 'gitConfig');
     assert.equal(
       dirtySection(dirty, choices, 0, ['parser.ts']),
       'Uncommitted changes: 1 file. A hard reset discards uncommitted changes; stashing first keeps them in the stash list. 1 untracked file at paths the reset restores would be overwritten (parser.ts); stashing takes them too.',

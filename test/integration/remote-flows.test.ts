@@ -234,7 +234,7 @@ describe('remote operations', () => {
     writeFileSync(join(workspaceRoot(), 'mine.txt'), 'mine, uncommitted\n');
     await reload(panel());
 
-    ui.press('Stash & Rebase');
+    ui.press('Stash & Pull');
     await run('strata.pull');
     assert.match(ui.first('confirm').detail, /^Replays 1 commit of 'strata-pub' on top of 'origin\/strata-pub'/);
     assert.deepEqual(errors(), []);

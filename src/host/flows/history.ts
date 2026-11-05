@@ -261,43 +261,50 @@ async function finishWithRestore(
   await reportRestore(host, done.message, restored);
 }
 
-export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDirty' = 'always'): Promise<void> {
+/** `via`: a pull merges as git pull would, asking only about uncommitted changes. */
+export async function merge(host: FlowHost, src: Source, via: 'menu' | 'pull' = 'menu'): Promise<void> {
   const [h, from] = await Promise.all([head(host), readCommit(host.git, host.cwd, src.rev)]);
   if (await isAncestor(host.git, host.cwd, from.hash, h.hash)) {
     void host.ui.notify('info', alreadyContains(h.name, src.name));
     return;
   }
   if (!(await deepEnough(host, 'merge', h.hash, from.hash, [h.name, src.name]))) return;
-  const [canFastForward, count, c, mergeFf] = await Promise.all([
+  const op = via === 'pull' ? ('pullMerge' as const) : ('merge' as const);
+  const [canFastForward, count, base, mergeFf] = await Promise.all([
     isAncestor(host.git, host.cwd, h.hash, from.hash),
     countCommits(host.git, host.cwd, [`${h.hash}..${from.hash}`]),
-    changes(host, 'merge'),
+    readMergeBase(host.git, host.cwd, h.hash, from.hash),
     readConfigBool(host.git, host.cwd, 'merge.ff'),
   ]);
-  const facts = { src: src.name, into: h.name, short: from.short, count, canFastForward };
+  const c = await changes(host, op, [base ?? h.hash, from.hash]);
+  const facts = { op, src: src.name, into: h.name, short: from.short, count, canFastForward };
   const preferred: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
   let mode = preferred;
   let autostash = false;
-  if (c.choices.choices.length > 0) {
-    // A pull merges as git pull would, without asking how.
-    const modes: MergeMode[] =
-      ask === 'always' && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
-    const options = modes.map((m) => ({
-      mode: m,
-      choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
-    }));
-    const explain = [...new Set(options.map((o) => o.choices.explain))].join(' ');
+  const modes: MergeMode[] =
+    via === 'menu' && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
+  const options = modes.map((m) => ({
+    mode: m,
+    choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
+  }));
+  const asked = options.filter((o) => o.choices.choices.length > 0);
+  if (asked.length > 0) {
+    const explain = [...new Set(asked.map((o) => o.choices.explain))].join(' ');
     const answer = await host.ui.confirm(
       mergeConfirmation(facts, mergeFf, {
-        section: dirtySection(c.dirty, { ...options[0]!.choices, explain }, c.worktree.submodules),
-        modes: options.map((o) => ({ mode: o.mode, choices: o.choices.choices })),
+        section: dirtySection(c.dirty, { ...asked[0]!.choices, explain }, c.worktree.submodules),
+        // A mode git runs over these changes keeps them in place.
+        modes: options.map((o) => ({
+          mode: o.mode,
+          choices: o.choices.choices.length > 0 ? o.choices.choices : (['keep'] as const),
+        })),
       }),
     );
     if (answer === undefined) return;
     const picked = mergeAnswer(answer);
     mode = picked.mode;
     autostash = picked.choice === 'stash';
-  } else if (ask === 'always') {
+  } else if (via === 'menu') {
     const answer = await host.ui.confirm(mergeConfirmation(facts, mergeFf));
     if (answer === undefined) return;
     mode = answer;
@@ -327,11 +334,14 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
   });
 }
 
-/** `from`: replay only the commits after it (a pull's fork point), not every commit `onto` lacks. */
+/**
+ * `via`: a pull rebases as git pull would, asking only about uncommitted changes. `from`: replay
+ * only the commits after it (a pull's fork point), not every commit `onto` lacks.
+ */
 export async function rebase(
   host: FlowHost,
   onto: Source,
-  ask: 'always' | 'whenDirty' = 'always',
+  via: 'menu' | 'pull' = 'menu',
   from?: string,
 ): Promise<void> {
   const [h, target] = await Promise.all([head(host), readCommit(host.git, host.cwd, onto.rev)]);
@@ -340,17 +350,18 @@ export async function rebase(
     return;
   }
   if (!(await deepEnough(host, 'rebase', h.hash, target.hash, [h.name, onto.name]))) return;
+  const op = via === 'pull' ? ('pullRebase' as const) : ('rebase' as const);
   const upstream = h.branch === undefined ? undefined : await readUpstream(host.git, host.cwd, h.branch);
   const [counts, c] = await Promise.all([
     readRebaseCounts(host.git, host.cwd, target.hash, upstream?.ref, from),
-    changes(host, 'rebase'),
+    changes(host, op),
   ]);
   const dirty = c.choices.choices.length > 0;
-  if (dirty || ask === 'always') {
+  if (dirty || via === 'menu') {
     const buttons: { id: StashChoice | 'rebase'; label: string }[] = dirty
-      ? stashButtons('rebase', c.choices.choices)
+      ? stashButtons(op, c.choices.choices)
       : [{ id: 'rebase', label: 'Rebase' }];
-    const facts = { branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
+    const facts = { op, branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
     if ((await host.ui.confirm(rebaseConfirmation(facts, c.section, buttons))) === undefined) return;
   }
   const r = await runStoppable(host, () =>
@@ -390,7 +401,11 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
     if (mainline === undefined) return;
     merge = { parents, mainline };
   }
-  const ch = await changes(host, kind);
+  const base = (await runGit(host.git, host.cwd, ['rev-list', '--parents', '--max-count=1', c.hash, '--']))
+    .trim()
+    .split(' ')[merge?.mainline ?? 1];
+  // A root commit has no parent to diff against: git refuses on its own if the changes overlap it.
+  const ch = await changes(host, kind, base === undefined ? undefined : [base, c.hash]);
   const detached = h.branch === undefined;
   let choice: StashChoice | 'go' | undefined = 'go';
   if (ch.choices.choices.length > 0 || detached || (merge !== undefined && kind === 'revert')) {
@@ -442,7 +457,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
   });
   if (mode === undefined) return;
   const op = mode === 'hard' ? 'resetHard' : mode === 'keep' ? 'resetKeep' : undefined;
-  const c = op === undefined ? undefined : await changes(host, op, t.hash);
+  const c = op === undefined ? undefined : await changes(host, op, ['HEAD', t.hash]);
   const overwritten = mode === 'hard' ? await readUntrackedAt(host.git, host.cwd, t.hash) : [];
   const facts = await readResetFacts(host.git, host.cwd, t.hash, c?.dirty.files ?? 0);
   // A hard reset over untracked files at paths it restores needs the same answer as over changes.

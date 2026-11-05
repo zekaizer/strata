@@ -16,14 +16,7 @@ import {
   popRefused,
   stashLabel,
 } from '../../core/wording.ts';
-import {
-  readConfigBool,
-  readOverlap,
-  readStash,
-  readStashTop,
-  readUnmerged,
-  readUntrackedIn,
-} from '../../git/facts.ts';
+import { readOverlap, readStash, readStashTop, readUnmerged, readUntrackedIn } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
 import { readOperationState, readWorktree } from '../../git/state.ts';
@@ -33,7 +26,7 @@ import type { Exec } from '../runner.ts';
 /** Uncommitted changes as an operation meets them, read right before it confirms. */
 export interface Changes {
   worktree: Worktree;
-  /** Dirty paths the operation's target changes too (switch, reset --keep). */
+  /** Dirty paths the operation changes too. */
   overlap: string[];
   dirty: DirtyFacts;
   choices: StashChoices;
@@ -43,21 +36,15 @@ export interface Changes {
   resolve: (dirty: DirtyFacts) => StashChoices;
 }
 
-/** `target`: the commit a switch or a reset --keep moves to, for the overlap. */
-export async function changes(host: FlowHost, op: StashOp, target?: string): Promise<Changes> {
-  const [worktree, mergeAutoStash] = await Promise.all([
-    readWorktree(host.git, host.cwd),
-    readConfigBool(host.git, host.cwd, 'merge.autoStash'),
-  ]);
-  const overlap =
-    target !== undefined && (op === 'switch' || op === 'resetKeep')
-      ? await readOverlap(host.git, host.cwd, target, worktree.paths)
-      : [];
+/** `touches`: the two commits whose difference is what the operation changes in the work tree. */
+export async function changes(host: FlowHost, op: StashOp, touches?: readonly [string, string]): Promise<Changes> {
+  const worktree = await readWorktree(host.git, host.cwd);
+  const overlap = touches === undefined ? [] : await readOverlap(host.git, host.cwd, touches, worktree.paths);
   // Changes inside submodules cannot be stashed and never block: they alone ask nothing.
   const files = Math.max(0, worktree.paths.length - worktree.submodules);
   const dirty = { files, staged: worktree.staged, overlap: overlap.length > 0, fastForward: false };
   const setting = host.settings().autoStash;
-  const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting, mergeAutoStash);
+  const resolve = (d: DirtyFacts) => resolveStashChoices(op, d, setting);
   const choices = resolve(dirty);
   const section = choices.choices.length > 0 ? dirtySection(dirty, choices, worktree.submodules) : '';
   return { worktree, overlap, dirty, choices, section, resolve };

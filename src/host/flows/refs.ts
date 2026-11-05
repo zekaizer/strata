@@ -83,7 +83,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
     const head = await readCommit(host.git, host.cwd, 'HEAD');
     if (!(await host.ui.confirm(leaveBehindConfirmation(left, head)))) return;
   }
-  const c = await changes(host, 'switch', s.commit);
+  const c = await changes(host, 'switch', ['HEAD', s.commit]);
   let choice: StashChoice | undefined;
   if (c.choices.choices.length > 0) {
     choice = await host.ui.confirm(

@@ -13,74 +13,59 @@ const clean: DirtyFacts = { files: 0, staged: 0, overlap: false, fastForward: fa
 const dirty: DirtyFacts = { files: 2, staged: 0, overlap: false, fastForward: false };
 const staged: DirtyFacts = { files: 2, staged: 1, overlap: false, fastForward: false };
 const overlapping: DirtyFacts = { files: 2, staged: 0, overlap: true, fastForward: false };
-const off = false;
-const on = true;
 
 describe('resolveStashChoices', () => {
   it('asks nothing when the worktree is clean', () => {
     for (const op of ['rebase', 'merge', 'cherryPick', 'switch', 'resetHard'] as const)
-      assert.deepEqual(resolveStashChoices(op, clean, 'always', on).choices, [], op);
+      assert.deepEqual(resolveStashChoices(op, clean, 'always').choices, [], op);
   });
 
   it('offers only stashing where git refuses to run with changes', () => {
-    const rebase = resolveStashChoices('rebase', dirty, 'never', off);
+    const rebase = resolveStashChoices('rebase', dirty, 'never');
     assert.deepEqual(rebase.choices, ['stash']);
     assert.equal(rebase.mechanism, 'git');
-    assert.match(rebase.explain, /git can't rebase with uncommitted changes/);
-    assert.deepEqual(resolveStashChoices('pullRebase', dirty, 'never', off).choices, ['stash']);
-    assert.deepEqual(resolveStashChoices('cherryPick', staged, 'never', off).choices, ['stash']);
+    assert.deepEqual(resolveStashChoices('pullRebase', dirty, 'never').choices, ['stash']);
+    assert.deepEqual(resolveStashChoices('cherryPick', staged, 'never').choices, ['stash']);
+    assert.deepEqual(resolveStashChoices('revert', staged, 'always').choices, ['stash']);
   });
 
-  it('follows git config for merge unless the setting overrides it, and says so', () => {
-    const fromGit = resolveStashChoices('merge', dirty, 'gitConfig', on);
-    assert.deepEqual(fromGit.choices, ['stash', 'keep']);
-    assert.match(fromGit.explain, /merge\.autoStash is on/);
-    const keep = resolveStashChoices('merge', dirty, 'gitConfig', off);
-    assert.deepEqual(keep.choices, ['keep', 'stash']);
-    assert.match(keep.explain, /merge\.autoStash is off/);
-    const unset = resolveStashChoices('merge', dirty, 'gitConfig', undefined);
-    assert.deepEqual(unset.choices, ['stash', 'keep'], 'git warns about a merge over changes when it is unset');
-    assert.equal(unset.explain, 'merge.autoStash is not set.');
-    const never = resolveStashChoices('merge', dirty, 'never', on);
-    assert.deepEqual(never.choices, ['keep', 'stash']);
-    assert.match(never.explain, /strata\.autoStash is "never"/);
-    assert.deepEqual(resolveStashChoices('pullMerge', dirty, 'always', off).choices, ['stash', 'keep']);
+  it('lets git carry changes over a merge or pull unless they overlap what it changes', () => {
+    for (const op of ['merge', 'pullMerge'] as const)
+      for (const setting of ['gitConfig', 'always', 'never'] as const) {
+        assert.deepEqual(resolveStashChoices(op, dirty, setting).choices, [], `${op} ${setting}`);
+        assert.deepEqual(resolveStashChoices(op, { ...staged, fastForward: true }, setting).choices, [], op);
+        const over = resolveStashChoices(op, overlapping, setting);
+        assert.deepEqual(over.choices, ['stash'], 'git refuses to merge over changes to the files it changes');
+        assert.equal(over.mechanism, 'git');
+      }
   });
 
-  it('offers only stashing for a merge with staged changes, unless it fast-forwards', () => {
-    const commit = resolveStashChoices('merge', staged, 'never', off);
-    assert.deepEqual(commit.choices, ['stash']);
-    assert.equal(commit.explain, "git can't create a merge commit with staged changes.");
-    assert.equal(commit.mechanism, 'git');
-    assert.deepEqual(resolveStashChoices('pullMerge', staged, 'never', off).choices, ['stash']);
-    const ff = { ...staged, fastForward: true };
-    assert.deepEqual(resolveStashChoices('merge', ff, 'never', off).choices, ['keep', 'stash']);
-    assert.deepEqual(resolveStashChoices('merge', { ...dirty, fastForward: false }, 'never', off).choices, [
-      'keep',
-      'stash',
-    ]);
+  it('offers only stashing for a merge commit over staged changes', () => {
+    assert.deepEqual(resolveStashChoices('merge', staged, 'never').choices, ['stash']);
+    assert.deepEqual(resolveStashChoices('pullMerge', staged, 'never').choices, ['stash']);
   });
 
-  it('stashes explicitly where git has no --autostash', () => {
-    assert.equal(resolveStashChoices('merge', dirty, 'always', off).mechanism, 'git');
-    const pick = resolveStashChoices('cherryPick', dirty, 'gitConfig', on);
-    assert.deepEqual(pick.choices, ['keep', 'stash']);
-    assert.equal(pick.mechanism, 'explicit');
-    assert.deepEqual(resolveStashChoices('revert', dirty, 'always', off).choices, ['stash', 'keep']);
+  it('lets git carry unstaged changes over a cherry pick or revert unless they overlap the commit', () => {
+    for (const op of ['cherryPick', 'revert'] as const) {
+      assert.deepEqual(resolveStashChoices(op, dirty, 'always').choices, [], op);
+      const over = resolveStashChoices(op, overlapping, 'never');
+      assert.deepEqual(over.choices, ['stash'], op);
+      assert.equal(over.mechanism, 'explicit');
+    }
   });
 
   it('lets git carry changes on a switch unless they overlap the target', () => {
-    assert.deepEqual(resolveStashChoices('switch', dirty, 'always', on).choices, []);
-    assert.deepEqual(resolveStashChoices('switch', overlapping, 'gitConfig', off).choices, ['stash', 'migrate']);
-    assert.deepEqual(resolveStashChoices('switch', overlapping, 'never', off).choices, ['migrate', 'stash']);
+    assert.deepEqual(resolveStashChoices('switch', dirty, 'always').choices, []);
+    assert.deepEqual(resolveStashChoices('switch', overlapping, 'gitConfig').choices, ['stash', 'migrate']);
+    assert.deepEqual(resolveStashChoices('switch', overlapping, 'never').choices, ['migrate', 'stash']);
   });
 
   it('keeps a safety stash before a hard reset, never popped, offered first whatever the setting', () => {
-    const hard = resolveStashChoices('resetHard', dirty, 'never', off);
+    const hard = resolveStashChoices('resetHard', dirty, 'never');
     assert.deepEqual(hard.choices, ['stash', 'discard']);
     assert.equal(hard.mechanism, 'safety');
-    assert.deepEqual(resolveStashChoices('resetKeep', dirty, 'never', off).choices, []);
-    assert.deepEqual(resolveStashChoices('resetKeep', overlapping, 'never', off).choices, ['stash']);
+    assert.deepEqual(resolveStashChoices('resetKeep', dirty, 'never').choices, []);
+    assert.deepEqual(resolveStashChoices('resetKeep', overlapping, 'never').choices, ['stash']);
   });
 });
 

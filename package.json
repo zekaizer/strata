@@ -856,7 +856,7 @@
             "never"
           ],
           "default": "gitConfig",
-          "description": "Which choice comes first when an operation finds uncommitted changes. gitConfig follows merge.autoStash for merge and pull with merge (stashing first while it is not set) and keeps changes in place first for cherry pick and revert. always puts stashing first, never keeping the changes in place. A rebase always needs the stash, and a switch asks only when the changes overlap what it changes."
+          "description": "Which choice comes first when a switch would overwrite uncommitted changes: gitConfig and always put stashing them first, never letting git merge them into the target. Operations ask about uncommitted changes only when git can't run over them: a rebase, a merge, pull, cherry pick or revert over changes to the files it changes, and a merge commit, cherry pick or revert over staged changes."
         },
         "strata.keepCommitGraphUpdated": {
           "type": "boolean",

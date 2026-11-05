@@ -472,6 +472,8 @@ const OP_SENTENCE: Record<OperationKind, string> = {
 };
 
 export interface MergeFacts {
+  /** A merge from the menu, or the merge of a pull, which titles and buttons call Pull. */
+  op: 'merge' | 'pullMerge';
   /** The source and the branch merged into, as sentences name them (quoted, or a short id / HEAD). */
   src: string;
   into: string;
@@ -510,7 +512,7 @@ export function mergeConfirmation(
   const fastForwards = `${f.into} fast-forwards to ${f.short} (${commits}).`;
   const records = `Creates a merge commit on ${f.into} with ${commits} from ${f.src}.`;
   const either = `${f.into} can fast-forward to ${f.short} (${commits}), or record a merge commit.`;
-  const message = `Merge ${f.src} into ${f.into}?`;
+  const message = `${VERB[f.op]} ${f.src} into ${f.into}?`;
   if (dirty) {
     const [only] = dirty.modes;
     const both = dirty.modes.length > 1;
@@ -520,7 +522,7 @@ export function mergeConfirmation(
         ' ',
       ),
       buttons: dirty.modes.flatMap(({ mode, choices }) =>
-        stashButtons('merge', choices, both ? MODE_VERB[mode] : undefined).map((b) => ({
+        stashButtons(f.op, choices, both ? MODE_VERB[mode] : undefined).map((b) => ({
           id: `${mode}+${b.id}` as const,
           label: b.label,
         })),
@@ -536,6 +538,8 @@ export function mergeConfirmation(
 }
 
 export interface RebaseFacts {
+  /** A rebase from the menu, or the rebase of a pull, which the title calls Pull. */
+  op: 'rebase' | 'pullRebase';
   branch: string;
   onto: string;
   ontoShort: string;
@@ -554,7 +558,7 @@ export function rebaseConfirmation<B extends string>(
 ): Confirmation<B> {
   const them = f.onUpstream === 1 ? '1 of them is' : `${f.onUpstream} of them are`;
   return {
-    message: `Rebase ${f.branch} onto ${f.onto}?`,
+    message: f.op === 'pullRebase' ? `Pull ${f.onto} into ${f.branch}?` : `Rebase ${f.branch} onto ${f.onto}?`,
     detail: [
       `Replays ${plural(f.replay, 'commit')} of ${f.branch} on top of ${f.onto} (${f.ontoShort}).`,
       ...(f.merges > 0

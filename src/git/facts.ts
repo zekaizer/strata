@@ -122,16 +122,16 @@ export async function readTrackingBranches(git: string, cwd: string, tracking: s
   });
 }
 
-/** Of `dirty` paths, those that also differ between HEAD and `target` (a switch would have to touch them). */
+/** Of `dirty` paths, those that also differ between `from` and `to` (the operation would have to touch them). */
 export async function readOverlap(
   git: string,
   cwd: string,
-  target: string,
+  [from, to]: readonly [string, string],
   dirty: readonly string[],
 ): Promise<string[]> {
   if (dirty.length === 0) return [];
   const changed = new Set(
-    (await runGit(git, cwd, ['diff', '--name-only', '-z', '--no-renames', 'HEAD', target, '--'])).split('\0'),
+    (await runGit(git, cwd, ['diff', '--name-only', '-z', '--no-renames', from, to, '--'])).split('\0'),
   );
   return dirty.filter((p) => changed.has(p));
 }

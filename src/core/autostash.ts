@@ -29,7 +29,7 @@ export interface DirtyFacts {
   /** Tracked files with uncommitted changes. */
   files: number;
   staged: number;
-  /** Some of them differ between HEAD and the target too (switch, reset --keep). */
+  /** Some of them are files the operation changes too. */
   overlap: boolean;
   /** The merge fast-forwards (merge, pull with merge). */
   fastForward: boolean;
@@ -48,13 +48,7 @@ const NAMES: Record<StashOp, string> = {
 };
 
 /** Decides which answers an operation offers for uncommitted changes, and in which order. */
-export function resolveStashChoices(
-  op: StashOp,
-  dirty: DirtyFacts,
-  setting: AutostashSetting,
-  /** merge.autoStash in git config; undefined when unset. */
-  mergeAutoStash: boolean | undefined,
-): StashChoices {
+export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: AutostashSetting): StashChoices {
   const none: StashChoices = { choices: [], explain: '', mechanism: 'git' };
   if (dirty.files === 0) return none;
   const name = NAMES[op];
@@ -87,18 +81,18 @@ export function resolveStashChoices(
       return { choices: ['stash'], explain: `git can't ${name} with uncommitted changes.`, mechanism: 'git' };
     case 'cherryPick':
     case 'revert':
+      // git refuses over any staged change, or over changes to the files the commit changes,
+      // before touching anything; other changes stay in place, also through a conflict and its abort.
       if (dirty.staged > 0)
         return { choices: ['stash'], explain: `git can't ${name} with staged changes.`, mechanism: 'explicit' };
+      if (!dirty.overlap) return none;
       return {
-        choices: setting === 'always' ? ['stash', 'keep'] : ['keep', 'stash'],
-        explain:
-          setting === 'always'
-            ? 'strata.autoStash is "always".'
-            : `git ${name} has no autostash; changes stay in place.`,
+        choices: ['stash'],
+        explain: `git can't ${name} over changes to the files it changes.`,
         mechanism: 'explicit',
       };
     case 'merge':
-    case 'pullMerge': {
+    case 'pullMerge':
       // git refuses a merge commit over staged changes, even to other files; a fast-forward carries them.
       if (dirty.staged > 0 && !dirty.fastForward)
         return {
@@ -106,27 +100,12 @@ export function resolveStashChoices(
           explain: "git can't create a merge commit with staged changes.",
           mechanism: 'git',
         };
-      // Unset, git merges over changes it would only warn about losing: stashing comes first.
-      const first =
-        setting === 'gitConfig'
-          ? mergeAutoStash === false
-            ? 'keep'
-            : 'stash'
-          : setting === 'always'
-            ? 'stash'
-            : 'keep';
-      const explain =
-        setting !== 'gitConfig'
-          ? `strata.autoStash is "${setting}".`
-          : mergeAutoStash === undefined
-            ? 'merge.autoStash is not set.'
-            : `merge.autoStash is ${mergeAutoStash ? 'on' : 'off'}.`;
+      if (!dirty.overlap) return none;
       return {
-        choices: first === 'stash' ? ['stash', 'keep'] : ['keep', 'stash'],
-        explain,
+        choices: ['stash'],
+        explain: `git can't ${name} over changes to the files it changes.`,
         mechanism: 'git',
       };
-    }
   }
 }
 

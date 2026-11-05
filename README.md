@@ -127,14 +127,15 @@ operation is stopped, Continue, Abort and Skip.
   local branches track it (they stay). It deletes nothing when someone pushed
   to the branch since your last fetch, and asks again with what they pushed.
   Deleting a remote branch can't be undone.
-- **Uncommitted changes** are named in the confirmation, with the choice to
-  stash them around the operation (and bring them back after it) or keep them
-  in place. `strata.autoStash` decides which comes first: `gitConfig` (the
-  default) follows `merge.autoStash` for merge and pull with merge (stashing
-  first while it is not set) and keeps changes in place first for cherry pick
-  and revert; `always` puts stashing first, `never` keeping them in place. A
-  rebase always needs the stash, and so does a merge commit over staged
-  changes. A hard reset keeps your changes in a stash it
+- **Uncommitted changes** stay in place, without a question, when git
+  carries them over the operation: a switch, merge, pull, cherry pick or
+  revert leaves changes to other files alone. When git can't (changes to files
+  the operation changes, any change before a rebase, staged changes before a
+  merge commit, cherry pick or revert), the confirmation names them and offers
+  to stash them around the operation and bring them back after it. A switch
+  also offers to let git merge them into the target; `strata.autoStash` set to
+  `never` puts that
+  first. A hard reset keeps your changes in a stash it
   never pops, unless you discard them. A keep reset over changes to files it
   changes moves just those changes into such a stash and keeps the rest in
   place.

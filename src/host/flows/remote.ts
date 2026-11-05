@@ -118,7 +118,7 @@ export async function pull(host: FlowHost): Promise<void> {
   const src: Source = upstream.ref
     ? await refSource(host, { name: upstream.ref, short: upstream.name })
     : { rev: tracking, arg: tracking, name: quote(upstream.name) };
-  if (ahead === 0) return merge(host, src, 'whenDirty');
+  if (ahead === 0) return merge(host, src, 'pull');
   const [rebaseCfg, ff] = await Promise.all([
     readConfig(host.git, host.cwd, `branch.${branch}.rebase`).then(
       async (v) => v ?? (await readConfig(host.git, host.cwd, 'pull.rebase')),
@@ -128,16 +128,16 @@ export async function pull(host: FlowHost): Promise<void> {
   const rebaseFirst = rebaseCfg === undefined ? undefined : BOOL[rebaseCfg.toLowerCase()];
   const canMerge = ff !== 'only';
   // As git pull --rebase: commits upstream had before a force push are not the branch's own.
-  const rebaseOnto = async () => rebase(host, src, 'whenDirty', await readForkPoint(host.git, host.cwd, tracking));
+  const rebaseOnto = async () => rebase(host, src, 'pull', await readForkPoint(host.git, host.cwd, tracking));
   if (rebaseFirst === true) return rebaseOnto();
-  if (rebaseFirst === false && canMerge) return merge(host, src, 'whenDirty');
+  if (rebaseFirst === false && canMerge) return merge(host, src, 'pull');
   // Unset, "merges" or "interactive": ask, saying what Strata can do.
   const note = !canMerge ? PULL_NOTES.ffOnly : rebaseCfg?.startsWith('m') ? PULL_NOTES.rebaseMerges : undefined;
   const answer = await host.ui.confirm(
     divergedConfirmation(quote(branch), upstream.name, ahead, behind, { rebase: true, merge: canMerge }, note),
   );
   if (answer === 'rebase') await rebaseOnto();
-  else if (answer === 'merge') await merge(host, src, 'whenDirty');
+  else if (answer === 'merge') await merge(host, src, 'pull');
 }
 
 /** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */

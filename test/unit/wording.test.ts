@@ -29,14 +29,14 @@ describe('wording', () => {
   });
 
   it('describes uncommitted changes and what happens to them', () => {
-    const dirty = { files: 3, staged: 1, overlap: false, fastForward: true };
-    const s = dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig', true), 0);
+    const dirty = { files: 3, staged: 1, overlap: true, fastForward: true };
+    const s = dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig'), 0);
     assert.equal(
       s,
-      'Uncommitted changes: 3 files (1 staged). merge.autoStash is on. Untracked files are not stashed; they stay in place.',
+      "Uncommitted changes: 3 files (1 staged). git can't merge over changes to the files it changes. Untracked files are not stashed; they stay in place.",
     );
     assert.match(
-      dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig', true), 2),
+      dirtySection(dirty, resolveStashChoices('merge', dirty, 'gitConfig'), 2),
       /2 submodules are not stashed/,
     );
   });
