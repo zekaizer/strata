@@ -244,6 +244,9 @@ export interface ProbeState {
         buttons: string[];
         links: string[];
         busy: string | undefined;
+        /** Buttons Tab reaches, and the button with focus. */
+        tabStops: string[];
+        focus: string | undefined;
       }
     | undefined;
   /** The toolbar's status text. */

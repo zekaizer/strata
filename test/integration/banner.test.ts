@@ -89,6 +89,22 @@ describe('operation banner', () => {
     await waitFor('commit selected', async () => (await panel.probe()).selected === git('rev-parse', 'strata-topic~1'));
   });
 
+  it('is one tab stop on the primary button, and arrow keys move between its buttons', async () => {
+    const key = async (k: string) => {
+      await panel.simulate({ kind: 'key', key: k, target: 'focused' });
+      return (await panel.probe()).banner;
+    };
+    assert.deepEqual((await panel.probe()).banner?.tabStops, ['Resolve...']);
+    await panel.simulate({ kind: 'focus', selector: '.banner-button.primary' });
+    const b = await key('ArrowRight');
+    assert.equal(b?.focus, 'Continue');
+    assert.deepEqual(b.tabStops, ['Continue']);
+    assert.equal((await key('End'))?.focus, 'Abort...');
+    assert.equal((await key('ArrowRight'))?.focus, 'Resolve...');
+    assert.equal((await key('ArrowLeft'))?.focus, 'Abort...');
+    assert.equal((await key('Home'))?.focus, 'Resolve...');
+  });
+
   it('holds its buttons while an operation runs, saying what runs, and the host ignores them meanwhile', async () => {
     const host = panel.flowHost();
     const ui = new ScriptedUi();

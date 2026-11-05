@@ -2292,6 +2292,10 @@ class App {
             buttons: [...this.banner.element.querySelectorAll('.banner-button')].map((b) => b.textContent),
             links: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-link')].map((b) => b.title),
             busy: this.banner.element.querySelector('.banner-busy')?.textContent ?? undefined,
+            tabStops: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-button')]
+              .filter((b) => b.tabIndex === 0)
+              .map((b) => b.textContent),
+            focus: this.banner.element.querySelector('.banner-button:focus')?.textContent ?? undefined,
           },
       status: this.status.textContent,
       listBusy: this.scroller.getAttribute('aria-busy') === 'true',

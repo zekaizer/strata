@@ -2,6 +2,35 @@ import type { Banner, BannerAction } from './banner.ts';
 import { el } from './format.ts';
 
 /**
+ * Makes the buttons of `bar` one tab stop (the one focused last, at first the first) that the
+ * arrow keys, Home and End move between, wrapping around.
+ */
+function roveFocus(bar: HTMLElement): void {
+  const buttons = () => [...bar.querySelectorAll<HTMLButtonElement>('.banner-button')];
+  bar.addEventListener('focusin', (e) => {
+    for (const b of buttons()) b.tabIndex = b === e.target ? 0 : -1;
+  });
+  bar.addEventListener('keydown', (e) => {
+    const all = buttons();
+    const at = all.indexOf(e.target as HTMLButtonElement);
+    if (at < 0) return;
+    const to =
+      e.key === 'ArrowRight' || e.key === 'ArrowDown'
+        ? (at + 1) % all.length
+        : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+          ? (at - 1 + all.length) % all.length
+          : e.key === 'Home'
+            ? 0
+            : e.key === 'End'
+              ? all.length - 1
+              : undefined;
+    if (to === undefined) return;
+    e.preventDefault();
+    all[to]?.focus();
+  });
+}
+
+/**
  * The banner between the toolbar and the list (design §7.2): a sentence with commit links, what
  * else to know on a line of its own, then buttons that run the graph's commands. It is a region before the list, so Shift+Tab reaches it.
  */
@@ -61,13 +90,17 @@ export class BannerView {
     text.append(lead);
     if (banner.more) text.append(el('span', 'banner-more', banner.more));
     const actions = el('span', 'banner-actions');
+    actions.setAttribute('role', 'toolbar');
+    actions.setAttribute('aria-label', 'Actions');
     banner.actions.forEach((action, i) => {
       const button = el('button', i === 0 ? 'banner-button primary' : 'banner-button', action.label);
+      button.tabIndex = i === 0 ? 0 : -1;
       button.addEventListener('click', () => {
         if (this.busy === undefined) this.run(action);
       });
       actions.append(button);
     });
+    roveFocus(actions);
     this.element.replaceChildren(icon, text, actions);
     this.holdActions();
     if (!focused) return;
