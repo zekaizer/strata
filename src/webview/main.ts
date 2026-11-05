@@ -33,6 +33,7 @@ import { BannerView } from './banner-view.ts';
 import { el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
+import { BadgeFilter } from './badge-filter.ts';
 import { RefFilter } from './ref-filter.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
 import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
@@ -149,6 +150,7 @@ class App {
   private restore: Restore | undefined;
   private options: ViewOptions = DEFAULT_OPTIONS;
   private readonly refFilter: RefFilter;
+  private readonly badgeFilter: BadgeFilter;
   private readonly firstParentButton = el('button', 'tool-button first-parent-button');
   /** "▣ 4 stashes · 1 not shown"; opens Show Stashes. */
   private readonly stashButton = el('button', 'tool-button stash-button');
@@ -281,10 +283,12 @@ class App {
       onShowStashes: (show) => {
         this.setShowStashes(show);
       },
-      onBadgeRules: (rules) => {
+    });
+    this.badgeFilter = new BadgeFilter(this.toolbar, {
+      onRules: (rules) => {
         vscode.postMessage({ type: 'setBadgeRules', rules });
       },
-      onShowHiddenBadges: (show) => {
+      onShowHidden: (show) => {
         this.showHiddenBadges = show;
         this.applyBadgeRules();
         this.relist();
@@ -320,6 +324,7 @@ class App {
       el('span', 'spacer'),
       this.stashButton,
       this.refFilter.button,
+      this.badgeFilter.button,
       this.firstParentButton,
       refresh,
     );
@@ -505,8 +510,8 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
-      case 'findRefs':
-        this.refFilter.openWith(m.search);
+      case 'openBadgeFilter':
+        this.badgeFilter.openWith(m.pattern);
         break;
       case 'reveal':
         this.reveal(m.hash);
@@ -521,6 +526,7 @@ class App {
       case 'hidden':
         document.body.classList.add('hover-off');
         this.refFilter.close();
+        this.badgeFilter.close();
         break;
       case 'noRepository':
         this.generation = -1;
@@ -529,6 +535,7 @@ class App {
         this.status.classList.remove('error');
         this.status.textContent = 'Open a folder that contains a git repository.';
         this.refFilter.close();
+        this.badgeFilter.close();
         this.refs = { head: undefined, headBranch: undefined, refs: [], remotes: [] };
         this.refsByHash = new Map();
         this.badgeRules = [];
@@ -763,7 +770,7 @@ class App {
   private applyBadgeRules(): void {
     this.hiddenBadges = hiddenRefs(this.badgeRules, this.refs);
     this.badgeRefsByHash = shownRefs(this.refsByHash, this.showHiddenBadges ? new Set() : this.hiddenBadges);
-    this.refFilter.updateBadges({
+    this.badgeFilter.update(this.refs, {
       rules: this.badgeRules,
       hidden: this.hiddenBadges,
       showHidden: this.showHiddenBadges,
@@ -2406,7 +2413,7 @@ class App {
       selectionShown: !!this.rowsLayer.querySelector('.row.selected'),
       stashButton: this.stashButton.hidden ? '' : (this.stashButton.querySelector('.stash-count')?.textContent ?? ''),
       refFilterButton: this.refFilter.button.textContent,
-      refFilterSearch: this.refFilter.searchText(),
+      badgeFilter: this.badgeFilter.probe(),
       badgeRules: this.badgeRules,
       idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
         (f) =>

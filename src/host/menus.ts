@@ -213,7 +213,7 @@ const handlers = (env: FlowEnv): Handlers => ({
   },
   'strata.hideSimilarBadges': (ctx) => {
     const host = panel().flowHost();
-    panel().findRefs(similarPattern(parseTarget(ctx, ['branch', 'remoteBranch', 'tag'], host.refs).ref.short));
+    panel().openBadgeFilter(similarPattern(parseTarget(ctx, ['branch', 'remoteBranch', 'tag'], host.refs).ref.short));
   },
   'strata.deleteBranch': on(['branch'], (host, t) => deleteBranch(host, t.ref)),
   'strata.deleteTag': on(['tag'], (host, t) => deleteTag(host, t.ref)),

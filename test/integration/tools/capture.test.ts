@@ -142,17 +142,17 @@ after(() => setTheme('dark'));
       const panel = (await strata()).show();
       await panel.whenReady();
       await waitFor('history', async () => (await panel.probe()).done);
-      // A rule in the Hidden badges section and the toolbar's count, with the next glob previewed.
-      await panel.simulate({ kind: 'click', selector: '.ref-filter-button' });
-      await panel.simulate({ kind: 'type', selector: '.popover-search', text: 'cross/*' });
-      await panel.simulate({ kind: 'click', selector: '.popover-hide' });
-      await waitFor('rule applied', async () => (await panel.probe()).refFilterButton.includes('hidden'));
-      await panel.simulate({ kind: 'type', selector: '.popover-search', text: 'feature/*' });
+      // A rule in the badge filter and the toolbar's count, with the next pattern previewed.
+      await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
+      await panel.simulate({ kind: 'type', selector: '.badge-pattern', text: 'cross/*' });
+      await panel.simulate({ kind: 'click', selector: '.badge-hide' });
+      await waitFor('rule applied', async () => (await panel.probe()).badgeFilter.button.includes('hidden'));
+      await panel.simulate({ kind: 'type', selector: '.badge-pattern', text: 'feature/*' });
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `hidden-badges-${id}.png`));
       await panel.simulate({ kind: 'click', selector: '.popover-rule button[aria-label^="Remove"]' });
-      await waitFor('rule removed', async () => !(await panel.probe()).refFilterButton.includes('hidden'));
+      await waitFor('rule removed', async () => !(await panel.probe()).badgeFilter.button.includes('hidden'));
       panel.dispose();
     });
   }

@@ -67,8 +67,8 @@ export type HostToWebview =
   | { type: 'badgeRules'; rules: BadgeRule[] }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
-  /** Opens the ref filter searching for `search`, selected (Hide Similar Badges...). */
-  | { type: 'findRefs'; search: string }
+  /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */
+  | { type: 'openBadgeFilter'; pattern: string }
   /** Select and open a stash (or commit), loading further history to find it if needed. */
   | { type: 'reveal'; hash: string }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
@@ -136,6 +136,21 @@ export type WebviewToHost =
   | { type: 'probe'; state: ProbeState }
   | { type: 'error'; message: string };
 
+/** The toolbar's badge filter: its button text, and while its popover is open what that shows. */
+export interface BadgeFilterProbe {
+  button: string;
+  pattern: string | undefined;
+  /** What the pattern matches, e.g. "Matches 2 branches · 1 hidden". */
+  summary: string | undefined;
+  /** Whether Hide and Show are enabled. */
+  hide: boolean | undefined;
+  show: boolean | undefined;
+  /** Rule patterns in order, "!" before an exception. */
+  rules: string[] | undefined;
+  /** Listed refs by short name, " (hidden)" after those whose badge is hidden. */
+  refs: string[] | undefined;
+}
+
 /** Webview state reported for integration tests. */
 export interface ProbeState {
   generation: number;
@@ -161,10 +176,9 @@ export interface ProbeState {
   rowLabels: Record<string, string>;
   /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
   operationNotes: Record<string, string>;
-  /** Text of the toolbar's ref filter button, e.g. "All · 2 hidden". */
+  /** Text of the toolbar's ref filter button, e.g. "All". */
   refFilterButton: string;
-  /** The ref filter's search text while its popover is open. */
-  refFilterSearch: string | undefined;
+  badgeFilter: BadgeFilterProbe;
   /** The repository's badge rules as the host last sent them. */
   badgeRules: BadgeRule[];
   /** Label of the toolbar's stash count button; empty while it is hidden. */
