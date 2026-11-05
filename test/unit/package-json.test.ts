@@ -57,12 +57,15 @@ describe('package.json commands', () => {
     for (const id of commandsOn(row('stash'))) assert.match(id, /^strata\.stash\./, `${id} on stash rows`);
   });
 
-  it('disables every command that changes the repository while another one runs', () => {
+  it('disables every command that changes the repository while another one runs or is stopped', () => {
     const byId = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
+    const expected = { true: '!strata.busy && !strata.operation', whileStopped: '!strata.busy' };
     for (const id of COMMAND_IDS) {
       const spec: CommandSpec = COMMANDS[id];
-      assert.equal(byId.get(id)?.enablement, spec.writes ? '!strata.busy' : undefined, id);
+      assert.equal(byId.get(id)?.enablement, spec.writes && expected[String(spec.writes) as keyof typeof expected], id);
     }
+    for (const id of ['strata.operation.continue', 'strata.operation.abort', 'strata.operation.skip', 'strata.fetch'])
+      assert.equal(byId.get(id)?.enablement, '!strata.busy', `${id} runs while an operation is stopped`);
   });
 
   it("decides a menu's visibility only from context keys its own section carries", () => {

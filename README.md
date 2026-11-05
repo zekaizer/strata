@@ -161,8 +161,8 @@ operation is stopped, Continue, Abort and Skip.
   and asks first if that branch moved since.
 - When an operation stops at conflicts, Strata says where and in which files;
   **Resolve...** opens them, **Skip...** (rebase, cherry pick and revert)
-  leaves the stopped commit out, and other changes (except Fetch) wait until
-  you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`
+  leaves the stopped commit out, and other changes (except Fetch) are
+  disabled until you continue or abort. A Continue that stops again (at the next conflict, or at an `edit`
   or `break` of a rebase you started with `git rebase -i`) says so. A cherry
   pick or revert of several commits that you ended with `git commit` instead
   of `git cherry-pick --continue` still shows as in progress, with Continue

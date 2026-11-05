@@ -90,61 +90,61 @@
         "command": "strata.stash.push",
         "title": "Stash Changes...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.pushUntracked",
         "title": "Stash Changes (Include Untracked)...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.checkout",
         "title": "Checkout",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.checkoutDetached",
         "title": "Checkout (Detached)",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.createBranch",
         "title": "Create Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.createTag",
         "title": "Create Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.cherryPick",
         "title": "Cherry Pick",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.revert",
         "title": "Revert",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.merge",
         "title": "Merge into Current Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.rebase",
         "title": "Rebase Current Branch onto This...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.commit.copyHash",
@@ -175,25 +175,25 @@
         "command": "strata.reset",
         "title": "Reset Current Branch to Here...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.push",
         "title": "Push",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.publish",
         "title": "Publish Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.pull",
         "title": "Pull",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.fetch",
@@ -206,13 +206,13 @@
         "command": "strata.pushTag",
         "title": "Push Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.renameBranch",
         "title": "Rename Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.copyRefName",
@@ -223,25 +223,25 @@
         "command": "strata.deleteBranch",
         "title": "Delete Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.deleteTag",
         "title": "Delete Tag...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.deleteRemoteTag",
         "title": "Delete Tag from Remote...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.deleteRemoteBranch",
         "title": "Delete Remote Branch...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.operation.continue",
@@ -267,19 +267,19 @@
         "command": "strata.stash.apply",
         "title": "Apply Stash",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.pop",
         "title": "Pop Stash",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.branch",
         "title": "Create Branch from Stash...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.stash.copyPatch",
@@ -290,7 +290,7 @@
         "command": "strata.stash.drop",
         "title": "Drop Stash...",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.showStashes",
@@ -316,7 +316,7 @@
         "command": "strata.undo",
         "title": "Undo Last Operation",
         "category": "Strata",
-        "enablement": "!strata.busy"
+        "enablement": "!strata.busy && !strata.operation"
       },
       {
         "command": "strata.showOutput",

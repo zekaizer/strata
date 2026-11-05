@@ -37,8 +37,12 @@ export interface CommandSpec {
   palette?: string | true;
   /** In the graph tab's title bar: an icon in `navigation`, or an overflow group. */
   titleBar?: { group: string; when?: string; icon?: string };
-  /** Changes the repository: disabled while another operation runs. */
-  writes?: true;
+  /**
+   * Changes the repository: disabled while another operation runs, and while one is stopped
+   * unless `whileStopped` (the ways out of a stop, and writes that leave HEAD, the index and the
+   * work tree alone).
+   */
+  writes?: true | 'whileStopped';
 }
 
 const file = (group: string, when?: string): MenuPlacement => ({ section: 'file', group, ...(when ? { when } : {}) });
@@ -154,7 +158,7 @@ export const COMMANDS = {
     menus: [{ section: 'remoteBranch', group: '3_remote@1' }],
     palette: true,
     titleBar: { group: 'navigation@1', when: '!strata.operation', icon: '$(repo-fetch)' },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.pushTag': { title: 'Push Tag...', menus: [{ section: 'tag', group: '3_remote@1' }], writes: true },
   'strata.renameBranch': { title: 'Rename Branch...', menus: [{ section: 'branch', group: '4_edit@1' }], writes: true },
@@ -187,19 +191,19 @@ export const COMMANDS = {
     title: 'Continue Operation',
     palette: 'strata.operation',
     titleBar: { group: 'navigation@1', when: 'strata.operation', icon: '$(check)' },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.operation.abort': {
     title: 'Abort Operation...',
     palette: 'strata.operation',
     titleBar: { group: 'navigation@2', when: 'strata.operation', icon: '$(discard)' },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.operation.skip': {
     title: 'Skip Commit...',
     palette: "strata.operation && strata.operation != 'merge'",
     titleBar: { group: '2_operation@1', when: "strata.operation && strata.operation != 'merge'" },
-    writes: true,
+    writes: 'whileStopped',
   },
   'strata.stash.apply': {
     title: 'Apply Stash',
@@ -269,7 +273,9 @@ export function manifestCommands(): ManifestCommand[] {
       title: spec.title,
       category: 'Strata',
       ...(spec.titleBar?.icon ? { icon: spec.titleBar.icon } : {}),
-      ...(spec.writes ? { enablement: '!strata.busy' } : {}),
+      ...(spec.writes
+        ? { enablement: spec.writes === 'whileStopped' ? '!strata.busy' : '!strata.busy && !strata.operation' }
+        : {}),
     };
   });
 }
