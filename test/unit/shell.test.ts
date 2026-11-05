@@ -21,6 +21,20 @@ describe('commands typed into a terminal', () => {
     assert.equal(shellCommand(['git', 'fetch', 'origin'], 'cmd'), 'git fetch origin');
   });
 
+  it('quotes for PowerShell what PowerShell reads as more than a word', () => {
+    assert.equal(shellCommand(['git', 'push', 'origin', 'x’;calc;’'], 'powershell'), "git push origin 'x’’;calc;’’'");
+    assert.equal(shellCommand(['a‘b‚c‛d'], 'powershell'), "'a‘‘b‚‚c‛‛d'");
+    assert.equal(
+      shellCommand(['git', 'push', '--force-with-lease=refs/heads/fix,v2', 'origin', '@x'], 'powershell'),
+      "git push '--force-with-lease=refs/heads/fix,v2' origin '@x'",
+    );
+    assert.equal(shellCommand(['-a.b', '--a.b=c', '-u', '--'], 'powershell'), "'-a.b' --a.b=c -u --");
+    assert.equal(
+      shellCommand(['git', 'push', 'x’;calc;’', 'refs/heads/fix,v2', '@x', '-a.b'], 'posix'),
+      "git push 'x’;calc;’' refs/heads/fix,v2 @x -a.b",
+    );
+  });
+
   it('gives up where it cannot quote safely', () => {
     assert.equal(shellCommand(['git', 'push', 'origin', 'a&calc'], 'cmd'), undefined);
     assert.equal(shellCommand(['git', 'push', 'origin', 'a$(id)'], 'unknown'), undefined);

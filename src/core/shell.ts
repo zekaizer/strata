@@ -11,8 +11,20 @@ export function shellKind(path: string): ShellKind {
   return name === 'cmd' ? 'cmd' : 'unknown';
 }
 
-/** Arguments every shell reads as themselves. */
+/** Arguments a POSIX shell (and fish) reads as themselves. */
 const PLAIN = /^[\w./@:=+,-]+$/;
+
+/**
+ * Arguments PowerShell reads as themselves: no `,` (array operator), no leading `@` (splatting),
+ * and no `.` after a single leading `-` (PowerShell splits `-a.b` into `-a` and `.b`).
+ */
+const POWERSHELL_PLAIN = /^(?:--[\w./@:=+-]*|-[\w-]*|[\w./:=+][\w./@:=+-]*)$/;
+
+const QUOTE: Record<'posix' | 'powershell', (a: string) => string> = {
+  posix: (a) => (PLAIN.test(a) ? a : `'${a.replace(/'/g, `'\\''`)}'`),
+  // PowerShell ends a single-quoted string at any of ' ‘ ’ ‚ ‛; doubling one keeps it.
+  powershell: (a) => (POWERSHELL_PLAIN.test(a) ? a : `'${a.replace(/['\u2018\u2019\u201A\u201B]/g, '$&$&')}'`),
+};
 
 /**
  * `args` as one command line for `shell`; undefined when an argument cannot be quoted safely for
@@ -21,12 +33,6 @@ const PLAIN = /^[\w./@:=+,-]+$/;
 export function shellCommand(args: readonly string[], shell: 'posix' | 'powershell'): string;
 export function shellCommand(args: readonly string[], shell: ShellKind): string | undefined;
 export function shellCommand(args: readonly string[], shell: ShellKind): string | undefined {
-  const quoteArg = (a: string): string | undefined => {
-    if (PLAIN.test(a)) return a;
-    if (shell === 'posix') return `'${a.replace(/'/g, `'\\''`)}'`;
-    if (shell === 'powershell') return `'${a.replace(/'/g, "''")}'`;
-    return undefined;
-  };
-  const quoted = args.map(quoteArg);
-  return quoted.every((a) => a !== undefined) ? quoted.join(' ') : undefined;
+  if (shell === 'posix' || shell === 'powershell') return args.map(QUOTE[shell]).join(' ');
+  return args.every((a) => PLAIN.test(a)) ? args.join(' ') : undefined;
 }
