@@ -278,9 +278,12 @@ export const readForkPoint = (git: string, cwd: string, upstream: string): Promi
 export const readMergeBase = (git: string, cwd: string, a: string, b: string): Promise<string | undefined> =>
   optional(runGit(git, cwd, ['merge-base', a, b]));
 
-/** Every `branch.<branch>.*` config entry, in order (multi-valued keys repeat). */
+/**
+ * Every `branch.<branch>.*` entry of the repository's own config file, in order (multi-valued keys
+ * repeat): the section `branch -D` drops. Global, system and included files keep theirs.
+ */
 export async function readBranchConfig(git: string, cwd: string, branch: string): Promise<[string, string][]> {
-  const out = (await optional(runGit(git, cwd, ['config', '-z', '--get-regexp', '^branch\\.']))) ?? '';
+  const out = (await optional(runGit(git, cwd, ['config', '--local', '-z', '--get-regexp', '^branch\\.']))) ?? '';
   const prefix = `branch.${branch}.`;
   return out
     .split('\0')
