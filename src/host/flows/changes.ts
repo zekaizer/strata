@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import { resolveStashChoices, type DirtyFacts, type StashChoices, type StashOp } from '../../core/autostash.ts';
 import { untrackedInTheWay } from '../../core/git-error.ts';
+import type { Operation } from '../../core/operations.ts';
 import type { Worktree } from '../../core/repo-state.ts';
 import {
   dirtySection,
@@ -218,10 +219,15 @@ export async function reportRestore(host: FlowHost, done: string, r: Restored): 
   });
 }
 
-/** After git's own autostash: "Applying autostash resulted in conflicts." on a success (exit 0). */
-export async function gitRestoreConflicted(host: FlowHost, stderr: string): Promise<Restored> {
-  if (!stderr.includes('Applying autostash resulted in conflicts.')) return { kind: 'none' };
-  const top = await readStashTop(host.git, host.cwd);
-  const stash = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
+/**
+ * Runs `op`, which git may autostash around (merge, rebase, their Continue, Abort or Skip, switch
+ * --merge), and finds the stash git keeps when putting the changes back conflicted: a new stash
+ * top after a success (exit 0). Read from the stash list, not stderr: git 2.55 reworded the message.
+ */
+export async function execAutostash(host: FlowHost, exec: Exec, op: Operation): Promise<Restored> {
+  const before = await readStashTop(host.git, host.cwd);
+  await exec(op);
+  const after = await readStashTop(host.git, host.cwd);
+  const stash = after === undefined || after === before ? undefined : await readStash(host.git, host.cwd, after);
   return stash ? { kind: 'conflicted', stash } : { kind: 'none' };
 }

@@ -55,7 +55,7 @@ import type { Exec } from '../runner.ts';
 import type { TargetOf } from '../target.ts';
 import {
   changes,
-  gitRestoreConflicted,
+  execAutostash,
   reportRestore,
   resolveConflicts,
   restore,
@@ -215,14 +215,14 @@ async function heldStash(host: FlowHost, state: OperationState) {
 }
 
 /**
- * Runs an operation that may stop (`attempt` runs it, as run() does); resolves its stderr, or
- * undefined when it stopped or did not run. It stopped when git failed and left it in progress (at
+ * Runs an operation that may stop (`attempt` runs it, as run() does); resolves how its stashed
+ * changes came back, or undefined when it stopped or did not run. It stopped when git failed and left it in progress (at
  * conflicts, or with nothing to commit).
  */
 async function runStoppable(
   host: FlowHost,
-  attempt: () => Promise<{ stderr: string; restored?: Restored } | undefined>,
-): Promise<{ stderr: string; restored?: Restored } | undefined> {
+  attempt: () => Promise<Restored | undefined>,
+): Promise<Restored | undefined> {
   try {
     return await attempt();
   } catch (e) {
@@ -234,16 +234,12 @@ async function runStoppable(
   }
 }
 
-/**
- * The success of an operation git may have finished with a conflicting autostash restore
- * (exit 0), or Strata with a conflicting pop: report it after the usual feedback.
- */
+/** The usual feedback, then how the stashed changes came back when that did not simply work. */
 async function finishWithRestore(
   host: FlowHost,
-  r: { stderr: string; restored?: Restored },
+  restored: Restored,
   done: { message: string; focus: string; undo?: Undo },
 ): Promise<void> {
-  const restored = r.restored ?? (await gitRestoreConflicted(host, r.stderr));
   await finish(host, done);
   await reportRestore(host, done.message, restored);
 }
@@ -284,7 +280,7 @@ export async function merge(host: FlowHost, src: Source, ask: 'always' | 'whenDi
       host,
       HISTORY_DOING.merging(src.name, h.name),
       IN_THE_WAY_OF.merge(src.name),
-      (exec) => exec({ kind: 'merge', ref: src.arg, mode, autostash }),
+      (exec) => execAutostash(host, exec, { kind: 'merge', ref: src.arg, mode, autostash }),
       [h.expect, ...sourceExpect(src, from.hash)],
     ),
   ).catch(async (e: unknown) => {
@@ -335,7 +331,7 @@ export async function rebase(
       host,
       HISTORY_DOING.rebasing(h.name, onto.name),
       IN_THE_WAY_OF.rebase(onto.name),
-      (exec) => exec({ kind: 'rebase', onto: target.hash, from, autostash: dirty }),
+      (exec) => execAutostash(host, exec, { kind: 'rebase', onto: target.hash, from, autostash: dirty }),
       [h.expect, ...sourceExpect(onto, target.hash)],
     ),
   );
@@ -376,13 +372,10 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
       label,
       IN_THE_WAY_OF[kind](c.short),
       async (exec) => {
-        if (choice !== 'stash') return exec(op);
-        const message = autostashMessage(kind, `${c.short} onto ${h.name}`);
-        let stderr = '';
-        const restored = await stashAround(host, exec, message, async () => {
-          stderr = (await exec(op)).stderr;
-        });
-        return { stderr, restored };
+        if (choice === 'stash')
+          return stashAround(host, exec, autostashMessage(kind, `${c.short} onto ${h.name}`), () => exec(op));
+        await exec(op);
+        return { kind: 'none' } satisfies Restored;
       },
       [h.expect],
     ),
@@ -493,20 +486,13 @@ async function settle(
 ): Promise<void> {
   const r = await runStoppable(host, () =>
     run(host, label, async (exec) => {
-      const { stderr } = await exec(op);
-      return { stderr, restored: await restoreHeld(host, exec, state) };
+      const byGit = await execAutostash(host, exec, op);
+      return byGit.kind === 'none' ? restoreHeld(host, exec, state) : byGit;
     }),
   );
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
-  await finishWithRestore(
-    host,
-    { stderr: r.stderr, ...(r.restored?.kind === 'none' ? {} : { restored: r.restored! }) },
-    {
-      message: done,
-      focus: after.hash,
-    },
-  );
+  await finishWithRestore(host, r, { message: done, focus: after.hash });
 }
 
 export async function continueOperation(host: FlowHost): Promise<void> {

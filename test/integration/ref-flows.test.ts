@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as vscode from 'vscode';
 import { join } from 'node:path';
+import { parseGitVersion } from '../../src/core/git-version.ts';
 import { branchMenu, commitMenu, flowSuite, menu, reload, run, selected, stashRow, tagMenu } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
@@ -230,11 +231,19 @@ describe('ref operations', () => {
     ui.press('Migrate Changes');
     await run('strata.checkout', branchMenu('feature/search', git('rev-parse', 'feature/search')));
     assert.equal(git('branch', '--show-current'), 'feature/search');
-    assert.equal(
-      ui.of('notify').find((n) => n.level === 'warning')?.message,
-      "Switched to 'feature/search'; your changes conflicted in 1 file.",
-    );
-    assert.equal(git('stash', 'list'), '');
+    const warning = ui.of('notify').find((n) => n.level === 'warning')?.message;
+    const [major, minor] = parseGitVersion(git('version'))!;
+    if (major > 2 || minor >= 55) {
+      // git 2.55 keeps the changes in a stash when merging them conflicts.
+      assert.equal(
+        warning,
+        "Switched to 'feature/search', but restoring your stashed changes conflicted in 1 file (main.txt). Your changes are safe in stash@{0} (\"autostash while switching to 'feature/search'\").",
+      );
+      assert.equal(git('stash', 'list', '--format=%gs'), "autostash while switching to 'feature/search'");
+    } else {
+      assert.equal(warning, "Switched to 'feature/search'; your changes conflicted in 1 file.");
+      assert.equal(git('stash', 'list'), '');
+    }
   });
 
   it('asks before leaving commits that only a detached HEAD reaches', async () => {
