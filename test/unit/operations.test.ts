@@ -4,15 +4,15 @@ import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { untrackedInTheWay, untrackedNotRestored } from '../../src/core/git-error.ts';
-import { argv, type Operation } from '../../src/core/operations.ts';
+import type { Operation } from '../../src/core/operations.ts';
 import { readOperationState } from '../../src/git/state.ts';
-import { GitOpError, runGitOp } from '../../src/git/op.ts';
+import { GitOpError, runOperation } from '../../src/git/op.ts';
 import { tempDir } from './helpers.ts';
 
 const ids = { GIT_AUTHOR_NAME: 'a', GIT_AUTHOR_EMAIL: 'a@e', GIT_COMMITTER_NAME: 'a', GIT_COMMITTER_EMAIL: 'a@e' };
 const run = (cwd: string, ...args: string[]) =>
   execFileSync('git', args, { cwd, env: { ...process.env, ...ids }, encoding: 'utf8' }).trim();
-const op = (cwd: string, o: Operation) => runGitOp('git', cwd, argv(o), { env: ids });
+const op = (cwd: string, o: Operation) => runOperation('git', cwd, o, { env: ids });
 
 describe('operations', () => {
   const root = tempDir('ops');

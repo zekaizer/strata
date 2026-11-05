@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { classifyGitError, parseProgress, type GitErrorKind } from '../core/git-error.ts';
+import { argv, type Operation } from '../core/operations.ts';
 import { gitEnv } from './env.ts';
 
 /** A git command that changes the repository failed. */
@@ -79,6 +80,16 @@ export function runGitOp(
       else reject(new GitOpError(classify(stdout, stderr), stdout, stderr));
     });
   });
+}
+
+/** Runs `op`; rejects like runGitOp. */
+export function runOperation(
+  git: string,
+  cwd: string,
+  op: Operation,
+  opts: OpOptions = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return runGitOp(git, cwd, argv(op), opts);
 }
 
 /** Kills git and what it started (ssh, hooks): they share its process group. */
