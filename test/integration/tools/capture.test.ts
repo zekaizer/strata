@@ -50,6 +50,23 @@ after(() => setTheme('dark'));
   }
 });
 
+(shotDir ? describe : describe.skip)('tool: README screenshot', () => {
+  it('dark, without the side bar', async () => {
+    await setTheme('dark');
+    await vscode.commands.executeCommand('workbench.action.closeSidebar');
+    const panel = (await strata()).show();
+    await panel.whenReady();
+    await waitFor('history', async () => (await panel.probe()).done);
+    await panel.simulate({ kind: 'clickRow', index: 1 });
+    await waitFor('details', async () => (await panel.probe()).detailsShown !== undefined);
+    await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+    await mkdir(shotDir!, { recursive: true });
+    await screenshot(join(shotDir!, 'readme.png'));
+    panel.dispose();
+    await vscode.commands.executeCommand('workbench.view.explorer');
+  });
+});
+
 (shotDir ? describe : describe.skip)('tool: stash screenshots', () => {
   let stashes: string[] = [];
   before(() => {

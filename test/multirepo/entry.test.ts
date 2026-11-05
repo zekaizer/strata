@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
 import { run } from '../integration/flow-helpers.ts';
-import { delay, screenshot, strata, waitFor } from '../integration/helpers.ts';
+import { delay, screenshot, setTheme, strata, waitFor } from '../integration/helpers.ts';
 import { allOpen, editIn, rootOf, showing, switchTo } from './helpers.ts';
 
 describe('ways into the graph', () => {
@@ -38,8 +38,11 @@ describe('ways into the graph', () => {
     const shots = process.env['STRATA_SHOT_DIR'];
     if (!shots) this.skip();
     await vscode.commands.executeCommand('workbench.view.scm');
-    await delay(1500);
-    await screenshot(join(shots, 'scm-rows.png'));
+    for (const theme of ['light', 'dark'] as const) {
+      await setTheme(theme);
+      await delay(1500);
+      await screenshot(join(shots, `scm-rows-${theme}.png`));
+    }
     await vscode.commands.executeCommand('workbench.view.explorer');
   });
 
