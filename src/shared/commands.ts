@@ -315,6 +315,7 @@ export const COMMANDS = {
   },
   'strata.stash.copyPatch': { title: 'Copy Patch', menus: [{ section: 'stash', group: '5_copy@1' }] },
   'strata.stash.drop': { title: 'Drop Stash...', menus: [{ section: 'stash', group: '9_delete@1' }], writes: true },
+  'strata.openScm': { title: 'Open Source Control' },
   'strata.showStashes': { title: 'Show Stashes...', palette: true, titleBar: { group: '1_stash@3' } },
   'strata.goToHead': { title: 'Go to HEAD', palette: true },
   /** The graph handles Ctrl+F itself while it has focus; the key binding covers the rest of its tab. */

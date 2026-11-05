@@ -24,7 +24,9 @@ import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/re
 import {
   changeCounts,
   describeChanges,
+  type ChangedPath,
   type ChangeCount,
+  type ChangeGroup,
   type ChangesSummary,
   type Leftover,
   type OperationState,
@@ -42,12 +44,13 @@ import {
   type StashEntry,
   type StashShown,
 } from '../core/stash.ts';
-import { MENU_SECTIONS, type CommandId } from '../shared/commands.ts';
+import { COMMANDS, MENU_SECTIONS, type CommandId, type CommandSpec } from '../shared/commands.ts';
 import type { CommitContext, SelectionContext, StashContext } from '../shared/menu-context.ts';
 import { DEFAULT_OPTIONS } from '../shared/protocol.ts';
 import type {
   FromWorker,
   HostToWebview,
+  WorkingDetails,
   ProbeState,
   RepoInfo,
   SimulatedAction,
@@ -229,6 +232,26 @@ const BADGE_ICON: Record<Exclude<Badge['look'], 'more'>, string> = {
   worktree: 'worktree',
 };
 
+/** What clicking an uncommitted change opens, as its tooltip says. */
+const CHANGE_OPEN: Record<ChangeGroup, (f: ChangedPath) => string> = {
+  staged: (f) =>
+    f.status === 'A' ? 'open staged file' : f.status === 'D' ? 'open deleted file' : 'open staged changes',
+  unstaged: (f) => (f.status === 'D' ? 'open deleted file' : f.status === 'A' ? 'open file' : 'open changes'),
+  conflicted: () => 'resolve conflicts',
+  untracked: (f) => (f.path.endsWith('/') ? 'reveal in Explorer' : 'open file'),
+};
+
+/** Source Control's letters where a status letter says less: "!" conflicted, "U" untracked. */
+const CHANGE_LETTER: Partial<Record<ChangeGroup, string>> = { conflicted: '!', untracked: 'U' };
+
+/** Groups of the unfolded uncommitted changes row, in order, with what each compares. */
+const CHANGE_GROUPS: readonly { group: ChangeGroup; title: string; compares: string | undefined }[] = [
+  { group: 'conflicted', title: 'Conflicts', compares: undefined },
+  { group: 'staged', title: 'Staged', compares: 'HEAD ↔ index' },
+  { group: 'unstaged', title: 'Changes', compares: 'index ↔ working tree' },
+  { group: 'untracked', title: 'Untracked', compares: undefined },
+];
+
 const CHANGE_ICON: Record<ChangeCount['kind'], string> = {
   conflicted: 'warning',
   staged: 'check',
@@ -326,6 +349,8 @@ class App {
   private loading = false;
   private selected = -1;
   private details: CommitDetails | undefined;
+  /** The unfolded uncommitted changes row's paths; `details` is then undefined. */
+  private working: WorkingDetails | undefined;
   /** Commit whose details were last requested; replies for any other commit are stale. */
   private pendingDetails: string | undefined;
   private openedFile: string | undefined;
@@ -683,6 +708,10 @@ class App {
         if (JSON.stringify(m.changes) === JSON.stringify(this.changes)) return;
         this.changes = m.changes;
         this.relist();
+        if (this.expanded && this.working && this.selectedHash() === CHANGES_ROW) {
+          this.pendingDetails = CHANGES_ROW;
+          vscode.postMessage({ type: 'selectChanges', generation: this.generation });
+        }
         break;
       case 'busy':
         this.busyLabel = m.label;
@@ -691,6 +720,7 @@ class App {
           this.selectionsAtBusy = this.selections;
           this.announce(`${m.label}…`);
         }
+        this.holdChangesActions();
         if (m.label === undefined) this.scroller.removeAttribute('aria-busy');
         else this.scroller.setAttribute('aria-busy', 'true');
         // An error shown meanwhile stays until the next action.
@@ -703,6 +733,7 @@ class App {
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
         this.updateBanner();
+        this.holdChangesActions();
         // Stash rows carry whether restoring them conflicted.
         this.queueRender();
         break;
@@ -752,6 +783,15 @@ class App {
         this.details = m.details;
         this.renderDetails();
         break;
+      case 'changesDetails': {
+        if (m.generation !== this.generation || this.pendingDetails !== CHANGES_ROW || !this.expanded) return;
+        // Changes that moved while the row was open: its folds and scroll position stay.
+        const again = this.working !== undefined;
+        this.pendingDetails = undefined;
+        this.working = m.details;
+        this.renderChangesDetails(again);
+        break;
+      }
       case 'openBadgeFilter':
         this.badgeFilter.openWith(m.pattern);
         break;
@@ -2131,15 +2171,17 @@ class App {
     this.selected = index;
     this.expanded = opts.expand ?? this.expanded;
     this.details = undefined;
+    this.working = undefined;
     this.openedFile = undefined;
     this.foldedFolders = new Set();
     this.bodyExpanded = false;
     clearTimeout(this.copiedTimer);
     this.pendingDetails = undefined;
-    if (this.expanded && row.kind !== 'changes') {
+    if (this.expanded) {
       this.pendingDetails = hash;
       this.showLoading();
-      vscode.postMessage({ type: 'select', generation: this.generation, hash });
+      if (row.kind === 'changes') vscode.postMessage({ type: 'selectChanges', generation: this.generation });
+      else vscode.postMessage({ type: 'select', generation: this.generation, hash });
     }
     this.syncSizer();
     this.scroller.scrollTop = this.rowTop(index) - screenTop;
@@ -2183,6 +2225,7 @@ class App {
     this.expanded = false;
     this.revealExpansion = false;
     this.details = undefined;
+    this.working = undefined;
     this.pendingDetails = undefined;
     this.gap = 0;
     this.keepFocusInList(() => {
@@ -2251,7 +2294,7 @@ class App {
     }
     // Also when the new details are as tall as the previous ones (no resize): reveal them once,
     // now, rather than at some later unrelated resize.
-    if (this.revealExpansion && this.details) {
+    if (this.revealExpansion && (this.details || this.working)) {
       this.revealExpansion = false;
       this.ensureVisible(this.selected, true);
       this.queueRender();
@@ -2913,21 +2956,32 @@ class App {
     if (stash && d.stash) {
       const summary = el('div', 'section-title files-summary', `Changes (${d.files.length})`);
       if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
-      files.append(summary, this.fileTree(changes, d.files, 'Changes', new Set(d.stash.staged)));
+      const staged = new Set(d.stash.staged);
+      files.append(
+        summary,
+        this.fileTree(d.files, 'Changes', (f, name, depth) =>
+          this.fileItem(changes, f, name, depth, staged.has(f.path)),
+        ),
+      );
       const untracked = d.stash.untracked;
       if (untracked)
         files.append(
           el('div', 'section-title files-summary', `Untracked (${untracked.files.length})`),
-          this.fileTree({ hash: untracked.hash, base: undefined }, untracked.files, 'Untracked files'),
+          this.fileTree(untracked.files, 'Untracked files', (f, name, depth) =>
+            this.fileItem({ hash: untracked.hash, base: undefined }, f, name, depth, false),
+          ),
         );
     } else {
-      files.append(this.filesSummaryLine(d), this.fileTree(changes, d.files, 'Changed files'));
+      files.append(
+        this.filesSummaryLine(d),
+        this.fileTree(d.files, 'Changed files', (f, name, depth) => this.fileItem(changes, f, name, depth, false)),
+      );
     }
     this.showDetails(main, files);
   }
 
   /** Puts the message column and the files column (or what stands in for it) in the details pane. */
-  private showDetails(main: HTMLElement, files: HTMLElement): void {
+  private showDetails(main: HTMLElement, files: HTMLElement, keepScroll = false): void {
     const pane = this.expansion;
     const close = el('button', 'icon-button codicon codicon-chevron-up details-fold');
     close.title = 'Fold (Esc)';
@@ -2941,11 +2995,14 @@ class App {
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
+    const scrolled = pane.scrollTop;
     // The fold button is positioned top right; after the content, it comes last in tab order.
-    pane.replaceChildren(layout, close);
+    this.keepFocusInList(() => {
+      pane.replaceChildren(layout, close);
+    });
     this.applyMetaOpen();
     this.measureTree();
-    pane.scrollTop = 0;
+    pane.scrollTop = keepScroll ? scrolled : 0;
     this.placeExpansion();
     this.layoutDetails();
     this.onExpansionResize();
@@ -3141,7 +3198,12 @@ class App {
         ),
       );
     } else
-      side.append(this.filesSummaryLine(d), this.fileTree({ hash: d.hash, base: d.base }, d.files, 'Changed files'));
+      side.append(
+        this.filesSummaryLine(d),
+        this.fileTree(d.files, 'Changed files', (f, name, depth) =>
+          this.fileItem({ hash: d.hash, base: d.base }, f, name, depth, false),
+        ),
+      );
     this.showDetails(main, side);
     if (!ed.saving) {
       field.focus({ preventScroll: true });
@@ -3167,6 +3229,60 @@ class App {
     else this.selectHash(first.hash, true);
     this.saveState();
     this.queueRender();
+  }
+
+  /**
+   * The unfolded uncommitted changes row: where the work tree is, buttons that hand the changes on
+   * (Source Control commits them; Strata does not), and the paths by group.
+   */
+  private renderChangesDetails(keepScroll: boolean): void {
+    const w = this.working;
+    if (!w) return;
+    const head = this.refs.head;
+    const on = this.refs.headBranch ?? (head === undefined ? undefined : `detached at ${shortHash(head)}`);
+    const byline = el('div', 'byline');
+    byline.append(el('span', 'byline-stash', 'Working tree'));
+    if (on !== undefined) byline.append(el('span', 'byline-sep', '·'), el('span', 'byline-branch', `on ${on}`));
+    const actions = el('div', 'details-actions');
+    const untracked = w.files.some((f) => f.group === 'untracked') || this.changes?.untracked === undefined;
+    for (const [command, primary] of [
+      ['strata.openScm', true],
+      ['strata.stash.push', false],
+      ...(untracked ? [['strata.stash.pushUntracked', false] as const] : []),
+    ] as const) {
+      const b = el('button', primary ? 'button primary' : 'button', COMMANDS[command].title);
+      b.dataset['command'] = command;
+      b.addEventListener('click', () => {
+        vscode.postMessage({ type: 'menuCommand', command, context: {} });
+      });
+      actions.append(b);
+    }
+    const main = el('div', 'details-main');
+    main.append(el('span', 'column-ruler'), byline, el('h2', 'details-subject', 'Uncommitted changes'), actions);
+    const files = el('div', 'details-files');
+    for (const g of CHANGE_GROUPS) {
+      const list = w.files.filter((f) => f.group === g.group);
+      if (list.length === 0) continue;
+      const summary = el('div', 'section-title files-summary', `${g.title} (${list.length})`);
+      if (g.compares !== undefined) summary.append(` · ${g.compares}`);
+      files.append(
+        summary,
+        this.fileTree(list, g.title, (f, name, depth) => this.changeItem(f, name, depth)),
+      );
+    }
+    if (w.truncated > 0)
+      files.append(el('div', 'details-note', `${w.truncated} more not listed: Source Control lists them all.`));
+    if (w.files.length === 0) files.append(el('div', 'details-note', 'No uncommitted changes.'));
+    this.showDetails(main, files, keepScroll);
+    this.holdChangesActions();
+  }
+
+  /** The unfolded changes row's Stash buttons wait while an operation runs or is stopped, as their commands do. */
+  private holdChangesActions(): void {
+    for (const b of this.expansion.querySelectorAll<HTMLButtonElement>('.details-actions [data-command]')) {
+      const spec: CommandSpec = COMMANDS[b.dataset['command'] as CommandId];
+      b.disabled = spec.writes !== undefined && (this.busyLabel !== undefined || this.operation !== undefined);
+    }
   }
 
   /** Author, date and the short hash (click to copy) above the subject, and the meta table toggle. */
@@ -3369,7 +3485,7 @@ class App {
    * the details change size.
    */
   private layoutDetails(): void {
-    if (!this.details || !this.expanded || this.expansion.hidden) return;
+    if ((!this.details && !this.working) || !this.expanded || this.expansion.hidden) return;
     const layout = this.expansion.querySelector<HTMLElement>('.details-layout');
     const main = this.expansion.querySelector<HTMLElement>('.details-main');
     const files = this.expansion.querySelector<HTMLElement>('.details-files');
@@ -3464,21 +3580,20 @@ class App {
    * The changed files as a tree (role=tree): folders fold with a click, Left/Right or Enter;
    * Up/Down move between visible entries. Folded folders are remembered per commit.
    */
-  private fileTree(
-    source: FileSource,
-    files: readonly FileChange[],
+  private fileTree<F extends FileChange>(
+    files: readonly F[],
     label: string,
-    staged: ReadonlySet<string> = new Set(),
+    item: (f: F, name: string, depth: number) => HTMLElement,
   ): HTMLElement {
     const list = el('ul', 'files');
     list.setAttribute('role', 'tree');
     list.setAttribute('aria-label', label);
     // Folds are remembered per tree: a stash's changes and its untracked files can share folders.
     list.dataset['folds'] = `${label}:`;
-    const add = (nodes: FileTreeNode[], depth: number) => {
+    const add = (nodes: FileTreeNode<F>[], depth: number) => {
       for (const n of nodes) {
         if (n.kind === 'file') {
-          list.append(this.fileItem(source, n.change, n.name, depth, staged.has(n.change.path)));
+          list.append(item(n.change, n.name, depth));
           continue;
         }
         const li = el('li', depth > 0 ? 'list-row clickable folder nested' : 'list-row clickable folder');
@@ -3496,7 +3611,7 @@ class App {
         add(n.children, depth + 1);
       }
     };
-    add(buildFileTree([...files]), 0);
+    add(buildFileTree<F>([...files]), 0);
     // Folders holding a file of the path filter are open.
     const path = this.options.path;
     if (path)
@@ -3568,25 +3683,49 @@ class App {
     next?.focus();
   }
 
-  private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
-    const views = fileViews(f, source.base);
+  /** A file entry of a tree: its status letter and name, and where a rename came from. */
+  private fileEntry(f: FileChange, name: string, depth: number, status: string = f.status): HTMLElement {
     const li = el('li', `list-row clickable file status-${f.status}${depth > 0 ? ' nested' : ''}`);
     li.tabIndex = 0;
     li.setAttribute('role', 'treeitem');
     li.setAttribute('aria-level', String(depth + 1));
     li.style.setProperty('--depth', String(depth));
     li.dataset['path'] = f.path;
-    li.dataset['views'] = views.join(' ');
-    const menu = fileMenuContext(source, f, views);
-    li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (f.path === this.openedFile) li.classList.add('opened');
     if (this.options.path && inFilter(f.path, this.options.path)) li.classList.add('in-filter');
-    li.append(el('span', 'file-status', f.status));
+    li.append(el('span', 'file-status', status));
     const label = el('span', 'file-path');
     // The folder is the tree around it; a rename also shows where the file came from.
     label.append(el('span', 'file-name', name));
     if (f.oldPath !== undefined) label.append(el('span', 'file-old', `← ${f.oldPath}`));
     li.append(label);
+    return li;
+  }
+
+  /** An uncommitted change: click or Enter opens it as Source Control does (openChange), Alt to the side. */
+  private changeItem(f: ChangedPath, name: string, depth: number): HTMLElement {
+    const li = this.fileEntry(f, name, depth, CHANGE_LETTER[f.group] ?? f.status);
+    const open = (beside: boolean) => {
+      vscode.postMessage({ type: 'openChange', generation: this.generation, file: f, beside });
+    };
+    li.title = `${f.path}\nClick: ${CHANGE_OPEN[f.group](f)} · Alt+Click: to the side`;
+    li.addEventListener('click', (e) => {
+      open(e.altKey);
+    });
+    li.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      open(e.altKey);
+    });
+    return li;
+  }
+
+  private fileItem(source: FileSource, f: FileChange, name: string, depth: number, staged: boolean): HTMLElement {
+    const views = fileViews(f, source.base);
+    const li = this.fileEntry(f, name, depth);
+    li.dataset['views'] = views.join(' ');
+    const menu = fileMenuContext(source, f, views);
+    li.setAttribute('data-vscode-context', JSON.stringify(menu));
     if (staged) {
       const tag = el('span', 'chip chip-outline file-staged', 'staged');
       tag.title = 'Staged when it was stashed';
@@ -3676,7 +3815,8 @@ class App {
       done: this.done,
       restoring: this.restore !== undefined || this.headQuery !== undefined,
       selected: this.selectedHash(),
-      detailsShown: this.expanded && !this.expansion.hidden ? this.details?.hash : undefined,
+      detailsShown:
+        this.expanded && !this.expansion.hidden ? (this.details?.hash ?? (this.working && CHANGES_ROW)) : undefined,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       rowHashes: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
@@ -3888,12 +4028,15 @@ class App {
           : undefined,
       },
       badgeRules: this.badgeRules,
-      idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some(
-        (f) =>
+      idleFileActions: [...this.expansion.querySelectorAll<HTMLElement>('.file')].some((f) => {
+        const actions = f.querySelector('.file-actions');
+        return (
+          actions !== null &&
           !f.matches(':hover') &&
           !f.matches(':has(:focus-visible), :focus-visible') &&
-          getComputedStyle(f.querySelector('.file-actions')!).visibility === 'visible',
-      ),
+          getComputedStyle(actions).visibility === 'visible'
+        );
+      }),
       selectionOutline: (() => {
         const row = this.rowsLayer.querySelector<HTMLElement>(`#row-${this.selected}`);
         if (!row) return 'none';
@@ -3910,7 +4053,7 @@ class App {
 
   private probeDetails(): ProbeState['details'] {
     const e = this.expansion;
-    if (!this.expanded || !this.details || e.hidden) return undefined;
+    if (!this.expanded || (!this.details && !this.working) || e.hidden) return undefined;
     const main = e.querySelector<HTMLElement>('.details-main');
     const files = e.querySelector<HTMLElement>('.details-files');
     const table = e.querySelector<HTMLElement>('.meta-table');

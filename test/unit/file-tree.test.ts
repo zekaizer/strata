@@ -47,4 +47,9 @@ describe('buildFileTree', () => {
   it('sorts names the way people read them', () => {
     assert.deepEqual(show(buildFileTree([M('f10.c'), M('f2.c'), M('F1.c')])), ['F1.c', 'f2.c', 'f10.c']);
   });
+
+  it('lists a folder git reports as one untracked entry ("dir/") as a file named with its slash', () => {
+    const tree = buildFileTree([M('vendor/lib/'), M('vendor/a.txt')]);
+    assert.deepEqual(show(tree), ['vendor/', '  a.txt', '  lib/']);
+  });
 });

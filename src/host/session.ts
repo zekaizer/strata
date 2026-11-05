@@ -5,7 +5,14 @@ import * as vscode from 'vscode';
 import { addRule, hiddenRefs, parseRules, type BadgeRule } from '../core/badge-rules.ts';
 import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
 import type { Ref, RefSnapshot } from '../core/refs.ts';
-import { changesSummary, type ChangesSummary, type Leftover, type OperationState } from '../core/repo-state.ts';
+import {
+  changesSummary,
+  listChanges,
+  type ChangedPath,
+  type ChangesSummary,
+  type Leftover,
+  type OperationState,
+} from '../core/repo-state.ts';
 import type { StashEntry } from '../core/stash.ts';
 import { hasChangedPaths, hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { changingCommits, isPartialClone, isTracked, readPathOrigin } from '../git/path-history.ts';
@@ -23,8 +30,9 @@ import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
-import { readOperationState, readWorkingChanges } from '../git/state.ts';
-import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
+import { readOperationState, readStatus, readWorkingChanges } from '../git/state.ts';
+import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost, WorkingDetails } from '../shared/protocol.ts';
+import { resolveConflicts } from './flows/changes.ts';
 import { setContext, type ContextKey } from './context.ts';
 import { readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
@@ -52,6 +60,8 @@ export const FIND_CAP = 10_000;
  * them out for the rest of the session (a huge folder git does not ignore).
  */
 export const UNTRACKED_BUDGET_MS = 1000;
+/** The unfolded uncommitted changes row lists at most this many paths per group. */
+const CHANGES_LISTED = 2000;
 
 /** workspaceState key of Strata's stash marks, by the git dir of the worktree they belong to. */
 const STASH_MARKS = 'strata.stashMarks';
@@ -121,6 +131,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private changes: ChangesSummary | undefined | null = null;
   /** Stops the status read in flight when a newer one starts. */
   private changesQuery: AbortController | undefined;
+  /** Stops the read of the unfolded row's paths when a newer one starts. */
+  private changesDetailsQuery: AbortController | undefined;
   /** Untracked files took longer than UNTRACKED_BUDGET_MS to count once. */
   private untrackedSlow = false;
   /** Stops the ref card's where-is query in flight. */
@@ -294,8 +306,14 @@ export class RepoSession implements vscode.Disposable, FlowHost {
             if (m.generation === this.generation) this.post({ type: 'details', generation: m.generation, details });
           }
           break;
+        case 'selectChanges':
+          if (m.generation === this.generation) await this.selectChanges(m.generation);
+          break;
         case 'openFile':
           if (m.generation === this.generation) await this.openFile(m);
+          break;
+        case 'openChange':
+          if (m.generation === this.generation) await this.openChange(m.file, m.beside);
           break;
         case 'setOptions': {
           const options = validOptions(m.options);
@@ -560,6 +578,77 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (!force && JSON.stringify(changes) === JSON.stringify(this.changes)) return;
     this.changes = changes;
     this.post({ type: 'changes', generation, changes });
+  }
+
+  /** Answers selectChanges; a newer request stops this one's git. */
+  private async selectChanges(generation: number): Promise<void> {
+    this.changesDetailsQuery?.abort();
+    const query = new AbortController();
+    this.changesDetailsQuery = query;
+    const untracked = vscode.workspace.getConfiguration('git').get<string>('untrackedChanges') !== 'hidden';
+    let details: WorkingDetails;
+    try {
+      details = listChanges(
+        await readStatus(this.api.git.path, this.cwd, untracked, { signal: query.signal }),
+        CHANGES_LISTED,
+      );
+    } catch (e) {
+      if (query.signal.aborted) return;
+      throw e;
+    }
+    if (query.signal.aborted || generation !== this.generation) return;
+    this.changesDetailsQuery = undefined;
+    this.post({ type: 'changesDetails', generation, details });
+  }
+
+  /** Opens an uncommitted change (openChange). */
+  private async openChange(file: ChangedPath, beside: boolean): Promise<void> {
+    // From the webview: only paths inside the repository, of the groups and statuses git reports.
+    const folder = file.group === 'untracked' && file.path.endsWith('/');
+    for (const p of [folder ? file.path.slice(0, -1) : file.path, file.oldPath]) {
+      if (p !== undefined && !isRepoPath(p)) throw new Error(`invalid path: ${p}`);
+    }
+    if (!['staged', 'unstaged', 'conflicted', 'untracked'].includes(file.group)) throw new Error('invalid group');
+    const uri = (path: string) => vscode.Uri.joinPath(this.repo.rootUri, ...path.split('/').filter((s) => s));
+    if (file.group === 'conflicted') {
+      await resolveConflicts(this, [file.path]);
+      return;
+    }
+    // A repository nested in this one shows as one untracked folder.
+    if (folder) {
+      await vscode.commands.executeCommand('revealInExplorer', uri(file.path));
+      return;
+    }
+    const opened = new Set<string>();
+    this.opened = { path: file.path, uris: opened };
+    const seen = (u: vscode.Uri) => {
+      opened.add(u.toString());
+      return u;
+    };
+    const options: vscode.TextDocumentShowOptions = {
+      preview: true,
+      ...(beside ? { viewColumn: vscode.ViewColumn.Beside } : {}),
+    };
+    const name = posix.basename(file.path);
+    const open = (u: vscode.Uri, title: string) =>
+      vscode.commands.executeCommand('vscode.open', seen(u), options, title);
+    const diff = (left: vscode.Uri, right: vscode.Uri, title: string) =>
+      vscode.commands.executeCommand('vscode.diff', seen(left), seen(right), title, options);
+    // The resources and titles Source Control uses for the same change.
+    const index = this.api.toGitUri(uri(file.path), '');
+    if (file.group === 'staged') {
+      const head = this.api.toGitUri(uri(file.oldPath ?? file.path), 'HEAD');
+      const label = file.oldPath ? `${posix.basename(file.oldPath)} → ${name}` : name;
+      if (file.status === 'A') await open(index, `${name} (Index)`);
+      else if (file.status === 'D') await open(head, `${name} (Deleted)`);
+      else await diff(head, index, `${label} (Index)`);
+    } else if (file.group === 'unstaged') {
+      const indexed = this.api.toGitUri(uri(file.path), '~');
+      if (file.status === 'D') await open(indexed, `${name} (Deleted)`);
+      else if (file.status === 'A') await open(seen(uri(file.path)), name);
+      else await diff(indexed, uri(file.path), `${name} (Working Tree)`);
+    } else await open(uri(file.path), name);
+    this.syncShownFile();
   }
 
   /** The uncommitted changes; undefined without a work tree, null when the read was stopped. */
@@ -1102,6 +1191,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.stopWhere();
     this.stopFind();
     this.changesQuery?.abort();
+    this.changesDetailsQuery?.abort();
     clearTimeout(this.refreshTimer);
     clearTimeout(this.graphTimer);
     clearTimeout(this.pathRead?.slow);

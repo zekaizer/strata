@@ -663,8 +663,17 @@ body.vscode-high-contrast .expansion.more-below {
   right: var(--space-8);
 }
 
-.expansion-loading {
+.expansion-loading,
+.details-note {
   color: var(--color-muted);
+}
+
+/* The unfolded uncommitted changes row's buttons, under its subject. */
+.details-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
 }
 
 /*

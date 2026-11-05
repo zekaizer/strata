@@ -18,7 +18,7 @@ import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
 import { parsePathFilter } from '../src/core/path-filter.ts';
-import type { ChangesSummary, Leftover, OperationState } from '../src/core/repo-state.ts';
+import type { ChangedPath, ChangesSummary, Leftover, OperationState } from '../src/core/repo-state.ts';
 import type { WorktreeInfo } from '../src/core/worktrees.ts';
 import { rewriteEffects } from '../src/core/wording.ts';
 import {
@@ -432,6 +432,34 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         setTimeout(() => {
           toWebview({ type: 'editEnded', applied: false });
         }, 1500);
+      break;
+    }
+    case 'selectChanges': {
+      if (!changes) break;
+      const n = (k: number | undefined) => Array.from({ length: Math.min(k ?? 0, 40) }, (_, i) => i);
+      const files: ChangedPath[] = [
+        ...n(changes.conflicted).map((i): ChangedPath => ({
+          group: 'conflicted',
+          status: 'M',
+          path: `src/merge-${i}.ts`,
+        })),
+        ...n(changes.staged).map((i): ChangedPath => ({
+          group: 'staged',
+          status: i === 1 ? 'A' : 'M',
+          path: i ? `src/token-${i}.ts` : 'src/lexer.ts',
+        })),
+        ...n(changes.unstaged).map((i): ChangedPath => ({
+          group: 'unstaged',
+          status: i === 2 ? 'D' : 'M',
+          path: ['src/lexer.ts', 'README.md', 'docs/old.md'][i] ?? `docs/page-${i}.md`,
+        })),
+        ...n(changes.untracked).map((i): ChangedPath => ({
+          group: 'untracked',
+          status: 'A',
+          path: i ? `notes/scratch-${i}/` : 'notes/todo.txt',
+        })),
+      ];
+      toWebview({ type: 'changesDetails', generation, details: { files, truncated: 0 } });
       break;
     }
     case 'select': {

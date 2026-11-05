@@ -326,6 +326,7 @@ const handlers = (env: FlowEnv): Handlers => ({
     return panel().copyStashPatch(parseTarget(ctx, ['stash'], host.refs).hash);
   },
   'strata.stash.drop': write((host, ctx) => dropStash(host, stashHash(ctx))),
+  'strata.openScm': () => vscode.commands.executeCommand('workbench.view.scm'),
   'strata.showStashes': () => {
     panel().showStashes();
   },

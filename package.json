@@ -448,6 +448,11 @@
         "enablement": "!strata.busy && !strata.operation"
       },
       {
+        "command": "strata.openScm",
+        "title": "Open Source Control",
+        "category": "Strata"
+      },
+      {
         "command": "strata.showStashes",
         "title": "Show Stashes...",
         "category": "Strata"
@@ -1148,6 +1153,10 @@
         },
         {
           "command": "strata.stash.drop",
+          "when": "false"
+        },
+        {
+          "command": "strata.openScm",
           "when": "false"
         },
         {
