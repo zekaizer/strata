@@ -20,6 +20,7 @@ import {
   stillConflicted,
   stoppedMessage,
   type MergeFacts,
+  unstagedResolutions,
 } from '../../src/core/wording.ts';
 
 const labels = (b: { label: string }[]) => b.map((x) => x.label);
@@ -203,6 +204,9 @@ describe('wording of history operations', () => {
       'Cherry pick stopped ("Add lexer"): The previous cherry-pick is now empty.',
     );
     assert.equal(stillConflicted(['a.ts'], 1).message, '1 file still has conflicts: a.ts.');
+    const stage = unstagedResolutions(['a.ts', 'b.ts']);
+    assert.equal(stage.message, '2 resolved files are not staged yet: a.ts and b.ts.');
+    assert.deepEqual(labels(stage.buttons), ['Stage & Continue']);
     assert.equal(skipConfirmation(c, "'main'").detail, "Its changes won't be in 'main'.");
   });
 

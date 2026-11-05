@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { readDiscardedByAbort } from '../../src/git/facts.ts';
+import { readConflictResolution, readDiscardedByAbort } from '../../src/git/facts.ts';
 import { readAbortTarget, readOperationState, readWorktree } from '../../src/git/state.ts';
 import { createStash } from '../../src/git/stash.ts';
 import { tempDir } from './helpers.ts';
@@ -45,6 +45,32 @@ describe('repository state', () => {
     run(d, 'commit', '--quiet', '-am', 'main 1');
     return d;
   };
+
+  it('tells conflicted files whose markers are gone from those still conflicted, binary or not text conflicts', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'h.txt'), 'h\n');
+    writeFileSync(join(d, 'bin'), 'a\0b');
+    writeFileSync(join(d, 'gone.txt'), 'k\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'more');
+    run(d, 'checkout', '--quiet', '-b', 'side');
+    writeFileSync(join(d, 'h.txt'), 'side\n');
+    writeFileSync(join(d, 'bin'), 'side\0b');
+    run(d, 'rm', '--quiet', 'gone.txt');
+    run(d, 'commit', '--quiet', '-am', 'side');
+    run(d, 'checkout', '--quiet', 'main');
+    writeFileSync(join(d, 'h.txt'), 'mine\n');
+    writeFileSync(join(d, 'bin'), 'mine\0b');
+    writeFileSync(join(d, 'gone.txt'), 'k2\n');
+    run(d, 'commit', '--quiet', '-am', 'mine');
+    stop(d, 'merge', 'side');
+    writeFileSync(join(d, 'h.txt'), 'resolved\n');
+    assert.deepEqual(await readConflictResolution('git', d), { resolved: ['h.txt'], unresolved: ['bin', 'gone.txt'] });
+    run(d, 'add', 'bin', 'gone.txt');
+    assert.deepEqual(await readConflictResolution('git', d), { resolved: ['h.txt'], unresolved: [] });
+    writeFileSync(join(d, 'h.txt'), '<<<<<<< HEAD\nmine\n=======\nside\n>>>>>>> side\n');
+    assert.deepEqual(await readConflictResolution('git', d), { resolved: [], unresolved: ['h.txt'] });
+  });
 
   it('is idle in a clean repository', async () => {
     const d = repo();

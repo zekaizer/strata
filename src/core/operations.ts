@@ -38,6 +38,8 @@ export type Operation =
   | { kind: 'reset'; commit: string; mode: ResetMode }
   /** Puts `paths` back as HEAD has them, in the index and the work tree, deleting those HEAD lacks. */
   | { kind: 'restoreHead'; paths: readonly string[] }
+  /** Stages `paths` as they are in the work tree (marks resolved conflicts resolved). */
+  | { kind: 'stage'; paths: readonly string[] }
   | { kind: 'continue' | 'abort' | 'skip'; operation: OperationKind }
   /**
    * `untracked`: untracked files stashed too, none, those git does not ignore, or ignored ones as
@@ -150,6 +152,8 @@ export function argv(op: Operation): string[] {
       return ['reset', `--${op.mode}`, op.commit];
     case 'restoreHead':
       return ['restore', '--source=HEAD', '--staged', '--worktree', '--', ...op.paths.map((p) => `:(literal)${p}`)];
+    case 'stage':
+      return ['add', '--', ...op.paths.map((p) => `:(literal)${p}`)];
     case 'continue':
       // For a merge, `commit --no-edit` would keep the "# Conflicts:" notes; --continue's editor (none) strips them.
       return [GIT_COMMAND[op.operation], '--continue'];

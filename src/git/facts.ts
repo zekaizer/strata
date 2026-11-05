@@ -1,7 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseGitVersion, type GitVersion } from '../core/git-version.ts';
-import type { OperationState } from '../core/repo-state.ts';
+import { hasConflictMarkers, type OperationState } from '../core/repo-state.ts';
 import type { CommitList, CommitRef, ResetFacts } from '../core/wording.ts';
 import { runGit } from './run.ts';
 import { readStashList } from './stash.ts';
@@ -190,6 +190,31 @@ export const readConfigBool = (git: string, cwd: string, key: string): Promise<b
 /** Paths with unresolved conflicts. */
 export const readUnmerged = async (git: string, cwd: string): Promise<string[]> =>
   (await runGit(git, cwd, ['diff', '--name-only', '-z', '--diff-filter=U', '--'])).split('\0').filter((p) => p !== '');
+
+/**
+ * Unmerged paths: `resolved`, a text conflict (both sides changed the file) whose file has no
+ * conflict markers left; `unresolved`, the others. Binary and modify/delete conflicts have no
+ * markers to tell, so they count as unresolved until staged.
+ */
+export async function readConflictResolution(
+  git: string,
+  cwd: string,
+): Promise<{ resolved: string[]; unresolved: string[] }> {
+  const stages = new Map<string, Set<string>>();
+  for (const entry of paths(await runGit(git, cwd, ['ls-files', '--unmerged', '-z']))) {
+    const tab = entry.indexOf('\t');
+    const path = entry.slice(tab + 1);
+    const stage = entry.slice(0, tab).split(' ')[2] ?? '';
+    stages.set(path, (stages.get(path) ?? new Set()).add(stage));
+  }
+  const resolved: string[] = [];
+  const unresolved: string[] = [];
+  for (const [path, s] of stages) {
+    const text = s.has('2') && s.has('3') ? await readFile(join(cwd, path), 'utf8').catch(() => undefined) : undefined;
+    (text !== undefined && !hasConflictMarkers(text) ? resolved : unresolved).push(path);
+  }
+  return { resolved, unresolved };
+}
 
 const paths = (out: string) => out.split('\0').filter((p) => p !== '');
 

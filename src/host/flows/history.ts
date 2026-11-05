@@ -1,7 +1,6 @@
-import * as vscode from 'vscode';
 import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
 import { MORE_HISTORY, type MergeMode, type Operation, type ResetMode } from '../../core/operations.ts';
-import type { OperationState } from '../../core/repo-state.ts';
+import { CONFLICTS_SHOWN, type OperationState } from '../../core/repo-state.ts';
 import {
   abortButton,
   abortConfirmation,
@@ -36,6 +35,7 @@ import {
   stillConflicted,
   stoppedMessage,
   UNRELATED,
+  unstagedResolutions,
 } from '../../core/wording.ts';
 import {
   countCommits,
@@ -44,6 +44,7 @@ import {
   isShallowEdge,
   readCommit,
   readConfigBool,
+  readConflictResolution,
   readDiscardedByAbort,
   readHead,
   readMergeBase,
@@ -599,8 +600,17 @@ export async function continueOperation(host: FlowHost): Promise<void> {
   const state = await inProgress(host);
   if (!state) return;
   if (state.conflictCount > 0) {
-    if (await host.ui.confirm(stillConflicted(state.conflicts, state.conflictCount)))
-      await vscode.commands.executeCommand('workbench.view.scm');
+    const { resolved, unresolved } = await readConflictResolution(host.git, host.cwd);
+    if (unresolved.length > 0) {
+      if (await host.ui.confirm(stillConflicted(unresolved.slice(0, CONFLICTS_SHOWN), unresolved.length)))
+        await resolveConflicts(host, unresolved);
+      return;
+    }
+    if (!(await host.ui.confirm(unstagedResolutions(resolved)))) return;
+    const staged = await run(host, HISTORY_DOING.staging(resolved.length), (exec) =>
+      exec({ kind: 'stage', paths: resolved }),
+    );
+    if (staged !== undefined) await continueOperation(host);
     return;
   }
   const op: Operation = { kind: 'continue', operation: state.kind };

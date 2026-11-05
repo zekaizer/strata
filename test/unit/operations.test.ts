@@ -128,6 +128,15 @@ describe('operations', () => {
     assert.equal(run(d, 'status', '--porcelain'), '?? other.txt');
   });
 
+  it('stages exactly the paths given, read literally', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'f.txt'), 'resolved\n');
+    writeFileSync(join(d, 'new [1].txt'), 'added\n');
+    writeFileSync(join(d, 'other.txt'), 'stays\n');
+    await op(d, { kind: 'stage', paths: ['f.txt', 'new [1].txt'] });
+    assert.equal(run(d, 'status', '--porcelain'), 'M  f.txt\nA  "new [1].txt"\n?? other.txt');
+  });
+
   it('puts a deleted branch back without switching to it, with its configuration', async () => {
     const d = repo();
     const tip = run(d, 'rev-parse', 'topic');

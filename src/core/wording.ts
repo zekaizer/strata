@@ -711,12 +711,23 @@ export function rebaseContinues(step: { current: number; total: number } | undef
 
 export const abortButton = (kind: OperationKind): string => `Abort ${OP_TITLE[kind]}...`;
 
-/** Continue while files still have conflicts. */
-export function stillConflicted(paths: readonly string[], count: number): Confirmation<'scm'> {
+/** Continue while files still have conflict markers, or conflicts git can't show as markers. */
+export function stillConflicted(paths: readonly string[], count: number): Confirmation<'resolve'> {
   return {
     message: `${plural(count, 'file')} still ${count === 1 ? 'has' : 'have'} conflicts: ${fileList(paths)}.`,
-    detail: 'Resolve and stage them first.',
-    buttons: [{ id: 'scm', label: 'Open Source Control' }],
+    detail: 'Continue once they are resolved and staged.',
+    buttons: [{ id: 'resolve', label: 'Resolve...' }],
+    level: 'info',
+  };
+}
+
+/** Continue with conflicted files that have no conflict markers left but are not staged yet. */
+export function unstagedResolutions(paths: readonly string[]): Confirmation<'stage'> {
+  const one = paths.length === 1;
+  return {
+    message: `${plural(paths.length, 'resolved file')} ${one ? 'is' : 'are'} not staged yet: ${fileList(paths)}.`,
+    detail: `${one ? 'It is' : 'They are'} staged as ${one ? 'it is' : 'they are'} now, then the operation goes on.`,
+    buttons: [{ id: 'stage', label: 'Stage & Continue' }],
     level: 'info',
   };
 }
@@ -820,6 +831,7 @@ export const HISTORY_DOING = {
   continuing: (kind: OperationKind): string => `Continuing the ${OP_NAME[kind]}`,
   aborting: (kind: OperationKind): string => `Aborting the ${OP_NAME[kind]}`,
   skipping: (short: string): string => `Skipping ${short}`,
+  staging: (n: number): string => `Staging ${plural(n, 'resolved file')}`,
   fetchingHistory: {
     deepen: `Fetching ${MORE_HISTORY} more commits of history`,
     unshallow: 'Fetching the full history',

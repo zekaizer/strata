@@ -328,7 +328,7 @@ describe('history operations', () => {
     assert.equal(git('rev-parse', 'HEAD'), tip);
   });
 
-  it('continues a rebase once its conflict is resolved, not before, and the banner goes', async () => {
+  it('continues a rebase once its conflict is resolved, staging it, not before, and the banner goes', async () => {
     branchWith('strata-topic', 'main~1', 'main.txt', 'topic\n');
     ui.press('Rebase');
     await run('strata.rebase', branchMenu('main', git('rev-parse', 'main')));
@@ -337,11 +337,14 @@ describe('history operations', () => {
     ui.clear();
     await run('strata.operation.continue');
     assert.equal(ui.first('confirm').message, '1 file still has conflicts: main.txt.');
+    assert.deepEqual(ui.first('confirm').buttons, ['Resolve...']);
     assert.equal(api().contextValue('strata.operation'), 'rebase');
 
+    ui.clear();
     write('main.txt', 'resolved\n');
-    git('add', 'main.txt');
+    ui.press('Stage & Continue');
     await run('strata.operation.continue');
+    assert.equal(ui.first('confirm').message, '1 resolved file is not staged yet: main.txt.');
     assert.equal(git('rev-parse', 'HEAD~1'), git('rev-parse', 'main'));
     assert.equal(git('show', 'HEAD:main.txt'), 'resolved');
     assert.equal(api().contextValue('strata.operation'), '');
