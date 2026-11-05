@@ -19,8 +19,8 @@ describe('uncommitted changes row', () => {
     await waitFor('history', async () => (await panel.probe()).done);
   });
   after(() => {
-    git('checkout', '--', '.');
     git('reset', '--quiet');
+    git('checkout', '--', '.');
     rmSync(file('scratch.txt'), { force: true });
     panel.dispose();
   });
@@ -129,5 +129,20 @@ describe('uncommitted changes row', () => {
     assert.equal(tab.label, 'NOTES.md (Index)');
     assert.equal(tab.input.original.scheme, 'git');
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+
+  it('lists the unfolded row again when another file changes, the counts the same', async () => {
+    // Unfolded by the test before: NOTES.md staged, main.txt changed, scratch.txt untracked.
+    assert.equal((await panel.probe()).detailsShown, 'changes');
+    git('checkout', '--', 'main.txt');
+    writeFileSync(file('cross_x.txt'), 'edited\n');
+    await waitFor('the other file listed', async () => {
+      const s = await panel.probe();
+      return JSON.stringify(s.fileTree) === JSON.stringify(['NOTES.md', 'cross_x.txt', 'scratch.txt']);
+    });
+    assert.equal(
+      (await panel.probe()).rowLabels['changes'],
+      'Uncommitted changes on main: 1 staged, 1 changed, 1 untracked.',
+    );
   });
 });

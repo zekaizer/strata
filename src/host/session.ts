@@ -130,8 +130,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** An update is running; `graphAgain` asks for another one when it ends. */
   private graphUpdating = false;
   private graphAgain = false;
-  /** What the graph was last told about the uncommitted changes; null before the first time. */
-  private changes: ChangesSummary | undefined | null = null;
+  /** The git status output the graph was last told about; undefined before the first time. */
+  private changesStatus: string | undefined;
   /** Stops the status read in flight when a newer one starts. */
   private changesQuery: AbortController | undefined;
   /** Stops the read of the unfolded row's paths when a newer one starts. */
@@ -586,13 +586,14 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     const query = new AbortController();
     this.changesQuery = query;
     const generation = this.generation;
-    const changes = await this.readChanges(query.signal);
+    const read = await this.readChanges(query.signal);
     if (query.signal.aborted || this.disposed || generation !== this.generation) return;
     this.changesQuery = undefined;
-    if (changes === null) return;
-    if (!force && JSON.stringify(changes) === JSON.stringify(this.changes)) return;
-    this.changes = changes;
-    this.post({ type: 'changes', generation, changes });
+    if (read === null) return;
+    // Any other path or state, even with the same counts: an unfolded row lists the paths again.
+    if (!force && read.status === this.changesStatus) return;
+    this.changesStatus = read.status;
+    this.post({ type: 'changes', generation, changes: read.summary });
   }
 
   /** Answers selectChanges; a newer request stops this one's git. */
@@ -676,31 +677,32 @@ export class RepoSession implements vscode.Disposable, FlowHost {
    * The uncommitted changes (in a path history, to its paths only); undefined without a work tree,
    * null when the read was stopped.
    */
-  private async readChanges(signal: AbortSignal): Promise<ChangesSummary | undefined | null> {
+  private async readChanges(
+    signal: AbortSignal,
+  ): Promise<{ summary: ChangesSummary | undefined; status: string } | null> {
     const git = this.api.git.path;
     const cwd = this.cwd;
     const paths = this.options.path?.paths;
-    const read = async (untracked: boolean, timeoutMs?: number) =>
-      parseStatus(
-        await readGraphStatus(git, cwd, {
-          untracked,
-          paths,
-          limits: { signal, ...(timeoutMs ? { timeoutMs } : {}) },
-        }),
+    const read = async (untracked: boolean, timeoutMs?: number) => {
+      const status = await readGraphStatus(git, cwd, {
         untracked,
-      );
+        paths,
+        limits: { signal, ...(timeoutMs ? { timeoutMs } : {}) },
+      });
+      return { summary: changesSummary(parseStatus(status, untracked)), status };
+    };
     try {
-      if (!this.scansUntracked()) return changesSummary(await read(false));
+      if (!this.scansUntracked()) return await read(false);
       const started = performance.now();
       try {
-        return changesSummary(await read(true, UNTRACKED_BUDGET_MS));
+        return await read(true, UNTRACKED_BUDGET_MS);
       } catch (e) {
         if (signal.aborted || performance.now() - started < UNTRACKED_BUDGET_MS) throw e;
         this.untrackedSlow = true;
-        return changesSummary(await read(false));
+        return await read(false);
       }
     } catch {
-      return signal.aborted ? null : undefined;
+      return signal.aborted ? null : { summary: undefined, status: '' };
     }
   }
 

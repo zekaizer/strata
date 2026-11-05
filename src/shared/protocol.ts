@@ -92,8 +92,9 @@ export type HostToWebview =
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
   /**
-   * The uncommitted changes in the work tree, sent after every reset and when they change;
-   * undefined when there are none (or the repository has no work tree).
+   * The uncommitted changes in the work tree, sent after every reset and when any changed path or
+   * its state changes, even with the same counts; undefined when there are none (or the
+   * repository has no work tree).
    */
   | { type: 'changes'; generation: number; changes: ChangesSummary | undefined }
   /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */

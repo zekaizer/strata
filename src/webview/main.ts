@@ -707,9 +707,11 @@ class App {
         break;
       case 'changes':
         if (m.generation !== this.generation) return;
-        if (JSON.stringify(m.changes) === JSON.stringify(this.changes)) return;
-        this.changes = m.changes;
-        this.relist();
+        if (JSON.stringify(m.changes) !== JSON.stringify(this.changes)) {
+          this.changes = m.changes;
+          this.relist();
+        }
+        // Sent when any path or state changed, counts or not: the unfolded row lists them again.
         if (this.expanded && this.working && this.selectedHash() === CHANGES_ROW) {
           this.pendingDetails = CHANGES_ROW;
           vscode.postMessage({ type: 'selectChanges', generation: this.generation });
