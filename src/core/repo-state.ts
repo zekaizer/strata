@@ -33,7 +33,7 @@ export const CONFLICTS_SHOWN = 50;
 export const hasConflictMarkers = (text: string): boolean => text.includes('\0') || /^(?:<{7}|>{7})(?: |$)/m.test(text);
 
 /** Uncommitted changes to tracked files (untracked files are not counted: autostash leaves them alone). */
-export interface Worktree {
+export interface WorkingChanges {
   /** Paths with staged or unstaged changes, conflicts included. */
   paths: string[];
   /** Of `paths`, those deleted from the index (`git rm`): no file is left there for a path to match. */
@@ -45,8 +45,8 @@ export interface Worktree {
 }
 
 /** Parses `git status --porcelain=v2 -z --untracked-files=no`. */
-export function parseStatus(out: string): Worktree {
-  const w: Worktree = { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 };
+export function parseStatus(out: string): WorkingChanges {
+  const w: WorkingChanges = { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 };
   const records = out.split('\0');
   for (let i = 0; i < records.length; i++) {
     const r = records[i]!;

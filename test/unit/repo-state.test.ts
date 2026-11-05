@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { readConflictResolution, readDiscardedByAbort } from '../../src/git/facts.ts';
-import { readAbortTarget, readOperationState, readWorktree } from '../../src/git/state.ts';
+import { readAbortTarget, readOperationState, readWorkingChanges } from '../../src/git/state.ts';
 import { createStash } from '../../src/git/stash.ts';
 import { tempDir } from './helpers.ts';
 
@@ -75,7 +75,13 @@ describe('repository state', () => {
   it('is idle in a clean repository', async () => {
     const d = repo();
     assert.equal(await readOperationState('git', d), undefined);
-    assert.deepEqual(await readWorktree('git', d), { paths: [], deleted: [], staged: 0, unstaged: 0, submodules: 0 });
+    assert.deepEqual(await readWorkingChanges('git', d), {
+      paths: [],
+      deleted: [],
+      staged: 0,
+      unstaged: 0,
+      submodules: 0,
+    });
   });
 
   it('counts staged and unstaged changes but not untracked files', async () => {
@@ -84,7 +90,7 @@ describe('repository state', () => {
     writeFileSync(join(d, 'other.txt'), 'staged\n');
     run(d, 'add', 'other.txt');
     writeFileSync(join(d, 'untracked.txt'), 'u\n');
-    const w = await readWorktree('git', d);
+    const w = await readWorkingChanges('git', d);
     assert.deepEqual([...w.paths].sort(), ['f.txt', 'other.txt']);
     assert.equal(w.staged, 1);
     assert.equal(w.unstaged, 1);
@@ -93,10 +99,10 @@ describe('repository state', () => {
   it('tells deletions from the index (git rm) from deleted files git still tracks', async () => {
     const d = repo();
     run(d, 'rm', '--quiet', 'f.txt');
-    const w = await readWorktree('git', d);
+    const w = await readWorkingChanges('git', d);
     assert.deepEqual(w.deleted, ['f.txt']);
     run(d, 'reset', '--quiet', '--', 'f.txt');
-    assert.deepEqual((await readWorktree('git', d)).deleted, []);
+    assert.deepEqual((await readWorkingChanges('git', d)).deleted, []);
   });
 
   it('reads a rebase stopped at a conflict, with its step, target and autostash', async () => {

@@ -304,7 +304,7 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | PullRun =
   } else if (asked.length > 0) {
     const answer = await host.ui.confirm(
       mergeConfirmation(facts, mergeFf, {
-        section: dirtySection(c.dirty, op, c.worktree.submodules),
+        section: dirtySection(c.dirty, op, c.working.submodules),
         // A mode git runs over these changes keeps them in place.
         modes: options.map((o) => ({
           mode: o.mode,
@@ -488,7 +488,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
   let answer: StashChoice | 'reset' | undefined = 'reset';
   if (ask) {
     const section =
-      c && choices.length > 0 ? dirtySection(c.dirty, op ?? 'resetKeep', c.worktree.submodules, overwritten) : '';
+      c && choices.length > 0 ? dirtySection(c.dirty, op ?? 'resetKeep', c.working.submodules, overwritten) : '';
     answer = await host.ui.confirm({
       ...ask,
       detail: [ask.detail, section].filter((s) => s !== '').join('\n'),
@@ -512,7 +512,7 @@ export async function reset(host: FlowHost, target: string): Promise<void> {
         // Never popped: it keeps what the reset would otherwise discard or overwrite.
         // With paths, only those: --all for overwritten files that are ignored, and none of the
         // staged deletions, which leave no file for a path to match (the reset restores them).
-        const changed = c?.worktree.paths.filter((p) => !c.worktree.deleted.includes(p)) ?? [];
+        const changed = c?.working.paths.filter((p) => !c.working.deleted.includes(p)) ?? [];
         await exec({
           kind: 'stashPush',
           message: safetyMessage,

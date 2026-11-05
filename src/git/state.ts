@@ -5,7 +5,7 @@ import {
   parseStatus,
   type OperationKind,
   type OperationState,
-  type Worktree,
+  type WorkingChanges,
 } from '../core/repo-state.ts';
 import { runGit } from './run.ts';
 import { messageEdits, sequencerTodo } from '../core/todo.ts';
@@ -141,7 +141,7 @@ export async function readMessageEdits(git: string, cwd: string): Promise<string
 }
 
 /** Uncommitted changes to tracked files. Untracked files are not scanned: slow on huge trees, and autostash ignores them. */
-export async function readWorktree(git: string, cwd: string): Promise<Worktree> {
+export async function readWorkingChanges(git: string, cwd: string): Promise<WorkingChanges> {
   return parseStatus(
     await runGit(git, cwd, ['status', '--porcelain=v2', '-z', '--untracked-files=no', '--ignore-submodules=none']),
   );
