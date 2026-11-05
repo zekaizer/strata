@@ -84,7 +84,7 @@ export interface FlowHost extends RunnerHost {
   readonly stashes: readonly StashEntry[];
   readonly lastUndo: Undo | undefined;
   settings(): FlowSettings;
-  /** Reloads the graph; `focus` is selected and revealed once it has loaded. */
+  /** Reloads the graph after an operation, marking what it moved; `focus` is selected and revealed once it has loaded. */
   refresh(focus?: string): Promise<void>;
   /** Reports a result in the status bar and to screen readers. */
   done(message: string): void;

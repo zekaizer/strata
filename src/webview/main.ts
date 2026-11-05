@@ -408,7 +408,7 @@ class App {
         this.queueRender();
         break;
       case 'reset':
-        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.focus);
+        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result);
         break;
       case 'stashes':
         if (m.generation !== this.generation) return;
@@ -544,8 +544,9 @@ class App {
     refs: RefSnapshot,
     options: ViewOptions,
     stashes: StashEntry[],
-    focus?: string,
+    result?: { focus?: string },
   ): void {
+    const focus = result?.focus;
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
     // scroll position too when the history itself is the same view. A row of a stash that is gone
     // hands both to the row that takes its place.
@@ -566,7 +567,7 @@ class App {
     // An operation's result: the badges it moved and the stash row it made pulse once shown.
     clearTimeout(this.landingTimer);
     this.landing =
-      focus !== undefined && this.repo?.root === repo.root
+      result !== undefined && this.repo?.root === repo.root
         ? {
             refs: new Set(landedRefs(this.refs, refs)),
             stash: stashes.some((s) => s.hash === focus) ? focus : undefined,

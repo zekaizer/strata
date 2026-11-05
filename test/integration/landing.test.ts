@@ -43,6 +43,16 @@ describe('after an operation', () => {
     await waitFor('pulse over', async () => (await panel.probe()).landed.length === 0, 5000);
   });
 
+  it('pulses what an operation that focuses nothing moved, as a fetch moves remote-tracking branches', async () => {
+    await gitRetry('remote', 'add', 'origin', 'https://example.invalid/branchy.git');
+    const host = panel.flowHost();
+    const target = git('rev-parse', 'main~1');
+    await host.runner.run(host, 'Fetching', false, () => gitRetry('update-ref', 'refs/remotes/origin/main', target));
+    await host.refresh();
+    const mark = await landed((refs) => refs.split(' ').includes('refs/remotes/origin/main'));
+    assert.equal(mark.animation, 'landed-badge');
+  });
+
   it('outlines the stash row it made instead, under reduced motion', async () => {
     await vscode.workspace.getConfiguration('workbench').update('reduceMotion', 'on', true);
     appendFileSync(join(workspaceRoot(), 'main.txt'), 'stashed\n');

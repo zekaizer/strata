@@ -218,7 +218,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
     }
   }
 
-  private async reset(focus?: string): Promise<void> {
+  private async reset(result?: { focus?: string }): Promise<void> {
     if (this.disposed) return;
     this.reader?.dispose();
     this.reader = undefined;
@@ -257,7 +257,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
       refs,
       options: this.options,
       stashes,
-      ...(focus === undefined ? {} : { focus }),
+      ...(result === undefined ? {} : { result }),
     });
     this.scheduleGraphUpdate();
     await this.syncRepoState(true);
@@ -622,7 +622,7 @@ export class GraphController implements vscode.Disposable, FlowHost {
   }
 
   refresh(focus?: string): Promise<void> {
-    return this.reset(focus);
+    return this.reset(focus === undefined ? {} : { focus });
   }
 
   done(message: string): void {

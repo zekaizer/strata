@@ -34,7 +34,10 @@ export interface RepoInfo {
  */
 export type HostToWebview =
   | { type: 'init'; theme: ThemeKind }
-  /** `focus`: a commit or stash to select and reveal once loaded, instead of the kept selection (the result of an operation). */
+  /**
+   * `result`: the history after an operation, which marks what it moved; its `focus` is a commit
+   * or stash to select and reveal once loaded, instead of the kept selection.
+   */
   | {
       type: 'reset';
       generation: number;
@@ -42,7 +45,7 @@ export type HostToWebview =
       refs: RefSnapshot;
       options: ViewOptions;
       stashes: StashEntry[];
-      focus?: string;
+      result?: { focus?: string };
     }
   /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
   | { type: 'stashes'; generation: number; stashes: StashEntry[] }
