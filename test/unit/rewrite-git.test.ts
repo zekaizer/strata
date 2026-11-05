@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import {
   HookRefused,
-  readForked,
   readLine,
+  readRefsHaving,
   readRemoteHaving,
   readUnpushed,
   runCommitMsgHook,
@@ -45,7 +45,7 @@ describe('reading a rewrite from git', () => {
       run(dir, 'commit', '--quiet', '-m', `c${i}\n\n# Heading\nbody ${i}`);
     }
     run(dir, 'branch', 'at-c3', 'HEAD~1');
-    run(dir, 'tag', 'v3', 'HEAD~1');
+    run(dir, 'tag', '-a', '-m', 'v3', 'v3', 'HEAD~1');
     run(dir, 'branch', 'forked', 'HEAD~1');
     run(dir, 'switch', '--quiet', 'forked');
     writeFileSync(join(dir, 'g'), 'g\n');
@@ -80,12 +80,18 @@ describe('reading a rewrite from git', () => {
     assert.equal(await readRemoteHaving('git', dir, rev(dir, 'HEAD'), undefined), undefined);
   });
 
-  it('finds branches and tags that point inside or forked from the rewritten commits', async () => {
-    assert.deepEqual((await readForked('git', dir, rev(dir, 'HEAD~1'))).sort(), [
-      'refs/heads/at-c3',
-      'refs/heads/forked',
-      'refs/tags/v3',
-    ]);
+  it('finds branches and tags that point inside or branched off the rewritten commits', async () => {
+    const found = await readRefsHaving('git', dir, rev(dir, 'HEAD~1'));
+    assert.deepEqual(
+      found.map((r) => [r.name, r.short, r.kind, r.hash]),
+      [
+        ['refs/heads/at-c3', 'at-c3', 'branch', rev(dir, 'HEAD~1')],
+        ['refs/heads/forked', 'forked', 'branch', rev(dir, 'forked')],
+        ['refs/heads/main', 'main', 'branch', rev(dir, 'HEAD')],
+        ['refs/tags/v3', 'v3', 'tag', rev(dir, 'HEAD~1')],
+      ],
+      'an annotated tag is peeled',
+    );
   });
 
   it('writes the todo into the git dir', async () => {

@@ -3,32 +3,33 @@ import { constants } from 'node:fs';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { atLeast, HOOK_RUN, type GitVersion } from '../core/git-version.ts';
-import type { LineCommit } from '../core/rewrite.ts';
+import { LINE_LIMIT, type LineCommit } from '../core/rewrite.ts';
 import { gitEnv } from './env.ts';
 import { GitOpError, runGitOp } from './op.ts';
 import { runGit } from './run.ts';
 
-/** How far below HEAD a commit can be and still be rewritten. */
-export const LINE_LIMIT = 1000;
-
 const FIELDS = 7;
 
 /**
- * HEAD's first-parent line, newest first, down to commit `oldest` (full id), or LINE_LIMIT commits
- * when `oldest` is not on it within that.
+ * HEAD's first-parent line, newest first, down to commit `oldest` (full id; undefined: the root),
+ * or `limit` commits when `oldest` is not on it within that.
  */
-export async function readLine(git: string, cwd: string, oldest: string): Promise<LineCommit[]> {
+export async function readLine(
+  git: string,
+  cwd: string,
+  oldest: string | undefined,
+  limit = LINE_LIMIT,
+): Promise<LineCommit[]> {
   const out = await runGit(git, cwd, [
     'log',
     '--first-parent',
     '--no-show-signature',
     '-z',
     '--date=raw',
-    `--max-count=${LINE_LIMIT}`,
+    `--max-count=${limit}`,
     '--format=%H%x00%P%x00%T%x00%an%x00%ae%x00%ad%x00%B',
     'HEAD',
-    '--not',
-    `${oldest}^@`,
+    ...(oldest === undefined ? [] : ['--not', `${oldest}^@`]),
     '--',
   ]);
   const f = out.split('\0');
@@ -79,17 +80,30 @@ export async function readRemoteHaving(
   return (found.find(([full]) => full === upstream) ?? found[0])?.[1];
 }
 
-/** Local branches and tags (full names) that have `oldest` but not HEAD: they forked from it, or point inside. */
-export async function readForked(git: string, cwd: string, oldest: string): Promise<string[]> {
+/** A local branch or tag that has a commit, and the commit it points at (a tag peeled). */
+export interface RefHaving {
+  name: string;
+  short: string;
+  kind: 'branch' | 'tag';
+  hash: string;
+}
+
+/** Local branches and tags that have commit `oldest`: at it, at a newer one, or branched off after it. */
+export async function readRefsHaving(git: string, cwd: string, oldest: string): Promise<RefHaving[]> {
   const out = await runGit(git, cwd, [
     'for-each-ref',
     `--contains=${oldest}`,
-    '--no-contains=HEAD',
-    '--format=%(refname)',
+    '--format=%(refname)%00%(refname:short)%00%(objectname)%00%(*objectname)',
     'refs/heads',
     'refs/tags',
   ]);
-  return out.split('\n').filter((l) => l !== '');
+  return out
+    .split('\n')
+    .filter((l) => l !== '')
+    .map((l) => {
+      const [name = '', short = '', object = '', peeled = ''] = l.split('\0');
+      return { name, short, kind: name.startsWith('refs/tags/') ? 'tag' : 'branch', hash: peeled || object };
+    });
 }
 
 const gitPath = async (git: string, cwd: string, path: string) =>

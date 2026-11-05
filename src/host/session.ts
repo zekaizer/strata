@@ -24,7 +24,7 @@ import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
 import { readOperationState } from '../git/state.ts';
-import type { HostToWebview, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
+import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost } from '../shared/protocol.ts';
 import { setContext, type ContextKey } from './context.ts';
 import { readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
@@ -982,6 +982,14 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (undo) this.env.undos.set(this.key, undo);
     else this.env.undos.delete(this.key);
     void this.context('strata.canUndo', undo !== undefined);
+  }
+
+  openEditor(draft: MessageDraft): void {
+    this.post({ type: 'editMessage', draft });
+  }
+
+  editEnded(applied: boolean): void {
+    this.post({ type: 'editEnded', applied });
   }
 
   busy(label: string | undefined): void {

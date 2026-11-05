@@ -44,6 +44,19 @@ export interface RepoInfo {
   root: string;
 }
 
+/** The inline message editor as the host opens it, after checking the commits can be rewritten. */
+export interface MessageDraft {
+  kind: 'reword' | 'squash';
+  /** HEAD when it opened: saving is refused once HEAD has moved. */
+  head: string;
+  /** The commits whose message it writes, oldest first; it opens under the first. */
+  commits: { hash: string; short: string; subject: string; message: string }[];
+  /** What it opens with: the message of the (oldest) commit. */
+  message: string;
+  /** What saving rewrites and moves (rewriteEffects). */
+  effects: string;
+}
+
 /**
  * Each `reset` starts a new generation. Messages carry the generation they
  * belong to so late replies for a previous history are dropped.
@@ -115,6 +128,10 @@ export type HostToWebview =
   | { type: 'showNotShown'; hash: string }
   /** Find Commit... from the Command Palette or its key: opens the find widget. */
   | { type: 'find' }
+  /** Opens the inline message editor (Edit Message..., Squash Selected Commits...). */
+  | { type: 'editMessage'; draft: MessageDraft }
+  /** Save in the message editor ended: `applied` closes it; otherwise it stays open with its text. */
+  | { type: 'editEnded'; applied: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */

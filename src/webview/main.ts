@@ -17,6 +17,7 @@ import {
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
 import { PATH_HISTORY } from '../core/wording.ts';
+import { rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
 import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
@@ -269,6 +270,10 @@ class App {
   private readonly stashButton = el('button', 'tool-button stash-button');
   /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
   private commits: Commit[] = [];
+  /** Parents of the loaded commits, by commit. */
+  private parentsOf = new Map<string, readonly string[]>();
+  /** Loaded commits Strata can rewrite (rewritableLine), newest first, by position. */
+  private rewritable = new Map<string, number>();
   private rows: Row[] = [];
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
@@ -666,6 +671,8 @@ class App {
         if (this.commitIndex)
           for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
         this.commits.push(...m.commits);
+        for (const c of m.commits) this.parentsOf.set(c.hash, c.parents);
+        this.findRewritable();
         this.measureTexts(m.commits);
         this.worker?.postMessage({
           type: 'layout',
@@ -774,6 +781,8 @@ class App {
         this.updateBanner();
         this.setStashes([]);
         this.commits = [];
+        this.parentsOf.clear();
+        this.findRewritable();
         this.list = [];
         this.geometry.clear();
         this.rows = [];
@@ -885,6 +894,8 @@ class App {
     this.updateBanner();
     this.commits = [];
     this.commitIndex = undefined;
+    this.parentsOf.clear();
+    this.findRewritable();
     this.list = [];
     this.geometry.clear();
     this.rows = [];
@@ -1634,6 +1645,11 @@ class App {
     this.queueRender();
   }
 
+  private findRewritable(): void {
+    const line = rewritableLine(this.refs.head, (h) => this.parentsOf.get(h));
+    this.rewritable = new Map(line.map((h, i) => [h, i]));
+  }
+
   private appendRows(rows: readonly ListRow[]): void {
     this.list.push(...rows);
     for (const r of rows) this.geometry.push(r.kind === 'commit' && this.hasBadges(r.commit.hash));
@@ -2339,6 +2355,8 @@ class App {
       strataHasRefs: refs.length > 0,
       strataRefs: refs.join(' '),
       strataBranch: branches.length === 1 && free.length === 1 ? free[0]!.name : '',
+      strataRewritable: this.rewritable.has(c.hash),
+      strataParentRewritable: this.rewritable.has(c.parents[0] ?? ''),
     };
     row.setAttribute('data-vscode-context', JSON.stringify(context));
     if (badges.length > 0) {

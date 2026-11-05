@@ -25,6 +25,7 @@ import { runGit } from '../git/run.ts';
 import { commandLine, type Exec, type OpRunner, type RunnerHost } from './runner.ts';
 import { Outdated } from './target.ts';
 import type { Ui } from './ui.ts';
+import type { MessageDraft } from '../shared/protocol.ts';
 
 /** VS Code settings flows follow, read fresh each time. */
 export interface FlowSettings {
@@ -48,8 +49,9 @@ export interface Undo {
   /**
    * `head`: the operation moved the branch HEAD is on (`ref`, or 'HEAD' when detached) from
    * `before` to `after`; Undo needs HEAD still on `ref`, and asks first when `ref` moved since.
-   * `deletes` names a branch Undo deletes (create branch). `refs`: refs HEAD is not on, which
-   * must still be where the operation left them.
+   * `deletes` names a branch Undo deletes (create branch). `refs`: refs that must still be where
+   * the operation left them; HEAD's own only when Undo leaves its tree as it is (an in-place
+   * rewrite), since update-ref does not touch the work tree.
    */
   guard:
     { kind: 'head'; ref: string; before: string; after: string; deletes?: string } | { kind: 'refs'; expect: Expect[] };
@@ -103,6 +105,10 @@ export interface FlowHost extends RunnerHost {
   reveal(hash: string): void;
   /** A folder on the machine the repository is on, by the path git prints. */
   folderUri(path: string): vscode.Uri;
+  /** Opens the inline message editor in the graph. */
+  openEditor(draft: MessageDraft): void;
+  /** Tells the message editor how its Save ended: applied closes it. */
+  editEnded(applied: boolean): void;
 }
 
 /** What a confirmation described: `rev` still points at `hash` (undefined: does not exist) when the operation starts. */

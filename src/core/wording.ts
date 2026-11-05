@@ -3,6 +3,7 @@ import { MORE_HISTORY, type MergeMode, type ResetMode } from './operations.ts';
 import type { RefKind } from './refs.ts';
 import type { WorktreeInfo } from './worktrees.ts';
 import type { OperationKind } from './repo-state.ts';
+import type { EditKind, Refusal, StayReason } from './rewrite.ts';
 
 /** A commit as confirmations name it. */
 export interface CommitRef {
@@ -519,6 +520,7 @@ export const DONE = {
     names.length === 1
       ? `Pruned worktree ${refName(names[0]!)}, whose folder is gone`
       : `Pruned ${plural(names.length, 'worktree')} whose folders are gone`,
+  copiedHashes: (n: number): string => `Copied ${n} commit ${n === 1 ? 'hash' : 'hashes'}`,
 };
 
 /** Progress labels: what is running. `to` is named as in a sentence (a quoted branch or a short id). */
@@ -1273,3 +1275,184 @@ export const COMMIT_GRAPH_OFFER = {
     buttons: ['Write Filters'],
   }),
 } as const;
+/** What a commit rewrite (Edit) does, as its confirmation and the message editor tell it. */
+export interface RewriteFacts {
+  edit: EditKind;
+  /** HEAD's branch (refName) or HEAD. */
+  branch: string;
+  /** The commits the edit names, as the question names them: "b7699a1", "3 commits", "99f707e into b7699a1". */
+  what: string;
+  /** Newer commits replayed on top of the edited ones. */
+  onTop: number;
+  /** Rewritten commits a remote-tracking branch has, and that branch (short name). */
+  pushed: { count: number; remote: string } | undefined;
+  /** Short names of the branches that can move with the rewritten commits. */
+  moves: readonly string[];
+  stays: readonly { name: string; why: StayReason }[];
+}
+
+const EDIT_VERB: Record<EditKind, string> = { reword: 'Save', squash: 'Squash', fixup: 'Fix Up', drop: 'Drop' };
+
+const QUESTION: Record<EditKind, (f: RewriteFacts) => string> = {
+  reword: (f) => `Save the new message of ${f.what}?`,
+  squash: (f) => `Squash ${f.what} on ${f.branch}?`,
+  fixup: (f) => `Fix up ${f.what}?`,
+  drop: (f) => `Drop ${f.what} from ${f.branch}?`,
+};
+
+const names = (refs: readonly string[]) => fileList(refs.map(refName));
+const isAre = (n: number) => (n === 1 ? 'is' : 'are');
+
+const STAY: Record<StayReason, (names: string, one: boolean) => string> = {
+  tag: (n, one) => `${one ? 'Tag' : 'Tags'} ${n} ${one ? 'stays' : 'stay'} on the old commits.`,
+  worktree: (n, one) =>
+    `${n} ${one ? 'is' : 'are'} checked out in another worktree and ${one ? 'keeps' : 'keep'} the old commits.`,
+  old: (n, one) => `${n} ${one ? 'keeps' : 'keep'} the old commits.`,
+  forked: (n, one) => `${n} branched off the rewritten commits and ${one ? 'keeps' : 'keep'} the old ones.`,
+};
+
+const staySentences = (stays: RewriteFacts['stays']): string[] =>
+  (Object.keys(STAY) as StayReason[]).flatMap((why) => {
+    const refs = stays.filter((s) => s.why === why).map((s) => s.name);
+    return refs.length === 0 ? [] : [STAY[why](names(refs), refs.length === 1)];
+  });
+
+/** The line under the message editor: what saving rewrites and moves. */
+export function rewriteEffects(f: RewriteFacts): string {
+  const keep = f.stays.map((s) => s.name);
+  return [
+    f.onTop === 0
+      ? 'No newer commit is rewritten'
+      : `${plural(f.onTop, 'newer commit')} ${isAre(f.onTop)} rewritten on top`,
+    f.pushed
+      ? `${plural(f.pushed.count, 'commit')} ${isAre(f.pushed.count)} on ${refName(f.pushed.remote)} already`
+      : 'Nothing was pushed',
+    f.moves.length > 0
+      ? `${names(f.moves)} ${f.moves.length === 1 ? 'moves' : 'move'} along`
+      : keep.length === 0
+        ? 'no other branch moves'
+        : '',
+    keep.length > 0 ? `${names(keep)} ${keep.length === 1 ? 'keeps' : 'keep'} the old commits` : '',
+  ]
+    .filter((s) => s !== '')
+    .join(' · ');
+}
+
+/** An answer to a rewrite's confirmation: move the branches on it along, or not; or what to do with changes. */
+export type RewriteAnswer = 'move' | 'only' | StashChoice;
+
+/**
+ * The question before a rewrite, or undefined when nothing needs asking: no commit was pushed,
+ * no other ref is on them, and no uncommitted changes are in the way (`section`, `stash`). A drop
+ * always asks.
+ */
+export function rewriteConfirmation(
+  f: RewriteFacts,
+  dirty?: { section: string; choices: readonly StashChoice[] },
+): Confirmation<RewriteAnswer> | undefined {
+  const asks =
+    f.edit === 'drop' || f.pushed !== undefined || f.moves.length > 0 || f.stays.length > 0 || dirty !== undefined;
+  if (!asks) return undefined;
+  const verb = EDIT_VERB[f.edit];
+  const p = f.pushed;
+  const pushed = p && [
+    `${refName(p.remote)} has ${p.count === 1 ? 'one of them' : plural(p.count, 'of them')}: pushing ${f.branch} afterwards needs a force push, and anyone who fetched ${p.count === 1 ? 'it' : 'them'} keeps the old ${p.count === 1 ? 'commit' : 'commits'}.`,
+  ];
+  const moveLabel =
+    f.moves.length === 1 ? `${verb} and Move ${f.moves[0]!}` : `${verb} and Move ${f.moves.length} Branches`;
+  const buttons: { id: RewriteAnswer; label: string }[] = dirty
+    ? stashButtons('rebase', dirty.choices, verb)
+    : f.moves.length > 0
+      ? [
+          { id: 'move', label: moveLabel },
+          { id: 'only', label: `${verb} Only` },
+        ]
+      : [{ id: 'only', label: p ? `${verb} Anyway` : verb }];
+  return {
+    ...(p ? {} : { level: 'info' as const }),
+    message: p ? `Rewrite ${plural(p.count, 'commit')} that ${refName(p.remote)} already has?` : QUESTION[f.edit](f),
+    detail: [
+      ...(p ? [QUESTION[f.edit](f)] : []),
+      f.onTop > 0 ? `Replays ${plural(f.onTop, 'newer commit')} on top.` : '',
+      ...(pushed ?? []),
+      f.moves.length > 0
+        ? `${names(f.moves)} ${isAre(f.moves.length)} on the rewritten commits: ${moveLabel} moves ${f.moves.length === 1 ? 'it' : 'them'} to the new ones.`
+        : '',
+      ...staySentences(f.stays),
+      'Undo restores the original commits.',
+      dirty?.section ?? '',
+    ]
+      .filter((s) => s !== '')
+      .join('\n'),
+    buttons,
+  };
+}
+
+/** Why Strata can't carry out an edit of commit `short` on `branch` (refName or HEAD). */
+export function rewriteRefused(r: Refusal, short: string, branch: string): string {
+  switch (r) {
+    case 'notOnHeadLine':
+      return `${short} is not on the first-parent line of ${branch} near HEAD, so Strata can't rewrite it.`;
+    case 'merge':
+      return `A merge commit is between ${short} and HEAD; Strata rewrites only commits with no merge above them.`;
+    case 'noParent':
+      return `${short} is the first commit; it has no parent to fix up into.`;
+    case 'order':
+      return `The commits are not in order on ${branch}.`;
+    case 'emptyMessage':
+      return 'The commit message is empty.';
+    case 'nothingLeft':
+      return `Dropping every commit would leave ${branch} with none.`;
+  }
+}
+
+/** Longer messages than this are refused: Windows limits a command line to 32,767 characters. */
+export const MESSAGE_LIMIT = 30_000;
+
+export const messageTooLong = (length: number): string =>
+  `The message has ${length.toLocaleString('en-US')} characters; Strata writes messages of up to ${MESSAGE_LIMIT.toLocaleString('en-US')}.`;
+
+/** The editor was opened at HEAD `short`, and HEAD has moved since. */
+export const editOutdated = (branch: string): string =>
+  `${branch} changed since the editor opened; nothing was rewritten and your message is kept.`;
+
+export const fixupPick = (c: CommitRef): { title: string; placeholder: string } => ({
+  title: `Fix Up ${commitName(c)} into…`,
+  placeholder: 'The older commit its changes belong to',
+});
+
+/** What Undo calls a rewrite: "Undid the squash". */
+export const REWRITE_UNDO: Record<EditKind, string> = {
+  reword: 'message edit',
+  squash: 'squash',
+  fixup: 'fixup',
+  drop: 'drop',
+};
+
+export const REWRITE_DOING = {
+  reword: (short: string): string => `Editing the message of ${short}`,
+  squash: (n: number): string => `Squashing ${plural(n, 'commit')}`,
+  fixup: (short: string, into: string): string => `Fixing up ${short} into ${into}`,
+  drop: (n: number, branch: string): string => `Dropping ${plural(n, 'commit')} from ${branch}`,
+};
+
+/** `moved`: the other branches that moved along (short names). */
+export const REWRITE_DONE = {
+  reword: (short: string, now: string): string => `Edited the message of ${short} (now ${now})`,
+  squash: (n: number, now: string): string => `Squashed ${n} commits into ${now}`,
+  fixup: (short: string, into: string): string => `Fixed up ${short} into ${into}`,
+  drop: (n: number, branch: string): string => `Dropped ${plural(n, 'commit')} from ${branch}`,
+  moved: (done: string, moved: readonly string[]): string =>
+    moved.length === 0 ? done : `${done}; moved ${names(moved)} along`,
+};
+
+/** Branches a rewrite could not move along: they moved meanwhile. */
+export const notMovedAlong = (done: string, branches: readonly string[]): string =>
+  `${done}. ${names(branches)} moved meanwhile and ${branches.length === 1 ? 'keeps' : 'keep'} the old commits.`;
+
+/** A rewrite (`kind`) of `what` (RewriteFacts.what), as "untracked files in the way of the …" names it. */
+export const rewriteInTheWay = (kind: EditKind, what: string): string => `${REWRITE_UNDO[kind]} of ${what}`;
+
+/** Undo of a rewrite found `name` (refName or HEAD) moved since. */
+export const undoRewriteOutdated = (label: string, name: string): string =>
+  `${name} has moved since the ${label}, so Undo would lose what came after; nothing was done.`;

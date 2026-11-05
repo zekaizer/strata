@@ -148,6 +148,11 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   /** Opens the graph's badge filter with `pattern` typed. */
+  /** Tells the message editor how its Save ended, when a repository is shown. */
+  editEnded(applied: boolean): void {
+    this.controller?.shown?.editEnded(applied);
+  }
+
   openBadgeFilter(pattern: string): void {
     this.post({ type: 'openBadgeFilter', pattern });
   }

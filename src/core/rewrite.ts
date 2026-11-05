@@ -1,5 +1,8 @@
 import type { Ident } from './operations.ts';
 
+/** How far below HEAD a commit can be and still be rewritten. */
+export const LINE_LIMIT = 1000;
+
 /** A commit of HEAD's first-parent line, as a rewrite reads it. */
 export interface LineCommit {
   hash: string;
@@ -256,4 +259,22 @@ export function refFates(
     else fates.stays.push({ ref, why });
   }
   return fates;
+}
+
+/**
+ * The commits that can be rewritten: HEAD's first-parent line, newest first, from `head` down to
+ * the first merge, the root, LINE_LIMIT commits or the first commit `parentsOf` does not know.
+ */
+export function rewritableLine(
+  head: string | undefined,
+  parentsOf: (hash: string) => readonly string[] | undefined,
+): string[] {
+  const line: string[] = [];
+  for (let h = head; h !== undefined && line.length < LINE_LIMIT;) {
+    const parents = parentsOf(h);
+    if (parents === undefined || parents.length > 1) break;
+    line.push(h);
+    h = parents[0];
+  }
+  return line;
 }

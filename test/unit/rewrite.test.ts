@@ -6,6 +6,8 @@ import {
   inPlace,
   planOf,
   refFates,
+  rewritableLine,
+  LINE_LIMIT,
   todoText,
   type LineCommit,
   type RefTip,
@@ -150,5 +152,27 @@ describe('rewrite plans', () => {
       ['old'],
       'a rebase gives no exact counterpart',
     );
+  });
+
+  it('finds the rewritable commits: HEAD down to a merge, the root or what is not loaded', () => {
+    const parents: Record<string, string[]> = { e: ['d'], d: ['c'], c: ['b', 'side'], b: ['a'], a: [] };
+    assert.deepEqual(
+      rewritableLine('e', (h) => parents[h]),
+      ['e', 'd'],
+    );
+    assert.deepEqual(
+      rewritableLine('b', (h) => parents[h]),
+      ['b', 'a'],
+    );
+    assert.deepEqual(
+      rewritableLine('e', (h) => (h === 'd' ? undefined : parents[h])),
+      ['e'],
+    );
+    assert.deepEqual(
+      rewritableLine(undefined, (h) => parents[h]),
+      [],
+    );
+    const long = (h: string) => [String(Number(h) + 1)];
+    assert.equal(rewritableLine('0', long).length, LINE_LIMIT);
   });
 });

@@ -119,21 +119,21 @@ export async function refSource(host: FlowHost, ref: { name: string; short: stri
 }
 
 /** The branch HEAD is on (or HEAD itself), as Undo guards and sentences name it. */
-interface Head {
+export interface Head {
   branch: string | undefined;
   hash: string;
   name: string;
   expect: Expect;
 }
 
-async function head(host: FlowHost): Promise<Head> {
+export async function head(host: FlowHost): Promise<Head> {
   const h = await readHead(host.git, host.cwd);
   const name = h.branch === undefined ? 'HEAD' : refName(h.branch);
   return { ...h, name, expect: { rev: 'HEAD', hash: h.hash, name } };
 }
 
 /** Undo of a move of HEAD's branch: back where it was, keeping uncommitted changes. */
-const moveUndo = (
+export const moveUndo = (
   host: FlowHost,
   label: string,
   h: Pick<Head, 'branch' | 'hash'>,
@@ -247,7 +247,7 @@ async function heldStash(host: FlowHost, state: OperationState) {
  * changes came back, or undefined when it stopped or did not run. It stopped when git failed and left it in progress (at
  * conflicts, or with nothing to commit).
  */
-async function runStoppable(
+export async function runStoppable(
   host: FlowHost,
   attempt: () => Promise<Restored | undefined>,
 ): Promise<Restored | undefined> {

@@ -193,6 +193,47 @@
         "enablement": "!strata.busy && !strata.operation"
       },
       {
+        "command": "strata.editMessage",
+        "title": "Edit Message...",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.fixupIntoParent",
+        "title": "Fixup into Parent",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.fixupIntoOlder",
+        "title": "Fixup into Older Commit...",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.dropCommit",
+        "title": "Drop Commit...",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.squashSelected",
+        "title": "Squash Selected Commits...",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.dropSelected",
+        "title": "Drop Selected Commits...",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.copySelectedHashes",
+        "title": "Copy Commit Hashes",
+        "category": "Strata"
+      },
+      {
         "command": "strata.merge",
         "title": "Merge into Current Branch...",
         "category": "Strata",
@@ -422,6 +463,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.saveEdit",
+        "title": "Save Commit Message",
+        "category": "Strata"
+      },
+      {
         "command": "strata.resolveConflicts",
         "title": "Resolve Conflicts...",
         "category": "Strata"
@@ -578,6 +624,41 @@
           "command": "strata.revert",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
           "group": "3_pick@2"
+        },
+        {
+          "command": "strata.editMessage",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataRewritable",
+          "group": "3_tidy@1"
+        },
+        {
+          "command": "strata.fixupIntoParent",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataParentRewritable",
+          "group": "3_tidy@2"
+        },
+        {
+          "command": "strata.fixupIntoOlder",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataParentRewritable",
+          "group": "3_tidy@3"
+        },
+        {
+          "command": "strata.dropCommit",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataRewritable",
+          "group": "3_tidy@4"
+        },
+        {
+          "command": "strata.squashSelected",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'selection'",
+          "group": "1_tidy@1"
+        },
+        {
+          "command": "strata.dropSelected",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'selection'",
+          "group": "1_tidy@2"
+        },
+        {
+          "command": "strata.copySelectedHashes",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'selection'",
+          "group": "5_copy@1"
         },
         {
           "command": "strata.merge",
@@ -894,6 +975,34 @@
           "when": "false"
         },
         {
+          "command": "strata.editMessage",
+          "when": "false"
+        },
+        {
+          "command": "strata.fixupIntoParent",
+          "when": "false"
+        },
+        {
+          "command": "strata.fixupIntoOlder",
+          "when": "false"
+        },
+        {
+          "command": "strata.dropCommit",
+          "when": "false"
+        },
+        {
+          "command": "strata.squashSelected",
+          "when": "false"
+        },
+        {
+          "command": "strata.dropSelected",
+          "when": "false"
+        },
+        {
+          "command": "strata.copySelectedHashes",
+          "when": "false"
+        },
+        {
           "command": "strata.merge",
           "when": "false"
         },
@@ -1052,6 +1161,10 @@
         {
           "command": "strata.find",
           "when": "activeWebviewPanelId == 'strata.graph'"
+        },
+        {
+          "command": "strata.saveEdit",
+          "when": "false"
         },
         {
           "command": "strata.resolveConflicts",
