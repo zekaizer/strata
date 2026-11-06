@@ -728,7 +728,8 @@ body.vscode-high-contrast .banner {
   display: inline-block;
   margin-right: var(--space-4);
   vertical-align: -3px;
-  font: normal normal normal var(--icon-size) / 1 codicon;
+  /* No height of its own: the line, and so the text after it, stays where it is when not busy. */
+  font: normal normal normal var(--icon-size) / 0 codicon;
   content: '\eb19';
   animation: codicon-spin var(--duration-spin) steps(30) infinite;
 }
