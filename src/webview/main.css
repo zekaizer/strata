@@ -841,10 +841,18 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   overflow-wrap: anywhere;
 }
 
-/* Folded by height, not removed: it keeps counting toward the message's width. */
+/*
+ * Folded by height, not removed: it keeps counting toward the message's width. The gap to the
+ * subject sits outside the fold, so the subject is as far from the meta open as from the byline closed.
+ */
+.byline:has(+ .meta-wrap) {
+  margin-bottom: 0;
+}
+
 .meta-wrap {
   display: grid;
   grid-template-rows: 1fr;
+  margin-bottom: var(--space-8);
 }
 
 .meta-wrap.closed {
@@ -865,7 +873,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   column-gap: var(--space-12);
-  margin: var(--space-2) 0 var(--space-8);
+  margin: var(--space-4) 0 0;
   font-size: var(--font-size-sm);
 }
 
