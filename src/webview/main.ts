@@ -172,7 +172,9 @@ const TREE_MIN = 200;
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
 /** The subject's width, in digits of the row font, that the other columns give way to. */
-const SUBJECT_CH = 80;
+const SUBJECT_CH = 50;
+/** Subject width in digits below which the hash column gives way too. */
+const HASH_FLOOR_CH = 30;
 /** Author names wider than this many digits are cut with an ellipsis; the row's tooltip has them whole. */
 const AUTHOR_MAX_CH = 16;
 
@@ -2938,8 +2940,8 @@ class App {
 
   /**
    * Author and date columns as wide as their widest text (authors up to AUTHOR_MAX_CH), shown as
-   * the `strata.columns` setting allows while the subject keeps SUBJECT_CH digits, or the whole
-   * row when narrower (chooseColumns): the hash gives way first, then the date, then the author.
+   * the `strata.columns` setting allows while the subject keeps SUBJECT_CH digits (chooseColumns):
+   * the date gives way first, then the author; the hash last, below HASH_FLOOR_CH digits.
    */
   private chooseRowColumns(width: number, graph: number, gap: number): void {
     const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX_CH * this.textWidths.digit)) + 1;
@@ -2949,6 +2951,7 @@ class App {
       { list: width, graph, author, date, hash, gap, padding: ROW_PADDING },
       this.shownColumns,
       SUBJECT_CH * this.textWidths.digit,
+      HASH_FLOOR_CH * this.textWidths.digit,
     );
     const style = this.root.style;
     style.setProperty('--col-gap', `${gap}px`);

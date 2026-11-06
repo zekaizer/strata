@@ -58,20 +58,23 @@ describe('commit list polish', () => {
     );
   });
 
-  it('gives the subject 80 characters before any column, and the whole row when narrower', async () => {
+  it('gives the subject 50 characters before the date and author, and keeps the hash longest', async () => {
     const shown = (s: { columns: string[] }) => s.columns.filter((c) => ['author', 'date', 'hash'].includes(c));
-    const order = ['author date hash', 'author date', 'author', ''];
+    const order = ['author date hash', 'author hash', 'hash', ''];
     const check = (s: Awaited<ReturnType<GraphPanel['probe']>>) => {
       const columns = shown(s).join(' ');
       assert.ok(order.includes(columns), `${s.listWidth}px: ${columns}`);
-      if (columns !== '') assert.ok(s.subjectCh >= 79.5, `${s.listWidth}px: subject ${s.subjectCh}ch with ${columns}`);
+      if (columns.includes('author'))
+        assert.ok(s.subjectCh >= 49.5, `${s.listWidth}px: subject ${s.subjectCh}ch with ${columns}`);
+      else if (columns === 'hash')
+        assert.ok(s.subjectCh >= 29.5, `${s.listWidth}px: subject ${s.subjectCh}ch with the hash`);
       return columns;
     };
     assert.equal(check(await panel.probe()), 'author date hash');
     await narrow(1);
     check(await panel.probe());
     const small = await narrow(1);
-    assert.equal(check(await panel.probe()), '', `${small}px`);
+    assert.ok(['hash', ''].includes(check(await panel.probe())), `${small}px`);
   });
 
   it('shows only the columns strata.columns allows, at once', async () => {
