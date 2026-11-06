@@ -116,6 +116,17 @@ describe('context menu targets', () => {
     assert.equal((await panel.probe()).menuTarget, undefined, 'no outline left to light up at the next menu');
   });
 
+  it("opens a lone remote's menu from its cloud icon, not its local branch's", async () => {
+    await panel.simulate({ kind: 'contextMenu', selector: '.badge-remotes > .codicon-cloud' });
+    const target = await waitFor('menu open', async () => {
+      const s = await panel.probe();
+      return s.menuShown && s.menuTarget;
+    });
+    assert.equal(target.context['webviewSection'], 'remoteBranch');
+    assert.equal(target.context['strataRef'], 'refs/remotes/origin/main');
+    await closeMenu();
+  });
+
   it("opens the selected row's menu for Shift+F10 on the list", async () => {
     await panel.simulate({ kind: 'clickRow', index: 3 });
     await waitFor('row selected', async () => (await panel.probe()).selected === order()[3]);

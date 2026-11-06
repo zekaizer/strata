@@ -481,6 +481,7 @@ describe('ref operations', () => {
         'Merge into Current Branch...',
         'Rebase Current Branch onto This...',
         'Publish Branch...',
+        'Set Upstream...',
         'Rename Branch...',
         'Copy Name',
         'Hide Badge',

@@ -106,6 +106,17 @@ describe('operations', () => {
     assert.equal(run(d, 'tag', '--list'), 'v1');
   });
 
+  it('sets and unsets the upstream of a branch', async () => {
+    const d = repo();
+    run(d, 'remote', 'add', 'ss', 'https://example.com/ss.git');
+    run(d, 'update-ref', 'refs/remotes/ss/topic', 'topic');
+    const upstream = () => run(d, 'for-each-ref', '--format=%(upstream)', 'refs/heads/topic');
+    await op(d, { kind: 'setUpstream', branch: 'topic', upstream: 'refs/remotes/ss/topic' });
+    assert.equal(upstream(), 'refs/remotes/ss/topic');
+    await op(d, { kind: 'unsetUpstream', branch: 'topic' });
+    assert.equal(upstream(), '');
+  });
+
   it('creates a lightweight tag and puts back a deleted tag as it was, whatever tag.gpgSign says', async () => {
     const d = repo();
     run(d, 'config', 'tag.gpgSign', 'true');

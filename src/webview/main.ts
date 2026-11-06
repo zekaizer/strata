@@ -4593,16 +4593,21 @@ function worktreePart(w: WorktreeMark): HTMLElement {
   return part;
 }
 
-/** "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. */
+/**
+ * "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. A lone
+ * remote's menu target is the whole segment, icon included; of several, each name is one.
+ */
 function remoteSegment(b: Badge): HTMLElement {
   const seg = el('span', 'badge-remotes');
   const icon = codicon('cloud');
   const names = el('span', 'badge-remote-names');
   names.setAttribute('aria-hidden', 'true');
+  const lone = b.remotes.length === 1;
+  if (lone) seg.setAttribute('data-vscode-context', JSON.stringify(b.remotes[0]!.context));
   b.remotes.forEach((r, i) => {
     if (i > 0) names.append(remoteSeparator(r));
     const name = el('span', 'badge-remote-name', r.text);
-    name.setAttribute('data-vscode-context', JSON.stringify(r.context));
+    if (!lone) name.setAttribute('data-vscode-context', JSON.stringify(r.context));
     names.append(name);
   });
   seg.append(icon, names, el('span', 'sr-only', `, also ${b.also.join(', ')}`));

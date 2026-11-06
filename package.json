@@ -291,6 +291,12 @@
         "enablement": "!strata.busy && !strata.operation"
       },
       {
+        "command": "strata.setUpstream",
+        "title": "Set Upstream...",
+        "category": "Strata",
+        "enablement": "!strata.busy && !strata.operation"
+      },
+      {
         "command": "strata.pull",
         "title": "Pull",
         "category": "Strata",
@@ -741,6 +747,11 @@
           "group": "3_remote@2"
         },
         {
+          "command": "strata.setUpstream",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch'",
+          "group": "3_remote@3"
+        },
+        {
           "command": "strata.pull",
           "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent && strataUpstream",
           "group": "3_remote@1"
@@ -1051,6 +1062,10 @@
         {
           "command": "strata.publish",
           "when": "activeWebviewPanelId == 'strata.graph' && strata.head == 'branch'"
+        },
+        {
+          "command": "strata.setUpstream",
+          "when": "false"
         },
         {
           "command": "strata.pull",

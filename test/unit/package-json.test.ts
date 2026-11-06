@@ -236,6 +236,7 @@ describe('ref actions (keyboard access to badges)', () => {
     assert.deepEqual(refActions('branch', { strataIsCurrent: true, strataUpstream: true }), [
       'strata.pull',
       'strata.push',
+      'strata.setUpstream',
       'strata.renameBranch',
       'strata.copyRefName',
     ]);
@@ -244,6 +245,7 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.merge',
       'strata.rebase',
       'strata.publish',
+      'strata.setUpstream',
       'strata.renameBranch',
       'strata.copyRefName',
       'strata.hideBadge',
@@ -254,6 +256,7 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.merge',
       'strata.rebase',
       'strata.push',
+      'strata.setUpstream',
       'strata.copyRefName',
     ]);
     assert.deepEqual(refActions('remoteBranch', {}), [
