@@ -204,6 +204,18 @@ describe('remote operations', () => {
     assert.equal(tracked('origin/strata-url'), '', 'not published to origin');
   });
 
+  it('sets the upstream of a branch to a remote branch of its choice, offering its namesakes first', async () => {
+    git('update-ref', 'refs/remotes/origin/a-other', 'main');
+    git('update-ref', 'refs/remotes/origin/strata-pub', 'strata-pub');
+    await reload(panel());
+    ui.choose('origin/strata-pub');
+    await run('strata.setUpstream', branchMenu('strata-pub', git('rev-parse', 'strata-pub')));
+    assert.equal(git('for-each-ref', '--format=%(upstream:short)', 'refs/heads/strata-pub'), 'origin/strata-pub');
+    assert.equal(ui.first('pick').items[0], 'origin/strata-pub');
+    assert.ok(ui.first('pick').items.includes('origin/a-other'));
+    assert.deepEqual(errors(), []);
+  });
+
   it('says when the upstream is gone from the remote, and unsets it on request', async () => {
     await publish();
     git('switch', '--quiet', 'strata-pub');

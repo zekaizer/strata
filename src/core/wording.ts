@@ -1171,6 +1171,9 @@ export function deleteRemoteBranchConfirmation(
 }
 
 export const publishPick = (branch: string): string => `Publish ${refName(branch)} to…`;
+export const setUpstreamPick = (branch: string): string => `Set the upstream of ${refName(branch)} to…`;
+export const noUpstreamCandidate = (branch: string): string =>
+  `There is no other remote branch to set as the upstream of ${refName(branch)}.`;
 export const pushTagPick = (tag: string): string => `Push tag ${refName(tag)} to…`;
 
 export const deleteRemoteTagPick = (tag: string): string => `Delete tag ${refName(tag)} from…`;
@@ -1198,6 +1201,8 @@ export const REMOTE_DONE = {
   remoteBranchGone: (name: string, remote: string): string =>
     `${refName(name)} was already gone from ${refName(remote)}`,
   upstreamUnset: (branch: string): string => `Unset the upstream of ${refName(branch)}`,
+  upstreamSet: (branch: string, upstream: string): string =>
+    `Set the upstream of ${refName(branch)} to ${refName(upstream)}`,
   upToDate: 'Already up to date',
 };
 
@@ -1210,6 +1215,8 @@ export const REMOTE_DOING = {
   deletingTag: (tag: string, remote: string): string => `Deleting tag ${refName(tag)} from ${refName(remote)}`,
   deletingBranch: (branch: string, remote: string): string => `Deleting ${refName(branch)} from ${refName(remote)}`,
   unsettingUpstream: (branch: string): string => `Unsetting the upstream of ${refName(branch)}`,
+  settingUpstream: (branch: string, upstream: string): string =>
+    `Setting the upstream of ${refName(branch)} to ${refName(upstream)}`,
 };
 
 /** Why a diverged pull offers less than Rebase and Merge, or rebases differently than configured. */

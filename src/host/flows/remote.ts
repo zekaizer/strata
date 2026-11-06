@@ -10,6 +10,7 @@ import {
   forcePushConfirmation,
   NO_REMOTE,
   noUpstream,
+  noUpstreamCandidate,
   publishPick,
   pushTagPick,
   PULL_NOTES,
@@ -19,6 +20,7 @@ import {
   refName,
   REMOTE_DOING,
   REMOTE_DONE,
+  setUpstreamPick,
   tagExistsOnRemote,
   upstreamGone,
 } from '../../core/wording.ts';
@@ -265,6 +267,28 @@ async function pickRemote(host: FlowHost, title: string): Promise<string | undef
   return ordered.length === 1
     ? ordered[0]
     : host.ui.pick({ title, items: ordered.map((r) => ({ label: r, value: r })) });
+}
+
+/** Makes a remote-tracking branch of the user's choice the upstream of local branch `branch`. */
+export async function setUpstream(host: FlowHost, branch: Ref): Promise<void> {
+  if (!hasRemote(host)) return;
+  const namesake = (r: Ref) => remoteBranch(r.name, host.refs.remotes)?.branch === branch.short;
+  const others = host.refs.refs.filter((r) => r.kind === 'remote' && r.name !== branch.upstream);
+  if (others.length === 0) {
+    void host.ui.notify('info', noUpstreamCandidate(branch.short));
+    return;
+  }
+  const upstream = await host.ui.pick({
+    title: setUpstreamPick(branch.short),
+    items: [...others.filter(namesake), ...others.filter((r) => !namesake(r))].map((r) => ({
+      label: r.short,
+      value: r,
+    })),
+  });
+  if (upstream === undefined) return;
+  const op: Operation = { kind: 'setUpstream', branch: branch.short, upstream: upstream.name };
+  if (await run(host, REMOTE_DOING.settingUpstream(branch.short, upstream.short), (exec) => exec(op)))
+    await finish(host, { message: REMOTE_DONE.upstreamSet(branch.short, upstream.short) });
 }
 
 /** Pushes `branch` to a remote of the user's choice and makes that its upstream. */

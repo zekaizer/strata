@@ -196,6 +196,11 @@ export const COMMANDS = {
     titleBar: { group: 'navigation@5', when: "!strata.operation && strata.head == 'branch'", icon: '$(cloud-upload)' },
     writes: true,
   },
+  'strata.setUpstream': {
+    title: 'Set Upstream...',
+    menus: [{ section: 'branch', group: '3_remote@3' }],
+    writes: true,
+  },
   'strata.pull': {
     title: 'Pull',
     menus: [{ section: 'branch', group: '3_remote@1', when: 'strataIsCurrent && strataUpstream' }],

@@ -33,7 +33,16 @@ import {
   skipCommit,
   sourceOf,
 } from './flows/history.ts';
-import { deleteRemoteBranch, deleteRemoteTag, fetchRemote, publish, pull, push, pushTag } from './flows/remote.ts';
+import {
+  deleteRemoteBranch,
+  deleteRemoteTag,
+  fetchRemote,
+  publish,
+  pull,
+  push,
+  pushTag,
+  setUpstream,
+} from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { pruneWorktrees, removeWorktree } from './flows/worktree.ts';
 import { dropCommits, fixupIntoOlder, fixupIntoParent, openEditor, saveEdit } from './flows/rewrite.ts';
@@ -351,6 +360,7 @@ const handlers = (env: FlowEnv): Handlers => ({
     // Detached since the title bar showed it: Push says there is no branch.
     return branch === undefined ? push(host, undefined) : publish(host, branch);
   }),
+  'strata.setUpstream': on(['branch'], (host, t) => setUpstream(host, t.ref)),
   'strata.pushTag': on(['tag'], (host, t) => pushTag(host, t.ref.short)),
   'strata.resolveConflicts': async () => {
     const host = panel().flowHost();
