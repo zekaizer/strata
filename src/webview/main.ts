@@ -3150,10 +3150,7 @@ class App {
 
     // The commit's text in one column, the change in the other (side by side on wide lists).
     const main = el('div', 'details-main');
-    // Carries the body font, whose 80 columns size the message column (layoutDetails).
-    const ruler = el('span', 'column-ruler');
     main.append(
-      ruler,
       stash ? this.stashByline(d, stash) : this.byline(d),
       stash ? this.stashMeta(d, stash) : this.metaTable(d),
       this.withEdit(marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'), stash ? undefined : d.hash),
@@ -3211,6 +3208,8 @@ class App {
       this.userCollapse();
       this.scroller.focus();
     });
+    // Carries the body font, whose 80 columns size the message column (layoutDetails).
+    main.prepend(el('span', 'column-ruler'));
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
@@ -3323,8 +3322,6 @@ class App {
     const last = draft.commits.at(-1)!;
     const squash = draft.kind === 'squash';
     const main = el('div', 'details-main');
-    const ruler = el('span', 'column-ruler');
-    main.append(ruler);
     if (squash) {
       main.append(
         el('h2', 'details-subject', `Squash ${draft.commits.length} commits into one`),
@@ -3334,7 +3331,7 @@ class App {
           `${first.short}..${last.short} on ${this.refs.headBranch ?? 'HEAD'} · author and date of ${first.short} (the oldest)`,
         ),
       );
-    } else main.append(this.byline(d));
+    } else main.append(this.byline(d), this.metaTable(d));
     const field = el('textarea', 'field multiline message-editor');
     field.value = ed.text;
     field.spellcheck = true;
@@ -3479,7 +3476,7 @@ class App {
       actions.append(b);
     }
     const main = el('div', 'details-main');
-    main.append(el('span', 'column-ruler'), byline, el('h2', 'details-subject', 'Uncommitted changes'), actions);
+    main.append(byline, el('h2', 'details-subject', 'Uncommitted changes'), actions);
     const files = el('div', 'details-files');
     for (const g of CHANGE_GROUPS) {
       const list = w.files.filter((f) => f.group === g.group);
@@ -4228,6 +4225,7 @@ class App {
           .map(accessibleName);
       })(this.toolbar),
       badgeFilter: this.badgeFilter.probe(),
+      spacing: this.probeSpacing(),
       refCard: this.refCard.probe(),
       find: {
         open: this.findWidget.isOpen,
@@ -4283,6 +4281,30 @@ class App {
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
     };
+  }
+
+  private probeSpacing(): ProbeState['spacing'] {
+    const blocks = [...this.expansion.querySelectorAll<HTMLElement>('.details-main > *')].filter(
+      (b) => b.getBoundingClientRect().height > 0,
+    );
+    const details = blocks.map((b, i) => ({
+      block: b.className,
+      gap: i === 0 ? 0 : b.getBoundingClientRect().top - blocks[i - 1]!.getBoundingClientRect().bottom,
+    }));
+    const popover = this.toolbar.querySelector<HTMLElement>('.popover:not([hidden])');
+    const parts = popover
+      ? [
+          ...popover.querySelectorAll<HTMLElement>(
+            '.popover-label, .popover-summary, .popover-note, .section-title, .popover-actions > :first-child',
+          ),
+        ].filter((p) => p.getBoundingClientRect().height > 0)
+      : [];
+    const textLeft = (e: HTMLElement) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      return r.getClientRects()[0]!.left - popover!.getBoundingClientRect().left;
+    };
+    return { details, popover: parts.map((p) => ({ part: p.className, textLeft: textLeft(p) })) };
   }
 
   private probeDetails(): ProbeState['details'] {

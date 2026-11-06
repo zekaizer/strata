@@ -433,6 +433,12 @@ body.vscode-reduce-motion .popover-progress.indeterminate .popover-progress-bar 
   display: none;
 }
 
+/* Text lines up with the other parts' text; the field keeps the full width. */
+.popover-label,
+.popover-summary {
+  padding: 0 var(--space-8);
+}
+
 .popover-label {
   font-weight: var(--font-weight-strong);
 }
@@ -661,7 +667,8 @@ body.vscode-high-contrast .banner {
 .banner-icon.codicon {
   flex: none;
   align-self: flex-start;
-  margin-top: 1px;
+  /* Centred on the first line of text, the line the buttons are on when they fit beside it. */
+  margin-top: calc((var(--control-height) - var(--icon-size)) / 2);
   font-size: var(--icon-size);
   color: var(--vscode-notificationsInfoIcon-foreground, var(--color-fg));
 }
@@ -673,7 +680,9 @@ body.vscode-high-contrast .banner {
 /* The icon and the sentences share the first line; the buttons take the rest of it or wrap below. */
 .banner-text {
   flex: 1 1 260px;
+  align-self: flex-start;
   min-width: 0;
+  margin-top: calc((var(--control-height) - var(--line-height)) / 2);
   margin-left: calc(-1 * var(--space-4));
 }
 
@@ -684,6 +693,8 @@ body.vscode-high-contrast .banner {
 .banner-link {
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
+  /* Inside the sentence's line rather than taller than it. */
+  line-height: 1;
 }
 
 .banner-actions {
@@ -722,7 +733,8 @@ body.vscode-high-contrast .banner {
   display: inline-block;
   margin-right: var(--space-4);
   vertical-align: -3px;
-  font: normal normal normal var(--icon-size) / 1 codicon;
+  /* No height of its own: the line, and so the text after it, stays where it is when not busy. */
+  font: normal normal normal var(--icon-size) / 0 codicon;
   content: '\eb19';
   animation: codicon-spin var(--duration-spin) steps(30) infinite;
 }
