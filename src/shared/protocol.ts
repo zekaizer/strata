@@ -384,6 +384,8 @@ export interface ProbeState {
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
   columns: string[];
+  /** The first commit row's subject width, in digits ("ch") of the row font. */
+  subjectCh: number;
   /** Visible entries of the changed-files tree: folders end with "/", two spaces per level. */
   fileTree: string[];
   /** Full subject shown at the top of the expanded details. */

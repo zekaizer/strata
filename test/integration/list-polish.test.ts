@@ -41,16 +41,20 @@ describe('commit list polish', () => {
     );
   });
 
-  it('keeps the commit SHA visible when the editor is narrow', async () => {
-    const wide = await panel.probe();
-    assert.ok(wide.columns.includes('hash'), `wide: ${wide.columns.join(' ')}`);
-    const medium = await narrow(1);
-    const m = await panel.probe();
-    assert.ok(m.columns.includes('hash'), `${medium}px: ${m.columns.join(' ')}`);
+  it('gives the subject 80 characters before any column, and the whole row when narrower', async () => {
+    const shown = (s: { columns: string[] }) => s.columns.filter((c) => ['author', 'date', 'hash'].includes(c));
+    const order = ['author date hash', 'author date', 'author', ''];
+    const check = (s: Awaited<ReturnType<GraphPanel['probe']>>) => {
+      const columns = shown(s).join(' ');
+      assert.ok(order.includes(columns), `${s.listWidth}px: ${columns}`);
+      if (columns !== '') assert.ok(s.subjectCh >= 79.5, `${s.listWidth}px: subject ${s.subjectCh}ch with ${columns}`);
+      return columns;
+    };
+    assert.equal(check(await panel.probe()), 'author date hash');
+    await narrow(1);
+    check(await panel.probe());
     const small = await narrow(1);
-    const n = await panel.probe();
-    assert.ok(small < 600, `list still ${small}px wide`);
-    assert.ok(n.columns.includes('hash'), `${small}px: ${n.columns.join(' ')}`);
+    assert.equal(check(await panel.probe()), '', `${small}px`);
   });
 
   it('keeps every toolbar control on screen in a narrow editor with the filters on', async () => {

@@ -42,7 +42,12 @@ to get started and the requirements.
   repository you looked at last.
 - The graph comes back after restarting VS Code, pinned if you pinned it, at the
   commit you had selected and with the same filters.
-- Works in narrow editors: columns collapse as space shrinks, and commit details
+- Rows show the subject, then the author (long names are cut after about 16
+  characters), the date (`11-15 07:35` this year, `2023-11-15` before) and the
+  short hash; the row's tooltip has the author's full name and the full date.
+- Works in narrow editors: the other columns give way while the subject has
+  less than 80 characters of room, the hash first, then the date, then the
+  author, so a narrow graph gives the whole row to the subject; commit details
   unfold right under the commit instead of taking a side or bottom pane.
 - Works in local folders, WSL, SSH and other remote workspaces: Strata runs
   where the repository is.

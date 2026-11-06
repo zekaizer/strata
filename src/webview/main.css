@@ -215,10 +215,11 @@ canvas.graph {
   right: 0;
   height: var(--row-height);
   display: grid;
-  grid-template-columns:
-    var(--graph-width, 40px) minmax(0, 1fr) var(--author-w, minmax(0, 160px)) var(--date-w, max-content)
-    max-content;
-  grid-template-areas: 'graph subject author date hash';
+  /* The graph, the subject, then the columns chooseRowColumns (main.ts) shows, each sized to its text. */
+  grid-template-columns: var(
+    --row-columns,
+    var(--graph-width, 40px) minmax(0, 1fr) max-content max-content max-content
+  );
   align-items: center;
   column-gap: var(--col-gap);
   /* ROW_PADDING in main.ts. */
@@ -351,10 +352,6 @@ body.keyboard-nav .scroller:focus:not(:has(.row.selected, .row.cursor)) {
 
 .date {
   font-variant-numeric: tabular-nums;
-}
-
-.date-short {
-  display: none;
 }
 
 .hash {
@@ -1170,31 +1167,13 @@ body:not(.hover-off) .file:hover .file-actions,
 }
 
 /*
- * Author and date are as wide as their widest text and give way, date first, when the subject
- * would get less than its minimum (main.ts, chooseRowColumns). The SHA always stays; the
- * details show everything hidden here.
+ * The hash, then the date, then the author give way while the subject is narrower than 80
+ * digits (columns.ts). The details show them all.
  */
-#app.short-date .date-full {
-  display: none;
-}
 
-#app.short-date .date-short {
-  display: inline;
-}
-
-#app.no-date .row {
-  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) var(--author-w, minmax(0, 160px)) max-content;
-}
-
-#app.no-date .row .date {
-  display: none;
-}
-
-#app.no-author.no-date .row {
-  grid-template-columns: var(--graph-width, 40px) minmax(0, 1fr) max-content;
-}
-
-#app.no-author .row .author {
+#app.no-author .row .author,
+#app.no-date .row .date,
+#app.no-hash .row .hash {
   display: none;
 }
 
