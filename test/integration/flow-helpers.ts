@@ -56,6 +56,12 @@ export async function reloadAndSelectTip(panel: GraphPanel, branch: string): Pro
   await waitFor('the tip selected', async () => (await panel.probe()).selected === tip);
 }
 
+/** Waits until the graph shows a badge reading `text`. */
+export const badge = (panel: GraphPanel, text: string) =>
+  waitFor(`a badge ${text}`, async () =>
+    Object.values((await panel.probe()).refBands).some((b) => b.badges.includes(text)),
+  );
+
 export const selected = (panel: GraphPanel, hash: string) =>
   waitFor(`selection of ${hash}`, async () => (await panel.probe()).selected === hash);
 

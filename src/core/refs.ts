@@ -106,3 +106,44 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
   }
   return out;
 }
+
+/**
+ * The commits a view's history is read from, as viewArgs gives them to git: the refs picked in
+ * the filter (`refs`), else every branch and remote-tracking branch, HEAD and the other
+ * worktrees' detached HEADs. A path history (`path`) keeps HEAD's commit for its badge too.
+ */
+export function historyStarts(snapshot: RefSnapshot, refs: readonly string[] | null, path: boolean): Set<string> {
+  const picked = (r: Ref) => (refs ? refs.includes(r.name) : r.kind !== 'tag');
+  const starts = new Set(snapshot.refs.filter(picked).map((r) => r.hash));
+  if (snapshot.head !== undefined && (refs === null || path)) starts.add(snapshot.head);
+  if (refs === null)
+    for (const w of snapshot.worktrees) if (w.branch === undefined && w.head !== undefined) starts.add(w.head);
+  return starts;
+}
+
+/** What a change of a view's starts does to its history; `check`: see historyChange. */
+export type HistoryChange =
+  { kind: 'same' } | { kind: 'check'; added: string[]; removed: string[] } | { kind: 'reload' };
+
+/**
+ * Whether the history read from starts `before` stays the same read from `after`, given commits
+ * known to be in it (`served`): `same` for certain; `check` when it does if every `added` commit is
+ * an ancestor of `before` and every `removed` one of `after`; `reload` when that does not tell. A
+ * path history keeps its start commits as rows, and a first-parent history reaches along first
+ * parents only, which ancestry does not answer.
+ */
+export function historyChange(
+  before: ReadonlySet<string>,
+  after: ReadonlySet<string>,
+  served: ReadonlySet<string>,
+  view: { firstParent: boolean; path: boolean },
+): HistoryChange {
+  const added = [...after].filter((h) => !before.has(h));
+  const removed = [...before].filter((h) => !after.has(h));
+  if (added.length === 0 && removed.length === 0) return { kind: 'same' };
+  if (view.path) return { kind: 'reload' };
+  const unknown = added.filter((h) => !served.has(h));
+  if (unknown.length === 0 && removed.length === 0) return { kind: 'same' };
+  if (view.firstParent) return { kind: 'reload' };
+  return { kind: 'check', added: unknown, removed };
+}

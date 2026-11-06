@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 import { join } from 'node:path';
 import { parseGitVersion } from '../../src/core/git-version.ts';
 import {
+  badge,
   branchMenu,
   commitMenu,
   flowSuite,
@@ -119,7 +120,6 @@ describe('ref operations', () => {
 
   it('creates nothing when the branch or tag appeared since the graph read its refs, and refreshes', async () => {
     const at = git('rev-parse', 'main~3');
-    let before = (await panel().probe()).generation;
     ui.type('strata/new').meanwhile(() => git('branch', 'strata/new', 'main~1'));
     await run('strata.createBranch', commitMenu(at));
     assert.deepEqual(ui.of('notify'), [
@@ -132,17 +132,16 @@ describe('ref operations', () => {
     ]);
     assert.equal(git('rev-parse', 'strata/new'), git('rev-parse', 'main~1'));
     assert.equal(git('branch', '--show-current'), 'main');
-    assert.ok((await panel().probe()).generation > before);
+    await badge(panel(), 'strata/new');
 
     ui.clear();
-    before = (await panel().probe()).generation;
     ui.type('v9.7', '').meanwhile(() => git('tag', 'v9.7', 'main~1'));
     await run('strata.createTag', commitMenu(at));
     assert.deepEqual(ui.of('notify'), [
       { kind: 'notify', level: 'info', message: "A tag named 'v9.7' now exists; nothing was done.", actions: [] },
     ]);
     assert.equal(git('rev-parse', 'v9.7'), git('rev-parse', 'main~1'));
-    assert.ok((await panel().probe()).generation > before);
+    await badge(panel(), 'v9.7');
   });
 
   it('creates no local branch for a remote branch when one appeared since the graph read its refs', async () => {
@@ -152,7 +151,6 @@ describe('ref operations', () => {
     const lonely = git('commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'Lonely');
     git('update-ref', '--no-deref', 'HEAD', lonely);
     await reload(panel());
-    const before = (await panel().probe()).generation;
     ui.press('Switch Anyway').meanwhile(() => git('branch', 'strata-remote', 'main~2'));
     await run('strata.checkout', remoteMenu('origin/strata-remote'));
     assert.deepEqual(ui.of('notify'), [
@@ -165,7 +163,7 @@ describe('ref operations', () => {
     ]);
     assert.equal(git('rev-parse', 'HEAD'), lonely);
     assert.equal(git('rev-parse', 'strata-remote'), git('rev-parse', 'main~2'));
-    assert.ok((await panel().probe()).generation > before);
+    await badge(panel(), 'strata-remote');
   });
 
   describe('checkout of a remote branch whose local namesake tracks another', () => {
@@ -246,7 +244,6 @@ describe('ref operations', () => {
   });
 
   it('refuses a menu on a branch that is gone, says so and refreshes the graph', async () => {
-    const before = (await panel().probe()).generation;
     await run('strata.deleteBranch', branchMenu('strata-gone'));
     assert.deepEqual(ui.asked, [
       {
@@ -256,7 +253,6 @@ describe('ref operations', () => {
         actions: [],
       },
     ]);
-    assert.ok((await panel().probe()).generation > before);
   });
 
   it('does nothing when the branch moved while the confirmation was open', async () => {

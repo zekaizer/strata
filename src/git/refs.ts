@@ -62,3 +62,15 @@ export async function readRefs(git: string, cwd: string): Promise<RefSnapshot> {
   }
   return { head, headBranch, refs, remotes, worktrees };
 }
+
+/** Whether every commit of `commits` is `from` or an ancestor of one of them; false when git cannot tell. */
+export async function allReachable(
+  git: string,
+  cwd: string,
+  commits: readonly string[],
+  from: readonly string[],
+): Promise<boolean> {
+  if (commits.length === 0) return true;
+  const out = await runGit(git, cwd, ['rev-list', '-1', ...commits, '--not', ...from, '--']).catch(() => undefined);
+  return out === '';
+}

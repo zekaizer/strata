@@ -90,8 +90,17 @@ export type HostToWebview =
   | { type: 'repositories'; repos: RepoItem[] }
   /** The repository's badge rules changed; the history is not reloaded. */
   | { type: 'badgeRules'; rules: BadgeRule[] }
-  /** The stash list changed and nothing else: the rows are interleaved again, the history is not reloaded. */
-  | { type: 'stashes'; generation: number; stashes: StashEntry[] }
+  /**
+   * The refs or stashes changed, or an operation ended, and the history stays the same: badges and
+   * stash rows change in place, the history is not reloaded. `result` as in reset.
+   */
+  | {
+      type: 'refs';
+      generation: number;
+      refs: RefSnapshot;
+      stashes: StashEntry[];
+      result?: { focus?: string; notified?: true };
+    }
   /**
    * The uncommitted changes in the work tree, sent after every reset and when any changed path or
    * its state changes, even with the same counts; undefined when there are none (or the

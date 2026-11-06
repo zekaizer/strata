@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { flowSuite, menu, reload, run } from './flow-helpers.ts';
+import { badge, flowSuite, menu, reload, run } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 import { commitAside, storeStash } from '../fixtures/stashes.ts';
 import { gitRetry } from './repo-snapshot.ts';
@@ -163,27 +163,25 @@ describe('stash operations', () => {
     const listening = panel().onDidReceiveMessage((m) => {
       if (m.type === 'loadMore') pages.push(m);
     });
-    /** The graph reloaded after `action`, once it restored its selection or gave up looking for it. */
-    const after = async (action: () => Promise<unknown>) => {
-      const before = (await panel().probe()).generation;
+    /** The graph after `action`, once the row of stash `gone` went and the selection settled. */
+    const after = async (action: () => Promise<unknown>, gone: string) => {
       await action();
-      return waitFor('reloaded', async () => {
+      return waitFor('the stash row gone', async () => {
         const p = await panel().probe();
-        return p.generation > before && (p.selected !== undefined || p.done) && p;
+        return !Object.values(p.rowHashes).includes(gone) && !p.restoring && p.selected !== undefined && p;
       });
     };
     try {
-      const popped = await after(() => run('strata.stash.pop', stashMenu(newer)));
+      const popped = await after(() => run('strata.stash.pop', stashMenu(newer)), newer);
       assert.equal(popped.selected, older, 'the next stash on that commit');
-      assert.equal(pages.filter((m) => m.generation === popped.generation).length, 1, 'the first page only');
       assert.doesNotMatch(popped.announced, /is not in this view$/);
       await waitFor('its details', async () => (await panel().probe()).detailsShown === older);
 
       ui.press('Drop Stash');
-      const dropped = await after(() => run('strata.stash.drop', stashMenu(older)));
+      const dropped = await after(() => run('strata.stash.drop', stashMenu(older)), older);
       assert.equal(dropped.selected, git('rev-parse', 'HEAD'), 'the commit it was made on');
-      assert.equal(pages.filter((m) => m.generation === dropped.generation).length, 1, 'the first page only');
       assert.doesNotMatch(dropped.announced, /is not in this view$/);
+      assert.deepEqual(pages, [], 'the history is not read again');
     } finally {
       listening.dispose();
     }
@@ -350,7 +348,6 @@ describe('stash operations', () => {
     const w = git('rev-parse', 'refs/stash');
     const base = git('rev-parse', 'HEAD');
     await reload(panel());
-    const generation = (await panel().probe()).generation;
     ui.type('strata-from-stash').meanwhile(() => {
       writeFileSync(join(workspaceRoot(), 'strata-new.txt'), 'mine\n');
     });
@@ -370,7 +367,7 @@ describe('stash operations', () => {
     assert.equal(notes(), 'changed\n');
     assert.equal(readFileSync(join(workspaceRoot(), 'strata-new.txt'), 'utf8'), 'mine\n');
     assert.equal(git('rev-parse', 'refs/stash'), w);
-    await waitFor('the graph reloaded', async () => (await panel().probe()).generation > generation);
+    await badge(panel(), 'strata-from-stash');
   });
 
   it('copies the patch of a stash, untracked files included', async () => {

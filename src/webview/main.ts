@@ -750,10 +750,8 @@ class App {
       case 'where':
         if (m.generation === this.generation) this.refCard.answer(m.hash, m.where);
         break;
-      case 'stashes':
-        if (m.generation !== this.generation) return;
-        this.setStashes(m.stashes);
-        this.relist();
+      case 'refs':
+        if (m.generation === this.generation) this.updateRefs(m);
         break;
       case 'changes':
         if (m.generation !== this.generation) return;
@@ -1171,6 +1169,26 @@ class App {
     this.setStashes(stashes);
     this.updateBanner();
     this.updateHeadButton();
+  }
+
+  /** New refs and stashes on the history shown: rows keep their place, badges and stash rows change. */
+  private updateRefs(m: Extract<HostToWebview, { type: 'refs' }>): void {
+    // A focus is looked for as after a reload: within what is loaded and one page more.
+    if (m.result?.focus !== undefined)
+      this.restore ??= { expanded: this.expanded, searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE };
+    this.takeResult(m.result, m.refs, m.stashes);
+    this.setRefs(m.refs, m.stashes);
+    this.findRewritable();
+    this.refFilter.update(this.refs, this.options.refs);
+    const search = this.search;
+    if (search && search.query.author === undefined) {
+      search.refs = new Set(matchRefs(this.refs, search.query.text).map((r) => r.name));
+      search.worktrees = new Set(matchWorktrees(this.refs, search.query.text).map((w) => w.path));
+      this.updateFindCount();
+    }
+    this.relist();
+    this.startLanding();
+    this.applyRestore();
   }
 
   /** Starts the pulse of what an operation moved, once its rows are shown. */
