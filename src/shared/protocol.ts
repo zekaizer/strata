@@ -305,6 +305,11 @@ export interface ProbeState {
   repoSwitcher: { button: boolean; text: string; rows: string[] | undefined; search: boolean };
   commits: number;
   laidOut: number;
+  /**
+   * Renders that drew no rows, or commit rows the layout had not reached, right after a render
+   * that drew laid-out rows: the list went blank.
+   */
+  blankFrames: number;
   done: boolean;
   /** A reload is still looking for the selection or scroll position it restores. */
   restoring: boolean;

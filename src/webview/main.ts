@@ -268,6 +268,9 @@ class App {
   private theme: GraphTheme = resolveGraphTheme();
 
   private generation = -1;
+  /** ProbeState.blankFrames, and whether the last render drew laid-out rows. */
+  private blankFrames = 0;
+  private drewRows = false;
   private repo: RepoInfo | undefined;
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
   private refsByHash = new Map<string, Ref[]>();
@@ -2468,6 +2471,7 @@ class App {
 
     const rows: HTMLElement[] = [];
     for (let i = first; i < last; i++) rows.push(this.renderRow(i));
+    this.countBlank(first, last);
     this.rowsLayer.replaceChildren(...rows);
     // Only point at a row that exists in the DOM.
     if (this.selected >= first && this.selected < last) {
@@ -2507,6 +2511,18 @@ class App {
     this.renderEmpty();
 
     if (!this.done && !this.loading && last + LOAD_AHEAD > this.list.length) this.loadMore(NEXT_PAGE);
+  }
+
+  /** Counts a render that drew no rows, or rows without their graph, after one that drew both. */
+  private countBlank(first: number, last: number): void {
+    let drawn = last > first;
+    if (this.worker)
+      for (let i = first; i < last && drawn; i++) {
+        const item = this.list[i]!;
+        if (item.kind === 'commit' && !this.rows[item.row]) drawn = false;
+      }
+    if (!drawn && this.drewRows) this.blankFrames++;
+    this.drewRows = drawn;
   }
 
   /** A message in place of the list when there is nothing to show. */
@@ -3857,6 +3873,7 @@ class App {
       repoSwitcher: this.switcher.probe(),
       commits: this.commits.length,
       laidOut: this.rows.length,
+      blankFrames: this.blankFrames,
       done: this.done,
       restoring: this.restore !== undefined || this.headQuery !== undefined,
       selected: this.selectedHash(),
