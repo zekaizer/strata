@@ -6,14 +6,31 @@ import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
 
 describe('commit list polish', () => {
   let panel: GraphPanel;
+  /**
+   * The column tests need a graph wide enough for the subject's 80 characters and every column,
+   * whatever the test window's size: without the side bar, zoomed out until they all show.
+   */
+  async function widen(): Promise<void> {
+    await vscode.commands.executeCommand('workbench.action.closeSidebar');
+    for (let i = 0; i < 6; i++) {
+      const s = await panel.probe();
+      if (['author', 'date', 'hash'].every((c) => s.columns.includes(c))) return;
+      await vscode.commands.executeCommand('workbench.action.zoomOut');
+      await delay(300);
+    }
+  }
+
   before(async () => {
     panel = (await strata()).show();
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
+    await widen();
   });
   after(async () => {
     panel.dispose();
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.commands.executeCommand('workbench.action.zoomReset');
+    await vscode.commands.executeCommand('workbench.view.explorer');
   });
 
   /** Narrows the graph by opening `groups` editor groups beside it. */
@@ -63,6 +80,7 @@ describe('commit list polish', () => {
     panel = (await strata()).show();
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
+    await widen();
     const config = vscode.workspace.getConfiguration('strata');
     await config.update('columns', { author: true, date: true, hash: false }, vscode.ConfigurationTarget.Global);
     try {
@@ -78,6 +96,7 @@ describe('commit list polish', () => {
   });
 
   it('keeps every toolbar control on screen in a narrow editor with the filters on', async () => {
+    await vscode.commands.executeCommand('workbench.action.zoomReset');
     for (let i = 0; i < 3 && (await panel.probe()).listWidth >= 600; i++) await narrow(1);
     await vscode.commands.executeCommand(
       'strata.showHistory',
