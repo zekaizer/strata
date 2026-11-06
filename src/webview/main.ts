@@ -756,36 +756,7 @@ class App {
         break;
       case 'commits':
         if (m.generation !== this.generation) return;
-        this.loading = false;
-        this.done = m.done;
-        for (const h of m.unchanged ?? []) this.unchanged.add(h);
-        this.appendRows(interleave(m.commits, this.commits.length, this.anchors, this.changesAt()));
-        if (this.commitIndex)
-          for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
-        this.commits.push(...m.commits);
-        for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
-        this.findRewritable();
-        this.measureTexts(m.commits);
-        this.worker?.postMessage({
-          type: 'layout',
-          generation: m.generation,
-          commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
-        });
-        this.updateStatus();
-        this.updateStashButton();
-        this.updateHeadButton();
-        if (this.landing && this.landing.start === undefined) {
-          this.landing.start = performance.now();
-          this.landingTimer = setTimeout(() => {
-            this.landing = undefined;
-            this.queueRender();
-          }, LANDING_MS);
-        }
-        // Subjects the banner names may have arrived.
-        this.updateBanner();
-        this.applyRestore();
-        this.syncJump();
-        this.queueRender();
+        this.addCommits(m);
         break;
       case 'pathOrigin':
         if (m.generation !== this.generation) return;
@@ -942,6 +913,34 @@ class App {
     }
   }
 
+  /** Appends a page of the history shown, and has the worker lay it out. */
+  private addCommits(m: Extract<HostToWebview, { type: 'commits' }>): void {
+    this.loading = false;
+    this.done = m.done;
+    for (const h of m.unchanged ?? []) this.unchanged.add(h);
+    this.appendRows(interleave(m.commits, this.commits.length, this.anchors, this.changesAt()));
+    if (this.commitIndex)
+      for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
+    this.commits.push(...m.commits);
+    for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
+    this.findRewritable();
+    this.measureTexts(m.commits);
+    this.worker?.postMessage({
+      type: 'layout',
+      generation: m.generation,
+      commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
+    });
+    this.updateStatus();
+    this.updateStashButton();
+    this.updateHeadButton();
+    this.startLanding();
+    // Subjects the banner names may have arrived.
+    this.updateBanner();
+    this.applyRestore();
+    this.syncJump();
+    this.queueRender();
+  }
+
   private onWorker(m: FromWorker): void {
     if (m.type !== 'rows' || m.generation !== this.generation) return;
     this.rows.push(...m.rows);
@@ -958,8 +957,7 @@ class App {
     stashes: StashEntry[],
     result?: { focus?: string; notified?: true },
   ): void {
-    this.bannerNotified = result?.notified === true;
-    const focus = result?.focus;
+    const sameRepo = this.repo?.root === repo.root;
     // The reload restores the selection itself; the history the jump was loading is gone.
     this.stopJump();
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
@@ -988,42 +986,14 @@ class App {
       if (kept && kept.draft.head === refs.head) this.editor = { ...kept, saving: false };
     }
     this.unkeyed = undefined;
-    const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
-    if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
-    if (focus !== undefined) this.selectionsAtBusy = undefined;
-    // An operation's result: the badges it moved and the stash row it made pulse once shown.
-    clearTimeout(this.landingTimer);
-    this.landing =
-      result !== undefined && this.repo?.root === repo.root
-        ? {
-            refs: new Set(landedRefs(this.refs, refs)),
-            stash: stashes.some((s) => s.hash === focus) ? focus : undefined,
-            start: undefined,
-          }
-        : undefined;
+    this.takeResult(result, refs, stashes, sameRepo);
     this.generation = generation;
     this.repo = repo;
-    this.refs = refs;
-    this.worktrees = this.worktreesShown();
-    this.updateHeadButton();
     this.options = options;
     this.unchanged = new Set();
     this.pathOrigin = undefined;
     this.renderOriginNote();
-    this.refsByHash = new Map();
-    for (const r of refs.refs) {
-      const list = this.refsByHash.get(r.hash) ?? [];
-      list.push(r);
-      this.refsByHash.set(r.hash, list);
-    }
-    // The upstream and refs picked in the filter follow the current branch, so they survive the "+N" collapse.
-    const upstream = headUpstream(refs);
-    for (const [hash, list] of this.refsByHash)
-      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, options.refs));
-    this.applyBadgeRules();
-    this.refCard.forget();
-    this.setStashes(stashes);
-    this.updateBanner();
+    this.setRefs(refs, stashes);
     this.commits = [];
     this.commitIndex = undefined;
     this.parentsOf.clear();
@@ -1049,6 +1019,64 @@ class App {
     // The widget stays open and searches the new history.
     if (this.search) this.runQuery(this.findWidget.value, false);
     this.queueRender();
+  }
+
+  /**
+   * An operation's result before its refs are shown: the commit it focused is selected (unless the
+   * user selected another meanwhile), and the badges it moved and the stash row it made pulse once
+   * shown, unless `land` is false (another repository).
+   */
+  private takeResult(
+    result: { focus?: string; notified?: true } | undefined,
+    refs: RefSnapshot,
+    stashes: StashEntry[],
+    land = true,
+  ): void {
+    this.bannerNotified = result?.notified === true;
+    const focus = result?.focus;
+    const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
+    if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
+    if (focus !== undefined) this.selectionsAtBusy = undefined;
+    clearTimeout(this.landingTimer);
+    this.landing =
+      result !== undefined && land
+        ? {
+            refs: new Set(landedRefs(this.refs, refs)),
+            stash: stashes.some((s) => s.hash === focus) ? focus : undefined,
+            start: undefined,
+          }
+        : undefined;
+  }
+
+  /** Shows `refs` and `stashes`: what badges, the HEAD row and the banner show. */
+  private setRefs(refs: RefSnapshot, stashes: StashEntry[]): void {
+    this.refs = refs;
+    this.worktrees = this.worktreesShown();
+    this.refsByHash = new Map();
+    for (const r of refs.refs) {
+      const list = this.refsByHash.get(r.hash) ?? [];
+      list.push(r);
+      this.refsByHash.set(r.hash, list);
+    }
+    // The upstream and refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    const upstream = headUpstream(refs);
+    for (const [hash, list] of this.refsByHash)
+      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, this.options.refs));
+    this.applyBadgeRules();
+    this.refCard.forget();
+    this.setStashes(stashes);
+    this.updateBanner();
+    this.updateHeadButton();
+  }
+
+  /** Starts the pulse of what an operation moved, once its rows are shown. */
+  private startLanding(): void {
+    if (!this.landing || this.landing.start !== undefined) return;
+    this.landing.start = performance.now();
+    this.landingTimer = setTimeout(() => {
+      this.landing = undefined;
+      this.queueRender();
+    }, LANDING_MS);
   }
 
   /** Re-applies the saved scroll position and selection once the history containing them has loaded. */
