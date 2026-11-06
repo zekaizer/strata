@@ -59,6 +59,10 @@ describe('spacing across states', () => {
       return p.editor?.shown && p;
     });
     assert.equal(gapAbove(editing, 'message-editor'), folded, 'the editor in place of the subject');
+    const editingOpen = await toggleMeta(true);
+    assert.ok(editingOpen.details!.metaRows.length > 0, 'the meta table above the editor');
+    assert.equal(gapAbove(editingOpen, 'message-editor'), folded, 'the editor under the open meta');
+    await toggleMeta(false);
     await panel.simulate({ kind: 'click', selector: '.tidy-actions .button:not(.primary)' });
     await waitFor('the editor closed', async () => (await panel.probe()).editor === undefined);
 

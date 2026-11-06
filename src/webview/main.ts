@@ -3331,7 +3331,7 @@ class App {
           `${first.short}..${last.short} on ${this.refs.headBranch ?? 'HEAD'} · author and date of ${first.short} (the oldest)`,
         ),
       );
-    } else main.append(this.byline(d));
+    } else main.append(this.byline(d), this.metaTable(d));
     const field = el('textarea', 'field multiline message-editor');
     field.value = ed.text;
     field.spellcheck = true;
