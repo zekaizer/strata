@@ -83,7 +83,7 @@ function tokenSection(): HTMLElement {
   for (const name of tokens()) {
     const value = style.getPropertyValue(name).trim();
     const sample = el('span');
-    if (/^--(color|badge|surface|shadow-color)/.test(name)) {
+    if (/^--(color|badge|surface)/.test(name)) {
       sample.className = 'g-swatch';
       sample.style.background = `var(${name})`;
     } else if (name.startsWith('--space-')) {
@@ -91,7 +91,7 @@ function tokenSection(): HTMLElement {
     } else if (name.startsWith('--radius')) {
       sample.className = 'g-swatch';
       sample.style.borderRadius = `var(${name})`;
-    } else if (name.startsWith('--shadow-')) {
+    } else if (name === '--shadow') {
       sample.className = 'g-swatch';
       sample.style.boxShadow = `var(${name})`;
     } else if (name.startsWith('--font-size')) {

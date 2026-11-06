@@ -302,7 +302,7 @@ body.vscode-high-contrast .row.head {
 }
 
 .scroller:focus-within .row.selected {
-  background: var(--color-selection);
+  background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
@@ -567,11 +567,11 @@ body.vscode-high-contrast .row.head-chain::before {
 }
 
 .change-conflicted {
-  color: var(--color-git-conflict);
+  color: var(--vscode-gitDecoration-conflictingResourceForeground, var(--color-warning));
 }
 
 .change-staged {
-  color: var(--color-git-staged);
+  color: var(--vscode-gitDecoration-stageModifiedResourceForeground, var(--color-git-modified));
 }
 
 .change-unstaged {
@@ -579,7 +579,7 @@ body.vscode-high-contrast .row.head-chain::before {
 }
 
 .change-untracked {
-  color: var(--color-git-untracked);
+  color: var(--vscode-gitDecoration-untrackedResourceForeground);
 }
 
 .scroller:focus-within .row.changes.selected .change-count {
@@ -812,7 +812,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 
 .byline-hash.copied .hash-icon,
 .meta-copy.copied {
-  color: var(--color-success);
+  color: var(--vscode-testing-iconPassed, var(--vscode-charts-green));
 }
 
 .byline-hash.copied .hash-text {
@@ -1054,7 +1054,7 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .status-A .file-status {
-  color: var(--color-git-added);
+  color: var(--vscode-gitDecoration-addedResourceForeground);
 }
 
 .status-M .file-status,
@@ -1063,12 +1063,12 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 .status-D .file-status {
-  color: var(--color-git-deleted);
+  color: var(--vscode-gitDecoration-deletedResourceForeground);
 }
 
 .status-R .file-status,
 .status-C .file-status {
-  color: var(--color-git-renamed);
+  color: var(--vscode-gitDecoration-renamedResourceForeground, var(--color-git-modified));
 }
 
 .file-actions {
