@@ -1390,11 +1390,6 @@ body:not(.hover-off) .file:hover .file-actions,
   color: inherit;
 }
 
-/* Its lines start where the rows' text does. */
-.path-popover .popover-header {
-  padding: var(--space-2) var(--space-8) var(--space-4);
-}
-
 .path-popover-path {
   font-family: var(--font-mono);
   overflow-wrap: anywhere;

@@ -433,6 +433,12 @@ body.vscode-reduce-motion .popover-progress.indeterminate .popover-progress-bar 
   display: none;
 }
 
+/* Text lines up with the other parts' text; the field keeps the full width. */
+.popover-label,
+.popover-summary {
+  padding: 0 var(--space-8);
+}
+
 .popover-label {
   font-weight: var(--font-weight-strong);
 }

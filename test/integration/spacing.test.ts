@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as vscode from 'vscode';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { commitMenu, run } from './flow-helpers.ts';
@@ -65,5 +66,34 @@ describe('spacing across states', () => {
     await waitFor('changes row', async () => rowOf(await panel.probe(), 'changes') >= 0);
     const changes = await openRow('changes');
     assert.equal(gapAbove(changes, 'details-subject'), folded, 'uncommitted changes');
+  });
+  it('starts the text of every popover part at the same inset', async () => {
+    await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
+    await panel.simulate({ kind: 'type', selector: '.badge-pattern', text: 'zzz' });
+    const badges = await waitFor('badge popover with a summary', async () => {
+      const p = await panel.probe();
+      return p.spacing.popover.some((x) => x.part.includes('popover-summary')) && p;
+    });
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+
+    const uri = vscode.Uri.file(join(workspaceRoot(), 'main.txt'));
+    await run('strata.showHistory', uri);
+    await waitFor('path chip', async () => (await panel.probe()).pathChip !== '');
+    await panel.simulate({ kind: 'click', selector: '.path-chip-main' });
+    const path = await waitFor('path popover', async () => {
+      const p = await panel.probe();
+      return p.spacing.popover.some((x) => x.part.includes('popover-label')) && p;
+    });
+    await panel.simulate({ kind: 'key', key: 'Escape' });
+    await panel.simulate({ kind: 'click', selector: '.path-chip-clear' });
+
+    const insets = [...badges.spacing.popover, ...path.spacing.popover].map(
+      (x) => `${x.part}: ${Math.round(x.textLeft)}`,
+    );
+    const inset = Math.round(badges.spacing.popover.find((x) => x.part === 'section-title')!.textLeft);
+    assert.deepEqual(
+      insets,
+      insets.map((x) => `${x.split(':')[0]}: ${inset}`),
+    );
   });
 });
