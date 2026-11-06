@@ -445,6 +445,10 @@ only updates repositories that already have a commit-graph.
   uncommitted changes only when git can't run over them: a rebase, a merge,
   pull, cherry pick or revert over changes to the files it changes, and a merge
   commit, cherry pick or revert over staged changes.
+- `strata.columns` (default: all `true`): Which columns the commit rows may show
+  beside the subject (`author`, `date`, `hash`); turn one off to hide it for
+  good. A narrow graph also hides them on its own while the subject has less than
+  80 characters of room: the hash first, then the date, then the author.
 - `strata.keepCommitGraphUpdated` (default: `false`): When the history of a
   repository that has a commit-graph changes (commits, fetches, rebases, branch
   changes), add the new commits to the commit-graph in the background

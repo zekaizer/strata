@@ -57,6 +57,26 @@ describe('commit list polish', () => {
     assert.equal(check(await panel.probe()), '', `${small}px`);
   });
 
+  it('shows only the columns strata.columns allows, at once', async () => {
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.commands.executeCommand('workbench.action.editorLayoutSingle');
+    panel = (await strata()).show();
+    await panel.whenReady();
+    await waitFor('history', async () => (await panel.probe()).done);
+    const config = vscode.workspace.getConfiguration('strata');
+    await config.update('columns', { author: true, date: true, hash: false }, vscode.ConfigurationTarget.Global);
+    try {
+      const s = await waitFor('no hash', async () => {
+        const p = await panel.probe();
+        return !p.columns.includes('hash') && p;
+      });
+      assert.ok(s.columns.includes('author') && s.columns.includes('date'), s.columns.join(' '));
+    } finally {
+      await config.update('columns', undefined, vscode.ConfigurationTarget.Global);
+    }
+    await waitFor('the hash again', async () => (await panel.probe()).columns.includes('hash'));
+  });
+
   it('keeps every toolbar control on screen in a narrow editor with the filters on', async () => {
     for (let i = 0; i < 3 && (await panel.probe()).listWidth >= 600; i++) await narrow(1);
     await vscode.commands.executeCommand(

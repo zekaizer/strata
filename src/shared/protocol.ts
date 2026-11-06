@@ -68,7 +68,8 @@ export interface MessageDraft {
  * belong to so late replies for a previous history are dropped.
  */
 export type HostToWebview =
-  | { type: 'init'; theme: ThemeKind }
+  /** `columns`: the optional row columns the `strata.columns` setting allows. */
+  | { type: 'init'; theme: ThemeKind; columns: ShownColumns }
   /**
    * `result`: the history after an operation, which marks what it moved; its `focus` is a commit
    * or stash to select and reveal once loaded, instead of the kept selection. `notified`: a
@@ -543,3 +544,10 @@ export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; 
 /** `state` describes the lines still open below the last row (see SpanIndex.setOpen). */
 export type FromWorker =
   { type: 'pong' } | { type: 'rows'; generation: number; rows: Row[]; spans: Span[]; state: LaneState };
+
+/** The `strata.columns` setting: which optional columns rows may show. */
+export interface ShownColumns {
+  author: boolean;
+  date: boolean;
+  hash: boolean;
+}

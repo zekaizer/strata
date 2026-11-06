@@ -13,7 +13,7 @@ export interface ColumnWidths {
   padding: number;
 }
 
-/** Which optional columns a row shows (or may show at all). */
+/** Which optional columns a row shows (or, from the `strata.columns` setting, may show at all). */
 export interface ColumnChoice {
   author: boolean;
   date: boolean;

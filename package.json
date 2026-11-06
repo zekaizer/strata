@@ -1319,6 +1319,30 @@
           "default": "gitConfig",
           "description": "Which choice comes first when a switch would overwrite uncommitted changes: gitConfig and always put stashing them first, never letting git merge them into the target. Operations ask about uncommitted changes only when git can't run over them: a rebase, a merge, pull, cherry pick or revert over changes to the files it changes, and a merge commit, cherry pick or revert over staged changes."
         },
+        "strata.columns": {
+          "type": "object",
+          "properties": {
+            "author": {
+              "type": "boolean",
+              "default": true
+            },
+            "date": {
+              "type": "boolean",
+              "default": true
+            },
+            "hash": {
+              "type": "boolean",
+              "default": true
+            }
+          },
+          "additionalProperties": false,
+          "default": {
+            "author": true,
+            "date": true,
+            "hash": true
+          },
+          "description": "Which columns the commit rows may show beside the subject. A narrow graph also hides them on its own while the subject has less than 80 characters of room: the hash first, then the date, then the author."
+        },
         "strata.keepCommitGraphUpdated": {
           "type": "boolean",
           "default": false,

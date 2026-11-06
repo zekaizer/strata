@@ -1168,7 +1168,7 @@ body:not(.hover-off) .file:hover .file-actions,
 
 /*
  * The hash, then the date, then the author give way while the subject is narrower than 80
- * digits (columns.ts). The details show them all.
+ * digits (columns.ts); strata.columns hides them for good. The details show them all.
  */
 
 #app.no-author .row .author,

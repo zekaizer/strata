@@ -417,7 +417,7 @@ class App {
   private menuTarget: { row: number; target: number } | undefined;
   private measureContext: CanvasRenderingContext2D | null | undefined;
   private columns: ColumnChoice | undefined;
-  /** The columns rows may show. */
+  /** The columns the `strata.columns` setting allows. */
   private shownColumns: ColumnChoice = { author: true, date: true, hash: true };
   /** A short hash's width in px, measured when first needed after a reset or theme change. */
   private hashPx: number | undefined;
@@ -688,6 +688,7 @@ class App {
     switch (m.type) {
       case 'init':
         document.body.dataset['theme'] = m.theme;
+        this.shownColumns = m.columns;
         this.hashPx = undefined;
         this.theme = resolveGraphTheme();
         this.queueRender();
@@ -2761,7 +2762,7 @@ class App {
 
   /**
    * Author and date columns as wide as their widest text (authors up to AUTHOR_MAX_CH), shown as
-   * allowed while the subject keeps SUBJECT_CH digits, or the whole
+   * the `strata.columns` setting allows while the subject keeps SUBJECT_CH digits, or the whole
    * row when narrower (chooseColumns): the hash gives way first, then the date, then the author.
    */
   private chooseRowColumns(width: number, graph: number, gap: number): void {

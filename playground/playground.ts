@@ -67,6 +67,12 @@ const land = params.get('land');
 const findText = params.get('find');
 const findList = params.get('findList') === '1';
 const findSlow = params.get('findSlow') === '1';
+/** `columns=author,date`: the columns the strata.columns setting allows (default: all). */
+const shownColumns = ((q) => ({
+  author: q === null || q.split(',').includes('author'),
+  date: q === null || q.split(',').includes('date'),
+  hash: q === null || q.split(',').includes('hash'),
+}))(params.get('columns'));
 /** `range=i,j`: click row i, then Shift-click row j (a multi-selection). */
 const rangeRows = params.get('range')?.split(',').map(Number);
 /** `edit=reword` (on `select`) or `edit=squash` (on `range`): the message editor as the host opens it. */
@@ -222,7 +228,7 @@ async function onMessage(m: WebviewToHost): Promise<void> {
   sent.push(m);
   switch (m.type) {
     case 'ready': {
-      toWebview({ type: 'init', theme });
+      toWebview({ type: 'init', theme, columns: shownColumns });
       data = (await (await fetch(`data/${repo}.json`)).json()) as PlaygroundData;
       if (params.get('worktrees') === '1') data.refs.worktrees = worktrees(data);
       const detach = params.get('detach');
