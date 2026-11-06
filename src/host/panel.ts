@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { graphTitle } from '../core/wording.ts';
 import type { HostToWebview, ProbeState, SimulatedAction, ThemeKind, WebviewToHost } from '../shared/protocol.ts';
 import type { FileChange, FileView } from '../core/details.ts';
 import type { Ref } from '../core/refs.ts';
@@ -40,7 +41,7 @@ export class GraphPanel implements vscode.Disposable {
     }
     const panel = vscode.window.createWebviewPanel(
       GraphPanel.viewType,
-      'Commit Graph',
+      graphTitle(undefined),
       at.column ?? vscode.ViewColumn.Active,
       GraphPanel.webviewOptions(extensionUri),
     );

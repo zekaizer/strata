@@ -4,6 +4,7 @@ import {
   abortConfirmation,
   COMMIT_GRAPH_OFFER,
   commandUnquotable,
+  graphTitle,
   deleteBranchConfirmation,
   dirtySection,
   fileList,
@@ -249,5 +250,12 @@ describe('commit-graph offer', () => {
     assert.match(message, /^Searching zephyr is slow because the repository has no commit-graph\./);
     assert.match(message, /git commit-graph write --reachable\)/);
     assert.match(message, /first matches/);
+  });
+});
+
+describe('graph tab title', () => {
+  it('is the shown repository, and Strata before there is one; the tab icon says it is the graph', () => {
+    assert.equal(graphTitle('alpha'), 'alpha');
+    assert.equal(graphTitle(undefined), 'Strata');
   });
 });

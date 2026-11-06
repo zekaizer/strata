@@ -1474,3 +1474,6 @@ export const undoRewriteOutdated = (label: string, name: string): string =>
 /** Shift-click in a file or folder history, whose rows skip the commits that leave the path alone. */
 export const TIDY_WHOLE_HISTORY =
   'Selecting commits to squash or drop needs the whole history: clear the path filter first.';
+
+/** The graph tab's title: the shown repository's name, Strata before there is one. */
+export const graphTitle = (repo: string | undefined): string => repo ?? 'Strata';

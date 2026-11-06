@@ -58,11 +58,14 @@ to get started and the requirements.
     Commit Graph** on a row of its Repositories list, which show that
     repository;
   - **Strata: Show Commit Graph** in the Command Palette.
+
+  The graph's tab is titled with the name of the repository it shows.
+
 - With more than one repository open, click the repository name at the left of
   the toolbar to pick another one, or run **Strata: Switch Repository...**. The
   list is the one in the Source Control view, in the same order
   (`scm.repositories.sortOrder`), with each repository's current branch. The
-  graph tab's title names the repository it shows. The graph stays on the
+  graph stays on the
   repository you picked until you pick another; when that repository is closed,
   it shows another one and says so in the status bar.
 - Scroll to load more history.

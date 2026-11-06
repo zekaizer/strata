@@ -65,7 +65,7 @@ describe('the repository switcher', () => {
 
   it('names the shown repository in the panel title', async () => {
     await switchTo(panel, gamma);
-    await waitFor('the title', () => graphTab()?.label === 'Commit Graph (gamma)');
+    await waitFor('the title', () => graphTab()?.label === 'gamma');
   });
 
   it('switches with Switch Repository... from the Command Palette', async () => {
