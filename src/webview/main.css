@@ -411,7 +411,7 @@ body.vscode-high-contrast .badge-remotes {
   border-left-color: var(--vscode-contrastBorder);
 }
 
-/* Each remote name is a menu target of its own. */
+/* Of several remotes, each name is a menu target of its own. */
 .badge-remote-name {
   padding: 0 1px;
 }
