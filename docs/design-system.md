@@ -26,7 +26,7 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
 | `src/webview/tokens.css`          | Every raw value: the custom properties below. Nothing else.               |
 | `src/webview/components.css`      | The shared components, built only from tokens.                            |
 | `src/webview/main.css`            | Imports both, then lays out the views (grid, positions, view-only parts). |
-| `test/unit/design-tokens.test.ts` | The guard: fails on raw values outside `tokens.css`.                      |
+| `test/unit/design-tokens.test.ts` | The guard: fails on raw values outside `tokens.css` and unearned tokens.  |
 | `playground/gallery.ts`           | The gallery: every token and component in every state.                    |
 
 ## Rules
@@ -42,20 +42,30 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
    variant would look "nearly the same". Do not restyle a component from a view; add a variant to
    the component instead (rule 6).
 4. Hover styles **must** sit under `body:not(.hover-off)`; interactive elements **must** have a
-   `:focus-visible` ring (`--focus-ring`) and a high contrast hover outline (`--hover-outline` or
-   `--toolbar-hover-outline`). Disabled controls use `--opacity-disabled`.
-5. Animations **must** stop under `body.vscode-reduce-motion` and `prefers-reduced-motion`, and use
-   the `--duration-*` tokens.
+   `:focus-visible` ring (`--focus-ring`) and a high contrast hover outline (`--hover-outline`, or
+   `--vscode-toolbar-hoverOutline` on buttons). Disabled controls use `--opacity-disabled`.
+5. Animations **must** stop under `body.vscode-reduce-motion` and `prefers-reduced-motion`.
 6. A new token or component (or variant) is allowed only when no existing one expresses the role.
    It **must** land before its first use, in this order: the token in `tokens.css` or the component
    in `components.css`; a specimen in `playground/gallery.ts` in every state; a row in this
-   document; then the feature that uses it. A token holds a step of a scale or a semantic color,
-   never a one-off value kept for one element.
+   document; then the feature that uses it.
 7. Spacing **must** not change with the state of a surface. A block's gap to the next block is its
    own, the same whatever follows it, and **must** sit outside anything that folds, so the next block
    keeps its distance with the fold open or closed. A block that takes another's place (the message
    editor for the subject) keeps that block's gaps. `test/integration/spacing.test.ts` holds this
    for the details and the popovers.
+8. A token exists only if at least one of these holds:
+   1. it is read in two or more places;
+   2. it is a step of a scale: spacing, radius, font size, line height, icon size, `z-index` layers;
+   3. it holds a design decision beyond a VS Code variable: a derived value (a `color-mix`, a raw
+      fallback such as `rgb(0 0 0 / 30%)`), a theme-specific value, a computed size.
+
+   A single-use alias of a VS Code variable is not a token: the component reads
+   `var(--vscode-…, fallback)` itself, a fallback to another VS Code variable or token included.
+   The ref kind colors (`--badge-*`) are kept as a family, since a chip selects its color by kind.
+   The guard counts `var()` reads in `src/webview` and fails on a token read fewer than twice
+   unless it is in a family (`FAMILIES`) or a `SINGLE_USE` entry with its reason (today:
+   `--surface-sunken-hover`, theme-specific).
 
 ## How new UI picks components
 
@@ -96,12 +106,11 @@ All tokens are custom properties on `:root` in `tokens.css`.
 
 ### Radius
 
-| Token            | Value                | Use                                                                                 |
-| ---------------- | -------------------- | ----------------------------------------------------------------------------------- |
-| `--radius-sm`    | 2px                  | Controls VS Code draws square: push buttons, fields, link focus ring                |
-| `--radius-md`    | 4px                  | Items: tool/icon/inline buttons, list rows, chips, checkbox, cards, segmented       |
-| `--radius-lg`    | 6px                  | Overlays: popovers                                                                  |
-| `--radius-badge` | half `--chip-height` | A ref badge's top-left corner: round, so with its square bottom-left it points down |
+| Token         | Value | Use                                                                           |
+| ------------- | ----- | ----------------------------------------------------------------------------- |
+| `--radius-sm` | 2px   | Controls VS Code draws square: push buttons, fields, link focus ring          |
+| `--radius-md` | 4px   | Items: tool/icon/inline buttons, list rows, chips, checkbox, cards, segmented |
+| `--radius-lg` | 6px   | Overlays: popovers                                                            |
 
 ### Type and icons
 
@@ -119,71 +128,59 @@ All tokens are custom properties on `:root` in `tokens.css`.
 
 ### Sizes and layers
 
-| Token              | Value                      | Use                                                       |
-| ------------------ | -------------------------- | --------------------------------------------------------- |
-| `--control-height` | 22px                       | Every button, field and list row                          |
-| `--chip-height`    | 14px                       | Every chip (fits the ref band)                            |
-| `--toolbar-height` | 32px                       | The toolbar                                               |
-| `--row-height`     | 24px                       | A commit row's line (`ROW_HEIGHT` in `graph.ts`)          |
-| `--ref-band`       | 14px                       | The ref band above a row (`REF_BAND` in `main.ts`)        |
-| `--col-gap`        | `--space-12`               | Between list columns; the details start at the same place |
-| `--tree-indent`    | 16px                       | Per level of the file tree                                |
-| `--z-popover`      | 10                         | Popovers                                                  |
-| `--z-card`         | 20                         | The hover card (above popovers)                           |
-| `--shadow-color`   | `--vscode-widget-shadow`   | Overlay shadow color                                      |
-| `--shadow`         | `0 2px 8px --shadow-color` | Popovers and cards (VS Code's hover widget shadow)        |
+| Token              | Value                              | Use                                                       |
+| ------------------ | ---------------------------------- | --------------------------------------------------------- |
+| `--control-height` | 22px                               | Every button, field and list row                          |
+| `--chip-height`    | 14px                               | Every chip (fits the ref band)                            |
+| `--toolbar-height` | 32px                               | The toolbar                                               |
+| `--row-height`     | 24px                               | A commit row's line (`ROW_HEIGHT` in `graph.ts`)          |
+| `--ref-band`       | 14px                               | The ref band above a row (`REF_BAND` in `main.ts`)        |
+| `--col-gap`        | `--space-12`                       | Between list columns; the details start at the same place |
+| `--tree-indent`    | 16px                               | Per level of the file tree                                |
+| `--z-popover`      | 10                                 | Popovers                                                  |
+| `--z-card`         | 20                                 | The hover card (above popovers)                           |
+| `--shadow`         | `0 2px 8px --vscode-widget-shadow` | Popovers and cards (VS Code's hover widget shadow)        |
 
 ### Interaction and motion
 
-| Token                     | Value                                                                 | Use                                      |
-| ------------------------- | --------------------------------------------------------------------- | ---------------------------------------- |
-| `--focus-ring`            | `1px solid --color-focus`                                             | `outline` of every `:focus-visible`      |
-| `--hover-outline`         | `1px dashed --vscode-contrastActiveBorder` (transparent elsewhere)    | Hover outline of rows (high contrast)    |
-| `--toolbar-hover-outline` | `1px dashed --vscode-toolbar-hoverOutline`, else contrastActiveBorder | Hover outline of buttons (high contrast) |
-| `--opacity-disabled`      | 0.4                                                                   | Disabled and held controls (as VS Code)  |
-| `--divider`               | `1px solid --color-border`                                            | Rules between sections                   |
-| `--duration-spin`         | 1.5s                                                                  | The busy spinner                         |
-| `--duration-landing`      | 1.2s                                                                  | The pulse on what an operation moved     |
-| `--duration-progress`     | 2s                                                                    | One run of an indeterminate progress bar |
+| Token                | Value                                                              | Use                                     |
+| -------------------- | ------------------------------------------------------------------ | --------------------------------------- |
+| `--focus-ring`       | `1px solid --color-focus`                                          | `outline` of every `:focus-visible`     |
+| `--hover-outline`    | `1px dashed --vscode-contrastActiveBorder` (transparent elsewhere) | Hover outline of rows (high contrast)   |
+| `--opacity-disabled` | 0.4                                                                | Disabled and held controls (as VS Code) |
+| `--divider`          | `1px solid --color-border`                                         | Rules between sections                  |
+| `--duration-landing` | 1.2s                                                               | The pulse on what an operation moved    |
 
 ### Colors
 
-| Token                        | VS Code variable                                                            | Use                                    |
-| ---------------------------- | --------------------------------------------------------------------------- | -------------------------------------- |
-| `--color-fg`                 | `--vscode-foreground`                                                       | Text                                   |
-| `--color-muted`              | `--vscode-descriptionForeground`                                            | Secondary text, notes, empty states    |
-| `--color-disabled`           | `--vscode-disabledForeground`                                               | Disabled links, hidden refs            |
-| `--color-icon`               | `--vscode-icon-foreground`, else foreground                                 | Icon buttons, chevrons                 |
-| `--color-border`             | `--vscode-widget-border`, else foreground at 16%                            | Dividers, segmented controls           |
-| `--color-ruler`              | `--vscode-editorRuler-foreground`, else muted                               | A column guide in a multi-line field   |
-| `--color-focus`              | `--vscode-focusBorder`                                                      | Focus ring, accents                    |
-| `--color-hover`              | `--vscode-list-hoverBackground` (`--surface-sunken-hover` in details)       | Hovered rows                           |
-| `--color-toolbar-hover`      | `--vscode-toolbar-hoverBackground`                                          | Hovered buttons                        |
-| `--color-toolbar-active`     | `--vscode-toolbar-activeBackground`, else hover                             | Pressed buttons, open popover button   |
-| `--color-selection`          | `--vscode-list-activeSelectionBackground`                                   | Selected row, list focused             |
-| `--color-selection-inactive` | `--vscode-list-inactiveSelectionBackground`                                 | Selected row, list not focused         |
-| `--color-link`               | `--vscode-textLink-foreground`                                              | Links                                  |
-| `--color-link-active`        | `--vscode-textLink-activeForeground`                                        | Hovered links                          |
-| `--color-danger`             | `--vscode-errorForeground`                                                  | Errors                                 |
-| `--color-warning`            | `--vscode-list-warningForeground`, else `--vscode-editorWarning-foreground` | Warnings, autostash                    |
-| `--color-success`            | `--vscode-testing-iconPassed`, else `--vscode-charts-green`                 | "Copied"                               |
-| `--color-progress`           | `--vscode-progressBar-background`, else the focus color                     | Progress bars                          |
-| `--color-git-added`          | `--vscode-gitDecoration-addedResourceForeground`                            | Added files                            |
-| `--color-git-modified`       | `--vscode-gitDecoration-modifiedResourceForeground`                         | Modified files                         |
-| `--color-git-deleted`        | `--vscode-gitDecoration-deletedResourceForeground`                          | Deleted files                          |
-| `--color-git-renamed`        | `--vscode-gitDecoration-renamedResourceForeground`, else modified           | Renamed and copied files               |
-| `--color-git-staged`         | `--vscode-gitDecoration-stageModifiedResourceForeground`, else modified     | Staged changes                         |
-| `--color-git-untracked`      | `--vscode-gitDecoration-untrackedResourceForeground`                        | Untracked files                        |
-| `--color-git-conflict`       | `--vscode-gitDecoration-conflictingResourceForeground`, else warning        | Conflicted files                       |
-| `--badge-branch`             | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | Branch chips                           |
-| `--badge-remote`             | `--vscode-scmGraph-historyItemRemoteRefColor`, else charts purple           | Remote chips                           |
-| `--badge-tag`                | `--vscode-charts-yellow`                                                    | Tag chips                              |
-| `--badge-stash`              | `--vscode-descriptionForeground`                                            | Stash chips                            |
-| `--badge-head`               | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | HEAD chip, the head row's bar and tint |
-| `--badge-worktree`           | `--vscode-charts-green`                                                     | Worktree chips and chip parts          |
-| `--surface-sunken`           | editor background mixed with black (6%, 28% in dark, none in HC)            | The details pane                       |
-| `--surface-sunken-shadow`    | black at 28% (75% in dark)                                                  | The details pane's inset shadow        |
-| `--surface-sunken-hover`     | list hover mixed with black (light), list hover (dark, HC)                  | Hovered rows on the sunken surface     |
+| Token                        | VS Code variable                                                            | Use                                                             |
+| ---------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `--color-fg`                 | `--vscode-foreground`                                                       | Text                                                            |
+| `--color-muted`              | `--vscode-descriptionForeground`                                            | Secondary text, notes, empty states                             |
+| `--color-disabled`           | `--vscode-disabledForeground`                                               | Disabled links, hidden refs                                     |
+| `--color-icon`               | `--vscode-icon-foreground`, else foreground                                 | Icon buttons, chevrons                                          |
+| `--color-border`             | `--vscode-widget-border`, else foreground at 16%                            | Dividers, segmented controls                                    |
+| `--color-ruler`              | `--vscode-editorRuler-foreground`, else muted                               | A column guide in a multi-line field                            |
+| `--color-focus`              | `--vscode-focusBorder`                                                      | Focus ring, accents, progress bars                              |
+| `--color-hover`              | `--vscode-list-hoverBackground` (`--surface-sunken-hover` in details)       | Hovered rows                                                    |
+| `--color-toolbar-hover`      | `--vscode-toolbar-hoverBackground`                                          | Hovered buttons                                                 |
+| `--color-selection-inactive` | `--vscode-list-inactiveSelectionBackground`                                 | Selected row (list not focused), path filter files              |
+| `--color-danger`             | `--vscode-errorForeground`                                                  | Errors                                                          |
+| `--color-warning`            | `--vscode-list-warningForeground`, else `--vscode-editorWarning-foreground` | Warnings, autostash, conflicted files                           |
+| `--color-git-modified`       | `--vscode-gitDecoration-modifiedResourceForeground`                         | Modified files; renamed and staged ones without their own color |
+| `--badge-branch`             | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | Branch chips                                                    |
+| `--badge-remote`             | `--vscode-scmGraph-historyItemRemoteRefColor`, else charts purple           | Remote chips                                                    |
+| `--badge-tag`                | `--vscode-charts-yellow`                                                    | Tag chips                                                       |
+| `--badge-stash`              | `--vscode-descriptionForeground`                                            | Stash chips                                                     |
+| `--badge-head`               | `--vscode-scmGraph-historyItemRefColor`, else charts blue                   | HEAD chip, the head row's bar and tint                          |
+| `--badge-worktree`           | `--vscode-charts-green`                                                     | Worktree chips and chip parts                                   |
+| `--surface-sunken`           | editor background mixed with black (6%, 28% in dark, none in HC)            | The details pane                                                |
+| `--surface-sunken-shadow`    | black at 28% (75% in dark)                                                  | The details pane's inset shadow                                 |
+| `--surface-sunken-hover`     | list hover mixed with black (light), list hover (dark, HC)                  | Hovered rows on the sunken surface                              |
+
+Other VS Code colors are read where they are used, not aliased: links (`--vscode-textLink-*`), the
+focused selection, pressed buttons, progress bars, "Copied", and the git decoration colors of
+added, deleted, renamed, staged, untracked and conflicted files.
 
 The graph's lane colors are computed in `theme.ts`, not tokens.
 
@@ -243,23 +240,23 @@ Text lines up at `--space-4 + --space-8` from the popover's edge in every part.
 `.popover.bar` is a one-line popover (the find widget): a `.field` that takes the room, a
 `.popover-summary` and `.icon-button`s side by side. `.popover-progress` (holding a
 `.popover-progress-bar`) runs along any popover's bottom edge: its bar's width is the share done,
-or `.indeterminate` runs without a known end (`--duration-progress`, still under reduced motion).
+or `.indeterminate` runs without a known end (2s a run, still under reduced motion).
 
 ### Chip
 
 `.chip` shows a ref, a stash or a short label: `--chip-height`, caption size, `--radius-md`.
 
-| Variant                                              | Looks                                                                                        |
-| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `.chip-branch`, `-remote`, `-tag`, `-stash`, `-head` | Tinted with the kind's `--badge-*` color; head bolder                                        |
-| `.chip-worktree`                                     | Another worktree (`--badge-worktree`)                                                        |
-| `.chip-part` + a kind                                | A second name after a divider, in its kind's color; a `.badge` with one may grow to 320px    |
-| `.chip-stale` (on a chip or a part)                  | What it names is gone: its text struck through                                               |
-| `.chip-warning`                                      | `--color-warning` (with `.chip-outline`: a stopped operation)                                |
-| `.chip-stash.autostash`                              | Warning tint, full tone even in a quiet row                                                  |
-| no kind                                              | Muted ("+N")                                                                                 |
-| `.chip-outline` (with or without `.chip-warning`)    | A label: outline in the text color, no tint                                                  |
-| `.badge`                                             | In a ref band: shrinks to its icon; a bubble (`--radius-badge` top-left, square bottom-left) |
+| Variant                                              | Looks                                                                                                     |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `.chip-branch`, `-remote`, `-tag`, `-stash`, `-head` | Tinted with the kind's `--badge-*` color; head bolder                                                     |
+| `.chip-worktree`                                     | Another worktree (`--badge-worktree`)                                                                     |
+| `.chip-part` + a kind                                | A second name after a divider, in its kind's color; a `.badge` with one may grow to 320px                 |
+| `.chip-stale` (on a chip or a part)                  | What it names is gone: its text struck through                                                            |
+| `.chip-warning`                                      | `--color-warning` (with `.chip-outline`: a stopped operation)                                             |
+| `.chip-stash.autostash`                              | Warning tint, full tone even in a quiet row                                                               |
+| no kind                                              | Muted ("+N")                                                                                              |
+| `.chip-outline` (with or without `.chip-warning`)    | A label: outline in the text color, no tint                                                               |
+| `.badge`                                             | In a ref band: shrinks to its icon; a bubble (top-left round at half `--chip-height`, square bottom-left) |
 
 Contents: an optional codicon (sized with the text), `.chip-text`. A context can quiet chips
 without knowing their kind by setting `--chip-edge`, `--chip-tint` and `--chip-icon`; rows do this

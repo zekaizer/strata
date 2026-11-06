@@ -1,5 +1,6 @@
 // Keeps the webview's stylesheets on the design system (docs/design-system.md): raw colors, radii,
-// font sizes, spacing and z-indexes belong in src/webview/tokens.css only.
+// font sizes, spacing and z-indexes belong in src/webview/tokens.css only, and tokens.css holds only
+// tokens that earn their place.
 import * as assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,6 +19,25 @@ const ALLOWED: readonly { file: string; declaration: string; reason: string }[] 
     declaration:
       'padding: var(--space-8) var(--space-12) var(--space-12) calc(var(--graph-width, 40px) + var(--col-gap))',
     reason: 'graph geometry: the graph column width main.ts sets, with a fallback until it does',
+  },
+];
+
+/** Token families kept whole even where a member has a single use, each with its reason. */
+const FAMILIES: readonly { pattern: RegExp; reason: string }[] = [
+  { pattern: /^--space-\d+$/, reason: 'the spacing scale' },
+  { pattern: /^--radius-(sm|md|lg)$/, reason: 'the radius scale' },
+  { pattern: /^--font-size(-sm|-xs)?$/, reason: 'the type scale' },
+  { pattern: /^--line-height(-prose)?$/, reason: 'the line height scale' },
+  { pattern: /^--icon-size(-sm)?$/, reason: 'the icon size scale' },
+  { pattern: /^--z-[a-z]+$/, reason: 'the stacking layers, ordered against each other' },
+  { pattern: /^--badge-[a-z]+$/, reason: 'ref kind colors: a chip selects its color by kind' },
+];
+
+/** Tokens outside a family that may have a single use, each with the design decision it holds. */
+const SINGLE_USE: readonly { token: string; reason: string }[] = [
+  {
+    token: '--surface-sunken-hover',
+    reason: 'theme-specific: list hover mixed with black in light themes, plain list hover in dark and high contrast',
   },
 ];
 
@@ -86,6 +106,31 @@ function violations(css: string): Violation[] {
   return found;
 }
 
+/** How many times each custom property `tokens` defines is read with `var()` in `sources`, tokens.css included. */
+function tokenUses(tokens: string, sources: readonly string[]): Map<string, number> {
+  const strip = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const uses = new Map<string, number>();
+  for (const m of strip(tokens).matchAll(/(--[\w-]+)\s*:/g)) uses.set(m[1]!, 0);
+  for (const source of [tokens, ...sources])
+    for (const m of strip(source).matchAll(/var\(\s*(--[\w-]+)/g))
+      if (uses.has(m[1]!)) uses.set(m[1]!, uses.get(m[1]!)! + 1);
+  return uses;
+}
+
+/** Tokens read fewer than twice that no family or SINGLE_USE entry keeps. */
+function unearned(uses: Map<string, number>): string[] {
+  return [...uses]
+    .filter(
+      ([name, n]) => n < 2 && !FAMILIES.some((f) => f.pattern.test(name)) && !SINGLE_USE.some((s) => s.token === name),
+    )
+    .map(([name, n]) => `${name} (${n} use${n === 1 ? '' : 's'})`);
+}
+
+const webviewSources = () =>
+  readdirSync(WEBVIEW)
+    .filter((f) => (f.endsWith('.css') || f.endsWith('.ts')) && f !== TOKENS)
+    .map((f) => readFileSync(join(WEBVIEW, f), 'utf8'));
+
 describe('design tokens', () => {
   it('flags raw colors, radii, font sizes and layers', () => {
     const css = [
@@ -119,6 +164,7 @@ describe('design tokens', () => {
       ".c { font-size: inherit; z-index: var(--z-card); content: '#fff'; --x: 3px; }",
       '.d { color: color-mix(in srgb, var(--chip-color) 45%, transparent); }',
       '.e { margin: 0 var(--space-4); padding: 1px 0; left: calc(var(--depth, 0) * var(--tree-indent) + 1px); }',
+      '.f { outline: 1px dashed var(--vscode-toolbar-hoverOutline, var(--vscode-contrastActiveBorder, transparent)); }',
     ].join('\n');
     assert.deepEqual(violations(css), []);
   });
@@ -140,6 +186,54 @@ describe('design tokens', () => {
         (v) => v.declaration === a.declaration,
       );
       assert.ok(found, `stale ALLOWED entry: ${a.file} ${a.declaration}`);
+    }
+  });
+});
+
+describe('token set', () => {
+  it('flags a token read fewer than twice outside a family', () => {
+    const tokens = [
+      ':root {',
+      '  --color-link: var(--vscode-textLink-foreground);',
+      '  --shadow-color: var(--vscode-widget-shadow);',
+      '  --shadow: 0 2px 8px var(--shadow-color);',
+      '  --color-fg: var(--vscode-foreground);',
+      '  --color-unused: red;',
+      '  --space-24: 24px;',
+      '  --badge-stash: var(--vscode-descriptionForeground);',
+      '  --surface-sunken-hover: var(--vscode-list-hoverBackground);',
+      '}',
+      '/* var(--color-unused) var(--color-unused) */',
+    ].join('\n');
+    const css = [
+      '.a { color: var(--color-link); box-shadow: var(--shadow); }',
+      '.b { color: var(--color-fg); }',
+      '.c { box-shadow: var(--shadow); padding: var(--space-24); }',
+    ].join('\n');
+    const ts = "el.style.color = 'var(--color-fg)';";
+    assert.deepEqual(unearned(tokenUses(tokens, [css, ts])), [
+      '--color-link (1 use)',
+      '--shadow-color (1 use)',
+      '--color-unused (0 uses)',
+    ]);
+  });
+
+  it('keeps only tokens used twice, in a family or with a reason', () => {
+    const uses = tokenUses(readFileSync(join(WEBVIEW, TOKENS), 'utf8'), webviewSources());
+    assert.ok(uses.size > 0);
+    assert.deepEqual(
+      unearned(uses),
+      [],
+      'inline a single-use alias at its use (var(--vscode-…, fallback)), or add it to FAMILIES or SINGLE_USE with its reason',
+    );
+  });
+
+  it('keeps only single-use entries that still apply', () => {
+    const uses = tokenUses(readFileSync(join(WEBVIEW, TOKENS), 'utf8'), webviewSources());
+    for (const { token } of SINGLE_USE) {
+      assert.ok(uses.has(token), `stale SINGLE_USE entry: ${token} is not defined`);
+      assert.ok(uses.get(token)! < 2, `stale SINGLE_USE entry: ${token} is used ${uses.get(token)} times`);
+      assert.ok(!FAMILIES.some((f) => f.pattern.test(token)), `stale SINGLE_USE entry: ${token} is in a family`);
     }
   });
 });

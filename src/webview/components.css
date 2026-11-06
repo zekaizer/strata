@@ -70,13 +70,13 @@
 
 body:not(.hover-off) :is(.tool-button, .icon-button, .inline-button):not(:disabled):hover {
   background: var(--color-toolbar-hover);
-  outline: var(--toolbar-hover-outline);
+  outline: 1px dashed var(--vscode-toolbar-hoverOutline, var(--vscode-contrastActiveBorder, transparent));
   outline-offset: -1px;
 }
 
 body:not(.hover-off) :is(.tool-button:not(.active), .icon-button:not(.active), .inline-button):not(:disabled):active,
 .tool-button[aria-expanded='true']:not(.active) {
-  background: var(--color-toolbar-active);
+  background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
 }
 
 :is(.tool-button, .icon-button):disabled {
@@ -155,13 +155,13 @@ body:not(.hover-off) .button.primary:not(:disabled, [aria-disabled='true']):hove
   padding: 0;
   border: none;
   background: none;
-  color: var(--color-link);
+  color: var(--vscode-textLink-foreground);
   font: inherit;
   cursor: pointer;
 }
 
 body:not(.hover-off) .link-button:hover {
-  color: var(--color-link-active);
+  color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground));
   text-decoration: underline;
 }
 
@@ -384,12 +384,12 @@ body:not(.hover-off) .list-row.clickable:hover {
 .popover-progress-bar {
   width: 0;
   height: 100%;
-  background: var(--color-progress);
+  background: var(--vscode-progressBar-background, var(--color-focus));
 }
 
 .popover-progress.indeterminate .popover-progress-bar {
   width: 20%;
-  animation: popover-progress var(--duration-progress) ease-in-out infinite;
+  animation: popover-progress 2s ease-in-out infinite;
 }
 
 @keyframes popover-progress {
@@ -600,7 +600,7 @@ body.vscode-high-contrast .chip-part {
   flex: 0 1 auto;
   min-width: calc(var(--font-size-xs) + 2 * var(--space-4) + 2px);
   max-width: 200px;
-  border-radius: var(--radius-badge) var(--radius-md) var(--radius-md) 0;
+  border-radius: calc(var(--chip-height) / 2) var(--radius-md) var(--radius-md) 0;
 }
 
 /* A hover card: shown on pointer rest, takes no pointer events (ref-card.ts). */
@@ -736,7 +736,7 @@ body.vscode-high-contrast .banner {
   /* No height of its own: the line, and so the text after it, stays where it is when not busy. */
   font: normal normal normal var(--icon-size) / 0 codicon;
   content: '\eb19';
-  animation: codicon-spin var(--duration-spin) steps(30) infinite;
+  animation: codicon-spin 1.5s steps(30) infinite;
 }
 
 body.vscode-reduce-motion :is(.toolbar-status.busy, .banner-busy)::before {
