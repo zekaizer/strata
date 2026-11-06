@@ -96,6 +96,20 @@ describe('hiddenRefs', () => {
     const hidden = hiddenRefs([hide('*')], snapshot(refs, 'main'));
     assert.deepEqual([...hidden.keys()], ['refs/remotes/origin/main', 'refs/heads/dev']);
   });
+  it('never hides a branch another worktree has checked out', () => {
+    const refs = [ref('branch', 'main'), ref('branch', 'feature/a'), ref('branch', 'feature/b')];
+    const worktree = {
+      path: '/work/a',
+      name: 'a',
+      head: H,
+      branch: 'refs/heads/feature/a',
+      state: { kind: 'active' } as const,
+      main: false,
+    };
+    const snap = { ...snapshot(refs, 'main'), worktrees: [worktree] };
+    assert.deepEqual([...hiddenRefs([hide('feature/*')], snap).keys()], ['refs/heads/feature/b']);
+    assert.deepEqual(ruleCounts([hide('feature/*')], snap), [1]);
+  });
   it('hides a branch named like the current one only when HEAD is elsewhere', () => {
     const refs = [ref('branch', 'main')];
     assert.equal(hiddenRefs([hide('main')], snapshot(refs, undefined)).size, 1);

@@ -255,8 +255,6 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.rebase',
       'strata.push',
       'strata.copyRefName',
-      'strata.hideBadge',
-      'strata.hideSimilarBadges',
     ]);
     assert.deepEqual(refActions('remoteBranch', {}), [
       'strata.checkout',

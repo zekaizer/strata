@@ -23,7 +23,7 @@ export class RefFilter {
   private readonly popover = el('div', 'popover');
   private readonly search = el('input', 'field popover-search');
   private readonly list = el('div', 'popover-list');
-  private readonly currentButton = el('button', 'link-button popover-current', 'Current branch');
+  private readonly currentButton = el('button', 'link-button popover-current', 'Current Branch');
   /** Shown when there are stashes: whether they are drawn as rows. */
   private readonly stashes = el('div', 'popover-section popover-stashes');
   private readonly stashBox = el('input', 'checkbox');
@@ -47,7 +47,7 @@ export class RefFilter {
     this.search.addEventListener('input', () => {
       this.renderList();
     });
-    const all = el('button', 'link-button popover-all', 'Show all');
+    const all = el('button', 'link-button popover-all', 'Show All');
     all.addEventListener('click', () => {
       this.commit(null);
     });

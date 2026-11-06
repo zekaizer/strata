@@ -52,7 +52,7 @@ describe('history filters', () => {
     await panel.simulate({ kind: 'click', selector: '.first-parent-button' });
   });
 
-  it('shows everything again with "Show all"', async () => {
+  it('shows everything again with "Show All"', async () => {
     await waitFor('first-parent off', async () => !(await panel.probe()).options.firstParent);
     const gen = (await panel.probe()).generation;
     await panel.simulate({ kind: 'type', selector: '.popover-search', text: '' });

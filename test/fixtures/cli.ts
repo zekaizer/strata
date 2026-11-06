@@ -1,5 +1,6 @@
 // Writes fixture repositories to out/fixtures/<scenario>, and fixture workspaces of several.
 // Usage: node test/fixtures/cli.ts [scenario ...]   (default: all)
+import '../isolate-git.ts';
 import { join } from 'node:path';
 import { scenarios, type ScenarioName } from './scenarios.ts';
 import { workspaces } from './workspaces.ts';

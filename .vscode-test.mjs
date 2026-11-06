@@ -1,3 +1,4 @@
+import './test/isolate-git.ts';
 import { defineConfig } from '@vscode/test-cli';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

@@ -231,7 +231,7 @@ export const COMMANDS = {
   'strata.hideBadge': {
     title: 'Hide Badge',
     menus: [
-      { section: 'branch', group: '6_hide@1', when: '!strataIsCurrent' },
+      { section: 'branch', group: '6_hide@1', when: '!strataIsCurrent && !strataInWorktree' },
       { section: 'remoteBranch', group: '6_hide@1' },
       { section: 'tag', group: '6_hide@1' },
     ],
@@ -239,7 +239,7 @@ export const COMMANDS = {
   'strata.hideSimilarBadges': {
     title: 'Hide Similar Badges...',
     menus: [
-      { section: 'branch', group: '6_hide@2', when: '!strataIsCurrent' },
+      { section: 'branch', group: '6_hide@2', when: '!strataIsCurrent && !strataInWorktree' },
       { section: 'remoteBranch', group: '6_hide@2' },
       { section: 'tag', group: '6_hide@2' },
     ],

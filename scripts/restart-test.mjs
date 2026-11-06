@@ -3,6 +3,7 @@
 // in the first run and checks what was restored in the second.
 // Usage: node scripts/restart-test.mjs [stable|1.90.0] [multi]
 //   multi: in the multi-repo fixture workspace, the repository shown last comes back with its selection.
+import '../test/isolate-git.ts';
 import { downloadAndUnzipVSCode } from '@vscode/test-electron';
 import { spawn } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

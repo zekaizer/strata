@@ -121,6 +121,19 @@ opens (the spread between runs follows it). Going far down costs the same
 loading and layout as scrolling there: pages of 10,000 commits, with progress
 in the toolbar and the widget.
 
+Remeasured after the widget's bar started running for the search itself and a
+search with no answer after 500 ms began to offer a commit-graph (same clone,
+`test/perf/find.test.ts`, 3 runs each, from typing, load average below 1):
+
+| What                     |  Bar shows | No commit-graph: first / done | Commit-graph: first / done |
+| ------------------------ | ---------: | ----------------------------: | -------------------------: |
+| Rare text, no match      | 209-214 ms |             1.04-1.07 s, same |          0.96-1.00 s, same |
+| Common text (capped)     | 208-214 ms |     0.95-0.97 s / 1.03-1.04 s |   **0.23-0.24 s** / 0.75 s |
+| `author:"Johan Hedberg"` | 210-211 ms |     0.95-0.97 s / 1.08-1.10 s |   **0.25-0.26 s** / 1.04 s |
+
+The bar's time is the typing debounce; before, nothing but "Searching…" said
+the search was running.
+
 ## File and folder history
 
 Measured with `node scripts/perf-path.ts <clone> 5` on a
@@ -151,12 +164,36 @@ Without it a frequently changed file's first row would come in 35 ms with a
 plain commit-graph (`kernel/sched.c`), but the whole history takes the same
 time, and the branch badges would lose their commits. With changed-path
 filters the whole history is done in 0.12-0.2 s, so Strata offers them when a
-path history is not done after 2 s, and **Write Commit-Graph for Faster
+path history is not done after 500 ms, and **Write Commit-Graph for Faster
 History** writes them. Until the history is complete the toolbar says
 `Searching history of …` with a spinner, and clearing the filter stops git.
+
+Streaming the commits that change the path first, without
+`--simplify-by-decoration`, and adding the dimmed branch tips afterwards was
+measured and not adopted (`git log --format=%H`, git alone, median of 3, first
+line / exit, ms; A as now, B without `--simplify-by-decoration`):
+
+| Path             | A, no commit-graph | B, no commit-graph | A, commit-graph | B, commit-graph | A, filters |
+| ---------------- | -----------------: | -----------------: | --------------: | --------------: | ---------: |
+| `LICENSE`        |        1,238/1,254 |        1,198/1,210 |         570/583 |         517/526 |    110/120 |
+| `kernel/sched.c` |        1,297/1,315 |        1,223/1,248 |         653/668 |      **35**/606 |    111/121 |
+| `drivers/gpio/`  |        1,400/1,422 |        1,321/1,348 |         766/782 |      **44**/732 |    170/183 |
+
+Without a commit-graph B gains nothing: the topological walk itself takes
+0.7 s before anything prints. With one but no filters it shows a frequently
+changed path's first rows early, but the history is done no sooner, a rare
+path gains nothing, and the tip rows would then arrive mostly above the rows
+already shown, moving them down while the user reads them. Changed-path
+filters make the whole history faster than B's first row on a rare path, so
+the offer is the way to a fast path history.
 
 ## Known limits
 
 - Chromium caps element height at about 33.5M px; at 24 px per row the list
   cannot scroll past roughly 1.4M commits.
-- Commits reachable only from another worktree's detached HEAD are not shown.
+- In a file or folder history, another worktree's detached HEAD that leaves the
+  paths alone has no row, so its worktree badge is not shown. Branch tips keep
+  their rows because `--simplify-by-decoration` keeps decorated commits, but
+  git does not decorate other worktrees' HEADs (`--decorate-refs=worktrees/…`
+  matches nothing, git 2.56), and adding the row afterwards would need the
+  simplified parent computed apart.

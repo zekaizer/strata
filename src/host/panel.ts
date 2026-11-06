@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { graphTitle } from '../core/wording.ts';
 import type { HostToWebview, ProbeState, SimulatedAction, ThemeKind, WebviewToHost } from '../shared/protocol.ts';
 import type { FileChange, FileView } from '../core/details.ts';
 import type { Ref } from '../core/refs.ts';
@@ -40,7 +41,7 @@ export class GraphPanel implements vscode.Disposable {
     }
     const panel = vscode.window.createWebviewPanel(
       GraphPanel.viewType,
-      'Commit Graph',
+      graphTitle(undefined),
       at.column ?? vscode.ViewColumn.Active,
       GraphPanel.webviewOptions(extensionUri),
     );
@@ -115,7 +116,10 @@ export class GraphPanel implements vscode.Disposable {
         else this.controller?.shown?.shown();
       }),
       vscode.window.onDidChangeActiveColorTheme(() => {
-        this.post({ type: 'init', theme: themeKind() });
+        this.post(init());
+      }),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('strata.columns')) this.post(init());
       }),
       this.messageEmitter,
     );
@@ -277,7 +281,7 @@ export class GraphPanel implements vscode.Disposable {
   private onMessage(m: WebviewToHost): void {
     switch (m.type) {
       case 'ready':
-        this.post({ type: 'init', theme: themeKind() });
+        this.post(init());
         void this.startController(m);
         break;
       case 'error':
@@ -355,6 +359,17 @@ export class GraphPanel implements vscode.Disposable {
     for (const d of this.disposables.splice(0)) d.dispose();
     this.panel.dispose();
   }
+}
+
+/** What the graph needs before anything else, and again when the theme or `strata.columns` changes. */
+function init(): Extract<HostToWebview, { type: 'init' }> {
+  // Any shape a user typed into settings.json: only an explicit false hides a column.
+  const set = vscode.workspace.getConfiguration('strata').get<Record<string, unknown>>('columns') ?? {};
+  return {
+    type: 'init',
+    theme: themeKind(),
+    columns: { author: set['author'] !== false, date: set['date'] !== false, hash: set['hash'] !== false },
+  };
 }
 
 function themeKind(): ThemeKind {

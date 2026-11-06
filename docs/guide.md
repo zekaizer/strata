@@ -42,7 +42,12 @@ to get started and the requirements.
   repository you looked at last.
 - The graph comes back after restarting VS Code, pinned if you pinned it, at the
   commit you had selected and with the same filters.
-- Works in narrow editors: columns collapse as space shrinks, and commit details
+- Rows show the subject, then the author (long names are cut after about 16
+  characters), the date (`11-15 07:35` this year, `2023-11-15` before) and the
+  short hash; the row's tooltip has the author's full name and the full date.
+- Works in narrow editors: the other columns give way while the subject has
+  less than 80 characters of room, the hash first, then the date, then the
+  author, so a narrow graph gives the whole row to the subject; commit details
   unfold right under the commit instead of taking a side or bottom pane.
 - Works in local folders, WSL, SSH and other remote workspaces: Strata runs
   where the repository is.
@@ -58,11 +63,14 @@ to get started and the requirements.
     Commit Graph** on a row of its Repositories list, which show that
     repository;
   - **Strata: Show Commit Graph** in the Command Palette.
+
+  The graph's tab is titled with the name of the repository it shows.
+
 - With more than one repository open, click the repository name at the left of
   the toolbar to pick another one, or run **Strata: Switch Repository...**. The
   list is the one in the Source Control view, in the same order
   (`scm.repositories.sortOrder`), with each repository's current branch. The
-  graph tab's title names the repository it shows. The graph stays on the
+  graph stays on the
   repository you picked until you pick another; when that repository is closed,
   it shows another one and says so in the status bar.
 - Scroll to load more history.
@@ -100,7 +108,7 @@ to get started and the requirements.
   (click it to select that commit). In wide editors the message and the files
   sit side by side, and a tree that fits flows into columns.
 - Use the branch button in the toolbar to show only some refs (type to search,
-  **Show all** to reset), and **First parent** to follow only the main line of
+  **Show All** to reset), and **First parent** to follow only the main line of
   merges.
 - To hide badges, click **Badges** in the toolbar (it says **N hidden** once
   some are) and type a pattern under **Hide badges matching**: `*` matches any
@@ -111,7 +119,9 @@ to get started and the requirements.
   listed ref hides or shows just its badge; with nothing typed, the list shows
   the hidden badges. **Rules** lists the rules, the last matching one deciding;
   move or remove them there, or tick **Show hidden badges** to see every badge
-  until you close the graph. The current branch's badge is never hidden.
+  until you close the graph. A checked out branch's badge is never hidden: the
+  current branch's, and one another worktree has checked out, which names that
+  worktree.
 - Right-click a branch, remote branch or tag badge for **Hide Badge**, or for
   **Hide Similar Badges...**, which opens the badge popover with a pattern for
   refs named like it (`release/2.1` gives `release/*`) to check before hiding.
@@ -412,11 +422,14 @@ offers to add them. Turn the offer off with the
 Finding commits reads the messages git stores, so it scans all history when few
 commits match: about a second on a repository of 150,000 commits, with or
 without a commit-graph. Common text shows its first matches at once with a
-commit-graph; without one, git again reads all history first.
+commit-graph; without one, git again reads all history first, so a search
+that has found nothing after half a second offers to write one (once per
+window, as for a slow first page). A bar runs along the bottom of the find
+widget while it searches.
 
 New commits (your own, fetched or rebased) are not in the commit-graph until it
 is written again. With `strata.keepCommitGraphUpdated` turned on (or **Write and
-keep updated** in the offer), Strata adds them in the background a few seconds
+Keep Updated** in the offer), Strata adds them in the background a few seconds
 after the history changes, which takes milliseconds even on the Linux kernel. It
 only updates repositories that already have a commit-graph.
 
@@ -432,6 +445,10 @@ only updates repositories that already have a commit-graph.
   uncommitted changes only when git can't run over them: a rebase, a merge,
   pull, cherry pick or revert over changes to the files it changes, and a merge
   commit, cherry pick or revert over staged changes.
+- `strata.columns` (default: all `true`): Which columns the commit rows may show
+  beside the subject (`author`, `date`, `hash`); turn one off to hide it for
+  good. A narrow graph also hides them on its own while the subject has less than
+  80 characters of room: the hash first, then the date, then the author.
 - `strata.keepCommitGraphUpdated` (default: `false`): When the history of a
   repository that has a commit-graph changes (commits, fetches, rebases, branch
   changes), add the new commits to the commit-graph in the background

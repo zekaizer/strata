@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { graphTitle } from '../core/wording.ts';
 import * as vscode from 'vscode';
 import type { PathFilter } from '../core/path-filter.ts';
 import { parseRepoKey, pickRepo, type RepoKey, type RepoPreference } from '../core/repos.ts';
@@ -136,12 +137,10 @@ export class GraphController implements vscode.Disposable {
     await this.session!.reset();
   }
 
-  /** Tells the graph which repositories are open, and names the shown one in the title when there are several. */
+  /** Tells the graph which repositories are open, and names the shown one in the title. */
   private listed(): void {
-    const repos = this.repos.items();
-    this.post({ type: 'repositories', repos });
-    const shown = this.session && repos.length > 1 ? ` (${basename(this.session.key)})` : '';
-    this.setTitle(`Commit Graph${shown}`);
+    this.post({ type: 'repositories', repos: this.repos.items() });
+    this.setTitle(graphTitle(this.session && basename(this.session.key)));
   }
 
   private replace(session: RepoSession | undefined): void {

@@ -68,7 +68,8 @@ export interface MessageDraft {
  * belong to so late replies for a previous history are dropped.
  */
 export type HostToWebview =
-  | { type: 'init'; theme: ThemeKind }
+  /** `columns`: the optional row columns the `strata.columns` setting allows. */
+  | { type: 'init'; theme: ThemeKind; columns: ShownColumns }
   /**
    * `result`: the history after an operation, which marks what it moved; its `focus` is a commit
    * or stash to select and reveal once loaded, instead of the kept selection. `notified`: a
@@ -331,6 +332,8 @@ export interface ProbeState {
    * aria-hidden, else the title.
    */
   buttonNames: { toolbar: string[]; details: string[] };
+  /** Toolbar controls that end past the toolbar's right edge (accessible names): cut off. */
+  toolbarClipped: string[];
   badgeFilter: BadgeFilterProbe;
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;
@@ -382,6 +385,8 @@ export interface ProbeState {
   fileViews: { path: string; views: FileView[] }[];
   /** Columns currently shown in the commit list. */
   columns: string[];
+  /** The first commit row's subject width, in digits ("ch") of the row font. */
+  subjectCh: number;
   /** Visible entries of the changed-files tree: folders end with "/", two spaces per level. */
   fileTree: string[];
   /** Full subject shown at the top of the expanded details. */
@@ -539,3 +544,10 @@ export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; 
 /** `state` describes the lines still open below the last row (see SpanIndex.setOpen). */
 export type FromWorker =
   { type: 'pong' } | { type: 'rows'; generation: number; rows: Row[]; spans: Span[]; state: LaneState };
+
+/** The `strata.columns` setting: which optional columns rows may show. */
+export interface ShownColumns {
+  author: boolean;
+  date: boolean;
+  hash: boolean;
+}

@@ -3,7 +3,7 @@
  * directory. VS Code can inherit them (e.g. when launched from a git hook);
  * Strata always addresses the repository by cwd.
  */
-const REPOSITORY_OVERRIDES = [
+export const REPOSITORY_OVERRIDES = [
   'GIT_DIR',
   'GIT_WORK_TREE',
   'GIT_INDEX_FILE',

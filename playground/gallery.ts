@@ -131,7 +131,7 @@ function buttons(): HTMLElement {
   expanded.append(codicon('chevron-down'));
   expanded.setAttribute('aria-expanded', 'true');
   const icon = () => el('button', 'icon-button codicon codicon-refresh');
-  const link = () => el('button', 'link-button', 'Show all');
+  const link = () => el('button', 'link-button', 'Show All');
   const inline = () => {
     const b = el('button', 'inline-button byline-hash');
     b.append(el('span', 'hash-text', 'e93039b'), codicon('copy', 'hash-icon'));
@@ -211,7 +211,7 @@ function popovers(): HTMLElement {
   searchField.placeholder = 'Filter refs';
   search.append(searchField);
   const actions = el('div', 'popover-actions');
-  actions.append(el('button', 'link-button', 'Show all'), el('button', 'link-button', 'Current branch'));
+  actions.append(el('button', 'link-button', 'Show All'), el('button', 'link-button', 'Current Branch'));
   const option = (text: string, icon: string, state?: string, checked = false) => {
     const r = el('label', 'list-row clickable');
     const b = el('input', 'checkbox');

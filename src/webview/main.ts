@@ -71,10 +71,12 @@ import {
 } from './badges.ts';
 import { bannerOf, operationNotes, type OperationNote } from './banner.ts';
 import { BannerView } from './banner-view.ts';
+import { rowDate } from '../core/dates.ts';
 import { codicon, el, formatDate, formatShortDate, shortHash } from './format.ts';
 import { drawGraph, graphWidth, laneX, LANE_WIDTH, ROW_HEIGHT } from './graph.ts';
 import { lanesUsed } from './lanes.ts';
 import { BadgeFilter } from './badge-filter.ts';
+import { keepToolbarFitting } from './toolbar-fit.ts';
 import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
 import { FindWidget, type FindCount } from './find.ts';
@@ -169,10 +171,10 @@ const TREE_MIN = 200;
 /** Gap between tree columns; matches main.css. */
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
-/** The subject keeps at least this much room; author and date give way first. */
-const SUBJECT_MIN = 300;
-/** Longer author names are cut with an ellipsis. */
-const AUTHOR_MAX = 180;
+/** The subject's width, in digits of the row font, that the other columns give way to. */
+const SUBJECT_CH = 80;
+/** Author names wider than this many digits are cut with an ellipsis; the row's tooltip has them whole. */
+const AUTHOR_MAX_CH = 16;
 
 /** Trees flow into columns only between these row counts: a few rows read better in one column. */
 const MULTICOL_MIN_ROWS = 8;
@@ -320,7 +322,7 @@ class App {
   private readonly stashButton = el('button', 'tool-button stash-button');
   /** The loaded history, in layout order: `rows[i]` is the layout of `commits[i]`. */
   private commits: Commit[] = [];
-  /** Parents of the loaded commits, by commit. */
+  /** Parents of the loaded commits, by commit: all of them, also in first-parent history. */
   private parentsOf = new Map<string, readonly string[]>();
   /** Loaded commits Strata can rewrite (rewritableLine), newest first, by position. */
   private rewritable = new Map<string, number>();
@@ -392,7 +394,7 @@ class App {
   private landing: { refs: ReadonlySet<string>; stash: string | undefined; start: number | undefined } | undefined;
   private landingTimer: ReturnType<typeof setTimeout> | undefined;
   /** Widest author name and dates of the loaded commits, in px (the row's own font). */
-  private textWidths = { author: 0, dateFull: 0, dateShort: 0 };
+  private textWidths = { author: 0, date: 0, digit: 0 };
   /** Reset when the theme or a font setting changes. */
   private badgeChrome: BadgeChrome | undefined;
   /** Natural badge widths in px, by look, text and remote names. */
@@ -415,6 +417,10 @@ class App {
   private menuTarget: { row: number; target: number } | undefined;
   private measureContext: CanvasRenderingContext2D | null | undefined;
   private columns: ColumnChoice | undefined;
+  /** The columns the `strata.columns` setting allows. */
+  private shownColumns: ColumnChoice = { author: true, date: true, hash: true };
+  /** A short hash's width in px, measured when first needed after a reset or theme change. */
+  private hashPx: number | undefined;
   /** Natural width of the expanded commit's file tree (widest row, Old | diff | New included). */
   private treeNatural = 0;
   /** Graph and list widths the details were last laid out for. */
@@ -449,6 +455,7 @@ class App {
     ({ state: this.saved, unkeyed: this.unkeyed } = parseSaved(savedState()));
     this.metaOpen = this.saved.metaOpen ?? false;
     const refresh = el('button', 'icon-button codicon codicon-refresh');
+    const spacer = el('span', 'spacer');
     refresh.title = 'Refresh';
     refresh.setAttribute('aria-label', refresh.title);
     refresh.addEventListener('click', () => {
@@ -538,7 +545,7 @@ class App {
       this.switcher.label,
       this.switcher.button,
       this.status,
-      el('span', 'spacer'),
+      spacer,
       this.findButton,
       this.headButton,
       this.stashButton,
@@ -548,6 +555,7 @@ class App {
       this.firstParentButton,
       refresh,
     );
+    keepToolbarFitting(this.toolbar, { status: this.status, spacer });
 
     this.scroller.tabIndex = 0;
     this.scroller.setAttribute('role', 'listbox');
@@ -680,6 +688,8 @@ class App {
     switch (m.type) {
       case 'init':
         document.body.dataset['theme'] = m.theme;
+        this.shownColumns = m.columns;
+        this.hashPx = undefined;
         this.theme = resolveGraphTheme();
         this.queueRender();
         break;
@@ -750,7 +760,7 @@ class App {
         if (this.commitIndex)
           for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
         this.commits.push(...m.commits);
-        for (const c of m.commits) this.parentsOf.set(c.hash, c.parents);
+        for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
         this.findRewritable();
         this.measureTexts(m.commits);
         this.worker?.postMessage({
@@ -1020,7 +1030,8 @@ class App {
     this.rows = [];
     this.spans.clear();
     this.shownLanes = 1;
-    this.textWidths = { author: 0, dateFull: 0, dateShort: 0 };
+    this.textWidths = { author: 0, date: 0, digit: 0 };
+    this.hashPx = undefined;
     this.noRepository = false;
     this.showRepoControls(true);
     this.done = false;
@@ -1530,6 +1541,8 @@ class App {
         : { text: matchCount(total, at, more), problem: total === 0 && !more };
     }
     this.findWidget.setCount(count);
+    // Going to a match shows how far it has loaded; otherwise the bar runs while the search does.
+    if (!this.jump) this.findWidget.setProgress(search && !search.done ? undefined : null);
     this.findWidget.setStepping((search?.matches.length ?? 0) > 0);
     this.renderFindList();
   }
@@ -1555,7 +1568,7 @@ class App {
       row.append(
         codicon('git-commit'),
         marked('list-row-text', h.subject, text === '' ? undefined : text),
-        el('span', 'list-row-note', note ?? `${shortHash(h.hash)} · ${h.author} · ${formatShortDate(h.authorTime)}`),
+        el('span', 'list-row-note', note ?? `${shortHash(h.hash)} · ${h.author} · ${rowDate(h.authorTime)}`),
       );
       row.addEventListener('click', () => {
         this.goToMatch(h.hash);
@@ -2742,40 +2755,60 @@ class App {
       w.author = Math.max(w.author, ctx.measureText(c.author).width);
       // Dates use tabular figures (main.css); every digit is then as wide as a 0.
       const tabular = (t: string) => ctx.measureText(t.replace(/\d/g, '0')).width;
-      w.dateFull = Math.max(w.dateFull, tabular(formatDate(c.authorTime)));
-      w.dateShort = Math.max(w.dateShort, tabular(formatShortDate(c.authorTime)));
+      w.date = Math.max(w.date, tabular(rowDate(c.authorTime)));
     }
+    w.digit = ctx.measureText('0').width;
   }
 
   /**
-   * Author and date columns as wide as their widest text, shown while the subject keeps
-   * SUBJECT_MIN: the full date gives way to the short one, then the date goes, then the author.
+   * Author and date columns as wide as their widest text (authors up to AUTHOR_MAX_CH), shown as
+   * the `strata.columns` setting allows while the subject keeps SUBJECT_CH digits, or the whole
+   * row when narrower (chooseColumns): the hash gives way first, then the date, then the author.
    */
   private chooseRowColumns(width: number, graph: number, gap: number): void {
-    const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX)) + 1;
-    const dateFull = Math.ceil(this.textWidths.dateFull) + 1;
-    const dateShort = Math.ceil(this.textWidths.dateShort) + 1;
-    const hash = this.rowsLayer.querySelector<HTMLElement>('.row:not(.stash) .hash')?.offsetWidth ?? 60;
+    const author = Math.ceil(Math.min(this.textWidths.author, AUTHOR_MAX_CH * this.textWidths.digit)) + 1;
+    const date = Math.ceil(this.textWidths.date) + 1;
+    const hash = this.hashWidth();
     const choice = chooseColumns(
-      { list: width, graph, author, dateFull, dateShort, hash, gap, padding: ROW_PADDING },
-      SUBJECT_MIN,
+      { list: width, graph, author, date, hash, gap, padding: ROW_PADDING },
+      this.shownColumns,
+      SUBJECT_CH * this.textWidths.digit,
     );
     const style = this.root.style;
     style.setProperty('--col-gap', `${gap}px`);
-    style.setProperty('--author-w', `${author}px`);
-    style.setProperty('--date-w', `${choice.date === 'short' ? dateShort : dateFull}px`);
-    if (choice.author === this.columns?.author && choice.date === this.columns.date) return;
+    style.setProperty(
+      '--row-columns',
+      [
+        'var(--graph-width)',
+        'minmax(0, 1fr)',
+        ...(choice.author ? [`${author}px`] : []),
+        ...(choice.date ? [`${date}px`] : []),
+        ...(choice.hash ? [`${hash}px`] : []),
+      ].join(' '),
+    );
+    const c = this.columns;
+    if (c && choice.author === c.author && choice.date === c.date && choice.hash === c.hash) return;
     this.columns = choice;
     this.root.classList.toggle('no-author', !choice.author);
-    this.root.classList.toggle('no-date', choice.date === 'none');
-    this.root.classList.toggle('short-date', choice.date === 'short');
+    this.root.classList.toggle('no-date', !choice.date);
+    this.root.classList.toggle('no-hash', !choice.hash);
   }
 
-  /** Full and short forms; CSS shows the one that fits the current width. */
+  /** A short hash's width: seven digits of the hash font, measured once. */
+  private hashWidth(): number {
+    if (this.hashPx === undefined) {
+      const probe = el('span', 'hash', '0000000');
+      probe.style.position = 'absolute';
+      probe.style.visibility = 'hidden';
+      this.rowsLayer.append(probe);
+      this.hashPx = Math.ceil(probe.getBoundingClientRect().width);
+      probe.remove();
+    }
+    return this.hashPx;
+  }
+
   private dateCell(time: number): HTMLElement {
-    const cell = el('span', 'date');
-    cell.append(el('span', 'date-full', formatDate(time)), el('span', 'date-short', formatShortDate(time)));
-    return cell;
+    return el('span', 'date', rowDate(time));
   }
 
   private markOpenedFile(path: string | undefined): void {
@@ -4008,6 +4041,12 @@ class App {
         toolbar: [...this.toolbar.querySelectorAll<HTMLElement>(':scope > button:not([hidden])')].map(accessibleName),
         details: [...this.expansion.querySelectorAll<HTMLElement>('button')].map(accessibleName),
       },
+      toolbarClipped: ((bar) => {
+        const edge = bar.getBoundingClientRect().right;
+        return [...bar.querySelectorAll<HTMLElement>(':scope > :is(button, .path-chip):not([hidden])')]
+          .filter((e) => e.getBoundingClientRect().right > edge + 0.5)
+          .map(accessibleName);
+      })(this.toolbar),
       badgeFilter: this.badgeFilter.probe(),
       refCard: this.refCard.probe(),
       find: {
@@ -4056,6 +4095,9 @@ class App {
         return cs.outlineColor === 'rgba(0, 0, 0, 0)' ? 'none' : cs.outlineStyle;
       })(),
       focused: (document.activeElement as HTMLElement | null)?.className ?? '',
+      subjectCh:
+        (this.rowsLayer.querySelector('.row:not(.stash, .changes) .subject')?.getBoundingClientRect().width ?? 0) /
+        (this.textWidths.digit || 1),
       columns: [...(this.rowsLayer.querySelector('.row')?.children ?? [])]
         .filter((e) => !e.classList.contains('refs'))
         .filter((e) => getComputedStyle(e).display !== 'none')
@@ -4244,7 +4286,7 @@ class App {
 /** How far from a node's centre, in px across and down, the pointer still rests on it. */
 const NODE_REACH = LANE_WIDTH / 2 + 1;
 
-const commitTitle = (c: Commit) => `${c.subject}\n${c.author} <${c.authorEmail}>`;
+const commitTitle = (c: Commit) => `${c.subject}\n${c.author} <${c.authorEmail}>, ${formatDate(c.authorTime)}`;
 
 const isMac = navigator.platform.toUpperCase().includes('MAC');
 

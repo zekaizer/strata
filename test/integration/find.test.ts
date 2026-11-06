@@ -53,6 +53,7 @@ describe('find commits', () => {
     const hits = expected('--grep=search');
     const s = await until('matches counted', (p) => p.find.count === `1 of ${hits.length}`);
     assert.equal(s.selected, hits[0]);
+    assert.equal(s.find.progress, false, 'no progress once the search is done');
     const rows = Object.entries(s.rowHashes)
       .filter(([, h]) => hits.includes(h))
       .map(([i]) => Number(i));
