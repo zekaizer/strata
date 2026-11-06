@@ -223,8 +223,13 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         if (disposed) return;
         watchers.push(
           this.watchFiles(resolve(dir, 'logs', 'refs'), 'stash'),
-          // The main worktree's switches and commits.
-          this.watchFiles(resolve(dir, 'logs'), 'HEAD'),
+          // Refs changed outside VS Code's git extension too, which waits for the window to have focus.
+          this.watchFiles(dir, 'refs/**'),
+          // The main worktree's HEAD, switches and commits, and packed refs. With Node's watcher: in a
+          // large workspace VS Code's reports these seconds late. Not recursive: Node's recursive
+          // watcher on Linux throws from its event handler when a ref file becomes a folder.
+          this.watchFolder(dir, ['HEAD', 'packed-refs']),
+          this.watchFolder(resolve(dir, 'logs'), ['HEAD']),
           // Made with the first linked worktree, removed with the last.
           this.watchFiles(dir, 'worktrees', () => {
             void this.watchLinked();
@@ -238,6 +243,22 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       disposed = true;
       for (const w of watchers.splice(0)) w.dispose();
     });
+  }
+
+  /** Node's watcher of the files `names` in folder `base`, which refreshes the graph on any change. */
+  private watchFolder(base: string, names: readonly string[]): vscode.Disposable {
+    try {
+      const w = watch(base, (_, name) => {
+        if (name !== null && names.includes(name)) this.scheduleRefresh();
+      });
+      w.on('error', () => undefined);
+      return new vscode.Disposable(() => {
+        w.close();
+      });
+    } catch {
+      // No such folder (no reflogs): the other watchers and vscode.git remain.
+      return new vscode.Disposable(() => undefined);
+    }
   }
 
   /** A watcher of the files `pattern` names in folder `base`, which refreshes the graph on any change. */
