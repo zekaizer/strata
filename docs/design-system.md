@@ -276,7 +276,7 @@ muted) and chips.
 ### Banner
 
 `.banner` sits between the toolbar and the list: info colors, `.warning` for warning colors, an
-icon, `.banner-text` (`.banner-lead` with `.link-button.banner-link` commits, `.banner-more`) and
+icon centred on the first line of text (where a button's label would be), `.banner-text` (`.banner-lead` with `.link-button.banner-link` commits, `.banner-more`) and
 `.banner-actions` of `.button`s, which wrap under the text when narrow. While an operation runs the
 buttons are held (`aria-disabled`) and `.banner-busy` shows a spinner and the operation.
 
