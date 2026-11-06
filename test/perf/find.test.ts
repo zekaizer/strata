@@ -31,17 +31,19 @@ describe('perf: find', function () {
     const results: Record<string, unknown> = {};
 
     const search = async (label: string, text: string) => {
-      const runs: { firstMs: number; doneMs: number; count: string }[] = [];
+      const runs: { progressMs: number; firstMs: number; doneMs: number; count: string }[] = [];
       for (let i = 0; i < 3; i++) {
         await panel.simulate({ kind: 'type', selector: '.find-input', text: '' });
         await until('cleared', (s) => s.find.count === '');
         const t = performance.now();
         await panel.simulate({ kind: 'type', selector: '.find-input', text });
         await until('searching', (s) => s.find.count !== '');
+        await until('progress shown', (s) => s.find.progress || s.find.done);
+        const progressMs = Math.round(performance.now() - t);
         await until('first answer', (s) => s.find.matches > 0 || s.find.done);
         const firstMs = Math.round(performance.now() - t);
         const done = await until('search done', (s) => s.find.done);
-        runs.push({ firstMs, doneMs: Math.round(performance.now() - t), count: done.find.count });
+        runs.push({ progressMs, firstMs, doneMs: Math.round(performance.now() - t), count: done.find.count });
       }
       results[label] = runs;
       console.log(`STRATA_PERF ${label} ${JSON.stringify(runs)}`);
@@ -99,7 +101,8 @@ describe('perf: find', function () {
     await until('loading', (s) => s.status.startsWith('Loading history'));
     const t = performance.now();
     await panel.simulate({ kind: 'key', key: 'Escape', target: 'focused' });
-    const stopped = await until('stopped', (s) => !s.find.progress);
+    // The search for the hash may still run (its bar with it) once the jump has stopped.
+    const stopped = await until('stopped', (s) => !s.find.count.startsWith('Going to'));
     const stopMs = Math.round(performance.now() - t);
     const settled = await until('no more loading', (s) => !s.status.includes('loading'));
     results['Escape while loading'] = {

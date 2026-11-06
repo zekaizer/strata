@@ -121,6 +121,19 @@ opens (the spread between runs follows it). Going far down costs the same
 loading and layout as scrolling there: pages of 10,000 commits, with progress
 in the toolbar and the widget.
 
+Remeasured after the widget's bar started running for the search itself and a
+search with no answer after 500 ms began to offer a commit-graph (same clone,
+`test/perf/find.test.ts`, 3 runs each, from typing, load average below 1):
+
+| What                     |  Bar shows | No commit-graph: first / done | Commit-graph: first / done |
+| ------------------------ | ---------: | ----------------------------: | -------------------------: |
+| Rare text, no match      | 209-214 ms |             1.04-1.07 s, same |          0.96-1.00 s, same |
+| Common text (capped)     | 208-214 ms |     0.95-0.97 s / 1.03-1.04 s |   **0.23-0.24 s** / 0.75 s |
+| `author:"Johan Hedberg"` | 210-211 ms |     0.95-0.97 s / 1.08-1.10 s |   **0.25-0.26 s** / 1.04 s |
+
+The bar's time is the typing debounce; before, nothing but "Searching…" said
+the search was running.
+
 ## File and folder history
 
 Measured with `node scripts/perf-path.ts <clone> 5` on a
