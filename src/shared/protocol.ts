@@ -350,6 +350,15 @@ export interface ProbeState {
   /** Toolbar controls that end past the toolbar's right edge (accessible names): cut off. */
   toolbarClipped: string[];
   badgeFilter: BadgeFilterProbe;
+  /**
+   * Spacing as laid out: in the details' message column, each visible block's class and its gap to
+   * the block above (px, 0 for the first); in the open toolbar popover, each text part's class and
+   * where its text starts from the popover's left edge (px).
+   */
+  spacing: {
+    details: { block: string; gap: number }[];
+    popover: { part: string; textLeft: number }[];
+  };
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;
   /**

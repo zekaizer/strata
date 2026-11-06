@@ -4228,6 +4228,7 @@ class App {
           .map(accessibleName);
       })(this.toolbar),
       badgeFilter: this.badgeFilter.probe(),
+      spacing: this.probeSpacing(),
       refCard: this.refCard.probe(),
       find: {
         open: this.findWidget.isOpen,
@@ -4283,6 +4284,30 @@ class App {
         .filter((e) => getComputedStyle(e).display !== 'none')
         .map((e) => e.className),
     };
+  }
+
+  private probeSpacing(): ProbeState['spacing'] {
+    const blocks = [...this.expansion.querySelectorAll<HTMLElement>('.details-main > *')].filter(
+      (b) => b.getBoundingClientRect().height > 0,
+    );
+    const details = blocks.map((b, i) => ({
+      block: b.className,
+      gap: i === 0 ? 0 : b.getBoundingClientRect().top - blocks[i - 1]!.getBoundingClientRect().bottom,
+    }));
+    const popover = this.toolbar.querySelector<HTMLElement>('.popover:not([hidden])');
+    const parts = popover
+      ? [
+          ...popover.querySelectorAll<HTMLElement>(
+            '.popover-label, .popover-summary, .popover-note, .section-title, .popover-actions > :first-child',
+          ),
+        ].filter((p) => p.getBoundingClientRect().height > 0)
+      : [];
+    const textLeft = (e: HTMLElement) => {
+      const r = document.createRange();
+      r.selectNodeContents(e);
+      return r.getClientRects()[0]!.left - popover!.getBoundingClientRect().left;
+    };
+    return { details, popover: parts.map((p) => ({ part: p.className, textLeft: textLeft(p) })) };
   }
 
   private probeDetails(): ProbeState['details'] {
