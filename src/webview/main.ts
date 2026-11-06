@@ -3150,10 +3150,7 @@ class App {
 
     // The commit's text in one column, the change in the other (side by side on wide lists).
     const main = el('div', 'details-main');
-    // Carries the body font, whose 80 columns size the message column (layoutDetails).
-    const ruler = el('span', 'column-ruler');
     main.append(
-      ruler,
       stash ? this.stashByline(d, stash) : this.byline(d),
       stash ? this.stashMeta(d, stash) : this.metaTable(d),
       this.withEdit(marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'), stash ? undefined : d.hash),
@@ -3211,6 +3208,8 @@ class App {
       this.userCollapse();
       this.scroller.focus();
     });
+    // Carries the body font, whose 80 columns size the message column (layoutDetails).
+    main.prepend(el('span', 'column-ruler'));
     const layout = el('div', 'details-layout');
     layout.append(main, files);
     pane.style.minHeight = '';
@@ -3323,8 +3322,6 @@ class App {
     const last = draft.commits.at(-1)!;
     const squash = draft.kind === 'squash';
     const main = el('div', 'details-main');
-    const ruler = el('span', 'column-ruler');
-    main.append(ruler);
     if (squash) {
       main.append(
         el('h2', 'details-subject', `Squash ${draft.commits.length} commits into one`),
@@ -3479,7 +3476,7 @@ class App {
       actions.append(b);
     }
     const main = el('div', 'details-main');
-    main.append(el('span', 'column-ruler'), byline, el('h2', 'details-subject', 'Uncommitted changes'), actions);
+    main.append(byline, el('h2', 'details-subject', 'Uncommitted changes'), actions);
     const files = el('div', 'details-files');
     for (const g of CHANGE_GROUPS) {
       const list = w.files.filter((f) => f.group === g.group);

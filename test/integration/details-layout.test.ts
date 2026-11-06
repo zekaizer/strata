@@ -81,6 +81,21 @@ describe('details layout', () => {
     assert.ok(Math.abs(a.filesLeft - b.filesLeft) <= 1, `files at ${a.filesLeft}px and ${b.filesLeft}px`);
   });
 
+  it('lays out a multi-selection like a commit at the same list width', async () => {
+    const rowOf = (p: ProbeState, rev: string) =>
+      Number(Object.entries(p.rowHashes).find(([, h]) => h === git('rev-parse', rev))?.[0] ?? -1);
+    const commit = await openDetails(rowOf(await panel.probe(), 'HEAD'));
+    await panel.simulate({ kind: 'clickRow', index: rowOf(await panel.probe(), 'HEAD~1'), shiftKey: true });
+    const s = await waitFor('two commits selected', async () => {
+      const p = await panel.probe();
+      return p.selection.length === 2 && p.details && p;
+    });
+    assert.equal(s.details!.sideBySide, commit.sideBySide);
+    assert.equal(s.details!.messageWidth, commit.messageWidth, 'the message column');
+    await panel.simulate({ kind: 'clickRow', index: rowOf(s, 'HEAD') });
+    await waitFor('one commit selected', async () => (await panel.probe()).selection.length === 0);
+  });
+
   it('keeps Old | diff | New next to the file names', async () => {
     const d = await openDetails(1);
     assert.ok(d.actionsRight > 0, 'actions laid out');
