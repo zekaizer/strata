@@ -26,7 +26,7 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
 | `src/webview/tokens.css`          | Every raw value: the custom properties below. Nothing else.               |
 | `src/webview/components.css`      | The shared components, built only from tokens.                            |
 | `src/webview/main.css`            | Imports both, then lays out the views (grid, positions, view-only parts). |
-| `test/unit/design-tokens.test.ts` | The guard: fails on raw values outside `tokens.css`.                      |
+| `test/unit/design-tokens.test.ts` | The guard: fails on raw values outside `tokens.css` and unearned tokens.  |
 | `playground/gallery.ts`           | The gallery: every token and component in every state.                    |
 
 ## Rules
@@ -48,13 +48,24 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
 6. A new token or component (or variant) is allowed only when no existing one expresses the role.
    It **must** land before its first use, in this order: the token in `tokens.css` or the component
    in `components.css`; a specimen in `playground/gallery.ts` in every state; a row in this
-   document; then the feature that uses it. A token holds a step of a scale or a semantic color,
-   never a one-off value kept for one element.
+   document; then the feature that uses it.
 7. Spacing **must** not change with the state of a surface. A block's gap to the next block is its
    own, the same whatever follows it, and **must** sit outside anything that folds, so the next block
    keeps its distance with the fold open or closed. A block that takes another's place (the message
    editor for the subject) keeps that block's gaps. `test/integration/spacing.test.ts` holds this
    for the details and the popovers.
+8. A token exists only if at least one of these holds:
+   1. it is read in two or more places;
+   2. it is a step of a scale: spacing, radius, font size, line height, icon size, `z-index` layers;
+   3. it holds a design decision beyond a VS Code variable: a derived value (a `color-mix`, a raw
+      fallback such as `rgb(0 0 0 / 30%)`), a theme-specific value, a computed size.
+
+   A single-use alias of a VS Code variable is not a token: the component reads
+   `var(--vscode-…, fallback)` itself, a fallback to another VS Code variable or token included.
+   The ref kind colors (`--badge-*`) are kept as a family, since a chip selects its color by kind.
+   The guard counts `var()` reads in `src/webview` and fails on a token read fewer than twice
+   unless it is in a family (`FAMILIES`) or a `SINGLE_USE` entry with its reason (today:
+   `--surface-sunken-hover`, theme-specific).
 
 ## How new UI picks components
 
