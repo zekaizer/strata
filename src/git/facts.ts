@@ -475,11 +475,15 @@ export const readConfig = (git: string, cwd: string, key: string): Promise<strin
 
 /** The other worktrees of the repository: all but the one `cwd` is in. */
 export async function readWorktrees(git: string, cwd: string): Promise<WorktreeInfo[]> {
-  const [list, top] = await Promise.all([
+  const [list, [top, gitDir, commonDir]] = await Promise.all([
     runGit(git, cwd, ['worktree', 'list', '--porcelain']),
-    runGit(git, cwd, ['rev-parse', '--show-toplevel']).then((s) => s.trim()),
+    runGit(git, cwd, ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-dir', '--git-common-dir']).then(
+      (s) => s.trim().split('\n'),
+    ),
   ]);
-  return parseWorktreeList(list).filter((w) => w.path !== top);
+  // The main worktree is told by its git directory: git lists it at that directory's path when .git points elsewhere.
+  const inMain = gitDir === commonDir;
+  return parseWorktreeList(list).filter((w) => (inMain ? !w.main : w.path !== top));
 }
 
 const gitVersions = new Map<string, Promise<GitVersion | undefined>>();

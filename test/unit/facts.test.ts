@@ -391,4 +391,28 @@ describe('confirmation facts', () => {
     }
     assert.deepEqual(await readWorktrees('git', dir), []);
   });
+
+  it('leaves out the worktree it is in when its .git points elsewhere, as in a submodule or a repo checkout', async () => {
+    const work = join(root, 'separate work');
+    const store = join(root, 'separate store', 'work.git');
+    mkdirSync(join(root, 'separate store'));
+    run(root, 'init', '--quiet', '-b', 'main', '--separate-git-dir', store, work);
+    commit(work, 'a.txt', 'one');
+    run(work, 'branch', 'topic');
+    assert.deepEqual(await readWorktrees('git', work), []);
+    const linked = join(root, 'separate linked');
+    run(work, 'worktree', 'add', '--quiet', linked, 'topic');
+    try {
+      assert.deepEqual(
+        (await readWorktrees('git', work)).map((w) => [w.path, w.branch]),
+        [[linked, 'refs/heads/topic']],
+      );
+      assert.deepEqual(
+        (await readWorktrees('git', linked)).map((w) => [w.branch, w.main]),
+        [['refs/heads/main', true]],
+      );
+    } finally {
+      run(work, 'worktree', 'remove', '--force', linked);
+    }
+  });
 });
