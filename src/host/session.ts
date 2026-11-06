@@ -4,7 +4,7 @@ import { basename, posix, resolve } from 'node:path';
 import * as vscode from 'vscode';
 import { addRule, hiddenRefs, parseRules, type BadgeRule } from '../core/badge-rules.ts';
 import { heldBy, leftoverOf, settleMarks, type AutostashSetting, type StashMark } from '../core/autostash.ts';
-import type { Ref, RefSnapshot } from '../core/refs.ts';
+import { historyChange, historyStarts, type Ref, type RefSnapshot } from '../core/refs.ts';
 import {
   changesSummary,
   listChanges,
@@ -26,7 +26,7 @@ import { LogReader, type LogOptions } from '../git/log-reader.ts';
 import { findCommits, findExact, locateCommit } from '../git/find.ts';
 import type { FindHit, FindQuery } from '../core/find.ts';
 import { readCommitPatch, readFilePatch, readStashPatch } from '../git/patch.ts';
-import { readRefs } from '../git/refs.ts';
+import { allReachable, readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
@@ -113,6 +113,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   generation: number;
   options: ViewOptions;
   private snapshot: RefSnapshot | undefined;
+  /** The commits of the current history served to the graph so far. */
+  private served = new Set<string>();
   private stashList: StashEntry[] = [];
   private readonly stashCache = stashCache();
   /** What the graph was last told is in progress or left behind. */
@@ -223,8 +225,13 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         if (disposed) return;
         watchers.push(
           this.watchFiles(resolve(dir, 'logs', 'refs'), 'stash'),
-          // The main worktree's switches and commits.
-          this.watchFiles(resolve(dir, 'logs'), 'HEAD'),
+          // Refs changed outside VS Code's git extension too, which waits for the window to have focus.
+          this.watchFiles(dir, 'refs/**'),
+          // The main worktree's HEAD, switches and commits, and packed refs. With Node's watcher: in a
+          // large workspace VS Code's reports these seconds late. Not recursive: Node's recursive
+          // watcher on Linux throws from its event handler when a ref file becomes a folder.
+          this.watchFolder(dir, ['HEAD', 'packed-refs']),
+          this.watchFolder(resolve(dir, 'logs'), ['HEAD']),
           // Made with the first linked worktree, removed with the last.
           this.watchFiles(dir, 'worktrees', () => {
             void this.watchLinked();
@@ -238,6 +245,22 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       disposed = true;
       for (const w of watchers.splice(0)) w.dispose();
     });
+  }
+
+  /** Node's watcher of the files `names` in folder `base`, which refreshes the graph on any change. */
+  private watchFolder(base: string, names: readonly string[]): vscode.Disposable {
+    try {
+      const w = watch(base, (_, name) => {
+        if (name !== null && names.includes(name)) this.scheduleRefresh();
+      });
+      w.on('error', () => undefined);
+      return new vscode.Disposable(() => {
+        w.close();
+      });
+    } catch {
+      // No such folder (no reflogs): the other watchers and vscode.git remain.
+      return new vscode.Disposable(() => undefined);
+    }
   }
 
   /** A watcher of the files `pattern` names in folder `base`, which refreshes the graph on any change. */
@@ -432,6 +455,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.options = { ...this.options, refs: kept.length > 0 ? kept : null };
     const path = this.options.path;
     this.reader = new LogReader(this.view());
+    this.served = new Set();
     clearTimeout(this.pathRead?.slow);
     this.pathRead = path
       ? {
@@ -478,6 +502,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       if (generation === this.generation) throw e;
     });
     if (!page || generation !== this.generation) return;
+    for (const c of page.commits) this.served.add(c.hash);
     if (this.timedGeneration !== generation) {
       this.timedGeneration = generation;
       if (performance.now() - started > SLOW_FIRST_PAGE_MS) void this.suggestCommitGraph(path ? 'paths' : 'history');
@@ -908,8 +933,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   /**
-   * Repository state events fire for index and working tree changes too: only ref changes reload
-   * the history, and stash changes alone only re-interleave the rows.
+   * Repository state events fire for index and working tree changes too: only ref and stash
+   * changes reach the graph (see update).
    */
   private scheduleRefresh(): void {
     if (this.disposed) return;
@@ -922,26 +947,64 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private async refreshIfChanged(): Promise<void> {
     // A running flow refreshes when it ends; busy(undefined) checks again for one that failed.
     if (this.running !== undefined) return;
-    const generation = this.generation;
-    const cwd = this.cwd;
     try {
-      const [refs, stashes] = await Promise.all([
-        readRefs(this.api.git.path, cwd),
-        readStashes(this.api.git.path, cwd, this.stashCache),
-      ]);
-      if (generation !== this.generation) return;
-      if (JSON.stringify(refs) !== JSON.stringify(this.snapshot)) {
-        await this.reset();
-        return;
-      }
-      if (JSON.stringify(stashes) !== JSON.stringify(this.stashes)) {
-        this.stashList = stashes;
-        this.post({ type: 'stashes', generation, stashes });
-      }
-      await Promise.all([this.syncRepoState(false), this.syncChanges(false)]);
+      await this.update();
     } catch (e) {
       this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  /**
+   * Shows the refs and stashes as they are now: in place while the history stays the same (badges
+   * moved, created or deleted on commits it has), else by reading the history again. `result`: an
+   * operation's, as in reset.
+   */
+  private async update(result?: { focus?: string; notified?: true }): Promise<void> {
+    if (this.disposed) return;
+    const generation = this.generation;
+    const cwd = this.cwd;
+    const [refs, stashes] = await Promise.all([
+      readRefs(this.api.git.path, cwd),
+      readStashes(this.api.git.path, cwd, this.stashCache),
+    ]);
+    if (generation !== this.generation) return;
+    const changed =
+      JSON.stringify(refs) !== JSON.stringify(this.snapshot) ||
+      JSON.stringify(stashes) !== JSON.stringify(this.stashes);
+    if (changed && !(await this.sameHistory(refs))) {
+      await this.reset(result);
+      return;
+    }
+    if (generation !== this.generation) return;
+    if (changed || result) {
+      if (this.snapshot && refs.headBranch !== this.snapshot.headBranch) this.setUndo(undefined);
+      this.snapshot = refs;
+      this.stashList = stashes;
+      this.stopWhere();
+      this.post({ type: 'refs', generation, refs, stashes, ...(result === undefined ? {} : { result }) });
+      void this.syncHead(generation, cwd, refs.headBranch);
+    }
+    await Promise.all([this.syncRepoState(false), this.syncChanges(false)]);
+  }
+
+  /** Whether the history shown is the one the refs `next` give, with the view's options unchanged. */
+  private async sameHistory(next: RefSnapshot): Promise<boolean> {
+    const was = this.snapshot;
+    const refs = this.options.refs;
+    if (!was || !this.reader) return false;
+    // A picked ref that is gone changes the filter (see reset).
+    if (refs?.some((name) => !next.refs.some((r) => r.name === name))) return false;
+    const path = this.options.path !== null;
+    const before = historyStarts(was, refs, path);
+    const after = historyStarts(next, refs, path);
+    const change = historyChange(before, after, this.served, { firstParent: this.options.firstParent, path });
+    if (change.kind !== 'check') return change.kind === 'same';
+    const git = this.api.git.path;
+    const [added, removed] = await Promise.all([
+      allReachable(git, this.cwd, change.added, [...before]),
+      allReachable(git, this.cwd, change.removed, [...after]),
+    ]);
+    return added && removed;
   }
 
   /**
@@ -1157,7 +1220,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   refresh(focus?: string, notified = false): Promise<void> {
-    return this.reset({ ...(focus === undefined ? {} : { focus }), ...(notified ? { notified: true } : {}) });
+    return this.update({ ...(focus === undefined ? {} : { focus }), ...(notified ? { notified: true } : {}) });
   }
 
   done(message: string): void {

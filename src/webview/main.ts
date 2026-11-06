@@ -268,6 +268,28 @@ class App {
   private theme: GraphTheme = resolveGraphTheme();
 
   private generation = -1;
+  /**
+   * A reload of the history shown, read while that stays on screen: its pages, their layout, and
+   * the other messages of its generation, applied when the pages are laid out.
+   */
+  private staged:
+    | {
+        reset: Extract<HostToWebview, { type: 'reset' }>;
+        /** A page of it is still being read. */
+        loading: boolean;
+        /** Commits of the rows at the top of the view and selected, which the swap restores, not read yet. */
+        wanted: Set<string>;
+        /** How many commits to read looking for them, as a reload's restore does. */
+        limit: number;
+        read: number;
+        pages: Extract<HostToWebview, { type: 'commits' }>[];
+        laidOut: Extract<FromWorker, { type: 'rows' }>[];
+        held: HostToWebview[];
+      }
+    | undefined;
+  /** ProbeState.blankFrames, and whether the last render drew laid-out rows. */
+  private blankFrames = 0;
+  private drewRows = false;
   private repo: RepoInfo | undefined;
   private refs: RefSnapshot = { head: undefined, headBranch: undefined, refs: [], remotes: [], worktrees: [] };
   private refsByHash = new Map<string, Ref[]>();
@@ -353,6 +375,8 @@ class App {
   private loading = false;
   private selected = -1;
   private details: CommitDetails | undefined;
+  /** The details shown before a reload, which the same row shows again without asking for them. */
+  private kept: { details: CommitDetails | undefined; working: WorkingDetails | undefined } | undefined;
   /** The unfolded uncommitted changes row's paths; `details` is then undefined. */
   private working: WorkingDetails | undefined;
   /** Commit whose details were last requested; replies for any other commit are stale. */
@@ -685,6 +709,13 @@ class App {
   }
 
   private onHost(m: HostToWebview): void {
+    const staged = this.staged;
+    // What the repository is in the middle of goes with the staged refs, which the banner names.
+    const held = m.type === 'repoState' || ('generation' in m && m.generation === staged?.reset.generation);
+    if (staged && held && m.type !== 'commits') {
+      staged.held.push(m);
+      return;
+    }
     switch (m.type) {
       case 'init':
         document.body.dataset['theme'] = m.theme;
@@ -694,8 +725,17 @@ class App {
         this.queueRender();
         break;
       case 'reset':
-        this.badgeRules = m.badgeRules;
-        this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result);
+        if (
+          this.repo?.root === m.repo.root &&
+          JSON.stringify(m.options) === JSON.stringify(this.options) &&
+          this.drewRows
+        )
+          this.stage(m);
+        else {
+          this.staged = undefined;
+          this.badgeRules = m.badgeRules;
+          this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result);
+        }
         break;
       case 'repositories':
         this.switcher.update(m.repos);
@@ -710,10 +750,8 @@ class App {
       case 'where':
         if (m.generation === this.generation) this.refCard.answer(m.hash, m.where);
         break;
-      case 'stashes':
-        if (m.generation !== this.generation) return;
-        this.setStashes(m.stashes);
-        this.relist();
+      case 'refs':
+        if (m.generation === this.generation) this.updateRefs(m);
         break;
       case 'changes':
         if (m.generation !== this.generation) return;
@@ -752,37 +790,18 @@ class App {
         this.queueRender();
         break;
       case 'commits':
-        if (m.generation !== this.generation) return;
-        this.loading = false;
-        this.done = m.done;
-        for (const h of m.unchanged ?? []) this.unchanged.add(h);
-        this.appendRows(interleave(m.commits, this.commits.length, this.anchors, this.changesAt()));
-        if (this.commitIndex)
-          for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
-        this.commits.push(...m.commits);
-        for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
-        this.findRewritable();
-        this.measureTexts(m.commits);
-        this.worker?.postMessage({
-          type: 'layout',
-          generation: m.generation,
-          commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
-        });
-        this.updateStatus();
-        this.updateStashButton();
-        this.updateHeadButton();
-        if (this.landing && this.landing.start === undefined) {
-          this.landing.start = performance.now();
-          this.landingTimer = setTimeout(() => {
-            this.landing = undefined;
-            this.queueRender();
-          }, LANDING_MS);
+        if (staged?.reset.generation === m.generation) {
+          staged.pages.push(m);
+          this.layout(m);
+          staged.read += m.commits.length;
+          for (const c of m.commits) staged.wanted.delete(c.hash);
+          staged.loading = staged.wanted.size > 0 && !m.done && staged.read < staged.limit;
+          if (staged.loading) vscode.postMessage({ type: 'loadMore', generation: m.generation, count: NEXT_PAGE });
+          else if (!this.worker) this.swap();
+          return;
         }
-        // Subjects the banner names may have arrived.
-        this.updateBanner();
-        this.applyRestore();
-        this.syncJump();
-        this.queueRender();
+        if (m.generation !== this.generation) return;
+        this.addCommits(m, true);
         break;
       case 'pathOrigin':
         if (m.generation !== this.generation) return;
@@ -879,6 +898,7 @@ class App {
         this.pathChip.close();
         break;
       case 'noRepository':
+        this.staged = undefined;
         this.generation = -1;
         this.noRepository = true;
         this.switcher.setShown(undefined, 'No git repository');
@@ -913,6 +933,11 @@ class App {
         this.queueRender();
         break;
       case 'error':
+        // The staged history may never come: show what there is of it.
+        if (this.staged) {
+          this.staged.loading = false;
+          this.swap();
+        }
         this.loading = false;
         this.status.textContent = m.message;
         this.status.title = m.message;
@@ -939,7 +964,83 @@ class App {
     }
   }
 
+  /** Appends a page of the history shown; `layout`: also has the worker lay it out. */
+  private addCommits(m: Extract<HostToWebview, { type: 'commits' }>, layout: boolean): void {
+    this.loading = false;
+    this.done = m.done;
+    for (const h of m.unchanged ?? []) this.unchanged.add(h);
+    this.appendRows(interleave(m.commits, this.commits.length, this.anchors, this.changesAt()));
+    if (this.commitIndex)
+      for (const [i, c] of m.commits.entries()) this.commitIndex.set(c.hash, this.commits.length + i);
+    this.commits.push(...m.commits);
+    for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
+    this.findRewritable();
+    this.measureTexts(m.commits);
+    if (layout) this.layout(m);
+    this.updateStatus();
+    this.updateStashButton();
+    this.updateHeadButton();
+    this.startLanding();
+    // Subjects the banner names may have arrived.
+    this.updateBanner();
+    this.applyRestore();
+    this.syncJump();
+    this.queueRender();
+  }
+
+  private layout(m: Extract<HostToWebview, { type: 'commits' }>): void {
+    this.worker?.postMessage({
+      type: 'layout',
+      generation: m.generation,
+      commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
+    });
+  }
+
+  /**
+   * Reads the history of `m` while the one shown stays on screen: as many commits as reach past
+   * the rows on screen and the selection, and further while the commits of the top row and the
+   * selection are not read yet, so the swap restores them.
+   */
+  private stage(m: Extract<HostToWebview, { type: 'reset' }>): void {
+    const below = Math.max(this.rowFloor(this.scroller.scrollTop + this.scroller.clientHeight), this.selected);
+    const wanted = new Set<string>();
+    for (const i of [this.rowFloor(this.scroller.scrollTop), this.selected]) {
+      const row = this.list[i];
+      if (row?.kind === 'commit') wanted.add(row.commit.hash);
+    }
+    this.staged = {
+      reset: m,
+      loading: true,
+      wanted,
+      limit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
+      read: 0,
+      pages: [],
+      laidOut: [],
+      held: [],
+    };
+    vscode.postMessage({ type: 'loadMore', generation: m.generation, count: Math.max(FIRST_PAGE, below + LOAD_AHEAD) });
+  }
+
+  /** Shows the staged history in place of the one on screen, in one frame. */
+  private swap(): void {
+    const s = this.staged!;
+    this.staged = undefined;
+    const m = s.reset;
+    this.badgeRules = m.badgeRules;
+    this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result, false);
+    for (const page of s.pages) this.addCommits(page, false);
+    if (s.loading) this.loading = true;
+    for (const rows of s.laidOut) this.onWorker(rows);
+    for (const held of s.held) this.onHost(held);
+  }
+
   private onWorker(m: FromWorker): void {
+    const staged = this.staged;
+    if (m.type === 'rows' && staged?.reset.generation === m.generation) {
+      staged.laidOut.push(m);
+      if (!staged.loading && staged.laidOut.length === staged.pages.length) this.swap();
+      return;
+    }
     if (m.type !== 'rows' || m.generation !== this.generation) return;
     this.rows.push(...m.rows);
     this.spans.add(m.spans);
@@ -954,9 +1055,9 @@ class App {
     options: ViewOptions,
     stashes: StashEntry[],
     result?: { focus?: string; notified?: true },
+    load = true,
   ): void {
-    this.bannerNotified = result?.notified === true;
-    const focus = result?.focus;
+    const sameRepo = this.repo?.root === repo.root;
     // The reload restores the selection itself; the history the jump was loading is gone.
     this.stopJump();
     // A reload of the same repository (refs changed, refresh, filters) keeps the selection, and the
@@ -985,42 +1086,14 @@ class App {
       if (kept && kept.draft.head === refs.head) this.editor = { ...kept, saving: false };
     }
     this.unkeyed = undefined;
-    const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
-    if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
-    if (focus !== undefined) this.selectionsAtBusy = undefined;
-    // An operation's result: the badges it moved and the stash row it made pulse once shown.
-    clearTimeout(this.landingTimer);
-    this.landing =
-      result !== undefined && this.repo?.root === repo.root
-        ? {
-            refs: new Set(landedRefs(this.refs, refs)),
-            stash: stashes.some((s) => s.hash === focus) ? focus : undefined,
-            start: undefined,
-          }
-        : undefined;
+    this.takeResult(result, refs, stashes, sameRepo);
     this.generation = generation;
     this.repo = repo;
-    this.refs = refs;
-    this.worktrees = this.worktreesShown();
-    this.updateHeadButton();
     this.options = options;
     this.unchanged = new Set();
     this.pathOrigin = undefined;
     this.renderOriginNote();
-    this.refsByHash = new Map();
-    for (const r of refs.refs) {
-      const list = this.refsByHash.get(r.hash) ?? [];
-      list.push(r);
-      this.refsByHash.set(r.hash, list);
-    }
-    // The upstream and refs picked in the filter follow the current branch, so they survive the "+N" collapse.
-    const upstream = headUpstream(refs);
-    for (const [hash, list] of this.refsByHash)
-      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, options.refs));
-    this.applyBadgeRules();
-    this.refCard.forget();
-    this.setStashes(stashes);
-    this.updateBanner();
+    this.setRefs(refs, stashes);
     this.commits = [];
     this.commitIndex = undefined;
     this.parentsOf.clear();
@@ -1041,11 +1114,91 @@ class App {
     this.status.classList.remove('error');
     // Replies to requests of the previous generation are dropped, so nothing is in flight any more.
     this.loading = false;
-    this.loadMore(FIRST_PAGE);
+    if (load) this.loadMore(FIRST_PAGE);
+    const kept = { details: this.details, working: this.working };
     this.collapse();
+    this.kept = sameRepo ? kept : undefined;
     // The widget stays open and searches the new history.
     if (this.search) this.runQuery(this.findWidget.value, false);
     this.queueRender();
+  }
+
+  /**
+   * An operation's result before its refs are shown: the commit it focused is selected (unless the
+   * user selected another meanwhile), and the badges it moved and the stash row it made pulse once
+   * shown, unless `land` is false (another repository).
+   */
+  private takeResult(
+    result: { focus?: string; notified?: true } | undefined,
+    refs: RefSnapshot,
+    stashes: StashEntry[],
+    land = true,
+  ): void {
+    this.bannerNotified = result?.notified === true;
+    const focus = result?.focus;
+    const moved = this.selectionsAtBusy !== undefined && this.selectionsAtBusy !== this.selections;
+    if (focus !== undefined && !moved) this.restore = { ...this.restore, selectedHash: focus, reveal: true };
+    if (focus !== undefined) this.selectionsAtBusy = undefined;
+    clearTimeout(this.landingTimer);
+    this.landing =
+      result !== undefined && land
+        ? {
+            refs: new Set(landedRefs(this.refs, refs)),
+            stash: stashes.some((s) => s.hash === focus) ? focus : undefined,
+            start: undefined,
+          }
+        : undefined;
+  }
+
+  /** Shows `refs` and `stashes`: what badges, the HEAD row and the banner show. */
+  private setRefs(refs: RefSnapshot, stashes: StashEntry[]): void {
+    this.refs = refs;
+    this.worktrees = this.worktreesShown();
+    this.refsByHash = new Map();
+    for (const r of refs.refs) {
+      const list = this.refsByHash.get(r.hash) ?? [];
+      list.push(r);
+      this.refsByHash.set(r.hash, list);
+    }
+    // The upstream and refs picked in the filter follow the current branch, so they survive the "+N" collapse.
+    const upstream = headUpstream(refs);
+    for (const [hash, list] of this.refsByHash)
+      this.refsByHash.set(hash, badgeOrder(list, refs.headBranch, upstream, this.options.refs));
+    this.applyBadgeRules();
+    this.refCard.forget();
+    this.setStashes(stashes);
+    this.updateBanner();
+    this.updateHeadButton();
+  }
+
+  /** New refs and stashes on the history shown: rows keep their place, badges and stash rows change. */
+  private updateRefs(m: Extract<HostToWebview, { type: 'refs' }>): void {
+    // A focus is looked for as after a reload: within what is loaded and one page more.
+    if (m.result?.focus !== undefined)
+      this.restore ??= { expanded: this.expanded, searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE };
+    this.takeResult(m.result, m.refs, m.stashes);
+    this.setRefs(m.refs, m.stashes);
+    this.findRewritable();
+    this.refFilter.update(this.refs, this.options.refs);
+    const search = this.search;
+    if (search && search.query.author === undefined) {
+      search.refs = new Set(matchRefs(this.refs, search.query.text).map((r) => r.name));
+      search.worktrees = new Set(matchWorktrees(this.refs, search.query.text).map((w) => w.path));
+      this.updateFindCount();
+    }
+    this.relist();
+    this.startLanding();
+    this.applyRestore();
+  }
+
+  /** Starts the pulse of what an operation moved, once its rows are shown. */
+  private startLanding(): void {
+    if (!this.landing || this.landing.start !== undefined) return;
+    this.landing.start = performance.now();
+    this.landingTimer = setTimeout(() => {
+      this.landing = undefined;
+      this.queueRender();
+    }, LANDING_MS);
   }
 
   /** Re-applies the saved scroll position and selection once the history containing them has loaded. */
@@ -2196,7 +2349,17 @@ class App {
     this.bodyExpanded = false;
     clearTimeout(this.copiedTimer);
     this.pendingDetails = undefined;
-    if (this.expanded) {
+    const kept = this.kept;
+    this.kept = undefined;
+    if (this.expanded && row.kind === 'changes' && kept?.working) {
+      this.working = kept.working;
+      this.expansion.hidden = false;
+      this.renderChangesDetails(false);
+    } else if (this.expanded && row.kind !== 'changes' && kept?.details?.hash === hash) {
+      this.details = kept.details;
+      this.expansion.hidden = false;
+      this.renderDetails();
+    } else if (this.expanded) {
       this.pendingDetails = hash;
       this.showLoading();
       if (row.kind === 'changes') vscode.postMessage({ type: 'selectChanges', generation: this.generation });
@@ -2468,6 +2631,7 @@ class App {
 
     const rows: HTMLElement[] = [];
     for (let i = first; i < last; i++) rows.push(this.renderRow(i));
+    this.countBlank(first, last);
     this.rowsLayer.replaceChildren(...rows);
     // Only point at a row that exists in the DOM.
     if (this.selected >= first && this.selected < last) {
@@ -2507,6 +2671,18 @@ class App {
     this.renderEmpty();
 
     if (!this.done && !this.loading && last + LOAD_AHEAD > this.list.length) this.loadMore(NEXT_PAGE);
+  }
+
+  /** Counts a render that drew no rows, or rows without their graph, after one that drew both. */
+  private countBlank(first: number, last: number): void {
+    let drawn = last > first;
+    if (this.worker)
+      for (let i = first; i < last && drawn; i++) {
+        const item = this.list[i]!;
+        if (item.kind === 'commit' && !this.rows[item.row]) drawn = false;
+      }
+    if (!drawn && this.drewRows) this.blankFrames++;
+    this.drewRows = drawn;
   }
 
   /** A message in place of the list when there is nothing to show. */
@@ -3857,8 +4033,9 @@ class App {
       repoSwitcher: this.switcher.probe(),
       commits: this.commits.length,
       laidOut: this.rows.length,
+      blankFrames: this.blankFrames,
       done: this.done,
-      restoring: this.restore !== undefined || this.headQuery !== undefined,
+      restoring: this.restore !== undefined || this.headQuery !== undefined || this.staged !== undefined,
       selected: this.selectedHash(),
       detailsShown:
         this.expanded && !this.expansion.hidden ? (this.details?.hash ?? (this.working && CHANGES_ROW)) : undefined,

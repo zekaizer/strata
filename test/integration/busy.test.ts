@@ -74,11 +74,10 @@ describe('while an operation runs', () => {
     await waitFor('focus applied', async () => (await panel.probe()).selected === order()[5]);
 
     await operation('Testing', () => select(7));
-    const generation = (await panel.probe()).generation;
     await panel.flowHost().refresh(order()[5]);
-    const s = await waitFor('reloaded', async () => {
+    const s = await waitFor('refreshed', async () => {
       const p = await panel.probe();
-      return p.generation > generation && p.done && p;
+      return !p.restoring && p;
     });
     assert.equal(s.selected, order()[7], "the user's choice stays");
   });
@@ -97,17 +96,17 @@ describe('while history loads', () => {
   });
 
   it('drops a page that a newer history made moot, instead of reporting it as an error', async () => {
-    const host = panel.flowHost();
+    const refresh = () => panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
     const { alerted, generation } = await panel.probe();
     let raced = false;
     // The first page of the new history is being read when the next reset comes.
     const sub = panel.onDidReceiveMessage((m) => {
       if (m.type !== 'loadMore' || raced) return;
       raced = true;
-      void host.refresh();
+      void refresh();
     });
     try {
-      await host.refresh();
+      await refresh();
       await waitFor('the newer history', async () => {
         const p = await panel.probe();
         return p.generation >= generation + 2 && p.done;
