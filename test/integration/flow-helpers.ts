@@ -42,6 +42,20 @@ export async function reload(panel: GraphPanel): Promise<void> {
   await waitFor('reloaded', async () => (await panel.probe()).generation > before);
 }
 
+/**
+ * Reloads and selects the newest commit, `branch`'s tip. reload() returns once the reset is
+ * posted, before its first page draws: a click right after could land on a row of the old list.
+ */
+export async function reloadAndSelectTip(panel: GraphPanel, branch: string): Promise<void> {
+  const tip = git('rev-parse', branch);
+  await reload(panel);
+  await waitFor('the first page', async () => (await panel.probe()).commits > 0);
+  await panel.simulate({ kind: 'scrollToRow', index: 0 });
+  await waitFor('the tip on top', async () => (await panel.probe()).rowHashes[0] === tip);
+  await panel.simulate({ kind: 'clickRow', index: 0 });
+  await waitFor('the tip selected', async () => (await panel.probe()).selected === tip);
+}
+
 export const selected = (panel: GraphPanel, hash: string) =>
   waitFor(`selection of ${hash}`, async () => (await panel.probe()).selected === hash);
 

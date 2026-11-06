@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import type { ProbeState } from '../../src/shared/protocol.ts';
-import { reload, flowSuite, run } from './flow-helpers.ts';
+import { reload, reloadAndSelectTip, flowSuite, run } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 import { gitRetry } from './repo-snapshot.ts';
 
@@ -45,20 +45,6 @@ describe('go to HEAD', () => {
     execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
   };
 
-  /**
-   * Reloads and selects the newest commit, `branch`'s tip. reload() returns once the reset is
-   * posted, before its first page draws: a click then could land on a row of the old list.
-   */
-  const reloadAndSelectTip = async (branch: string) => {
-    const tip = git('rev-parse', branch);
-    await reload(panel());
-    await until('the first page', (p) => p.commits > 0);
-    await panel().simulate({ kind: 'scrollToRow', index: 0 });
-    await until('the tip on top', (p) => p.rowHashes[0] === tip);
-    await panel().simulate({ kind: 'clickRow', index: 0 });
-    await until('the tip selected', (p) => p.selected === tip);
-  };
-
   afterEach(async () => {
     if ((await panel().probe()).options.refs !== null) await filter(null);
   });
@@ -78,10 +64,8 @@ describe('go to HEAD', () => {
     // Newer commits on another branch push HEAD past the first page.
     const main = git('rev-parse', 'main');
     longBranch('strata-long', FIRST_PAGE + 100, main);
-    await reload(panel());
     // The reload looks for the selection kept from before; a new one near the top is found at once.
-    await panel().simulate({ kind: 'scrollToRow', index: 0 });
-    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await reloadAndSelectTip(panel(), 'strata-long');
     await reload(panel());
     let s = await until('first page', (p) => p.commits > 0 && p.selected !== undefined);
     assert.ok(s.commits <= FIRST_PAGE && !s.done, 'HEAD is not loaded yet');
@@ -104,7 +88,7 @@ describe('go to HEAD', () => {
     const main = git('rev-parse', 'main');
     longBranch('strata-long', FIRST_PAGE + 100, main);
     // A selection the filtered history has near its top, which the reload finds at once.
-    await reloadAndSelectTip('strata-long');
+    await reloadAndSelectTip(panel(), 'strata-long');
     let s = await filter('refs/heads/strata-long', false);
     assert.ok(s.commits <= FIRST_PAGE && !s.done, 'HEAD is not loaded yet');
     await goToHead();
@@ -116,7 +100,7 @@ describe('go to HEAD', () => {
   it('says at once when the filter leaves HEAD out, loading no history to look for it', async () => {
     longBranch('strata-lone', FIRST_PAGE + 100);
     // A selection the filtered history has near its top, which the reload finds at once.
-    await reloadAndSelectTip('strata-lone');
+    await reloadAndSelectTip(panel(), 'strata-lone');
     let s = await filter('refs/heads/strata-lone', false);
     const loaded = s.commits;
     assert.ok(!s.done, 'more history to load');

@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import type { ProbeState } from '../../src/shared/protocol.ts';
-import { flowSuite, reload, run } from './flow-helpers.ts';
+import { flowSuite, reload, reloadAndSelectTip, run } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 /** First page of history the graph loads (main.ts FIRST_PAGE). */
@@ -129,9 +129,7 @@ describe('find commits', () => {
 
   it('loads history down to a match not loaded yet', async () => {
     longBranch('strata-long', FIRST_PAGE + 2000, git('rev-parse', 'main'));
-    await reload(panel());
-    await panel().simulate({ kind: 'scrollToRow', index: 0 });
-    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await reloadAndSelectTip(panel(), 'strata-long');
     await reload(panel());
     let s = await until('first page', (p) => p.commits > 0 && !p.restoring);
     assert.ok(!s.done && s.commits <= FIRST_PAGE);
@@ -152,9 +150,7 @@ describe('find commits', () => {
   it('stops going to a match on Escape', async () => {
     // Long enough that loading down to the match takes several pages.
     longBranch('strata-long', 20_000, git('rev-parse', 'main'));
-    await reload(panel());
-    await panel().simulate({ kind: 'scrollToRow', index: 0 });
-    await panel().simulate({ kind: 'clickRow', index: 0 });
+    await reloadAndSelectTip(panel(), 'strata-long');
     await reload(panel());
     const before = await until('first page', (p) => p.commits > 0 && !p.restoring);
     await open();
