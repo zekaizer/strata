@@ -51,6 +51,11 @@ The scale follows VS Code's own UI, so Strata reads as part of the workbench in 
    in `components.css`; a specimen in `playground/gallery.ts` in every state; a row in this
    document; then the feature that uses it. A token holds a step of a scale or a semantic color,
    never a one-off value kept for one element.
+7. Spacing **must** not change with the state of a surface. A block's gap to the next block is its
+   own, the same whatever follows it, and **must** sit outside anything that folds, so the next block
+   keeps its distance with the fold open or closed. A block that takes another's place (the message
+   editor for the subject) keeps that block's gaps. `test/integration/spacing.test.ts` holds this
+   for the details and the popovers.
 
 ## How new UI picks components
 

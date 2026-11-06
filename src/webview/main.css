@@ -744,7 +744,7 @@ body.vscode-high-contrast .expansion.more-below {
   display: flex;
   align-items: center;
   min-width: 0;
-  margin-bottom: var(--space-2);
+  margin-bottom: var(--space-8);
   white-space: nowrap;
   font-size: var(--font-size-sm);
   color: var(--color-muted);
@@ -842,8 +842,8 @@ body:not(.hover-off) .byline-hash:hover .hash-icon,
 }
 
 /*
- * Folded by height, not removed: it keeps counting toward the message's width. The gap to the
- * subject sits outside the fold, so the subject is as far from the meta open as from the byline closed.
+ * Folded by height, not removed: it keeps counting toward the message's width. The byline's gap
+ * moves outside the fold, so the subject is as far from the meta open as from the byline closed.
  */
 .byline:has(+ .meta-wrap) {
   margin-bottom: 0;
