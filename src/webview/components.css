@@ -589,12 +589,12 @@ body.vscode-high-contrast .chip-part {
   color: inherit;
 }
 
-/* In a ref band: may shrink to its icon, and its square corner points down at the subject. */
+/* In a ref band: may shrink to its icon; a bubble whose square corner points down at the subject. */
 .chip.badge {
   flex: 0 1 auto;
   min-width: calc(var(--font-size-xs) + 2 * var(--space-4) + 2px);
   max-width: 200px;
-  border-bottom-left-radius: 0;
+  border-radius: var(--radius-badge) var(--radius-md) var(--radius-md) 0;
 }
 
 /* A hover card: shown on pointer rest, takes no pointer events (ref-card.ts). */

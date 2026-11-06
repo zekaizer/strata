@@ -91,11 +91,12 @@ All tokens are custom properties on `:root` in `tokens.css`.
 
 ### Radius
 
-| Token         | Value | Use                                                                           |
-| ------------- | ----- | ----------------------------------------------------------------------------- |
-| `--radius-sm` | 2px   | Controls VS Code draws square: push buttons, fields, link focus ring          |
-| `--radius-md` | 4px   | Items: tool/icon/inline buttons, list rows, chips, checkbox, cards, segmented |
-| `--radius-lg` | 6px   | Overlays: popovers                                                            |
+| Token            | Value                | Use                                                                                 |
+| ---------------- | -------------------- | ----------------------------------------------------------------------------------- |
+| `--radius-sm`    | 2px                  | Controls VS Code draws square: push buttons, fields, link focus ring                |
+| `--radius-md`    | 4px                  | Items: tool/icon/inline buttons, list rows, chips, checkbox, cards, segmented       |
+| `--radius-lg`    | 6px                  | Overlays: popovers                                                                  |
+| `--radius-badge` | half `--chip-height` | A ref badge's top-left corner: round, so with its square bottom-left it points down |
 
 ### Type and icons
 
@@ -243,17 +244,17 @@ or `.indeterminate` runs without a known end (`--duration-progress`, still under
 
 `.chip` shows a ref, a stash or a short label: `--chip-height`, caption size, `--radius-md`.
 
-| Variant                                              | Looks                                                                                     |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `.chip-branch`, `-remote`, `-tag`, `-stash`, `-head` | Tinted with the kind's `--badge-*` color; head bolder                                     |
-| `.chip-worktree`                                     | Another worktree (`--badge-worktree`)                                                     |
-| `.chip-part` + a kind                                | A second name after a divider, in its kind's color; a `.badge` with one may grow to 320px |
-| `.chip-stale` (on a chip or a part)                  | What it names is gone: its text struck through                                            |
-| `.chip-warning`                                      | `--color-warning` (with `.chip-outline`: a stopped operation)                             |
-| `.chip-stash.autostash`                              | Warning tint, full tone even in a quiet row                                               |
-| no kind                                              | Muted ("+N")                                                                              |
-| `.chip-outline` (with or without `.chip-warning`)    | A label: outline in the text color, no tint                                               |
-| `.badge`                                             | In a ref band: shrinks to its icon, square corner                                         |
+| Variant                                              | Looks                                                                                        |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `.chip-branch`, `-remote`, `-tag`, `-stash`, `-head` | Tinted with the kind's `--badge-*` color; head bolder                                        |
+| `.chip-worktree`                                     | Another worktree (`--badge-worktree`)                                                        |
+| `.chip-part` + a kind                                | A second name after a divider, in its kind's color; a `.badge` with one may grow to 320px    |
+| `.chip-stale` (on a chip or a part)                  | What it names is gone: its text struck through                                               |
+| `.chip-warning`                                      | `--color-warning` (with `.chip-outline`: a stopped operation)                                |
+| `.chip-stash.autostash`                              | Warning tint, full tone even in a quiet row                                                  |
+| no kind                                              | Muted ("+N")                                                                                 |
+| `.chip-outline` (with or without `.chip-warning`)    | A label: outline in the text color, no tint                                                  |
+| `.badge`                                             | In a ref band: shrinks to its icon; a bubble (`--radius-badge` top-left, square bottom-left) |
 
 Contents: an optional codicon (sized with the text), `.chip-text`. A context can quiet chips
 without knowing their kind by setting `--chip-edge`, `--chip-tint` and `--chip-icon`; rows do this
