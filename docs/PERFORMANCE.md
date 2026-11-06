@@ -77,6 +77,42 @@ Chosen over setting `fetch.writeCommitGraph` in the repository's git config:
 that changes the user's config and covers fetches only, not local commits,
 rebases or branch moves.
 
+## Ref and history updates
+
+A ref change that keeps the history (a branch or tag created, renamed or
+deleted, a switch, a push, a stash popped) moves badges in place: the host
+compares the commits the history starts from before and after
+(`historyStarts`), and asks git only for new starts outside the commits
+already served and for starts that went (`git rev-list -1 <commits> --not
+<starts>`, 4-30 ms on zephyr without a commit-graph). Any other change reads
+the history again while the old rows stay on screen, and swaps the new ones
+in once laid out and once they reach the rows on screen and the selection.
+HEAD, its reflog and packed-refs are watched with Node's watcher: VS Code's
+reported a commit in the zephyr checkout 2-4 s late. Loose refs stay with
+VS Code's, as Node's recursive watcher on Linux throws from its event
+handler when a ref file becomes a folder (`git branch -m x x/old`).
+
+From the change to the graph showing it in VS Code (`test/perf/ref-update.test.ts`,
+three runs each, a commit's details unfolded, Xvfb; zephyr: a scratch
+`--shared` clone, no commit-graph). "Blank": the list was seen empty.
+
+| Change                     | branchy before     | branchy after | zephyr before         | zephyr after   |
+| -------------------------- | ------------------ | ------------- | --------------------- | -------------- |
+| `git branch` in a terminal | not shown in 120 s | 511-521 ms    | 585-2,587 ms, blank   | 531-2,129 ms   |
+| Create Branch... (menu)    | 79-84 ms, blank    | 83-89 ms      | 2,409-2,727 ms        | 2,541-2,663 ms |
+| `git commit` in a terminal | 527-539 ms, blank  | 452-479 ms    | 4,545-4,909 ms, blank | 611-736 ms     |
+| Refresh                    | 30-51 ms, blank    | 34-43 ms      | 64-77 ms, blank       | 63-81 ms       |
+
+The 400 ms debounce of repository events is most of a terminal change's
+time; on zephyr a branch made in a terminal waits up to 2 s more for VS
+Code's watcher. Create Branch... on zephyr is the `git switch` itself (2.0 s from a
+shell); the badges follow it within 10 ms. Before, a branch made in a
+terminal reached the graph only when VS Code's git extension reported it,
+which waits for the window to have focus; the Xvfb window of the branchy
+run never had it. Every change before read the history again; on zephyr the
+reload after Create Branch... ended before the 2.4 s flow returned, so the
+probe did not see that list empty.
+
 ## Layout
 
 100,000 kernel commits in topological order, laid out in pages of 1,000:
