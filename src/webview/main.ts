@@ -4034,7 +4034,7 @@ class App {
       commits: this.commits.length,
       laidOut: this.rows.length,
       blankFrames: this.blankFrames,
-      done: this.done,
+      done: this.done && this.staged === undefined,
       restoring: this.restore !== undefined || this.headQuery !== undefined || this.staged !== undefined,
       selected: this.selectedHash(),
       detailsShown:

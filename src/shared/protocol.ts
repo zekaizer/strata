@@ -319,6 +319,7 @@ export interface ProbeState {
    * that drew laid-out rows: the list went blank.
    */
   blankFrames: number;
+  /** The whole history is loaded and no reload of it is pending behind the rows on screen. */
   done: boolean;
   /** A reload is still looking for the selection or scroll position it restores. */
   restoring: boolean;
