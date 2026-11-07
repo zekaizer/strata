@@ -104,10 +104,49 @@ scripts/             build, xvfb wrapper, screenshot tooling
 
 Measured numbers and the decisions they drove are in `docs/PERFORMANCE.md`.
 
-Webview styling follows `docs/design-system.md`: tokens in `src/webview/tokens.css`, shared
-components in `src/webview/components.css`, a guard in `npm run check`, and a gallery of every
-component in every state (`index.html?page=components` in the playground; screenshots with
-`node scripts/playground-shot.mjs artifacts/gallery 1280x800 page=components`).
+## Design system
+
+The design system (principles, tokens, components and their guidelines) is defined in the
+[Strata design system artifact](https://claude.ai/artifact/AKgFR4o6MTFjcrnQKGsVGK), the single
+source of truth. The artifact is written in Korean; `docs/design-system.md` is its English copy,
+dated by the artifact change it follows, and is changed only to follow the artifact. Where the code
+and the design system disagree, the design system wins.
+
+| File                              | Holds                                                                       |
+| --------------------------------- | --------------------------------------------------------------------------- |
+| `src/webview/tokens.css`          | Every raw value: the design system's tokens as custom properties.           |
+| `src/webview/components.css`      | The design system's components, built only from tokens.                     |
+| `src/webview/main.css`            | Imports both, then lays out the views (grid, positions, view-only parts).   |
+| `test/unit/design-tokens.test.ts` | The guard: fails on raw values outside `tokens.css` and on unearned tokens. |
+| `playground/gallery.ts`           | The gallery: every token and component in every state.                      |
+
+The artifact's `tokens.json` holds each color resolved per theme, as `playground/themes` captures
+VS Code's default themes; `tokens.css` holds what produces it (`var(--vscode-…)`, fallbacks,
+`color-mix`), which each token's usage note names. The artifact's `components/bundle.css` is
+`components.css` with high contrast selectors keyed to `[data-theme]`, every hover, active and focus
+rule copied onto `.is-hover`, `.is-active`, `.is-focus-visible` and `.is-focus`, and the VS Code
+variables the components read declared per theme.
+
+The guard holds two of the design system's rules: colors, radii, font sizes, spacing and `z-index`
+come from tokens (`0` and `1px` aside; an exception is an `ALLOWED` entry with its reason), and a
+token is read at least twice unless it is in a family (`FAMILIES`) or a `SINGLE_USE` entry with its
+reason. `test/integration/spacing.test.ts` holds the spacing rule for the details and the popovers.
+
+To change the design system:
+
+1. Change the artifact: the token with its usage note, the component's guideline and preview, or
+   the rule.
+2. Implement it in `tokens.css`, then `components.css`, with a specimen in every state in
+   `playground/gallery.ts`, then the feature that uses it.
+3. Bring the artifact's resolved values (`tokens.json`) and `components/bundle.css` in line with the
+   code.
+4. Bring `docs/design-system.md` in line with the artifact, and its date with the artifact's last
+   change.
+
+The gallery is `index.html?page=components&theme=<theme>` in `npm run playground`; screenshot it
+in all four themes with `node scripts/playground-shot.mjs artifacts/gallery 1280x800 page=components`.
+Hover, active and focus states are forced there by copying each rule that uses those pseudo-classes
+onto `.is-hover`, `.is-active`, `.is-focus-visible` and `.is-focus`.
 
 ## Icons and screenshot
 

@@ -5,5 +5,6 @@
 - `src/core` must stay pure (no `vscode`, no DOM, no Node I/O) — it runs in both the extension host and the layout worker.
 - Relative imports use explicit `.ts` extensions; only erasable TS syntax (no enums, namespaces, parameter properties).
 - Before committing: `npm run check`; for host/webview changes also `npm run test:integration`.
+- Design system: the artifact linked in `docs/DEVELOPMENT.md` is the source of truth; change it first, then the code. `docs/design-system.md` is its English copy (the artifact is Korean): change it only to follow the artifact.
 - Visual changes: verify with `npm run playground:shot` and `npm run shot`, and look at the PNGs.
 - Docs: `README.md` is end-user documentation only (features, usage, requirements); developer material goes in `docs/` (`docs/DEVELOPMENT.md`, ADRs).
