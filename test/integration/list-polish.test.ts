@@ -33,20 +33,28 @@ describe('commit list polish', () => {
     await vscode.commands.executeCommand('workbench.view.explorer');
   });
 
-  /** Narrows the graph by opening `groups` editor groups beside it. */
+  /**
+   * Narrows the graph by opening `groups` editor groups beside it. Resolves once the list is
+   * narrower and two probes 100ms apart agree: the columns follow the width a frame later.
+   */
   async function narrow(groups: number): Promise<number> {
+    const before = (await panel.probe()).listWidth;
     for (let i = 0; i < groups; i++) {
       const doc = await vscode.workspace.openTextDocument({ content: `beside ${i}` });
+      // Beside opens next to the focused group, which may already have a group beside it.
+      await vscode.commands.executeCommand('workbench.action.focusLastEditorGroup');
       await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: false });
     }
     await vscode.commands.executeCommand('workbench.action.evenEditorWidths');
-    let width = 0;
-    await waitFor('narrower list', async () => {
-      const s = await panel.probe();
-      width = s.listWidth;
-      return s.columns.length > 0 && width > 0 && s;
+    let last = '';
+    const s = await waitFor(`narrower list than ${before}px`, async () => {
+      const p = await panel.probe();
+      const now = `${p.listWidth} ${p.columns.join(' ')}`;
+      const settled = now === last;
+      last = now;
+      return settled && p.columns.length > 0 && p.listWidth > 0 && p.listWidth < before && p;
     });
-    return width;
+    return s.listWidth;
   }
 
   it('sizes the author column to the names, not to a fixed width', async () => {
