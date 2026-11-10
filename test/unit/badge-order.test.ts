@@ -62,7 +62,8 @@ describe('badgeOrder', () => {
     ]);
   });
   it('leaves a same-named upstream merged into the current branch badge', () => {
-    const local = [ref('tag', 'v0'), ref('remote', 'origin/main'), ref('branch', 'alpha'), ref('branch', 'main')];
+    const main = { ...ref('branch', 'main'), upstream: 'refs/remotes/origin/main' };
+    const local = [ref('tag', 'v0'), ref('remote', 'origin/main'), ref('branch', 'alpha'), main];
     const badges = pairRefs(badgeOrder(local, 'main', 'refs/remotes/origin/main', null), ['origin']);
     assert.deepEqual(
       badges.map((b) => [b.ref.short, ...b.remotes.map((r) => r.short)].join(' + ')),

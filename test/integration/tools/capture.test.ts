@@ -95,6 +95,7 @@ after(() => setTheme('dark'));
     await setIdentity();
     await gitRetry('remote', 'add', 'origin', 'https://example.com/origin.git');
     await gitRetry('update-ref', 'refs/remotes/origin/main', 'main');
+    await gitRetry('branch', '--quiet', '--set-upstream-to=origin/main', 'main');
     // A rebase stopped at a conflict, for the banner.
     await gitRetry('switch', '--quiet', '--create', 'strata-onto', 'main');
     write('conflict.txt', 'onto\n');
