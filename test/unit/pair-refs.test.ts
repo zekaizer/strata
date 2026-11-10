@@ -14,7 +14,7 @@ const branch = (short: string, upstream?: string): Ref => ({
 const remote = (short: string): Ref => ({ kind: 'remote', short, name: `refs/remotes/${short}`, hash: H });
 const tag = (short: string): Ref => ({ kind: 'tag', short, name: `refs/tags/${short}`, hash: H });
 const show = (refs: Ref[], remotes: string[]) =>
-  pairRefs(refs, remotes).map((b) => [b.ref.short, ...b.remotes.map((r) => r.short)].join(' + '));
+  pairRefs(refs, remotes).map((b) => [b.ref.short, ...(b.remote ? [b.remote.short] : [])].join(' + '));
 
 describe('pairRefs', () => {
   it('merges a branch with its same-named upstream only', () => {

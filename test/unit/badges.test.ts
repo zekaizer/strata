@@ -76,10 +76,11 @@ describe('rowBadges', () => {
       ref('refs/remotes/upstream/x'),
     ];
     const [x, ...others] = badgesOf(refs);
-    assert.deepEqual(
-      x!.remotes.map((r) => [r.text, r.context]),
-      [['upstream', { webviewSection: 'remoteBranch', strataHash: at, strataRef: 'refs/remotes/upstream/x' }]],
-    );
+    assert.deepEqual(x!.remote, {
+      text: 'upstream',
+      short: 'upstream/x',
+      context: { webviewSection: 'remoteBranch', strataHash: at, strataRef: 'refs/remotes/upstream/x' },
+    });
     assert.deepEqual(
       others.map((b) => b.text),
       ['origin/x'],
@@ -90,10 +91,10 @@ describe('rowBadges', () => {
   it('merges nothing into a branch without an upstream', () => {
     const badges = badgesOf([ref('refs/heads/x'), ref('refs/remotes/origin/x')]);
     assert.deepEqual(
-      badges.map((b) => [b.text, b.remotes.length]),
+      badges.map((b) => [b.text, b.remote]),
       [
-        ['x', 0],
-        ['origin/x', 0],
+        ['x', undefined],
+        ['origin/x', undefined],
       ],
     );
   });
@@ -390,7 +391,7 @@ describe('refsLabel', () => {
 describe('shownRefs', () => {
   const texts = (refs: Ref[], hidden: string[]) => {
     const shown = shownRefs(new Map([[at, refs]]), new Set(hidden)).get(at) ?? [];
-    return badgesOf(shown).map((b) => [b.text, ...b.also].join(' + '));
+    return badgesOf(shown).map((b) => [b.text, b.remote?.short].filter(Boolean).join(' + '));
   };
 
   it('drops hidden refs before badges are made, so only shown ones take room', () => {
@@ -411,7 +412,7 @@ describe('shownRefs', () => {
     const hidden = hiddenRefs([{ pattern: '*', keep: false }], snapshot(refs, 'main'));
     const shown = shownRefs(new Map([[at, refs]]), hidden).get(at) ?? [];
     assert.deepEqual(
-      badgesOf(shown).map((b) => [b.look, b.text, ...b.also].join(' ')),
+      badgesOf(shown).map((b) => [b.look, b.text, b.remote?.short].filter(Boolean).join(' ')),
       ['head main'],
     );
   });

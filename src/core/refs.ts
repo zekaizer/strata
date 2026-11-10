@@ -61,8 +61,8 @@ export function badgeOrder(
 /** A badge: a ref, plus its same-named upstream when on the same commit. */
 export interface BadgeRefs {
   ref: Ref;
-  /** Remote-tracking refs merged into a local branch's badge: its upstream origin/main into main. */
-  remotes: Ref[];
+  /** A local branch's upstream merged into its badge: origin/main into main. */
+  remote: Ref | undefined;
 }
 
 /**
@@ -99,11 +99,11 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
     const local = owner.get(r) ?? r;
     let badge = byLocal.get(local);
     if (!badge) {
-      badge = { ref: local, remotes: [] };
+      badge = { ref: local, remote: undefined };
       byLocal.set(local, badge);
       out.push(badge);
     }
-    if (local !== r) badge.remotes.push(r);
+    if (local !== r) badge.remote = r;
   }
   return out;
 }
