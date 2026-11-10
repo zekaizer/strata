@@ -122,6 +122,16 @@ describe('commit row menu', () => {
   });
 });
 
+describe('branch badge menu', () => {
+  it('offers Pull on a branch with an upstream, checked out or not, unless another worktree has it', () => {
+    const pulls = (flags: Record<string, unknown>) => refActions('branch', flags).includes('strata.pull');
+    assert.ok(pulls({ strataIsCurrent: true, strataUpstream: true }));
+    assert.ok(pulls({ strataIsCurrent: false, strataUpstream: true, strataInWorktree: false }));
+    assert.ok(!pulls({ strataIsCurrent: false, strataUpstream: true, strataInWorktree: true }));
+    assert.ok(!pulls({ strataIsCurrent: true, strataUpstream: false }));
+  });
+});
+
 describe('graph title bar', () => {
   const items = pkg.contributes.menus['editor/title'] ?? [];
   /** Evaluates `key == 'v'`, `key != 'v'`, `key` and `!key` terms joined by &&, as the title bar's clauses use. */

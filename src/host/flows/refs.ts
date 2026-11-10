@@ -128,7 +128,7 @@ async function switchTo(host: FlowHost, s: SwitchTo): Promise<void> {
 
 /** What a refusal offers to do once the worktree holding the branch is pruned. */
 interface Again {
-  verb: 'Checkout' | 'Delete' | 'Rename';
+  verb: 'Checkout' | 'Delete' | 'Rename' | 'Pull';
   run: () => Promise<void>;
 }
 
@@ -136,7 +136,7 @@ interface Again {
  * A branch checked out in another worktree cannot be checked out or deleted here, and renaming it
  * would silently re-point that worktree's HEAD: says where it is. Resolves whether it is free.
  */
-async function notElsewhere(host: FlowHost, ref: Ref, again: Again): Promise<boolean> {
+export async function notElsewhere(host: FlowHost, ref: Ref, again: Again): Promise<boolean> {
   const holder = holders(await readWorktrees(host.git, host.cwd)).get(ref.name);
   if (holder === undefined) return true;
   await refuseElsewhere(host, ref.short, holder, again);

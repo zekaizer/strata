@@ -472,7 +472,7 @@ export function checkedOutElsewhere(branch: string, where: WorktreeInfo | string
 export const ELSEWHERE = {
   show: 'Show in Graph',
   open: 'Open Worktree in New Window',
-  prune: (verb: 'Checkout' | 'Delete' | 'Rename'): string => `Prune and ${verb}`,
+  prune: (verb: 'Checkout' | 'Delete' | 'Rename' | 'Pull'): string => `Prune and ${verb}`,
 };
 
 /** `done`: what the operation did; `paths`: the conflicted files; `stash`: stashLabel(), which git kept. */
@@ -1052,11 +1052,19 @@ export function divergedConfirmation<B extends string>(
 ): Confirmation<B> {
   return {
     level: 'info',
-    message: `${branch} has ${plural(ahead, 'commit')} ${refName(upstream)} lacks and is ${behind} behind.`,
+    message: divergedFrom(branch, upstream, ahead, behind),
     detail: [note ?? '', section].filter((s) => s !== '').join('\n'),
     buttons,
   };
 }
+
+/** `branch` as sentences name it (quoted); `upstream` as git names it. */
+const divergedFrom = (branch: string, upstream: string, ahead: number, behind: number): string =>
+  `${branch} has ${plural(ahead, 'commit')} ${refName(upstream)} lacks and is ${behind} behind.`;
+
+/** Pull of `branch`, not checked out, which diverged from its upstream: only a pull in its work tree rebases or merges. */
+export const divergedNotice = (branch: string, upstream: string, ahead: number, behind: number): string =>
+  `${divergedFrom(refName(branch), upstream, ahead, behind)} Switch to ${refName(branch)} to rebase or merge.`;
 
 /** Push of `branch` whose upstream (on `remote`) has another name. */
 export function pushOtherNameConfirmation(
@@ -1217,6 +1225,8 @@ export const REMOTE_DOING = {
   unsettingUpstream: (branch: string): string => `Unsetting the upstream of ${refName(branch)}`,
   settingUpstream: (branch: string, upstream: string): string =>
     `Setting the upstream of ${refName(branch)} to ${refName(upstream)}`,
+  fastForwarding: (branch: string, upstream: string): string =>
+    `Fast-forwarding ${refName(branch)} to ${refName(upstream)}`,
 };
 
 /** Why a diverged pull offers less than Rebase and Merge, or rebases differently than configured. */

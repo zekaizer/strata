@@ -753,7 +753,7 @@
         },
         {
           "command": "strata.pull",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent && strataUpstream",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataUpstream && !strataInWorktree",
           "group": "3_remote@1"
         },
         {
