@@ -385,8 +385,8 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .chip:not(.chip-head,
 }
 
 /*
- * Remote-tracking branches of the same name on the same commit, inside the local branch's badge:
- * "main | origin". The names give way before the branch name does.
+ * The branch's same-named upstream on the same commit, inside its badge: "main | origin". The
+ * remote's name gives way before the branch name does.
  */
 .badge-remotes {
   --chip-color: var(--badge-remote);
@@ -401,7 +401,7 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .chip:not(.chip-head,
   font-weight: normal;
 }
 
-.badge-remote-names {
+.badge-remote-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -409,11 +409,6 @@ body:not(.vscode-high-contrast):not(.hover-off) .row:hover .chip:not(.chip-head,
 
 body.vscode-high-contrast .badge-remotes {
   border-left-color: var(--vscode-contrastBorder);
-}
-
-/* Of several remotes, each name is a menu target of its own. */
-.badge-remote-name {
-  padding: 0 1px;
 }
 
 .badge.badge-more {

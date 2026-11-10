@@ -308,10 +308,13 @@ describe('details layout', () => {
     assert.equal(s.selected, order()[2], 'the selection stays');
   });
 
-  it('merges a branch and its same-named remote-tracking branch into one badge', async () => {
+  it('merges a branch and its same-named upstream into one badge, and no other remote branch', async () => {
     git('remote', 'add', 'origin', 'https://example.com/origin.git');
     git('update-ref', 'refs/remotes/origin/main', 'main');
     try {
+      assert.deepEqual((await reload()).refBands[0]!.badges, ['main', 'origin/main'], 'not its upstream');
+      // `git remote remove` below drops this config too.
+      git('branch', '--quiet', '--set-upstream-to=origin/main', 'main');
       const s = await reload();
       const band = s.refBands[0]!;
       assert.deepEqual(band.badges, ['main'], 'one badge');

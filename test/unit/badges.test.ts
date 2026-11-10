@@ -69,18 +69,32 @@ describe('rowBadges', () => {
     assert.equal((b!.context as { strataUpstream: boolean }).strataUpstream, true);
   });
 
-  it('makes each remote name in a merged badge a target of its own, past two a "+k" for the rest', () => {
-    const refs = ['refs/heads/x', 'refs/remotes/origin/x', 'refs/remotes/upstream/x', 'refs/remotes/fork/x'].map((n) =>
-      ref(n),
-    );
+  it("merges only a branch's same-named upstream into its badge, a target of its own", () => {
+    const refs = [
+      ref('refs/heads/x', 'refs/remotes/upstream/x'),
+      ref('refs/remotes/origin/x'),
+      ref('refs/remotes/upstream/x'),
+    ];
     const [x, ...others] = badgesOf(refs);
-    assert.equal(others.length, 0, 'one merged badge');
+    assert.deepEqual(x!.remote, {
+      text: 'upstream',
+      short: 'upstream/x',
+      context: { webviewSection: 'remoteBranch', strataHash: at, strataRef: 'refs/remotes/upstream/x' },
+    });
     assert.deepEqual(
-      x!.remotes.map((r) => [r.text, r.context]),
+      others.map((b) => b.text),
+      ['origin/x'],
+      "another remote's same-named branch is its own badge",
+    );
+  });
+
+  it('merges nothing into a branch without an upstream', () => {
+    const badges = badgesOf([ref('refs/heads/x'), ref('refs/remotes/origin/x')]);
+    assert.deepEqual(
+      badges.map((b) => [b.text, b.remote]),
       [
-        ['origin', { webviewSection: 'remoteBranch', strataHash: at, strataRef: 'refs/remotes/origin/x' }],
-        ['upstream', { webviewSection: 'remoteBranch', strataHash: at, strataRef: 'refs/remotes/upstream/x' }],
-        ['+1', { webviewSection: 'refs', strataHash: at, strataRefs: 'refs/remotes/fork/x' }],
+        ['x', undefined],
+        ['origin/x', undefined],
       ],
     );
   });
@@ -167,7 +181,12 @@ describe('rowBadges', () => {
 
   it('collapses badges past the kept ones into "+N", which stands for every ref it hides', () => {
     const tags = Array.from({ length: 5 }, (_, i) => ref(`refs/tags/t${i}`));
-    const refs = [...tags, ref('refs/heads/y'), ref('refs/remotes/origin/y'), ref('refs/tags/z')];
+    const refs = [
+      ...tags,
+      ref('refs/heads/y', 'refs/remotes/origin/y'),
+      ref('refs/remotes/origin/y'),
+      ref('refs/tags/z'),
+    ];
     const badges = badgesOf(refs, 'main', () => 5);
     assert.equal(badges.length, 6);
     const more = badges.at(-1)!;
@@ -337,7 +356,6 @@ describe('refsLabel', () => {
     const refs = [
       ref('refs/heads/main', 'refs/remotes/origin/main'),
       ref('refs/remotes/origin/main'),
-      ref('refs/remotes/upstream/main'),
       ref('refs/heads/topic'),
       ref('refs/remotes/fork/other'),
       ref('refs/tags/v1'),
@@ -345,7 +363,7 @@ describe('refsLabel', () => {
     // Merged into main's badge only when no other branch sits between them (badgeOrder runs first).
     assert.equal(
       refsLabel(badgesOf(refs)),
-      'current branch main, also origin/main, upstream/main; branch topic; remote branch fork/other; tag v1',
+      'current branch main, also origin/main; branch topic; remote branch fork/other; tag v1',
     );
   });
 
@@ -373,7 +391,7 @@ describe('refsLabel', () => {
 describe('shownRefs', () => {
   const texts = (refs: Ref[], hidden: string[]) => {
     const shown = shownRefs(new Map([[at, refs]]), new Set(hidden)).get(at) ?? [];
-    return badgesOf(shown).map((b) => [b.text, ...b.also].join(' + '));
+    return badgesOf(shown).map((b) => [b.text, b.remote?.short].filter(Boolean).join(' + '));
   };
 
   it('drops hidden refs before badges are made, so only shown ones take room', () => {
@@ -381,11 +399,12 @@ describe('shownRefs', () => {
     assert.deepEqual(texts(refs, ['refs/tags/IR-1', 'refs/tags/IR-2']), ['dev', 'v1']);
   });
   it('takes only the remote part out of a merged branch badge', () => {
-    const refs = [ref('refs/heads/dev'), ref('refs/remotes/origin/dev'), ref('refs/remotes/upstream/dev')];
-    assert.deepEqual(texts(refs, ['refs/remotes/origin/dev']), ['dev + upstream/dev']);
+    const refs = [ref('refs/heads/dev', 'refs/remotes/origin/dev'), ref('refs/remotes/origin/dev')];
+    assert.deepEqual(texts(refs, []), ['dev + origin/dev']);
+    assert.deepEqual(texts(refs, ['refs/remotes/origin/dev']), ['dev']);
   });
   it('leaves the remote-tracking branch its own badge when the local one is hidden', () => {
-    const refs = [ref('refs/heads/dev'), ref('refs/remotes/origin/dev')];
+    const refs = [ref('refs/heads/dev', 'refs/remotes/origin/dev'), ref('refs/remotes/origin/dev')];
     assert.deepEqual(texts(refs, ['refs/heads/dev']), ['origin/dev']);
   });
   it('keeps the current branch badge under a rule hiding everything', () => {
@@ -393,7 +412,7 @@ describe('shownRefs', () => {
     const hidden = hiddenRefs([{ pattern: '*', keep: false }], snapshot(refs, 'main'));
     const shown = shownRefs(new Map([[at, refs]]), hidden).get(at) ?? [];
     assert.deepEqual(
-      badgesOf(shown).map((b) => [b.look, b.text, ...b.also].join(' ')),
+      badgesOf(shown).map((b) => [b.look, b.text, b.remote?.short].filter(Boolean).join(' ')),
       ['head main'],
     );
   });

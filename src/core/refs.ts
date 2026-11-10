@@ -58,17 +58,18 @@ export function badgeOrder(
   );
 }
 
-/** A badge: a ref, plus the remote-tracking branches of the same name on the same commit. */
+/** A badge: a ref, plus its same-named upstream when on the same commit. */
 export interface BadgeRefs {
   ref: Ref;
-  /** Remote-tracking refs merged into a local branch's badge, e.g. origin/main into main. */
-  remotes: Ref[];
+  /** A local branch's upstream merged into its badge: origin/main into main. */
+  remote: Ref | undefined;
 }
 
 /**
- * Merges each local branch with its same-named remote-tracking branches (`<remote>/<branch>` for a
- * known remote) on one commit. `refs` are one commit's refs in display order; a merged badge takes
- * the place of its earliest member. Differently named upstreams stay separate.
+ * Merges each local branch with its upstream on one commit when the upstream has the branch's name
+ * (`<remote>/<branch>` for a known remote): only the upstream says whether the branch is pushed.
+ * `refs` are one commit's refs in display order; a merged badge takes the place of its earliest
+ * member. Differently named upstreams and other remotes' same-named branches stay separate.
  */
 export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): BadgeRefs[] {
   // Longest remote first: refs/remotes/team/x/main is remote "team/x", not "team" with branch "x/main".
@@ -90,7 +91,7 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
     if (r.kind !== 'remote') continue;
     const branch = branchOf(r);
     const local = branch === undefined ? undefined : locals.get(branch);
-    if (local) owner.set(r, local);
+    if (local?.upstream === r.name) owner.set(r, local);
   }
   const out: BadgeRefs[] = [];
   const byLocal = new Map<Ref, BadgeRefs>();
@@ -98,11 +99,11 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
     const local = owner.get(r) ?? r;
     let badge = byLocal.get(local);
     if (!badge) {
-      badge = { ref: local, remotes: [] };
+      badge = { ref: local, remote: undefined };
       byLocal.set(local, badge);
       out.push(badge);
     }
-    if (local !== r) badge.remotes.push(r);
+    if (local !== r) badge.remote = r;
   }
   return out;
 }

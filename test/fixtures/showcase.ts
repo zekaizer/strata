@@ -461,6 +461,7 @@ export function showcase(): RepoBuilder {
       ],
     );
     git('branch', '--quiet', '--set-upstream-to=origin/main', 'main');
+    git('branch', '--quiet', '--set-upstream-to=origin/release/1.4', 'release/1.4');
     git('branch', '--quiet', '--set-upstream-to=origin/feature/offline-sync', 'feature/offline-sync');
   });
   return b;

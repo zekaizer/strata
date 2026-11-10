@@ -2,9 +2,6 @@ import { headUpstream, pairRefs, type Ref, type RefSnapshot } from '../core/refs
 import { holders, type WorktreeInfo, type WorktreeState } from '../core/worktrees.ts';
 import type { BadgeContext, WorktreeContext } from '../shared/menu-context.ts';
 
-/** Remote names shown inside a branch's badge; the rest collapse into "+k". */
-const REMOTES_SHOWN = 2;
-
 /** Something in a ref band a context menu can be opened on. */
 export interface Target {
   text: string;
@@ -27,10 +24,8 @@ export interface Badge extends Target {
   title: string;
   /** Full names of the refs it stands for, merged remote names and "+N" contents included. */
   refs: string[];
-  /** A branch's same-named remote-tracking branches: a target per name shown, then "+k" for the rest. */
-  remotes: Target[];
-  /** Short names of those remote-tracking branches, for screen readers. */
-  also: string[];
+  /** A branch's same-named upstream merged into it: `text` its remote's name, `short` its own (origin/main). */
+  remote: (Target & { short: string }) | undefined;
   /** The other worktree a branch is checked out in; for a worktree badge, the one it is. */
   worktree: WorktreeMark | undefined;
 }
@@ -121,7 +116,7 @@ export function shownRefs(
 
 /**
  * The badges of one commit: a detached HEAD, other worktrees detached here, then `refs` (in
- * badgeOrder) with each local branch merged with its same-named remote-tracking branches and
+ * badgeOrder) with each local branch merged with its same-named upstream and
  * naming the worktree it is checked out in; past the first `keep(all)` the rest collapse into "+N".
  */
 export function rowBadges(
@@ -140,8 +135,7 @@ export function rowBadges(
       context: { webviewSection: 'head', strataHash: hash },
       tracked: false,
       refs: [],
-      remotes: [],
-      also: [],
+      remote: undefined,
       worktree: undefined,
     });
   for (const w of worktrees.detachedAt.get(hash) ?? []) {
@@ -153,14 +147,13 @@ export function rowBadges(
       context: mark.context,
       tracked: false,
       refs: [],
-      remotes: [],
-      also: [],
+      remote: undefined,
       worktree: mark,
     });
   }
   const upstream = headUpstream(snapshot);
-  for (const { ref, remotes } of pairRefs(refs, snapshot.remotes))
-    all.push(refBadge(hash, ref, remotes, snapshot.headBranch, upstream, worktrees));
+  for (const { ref, remote } of pairRefs(refs, snapshot.remotes))
+    all.push(refBadge(hash, ref, remote, snapshot.headBranch, upstream, worktrees));
   const kept = keep(all);
   if (kept >= all.length) return all;
   const rest = all.slice(kept);
@@ -168,12 +161,11 @@ export function rowBadges(
   const more: Badge = {
     look: 'more',
     text: `+${rest.length}`,
-    title: rest.map((b) => (b.also.length > 0 ? `${b.text} (also ${b.also.join(', ')})` : b.title)).join('\n'),
+    title: rest.map((b) => (b.remote ? `${b.text} (also ${b.remote.short})` : b.title)).join('\n'),
     context: { webviewSection: 'refs', strataHash: hash, strataRefs: names.join(' ') },
     tracked: false,
     refs: names,
-    remotes: [],
-    also: [],
+    remote: undefined,
     worktree: undefined,
   };
   return [...all.slice(0, kept), more];
@@ -182,7 +174,7 @@ export function rowBadges(
 function refBadge(
   hash: string,
   r: Ref,
-  remotes: Ref[],
+  remote: Ref | undefined,
   headBranch: string | undefined,
   upstream: string | undefined,
   worktrees: Worktrees,
@@ -200,9 +192,7 @@ function refBadge(
           strataInWorktree: holder !== undefined,
         }
       : { webviewSection: r.kind === 'remote' ? 'remoteBranch' : 'tag', strataHash: hash, strataRef: r.name };
-  const shown = remotes.length > REMOTES_SHOWN ? remotes.slice(0, REMOTES_SHOWN) : remotes;
-  const hidden = remotes.slice(shown.length);
-  const names = [r.name, ...remotes.map((x) => x.name)];
+  const names = remote ? [r.name, remote.name] : [r.name];
   const worktree = holder && worktreeMark(hash, holder, worktrees.shown(holder.path));
   return {
     look: current ? 'head' : r.kind,
@@ -211,22 +201,12 @@ function refBadge(
     title: [...names, ...(holder ? [`Checked out in another worktree`, ...worktreeLines(holder)] : [])].join('\n'),
     context,
     refs: names,
-    remotes: [
+    remote: remote && {
       // origin/main -> origin (remote names may contain slashes, branch names too).
-      ...shown.map((x): Target => ({
-        text: x.short.slice(0, x.short.length - r.short.length - 1),
-        context: { webviewSection: 'remoteBranch', strataHash: hash, strataRef: x.name },
-      })),
-      ...(hidden.length > 0
-        ? [
-            {
-              text: `+${hidden.length}`,
-              context: { webviewSection: 'refs', strataHash: hash, strataRefs: hidden.map((x) => x.name).join(' ') },
-            } satisfies Target,
-          ]
-        : []),
-    ],
-    also: remotes.map((x) => x.short),
+      text: remote.short.slice(0, remote.short.length - r.short.length - 1),
+      short: remote.short,
+      context: { webviewSection: 'remoteBranch', strataHash: hash, strataRef: remote.name },
+    },
     worktree,
   };
 }
@@ -245,7 +225,7 @@ export function refsLabel(badges: readonly Badge[]): string {
               ? 'upstream'
               : 'remote branch'
             : b.look;
-      const also = b.also.length > 0 ? `, also ${b.also.join(', ')}` : '';
+      const also = b.remote ? `, also ${b.remote.short}` : '';
       const worktree = b.worktree ? `, in worktree ${b.worktree.text}${stateSaid(b.worktree)}` : '';
       return `${kind} ${b.text}${also}${worktree}`;
     })

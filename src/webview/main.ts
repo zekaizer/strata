@@ -3011,14 +3011,14 @@ class App {
   }
 
   private badgeWidth(b: Badge, c: BadgeChrome): number {
-    const names = remoteNames(b);
+    const remoteName = b.remote?.text ?? '';
     const w = b.look === 'worktree' ? undefined : b.worktree;
     const lock = (m: WorktreeMark | undefined) => (m?.state === 'locked' ? c.worktree.lock : 0);
-    const key = `${b.look}\0${b.tracked}\0${b.text}\0${names}\0${w?.text ?? ''}\0${b.worktree?.state ?? ''}`;
+    const key = `${b.look}\0${b.tracked}\0${b.text}\0${remoteName}\0${w?.text ?? ''}\0${b.worktree?.state ?? ''}`;
     let width = this.badgeWidths.get(key);
     if (width === undefined) {
       const look = b.tracked ? c.tracked : c.look[b.look];
-      const remotes = b.remotes.length > 0 ? c.remotes.chrome + this.textWidth(names, c.remotes.font) : 0;
+      const remotes = b.remote ? c.remotes.chrome + this.textWidth(remoteName, c.remotes.font) : 0;
       const worktree = w ? c.worktree.chrome + this.textWidth(w.text, c.worktree.font) + lock(w) : 0;
       const own = b.look === 'worktree' ? lock(b.worktree) : 0;
       width = Math.ceil(
@@ -3036,25 +3036,26 @@ class App {
   private measureBadgeChrome(): BadgeChrome {
     const band = el('div', 'refs');
     band.style.cssText = 'position: absolute; visibility: hidden; top: 0; left: 0';
-    const empty = (look: Badge['look'], remotes: Badge['remotes'] = [], tracked = false) =>
+    const empty = (look: Badge['look'], remote?: Badge['remote'], tracked = false) =>
       renderBadge({
         look,
         text: '',
         title: '',
         tracked,
         refs: [],
-        remotes,
-        also: [],
+        remote,
         context: { webviewSection: 'refs', strataHash: '', strataRefs: '' },
         worktree: undefined,
       });
     const looks = (['head', 'branch', 'remote', 'tag', 'worktree', 'more'] as const).map(
       (look) => [look, empty(look)] as const,
     );
-    const withRemote = empty('branch', [
-      { text: '', context: { webviewSection: 'refs', strataHash: '', strataRefs: '' } },
-    ]);
-    const tracked = empty('remote', [], true);
+    const withRemote = empty('branch', {
+      text: '',
+      short: '',
+      context: { webviewSection: 'refs', strataHash: '', strataRefs: '' },
+    });
+    const tracked = empty('remote', undefined, true);
     const held = (state: WorktreeMark['state']) => {
       const e = empty('branch');
       const part = worktreePart({
@@ -3078,7 +3079,7 @@ class App {
     for (const e of [...looks.map(([, e]) => e), tracked]) e.style.minWidth = '0';
     band.append(...looks.map(([, e]) => e), tracked, withRemote, withWorktree, withLocked);
     document.body.append(band);
-    const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.chip-text, .badge-remote-names') ?? e).font;
+    const text = (e: HTMLElement) => getComputedStyle(e.querySelector('.chip-text, .badge-remote-name') ?? e).font;
     const segment = withRemote.querySelector<HTMLElement>('.badge-remotes')!;
     const style = getComputedStyle(segment);
     // A part's margin and the badge's gap before it, as for the remote section.
@@ -4575,7 +4576,7 @@ function renderBadge(b: Badge): HTMLElement {
   if (b.tracked) e.classList.add('badge-tracked');
   e.dataset['refs'] = b.context.webviewSection === 'head' ? 'HEAD' : b.refs.join(' ');
   e.setAttribute('data-vscode-context', JSON.stringify(b.context));
-  if (b.remotes.length > 0) e.append(remoteSegment(b));
+  if (b.remote) e.append(remoteSegment(b.remote));
   if (b.look === 'worktree' && b.worktree) {
     if (b.worktree.state === 'prunable') e.classList.add('chip-stale');
     if (b.worktree.state === 'locked') e.append(codicon('lock'));
@@ -4593,32 +4594,15 @@ function worktreePart(w: WorktreeMark): HTMLElement {
   return part;
 }
 
-/**
- * "origin, upstream +1" after a branch's name: its same-named remote-tracking branches. A lone
- * remote's menu target is the whole segment, icon included; of several, each name is one.
- */
-function remoteSegment(b: Badge): HTMLElement {
+/** "origin" after a branch's name: its same-named upstream, whose menu target is the whole segment, icon included. */
+function remoteSegment(remote: NonNullable<Badge['remote']>): HTMLElement {
   const seg = el('span', 'badge-remotes');
-  const icon = codicon('cloud');
-  const names = el('span', 'badge-remote-names');
-  names.setAttribute('aria-hidden', 'true');
-  const lone = b.remotes.length === 1;
-  if (lone) seg.setAttribute('data-vscode-context', JSON.stringify(b.remotes[0]!.context));
-  b.remotes.forEach((r, i) => {
-    if (i > 0) names.append(remoteSeparator(r));
-    const name = el('span', 'badge-remote-name', r.text);
-    if (!lone) name.setAttribute('data-vscode-context', JSON.stringify(r.context));
-    names.append(name);
-  });
-  seg.append(icon, names, el('span', 'sr-only', `, also ${b.also.join(', ')}`));
+  seg.setAttribute('data-vscode-context', JSON.stringify(remote.context));
+  const name = el('span', 'badge-remote-name', remote.text);
+  name.setAttribute('aria-hidden', 'true');
+  seg.append(codicon('cloud'), name, el('span', 'sr-only', `, also ${remote.short}`));
   return seg;
 }
-
-/** Before a remote name: a space before "+k", a comma otherwise. */
-const remoteSeparator = (r: Badge['remotes'][number]) => (r.context.webviewSection === 'refs' ? ' ' : ', ');
-
-/** The remote names a branch's badge shows, as laid out by remoteSegment(). */
-const remoteNames = (b: Badge) => b.remotes.map((r, i) => (i > 0 ? remoteSeparator(r) : '') + r.text).join('');
 
 /** A row and the elements in it a context menu can be opened on, in document order. */
 const menuTargets = (row: HTMLElement): HTMLElement[] => [

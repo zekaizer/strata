@@ -8,8 +8,10 @@ to get started and the requirements.
 
 - Commit graph of all local branches, remote-tracking branches, tags and HEAD,
   with branch, remote and tag badges above their commits. A branch and its
-  same-named remote-tracking branches on the same commit share one badge
-  (`main │ origin`); when they differ, both show, so unpushed work stands out.
+  upstream share one badge (`main │ origin`) when the upstream has the
+  branch's name and is on the same commit; when they differ, both show, so
+  unpushed work stands out. Another remote's branch of the same name keeps a
+  badge of its own.
   The current branch and its upstream come first; badges that do not fit the row
   collapse into a `+N` badge.
 - Stashes are rows of their own, directly above the commit each was made on,
