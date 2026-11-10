@@ -203,7 +203,8 @@ export const COMMANDS = {
   },
   'strata.pull': {
     title: 'Pull',
-    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataIsCurrent && strataUpstream' }],
+    // Another worktree's branch: moving it would leave that worktree's HEAD ahead of its files.
+    menus: [{ section: 'branch', group: '3_remote@1', when: 'strataUpstream && !strataInWorktree' }],
     palette: true,
     titleBar: { group: 'navigation@4', when: SYNC, icon: '$(repo-pull)' },
     writes: true,

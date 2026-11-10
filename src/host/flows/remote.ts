@@ -7,7 +7,9 @@ import {
   deleteRemoteTagPick,
   detachedNoBranch,
   divergedConfirmation,
+  divergedNotice,
   forcePushConfirmation,
+  HISTORY_DONE,
   NO_REMOTE,
   noUpstream,
   noUpstreamCandidate,
@@ -38,9 +40,10 @@ import {
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
-import { fail, finish, notify, run, type Expect, type FlowHost, type Next } from '../flow.ts';
+import { fail, finish, notify, run, type Expect, type FlowHost, type Next, type Undo } from '../flow.ts';
 import { changes } from './changes.ts';
 import { merge, rebase, refSource, type PullRun, type Source } from './history.ts';
+import { notElsewhere } from './refs.ts';
 
 /**
  * Runs a remote operation; a failed sign-in becomes the Type in Terminal question. Resolves whether it
@@ -147,6 +150,44 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
   );
   if (answer === 'rebase') await rebaseOnto({ ...how, stash: stashRebase });
   else if (answer === 'merge') await merge(host, src, { ...how, stash: stashMerge });
+}
+
+/**
+ * Pull of the branch `ref`: as pull() when it is checked out; otherwise fetches its upstream and
+ * fast-forwards it there, leaving HEAD and the work tree alone, and leaves a diverged one as it is.
+ */
+export async function pullBranch(host: FlowHost, ref: Ref): Promise<void> {
+  const h = await readHead(host.git, host.cwd);
+  if (h.branch === ref.short) return pull(host);
+  if (!(await notElsewhere(host, ref, { verb: 'Pull', run: () => pullBranch(host, ref) }))) return;
+  const got = await fetchUpstream(host, ref.short);
+  if (!got) return;
+  const [local, theirs] = await Promise.all([
+    readCommit(host.git, host.cwd, ref.name),
+    readCommit(host.git, host.cwd, got.tracking),
+  ]);
+  const [ahead, behind] = await Promise.all([
+    countCommits(host.git, host.cwd, [`${theirs.hash}..${local.hash}`]),
+    countCommits(host.git, host.cwd, [`${local.hash}..${theirs.hash}`]),
+  ]);
+  if (behind === 0 || ahead > 0) {
+    await host.refresh();
+    if (behind === 0) host.done(REMOTE_DONE.upToDate);
+    else void host.ui.notify('info', divergedNotice(ref.short, got.upstream.name, ahead, behind));
+    return;
+  }
+  const name = refName(ref.short);
+  const reason = 'pull: Fast-forward';
+  const op: Operation = { kind: 'updateRef', ref: ref.name, to: theirs.hash, from: local.hash, reason };
+  if (!(await run(host, REMOTE_DOING.fastForwarding(ref.short, got.upstream.name), (exec) => exec(op)))) return;
+  const undo: Undo = {
+    label: 'pull',
+    repo: host.cwd,
+    guard: { kind: 'refs', expect: [{ rev: ref.name, hash: theirs.hash, name }] },
+    inverse: [{ kind: 'updateRef', ref: ref.name, to: local.hash, from: theirs.hash, reason: 'strata: undo pull' }],
+    focus: local.hash,
+  };
+  await finish(host, { message: HISTORY_DONE.fastForwarded(name, theirs.short), focus: theirs.hash, undo });
 }
 
 /**

@@ -341,7 +341,10 @@ wait for it.
   tree, and name those files so you can move them away first.
 - **Remotes:** Fetch From All Remotes (Fetch Remote on a remote branch badge
   fetches just its remote), Pull (fast-forward, merge or rebase, following
-  `pull.rebase`), Push and Publish Branch. Set Upstream, on a branch badge,
+  `pull.rebase`), Push and Publish Branch. Pull on the badge of a branch that
+  isn't checked out fast-forwards it to its upstream without switching to it; a
+  branch that diverged stays as it is until you switch to it and pull, and one
+  checked out in another worktree is pulled there. Set Upstream, on a branch badge,
   makes a remote branch you pick its upstream, same-named ones listed first.
   Pull and Push follow the branch's
   configured upstream, also one given by URL (as a fork's pull request checkout

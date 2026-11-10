@@ -287,6 +287,57 @@ describe('remote operations', () => {
     assert.equal(git('rev-parse', 'refs/heads/strata-pub'), theirs);
   });
 
+  it('fast-forwards a branch that is not checked out to what its upstream has, leaving HEAD alone', async () => {
+    await publish();
+    const before = git('rev-parse', 'strata-pub');
+    const theirs = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Theirs');
+    git('push', '--quiet', 'origin', `${theirs}:refs/heads/strata-pub`);
+    git('update-ref', 'refs/remotes/origin/strata-pub', before);
+    const head = git('rev-parse', 'HEAD');
+    const headBranch = git('symbolic-ref', '--short', 'HEAD');
+    await reload(panel());
+    await run('strata.pull', { ...branchMenu('strata-pub', before), strataUpstream: true });
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'origin/strata-pub'), theirs, 'fetched');
+    assert.equal(git('symbolic-ref', '--short', 'HEAD'), headBranch);
+    assert.equal(git('rev-parse', 'HEAD'), head);
+    const done = ui.of('notify').at(-1);
+    assert.equal(done?.message, `Fast-forwarded 'strata-pub' to ${git('rev-parse', '--short', theirs)}`);
+    assert.deepEqual(done.actions, ['Undo']);
+    assert.equal(git('rev-parse', 'strata-pub'), theirs);
+    assert.equal(git('reflog', '-1', '--format=%gs', 'strata-pub'), 'pull: Fast-forward');
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'strata-pub'), before);
+    assert.deepEqual(errors(), []);
+  });
+
+  it('leaves a diverged branch that is not checked out as it is, saying to switch to it to pull', async () => {
+    const mine = await diverged();
+    await run('strata.pull', { ...branchMenu('strata-pub', mine), strataUpstream: true });
+    assert.deepEqual(errors(), []);
+    assert.equal(git('rev-parse', 'strata-pub'), mine);
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      "'strata-pub' has 1 commit 'origin/strata-pub' lacks and is 1 behind. Switch to 'strata-pub' to rebase or merge.",
+    );
+  });
+
+  it('refuses to pull a branch checked out in another worktree, naming it', async () => {
+    await publish();
+    const before = git('rev-parse', 'strata-pub');
+    const theirs = git('commit-tree', 'strata-pub^{tree}', '-p', 'strata-pub', '-m', 'Theirs');
+    git('push', '--quiet', 'origin', `${theirs}:refs/heads/strata-pub`);
+    const other = join(root, 'other');
+    git('worktree', 'add', '--quiet', other, 'strata-pub');
+    try {
+      await run('strata.pull', { ...branchMenu('strata-pub', before), strataUpstream: true });
+      assert.equal(git('rev-parse', 'strata-pub'), before);
+      assert.equal(ui.of('notify').at(-1)?.message, `'strata-pub' is checked out in worktree 'other' (${other}).`);
+    } finally {
+      git('worktree', 'remove', '--force', other);
+    }
+  });
+
   it('pulls with rebase from where the branch forked, past upstream commits rewritten since', async () => {
     await publish();
     git('switch', '--quiet', 'strata-pub');

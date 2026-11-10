@@ -39,6 +39,7 @@ import {
   fetchRemote,
   publish,
   pull,
+  pullBranch,
   push,
   pushTag,
   setUpstream,
@@ -351,7 +352,10 @@ const handlers = (env: FlowEnv): Handlers => ({
     if (remote === undefined) throw new Error(`no remote of ${t.ref.short}`);
     return fetchRemote(host, remote);
   }),
-  'strata.pull': write((host) => pull(host)),
+  'strata.pull': write((host, ctx) => {
+    const t = optionalTarget(ctx, ['branch'], host);
+    return t === undefined ? pull(host) : pullBranch(host, t.ref);
+  }),
   'strata.push': write((host, ctx) =>
     push(host, optionalTarget(ctx, ['branch'], host)?.ref.short ?? host.refs.headBranch),
   ),
