@@ -34,6 +34,7 @@ import {
   readTrackingBranches,
   readUnmergedRemoteCommits,
   readUpstream,
+  type Upstream,
 } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import { runGit } from '../../git/run.ts';
@@ -99,21 +100,9 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
     return;
   }
   const branch = h.branch;
-  const upstream = await readUpstream(host.git, host.cwd, branch);
-  if (!upstream) {
-    notify(host, 'info', noUpstream(branch), ['Publish Branch...'], () => publish(host, branch));
-    return;
-  }
-  const fetch: Operation = { kind: 'fetch', remote: upstream.remote, ref: `refs/heads/${upstream.remoteBranch}` };
-  try {
-    if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch, { rerun: 'Pull' })))
-      return;
-  } catch (e) {
-    if (!(e instanceof GitOpError && e.kind === 'noRemoteRef')) throw e;
-    goneUpstream(host, branch, upstream.name);
-    return;
-  }
-  const tracking = upstream.ref ?? (await fetched(host));
+  const got = await fetchUpstream(host, branch);
+  if (!got) return;
+  const { upstream, tracking } = got;
   const [ahead, behind] = await Promise.all([
     countCommits(host.git, host.cwd, [`${tracking}..HEAD`]),
     countCommits(host.git, host.cwd, [`HEAD..${tracking}`]),
@@ -158,6 +147,32 @@ export async function pull(host: FlowHost, next?: Next): Promise<void> {
   );
   if (answer === 'rebase') await rebaseOnto({ ...how, stash: stashRebase });
   else if (answer === 'merge') await merge(host, src, { ...how, stash: stashMerge });
+}
+
+/**
+ * Fetches the upstream of `branch` for a pull. Resolves the upstream and `tracking`, what to pull
+ * (its remote-tracking branch, or the commit fetched), or undefined when there is nothing to pull,
+ * having said why.
+ */
+async function fetchUpstream(
+  host: FlowHost,
+  branch: string,
+): Promise<{ upstream: Upstream; tracking: string } | undefined> {
+  const upstream = await readUpstream(host.git, host.cwd, branch);
+  if (!upstream) {
+    notify(host, 'info', noUpstream(branch), ['Publish Branch...'], () => publish(host, branch));
+    return undefined;
+  }
+  const fetch: Operation = { kind: 'fetch', remote: upstream.remote, ref: `refs/heads/${upstream.remoteBranch}` };
+  try {
+    if (!(await remoteRun(host, REMOTE_DOING.fetching(upstream.remote), upstream.remote, fetch, { rerun: 'Pull' })))
+      return undefined;
+  } catch (e) {
+    if (!(e instanceof GitOpError && e.kind === 'noRemoteRef')) throw e;
+    goneUpstream(host, branch, upstream.name);
+    return undefined;
+  }
+  return { upstream, tracking: upstream.ref ?? (await fetched(host)) };
 }
 
 /** The remote deleted the upstream: offers to publish the branch again or to stop tracking it. */
