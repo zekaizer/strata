@@ -1,7 +1,7 @@
 # Strata design system
 
 > English copy of the [Strata design system artifact](https://claude.ai/artifact/AKgFR4o6MTFjcrnQKGsVGK), the
-> single source of truth, as of its change at 2026-11-07T03:11:33Z. Do not change this file on its own: change the
+> single source of truth, as of its change at 2026-11-11T06:13:21Z. Do not change this file on its own: change the
 > artifact, then bring this copy in line. Component previews and `components/bundle.css` live in the artifact.
 
 Strata is a git commit graph inside VS Code. It lives in the workbench, so its whole visual language is VS Code's. It
@@ -100,6 +100,11 @@ motion setting and `prefers-reduced-motion`.
 - Every UI icon is a **codicon**: `icon-size` (16px) beside body text, `icon-size-sm` (12px) beside secondary text. Use
   VS Code's own glyph for each idea: `git-branch`, `cloud` (remote), `tag`, `git-stash`, `target` (HEAD), `git-commit`,
   `refresh`, `copy`, `eye` / `eye-closed`, `warning`, `info`, `loading`.
+- **An icon centres on the capitals of the text beside it.** A line box's centre depends on the font's ascent and
+  descent, so text beside an icon has its box trimmed to cap height and baseline (`text-box: trim-both cap alphabetic`)
+  and padded back out to its line height: a component that centres the icon on the text's box then centres it on the
+  capitals in any font. An icon inside a line of text reaches the same centre through `vertical-align`. The rule leads
+  `components/bundle.css`; no component nudges by pixels. Text beside an icon takes no vertical padding of its own.
 - The **Strata glyph** `strata-graph` (Icons) means only "the Strata commit graph": the status bar, commands, the
   graph's editor tab.
 - The **extension icon** `icon.png` (Logos) is for the Marketplace and the README only. Never recolor or redraw it; on

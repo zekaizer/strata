@@ -5,6 +5,44 @@
  */
 
 /*
+ * An icon inline in a line of text centres on the text's capitals. --cap-centre is the height of
+ * an element's capitals' centre above its baseline, computed in its own font: registered, so an
+ * icon (or ::before) inherits its parent's length rather than the expression. A codicon is 1em tall
+ * on its baseline. A flex line ignores vertical-align.
+ */
+@property --cap-centre {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+:where(:not(.codicon)) {
+  --cap-centre: calc(1cap / 2);
+}
+
+.codicon {
+  vertical-align: calc(var(--cap-centre) - 0.5em);
+}
+
+/*
+ * Text beside an icon spans its capitals' height (cap height to baseline), padded back out to its
+ * line height. A component centring the icon on that text then centres it on the capitals, in any
+ * font: a line box's centre depends on the font's ascent and descent, which CSS cannot read.
+ * Only elements holding nothing but text and inline emphasis are trimmed, and the banner's
+ * sentences, whose icon is centred on their first line. The padding wins over a component's: the
+ * text keeps no vertical padding of its own, or its capitals leave the centre.
+ */
+@supports (text-box: trim-both cap alphabetic) {
+  :where(.codicon ~ *, :has(~ .codicon)):where(
+    :not(.codicon, :empty, input, textarea, select, img, svg, canvas, :has(> :not(mark, code, b, i, strong, em)))
+  ),
+  .banner-text {
+    text-box: trim-both cap alphabetic;
+    padding-block: calc((1lh - 1cap) / 2) !important;
+  }
+}
+
+/*
  * Buttons. Every button is --control-height tall. .tool-button (icon and label) and .icon-button
  * (icon only) draw nothing until hovered; .inline-button sits in a line of text; .button is a
  * push button; .link-button is a link.
@@ -732,7 +770,7 @@ body.vscode-high-contrast .banner {
 .banner-busy::before {
   display: inline-block;
   margin-right: var(--space-4);
-  vertical-align: -3px;
+  vertical-align: calc(var(--cap-centre) - 0.5em);
   /* No height of its own: the line, and so the text after it, stays where it is when not busy. */
   font: normal normal normal var(--icon-size) / 0 codicon;
   content: '\eb19';

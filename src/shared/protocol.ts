@@ -359,6 +359,12 @@ export interface ProbeState {
     details: { block: string; gap: number }[];
     popover: { part: string; textLeft: number }[];
   };
+  /**
+   * Each shown codicon in a line with text: how far its centre lies below the centre of the text's
+   * capitals (px; negative above). `trimmed`: whether the webview's engine trims text boxes to the
+   * capitals (text-box), which the alignment needs.
+   */
+  iconAlignment: { trimmed: boolean; icons: { icon: string; text: string; off: number }[] };
   /** The ref card while it is shown: its commit, and a line per ref ("v1-rc1 · hidden by *-rc*"). */
   refCard: { hash: string; lines: string[] } | undefined;
   /**

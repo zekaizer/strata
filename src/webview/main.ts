@@ -4227,6 +4227,7 @@ class App {
       })(this.toolbar),
       badgeFilter: this.badgeFilter.probe(),
       spacing: this.probeSpacing(),
+      iconAlignment: probeIconAlignment(),
       refCard: this.refCard.probe(),
       find: {
         open: this.findWidget.isOpen,
@@ -4602,6 +4603,45 @@ function remoteSegment(remote: NonNullable<Badge['remote']>): HTMLElement {
   name.setAttribute('aria-hidden', 'true');
   seg.append(codicon('cloud'), name, el('span', 'sr-only', `, also ${remote.short}`));
   return seg;
+}
+
+/** ProbeState.iconAlignment: each shown codicon against the text beside it, measured where the text keeps its glyphs. */
+function probeIconAlignment(): ProbeState['iconAlignment'] {
+  const icons: ProbeState['iconAlignment']['icons'] = [];
+  for (const icon of document.querySelectorAll<HTMLElement>('.codicon')) {
+    const ir = icon.getBoundingClientRect();
+    if (ir.height === 0 || !icon.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
+    const text = [icon.previousElementSibling, icon.nextElementSibling].find(
+      (e): e is HTMLElement =>
+        e instanceof HTMLElement &&
+        !e.classList.contains('codicon') &&
+        e.textContent.trim() !== '' &&
+        e.checkVisibility({ visibilityProperty: true }),
+    );
+    if (!text) continue;
+    // The capitals' centre: a clone of the text's font laid out alone, its baseline found with an empty inline-block.
+    const style = getComputedStyle(text);
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const line = range.getClientRects()[0];
+    if (!line) continue;
+    const clone = document.createElement('span');
+    clone.style.cssText = `position:fixed;left:0;top:0;font:${style.font};line-height:normal;white-space:nowrap`;
+    const baseline = document.createElement('span');
+    baseline.style.cssText = 'display:inline-block;width:0;height:0';
+    const cap = document.createElement('span');
+    cap.style.cssText = 'position:absolute;height:1cap';
+    clone.append('H', baseline, cap);
+    document.body.append(clone);
+    const capCentre = line.top + baseline.getBoundingClientRect().top - cap.getBoundingClientRect().height / 2;
+    clone.remove();
+    icons.push({
+      icon: [...icon.classList].find((c) => c.startsWith('codicon-')) ?? '',
+      text: text.textContent.trim().slice(0, 40),
+      off: ir.top + ir.height / 2 - capCentre,
+    });
+  }
+  return { trimmed: CSS.supports('text-box', 'trim-both cap alphabetic'), icons };
 }
 
 /** A row and the elements in it a context menu can be opened on, in document order. */
