@@ -107,7 +107,8 @@ to get started and the requirements.
   commits until you close it.
 - Below come the full subject and the message body, in the editor font. Wrapped
   paragraphs flow to the width of the view; code, lists and trailers keep their
-  lines. Long bodies show their first lines and **Show more**.
+  lines. Long bodies show their first lines and **Show more**. Web addresses
+  (`http://` and `https://`) in the body are links that open in your browser.
 - The changed files follow the message, with the commit they are compared with
   (click it to select that commit). In wide editors the message and the files
   sit side by side, and a tree that fits flows into columns.

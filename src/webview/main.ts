@@ -3,6 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
+import { messageSegments } from '../core/message-links.ts';
 import {
   matchCount,
   matchRanges,
@@ -3199,7 +3200,7 @@ class App {
       this.withEdit(marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'), stash ? undefined : d.hash),
     );
     if (body) {
-      const pre = marked('details-message', reflowBody(body), this.detailsNeedle(d.hash), 'pre');
+      const pre = messageBody(reflowBody(body), this.detailsNeedle(d.hash));
       pre.id = 'details-body';
       const more = el('button', 'link-button details-more');
       more.hidden = true;
@@ -3793,6 +3794,10 @@ class App {
       pre.classList.toggle('clamped', clamped);
       if (clamped) pre.style.maxHeight = `${lines * line}px`;
       pre.dataset['hiddenLines'] = String(clamped ? total - lines : 0);
+      // Focus on a link below the cut would scroll the clamped text.
+      const cut = pre.getBoundingClientRect().top + lines * line;
+      for (const link of pre.querySelectorAll<HTMLElement>('.link-button'))
+        link.tabIndex = clamped && link.getBoundingClientRect().bottom > cut ? -1 : 0;
       // A focused "Show less" that disappears would drop focus to <body>.
       if (!clampable && document.activeElement === more) this.scroller.focus({ preventScroll: true });
       more.hidden = !clampable;
@@ -4595,12 +4600,7 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
 
 /** A badge; it and each remote name in it carry their own menu context. */
 /** A `className` element (a span by default) of `text`, with each occurrence of `needle` (any case) in a <mark>. */
-function marked(
-  className: string,
-  text: string,
-  needle: string | undefined,
-  tag: 'span' | 'h2' | 'pre' = 'span',
-): HTMLElement {
+function marked(className: string, text: string, needle: string | undefined, tag: 'span' | 'h2' = 'span'): HTMLElement {
   const e = el(tag, className);
   let at = 0;
   for (const [start, end] of needle === undefined ? [] : matchRanges(text, needle)) {
@@ -4609,6 +4609,35 @@ function marked(
   }
   e.append(text.slice(at));
   return e;
+}
+
+/** A commit's message body: `needle` marked as in `marked`, its http and https URLs as links the host opens. */
+function messageBody(text: string, needle: string | undefined): HTMLElement {
+  const pre = el('pre', 'details-message');
+  for (const { url, pieces } of messageSegments(text, needle === undefined ? [] : matchRanges(text, needle))) {
+    const nodes = pieces.map((p) => (p.marked ? el('mark', 'find-mark', p.text) : p.text));
+    if (url === undefined) {
+      pre.append(...nodes);
+      continue;
+    }
+    // Not a <button>: a button is one box, and a URL has to wrap with the text around it.
+    const link = el('span', 'link-button');
+    link.setAttribute('role', 'link');
+    link.tabIndex = 0;
+    link.append(...nodes);
+    const open = () => {
+      vscode.postMessage({ type: 'openExternal', url });
+    };
+    link.addEventListener('click', () => {
+      // A drag that selects part of the URL ends in a click too.
+      if ((getSelection()?.toString() ?? '') === '') open();
+    });
+    link.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') open();
+    });
+    pre.append(link);
+  }
+  return pre;
 }
 
 function renderBadge(b: Badge): HTMLElement {
