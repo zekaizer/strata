@@ -17,7 +17,8 @@ import {
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
 import { emptyState } from '../core/empty-state.ts';
-import { PATH_HISTORY, TIDY_WHOLE_HISTORY } from '../core/wording.ts';
+import { PATH_HISTORY } from '../core/wording.ts';
+import { shiftClick, type ShiftClickResult } from '../core/range-select.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
@@ -670,11 +671,16 @@ class App {
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.list.length) return;
-      if (e.shiftKey && this.extendRange(index)) return;
+      const shift = e.shiftKey ? this.shiftClick(index) : undefined;
+      if (shift?.kind === 'range') {
+        this.selectRange(shift.anchor, shift.end);
+        return;
+      }
       // Clicking the expanded row folds it; any other row opens its details.
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
-      if (e.shiftKey && this.options.path) this.tellAction(TIDY_WHOLE_HISTORY);
+      // After the selection, which clears the status.
+      if (shift?.why !== undefined) this.tellAction(shift.why);
     });
     // List keys only when the list itself has focus: keys typed in the details (file tree, links)
     // bubble up through the scroller and must not move the commit selection.
@@ -1981,21 +1987,24 @@ class App {
     return this.rewritableLine.slice(Math.min(a, b), Math.max(a, b) + 1);
   }
 
-  /**
-   * Shift-click on row `index`: selects the rewritable commits from the selected one to it and
-   * opens the selection's panel under the oldest. False when either end cannot be rewritten.
-   */
-  private extendRange(index: number): boolean {
+  /** What a Shift-click on row `index` does: from the selected commit, or from where the run started. */
+  private shiftClick(index: number): ShiftClickResult {
     const row = this.list[index];
-    const anchor = this.range?.anchor ?? this.selectedHash();
-    if (row?.kind !== 'commit' || anchor === undefined || anchor === row.commit.hash) return false;
-    if (!this.rewritable.has(anchor) || !this.rewritable.has(row.commit.hash)) return false;
-    this.range = { anchor, end: row.commit.hash };
+    return shiftClick({
+      anchor: this.range?.anchor ?? this.selectedHash(),
+      target: row?.kind === 'commit' ? row.commit.hash : undefined,
+      pathFiltered: this.options.path !== null,
+      rewritable: (hash) => this.rewritable.has(hash),
+    });
+  }
+
+  /** Selects the rewritable commits between the two and opens the selection's panel under the oldest. */
+  private selectRange(anchor: string, end: string): void {
+    this.range = { anchor, end };
     const oldest = this.rangeHashes().at(-1)!;
     this.selections++;
     this.restore = undefined;
     this.select(this.indexOf(oldest), { expand: true });
-    return true;
   }
 
   /** Where the uncommitted changes row goes, if there is one. */

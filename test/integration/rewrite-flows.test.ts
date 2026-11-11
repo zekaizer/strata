@@ -290,6 +290,25 @@ describe('tidying recent commits', () => {
     assert.equal(message('HEAD'), 'a.txt: a\n\nb.txt: b');
   });
 
+  it('says which commits can be selected together when Shift-click reaches past them', async () => {
+    const [a, , c] = await three();
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(c) });
+    await panel().simulate({ kind: 'clickRow', index: await rowOf(a), shiftKey: true });
+    const run = await waitFor('the selection', async () => {
+      const probe = await panel().probe();
+      return probe.selection.length === 3 && probe.outOfReach.length > 0 && probe;
+    });
+    const beyond = run.outOfReach[0]!;
+    await panel().simulate({ kind: 'clickRow', index: beyond, shiftKey: true });
+    const p = await waitFor('the selection of one row', async () => {
+      const probe = await panel().probe();
+      return probe.selected === run.rowHashes[beyond] && probe;
+    });
+    assert.deepEqual(p.selection, []);
+    assert.match(p.status, /first-parent line, from HEAD down to the first merge/);
+    assert.equal(p.announced, p.status);
+  });
+
   it('ends a Shift-click selection when find jumps to a match elsewhere', async () => {
     const [a, , c] = await three();
     await panel().simulate({ kind: 'clickRow', index: await rowOf(c) });
