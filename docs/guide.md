@@ -414,7 +414,8 @@ wait for it.
 On the Linux kernel (1.5 million commits) the graph opens in about 0.2 seconds
 once the repository has a commit-graph.
 
-Strata asks git for history in topological order, which is fast when the
+Strata asks git for history in topological or commit date order (the
+`strata.commitOrder` setting), either of which is fast when the
 repository has a commit-graph file. Without one, git reads the whole history
 before showing the first commit (about 20 seconds on the Linux kernel). When
 that happens Strata offers to write a commit-graph; you can also run **Strata:
@@ -456,6 +457,12 @@ only updates repositories that already have a commit-graph.
   beside the subject (`author`, `date`, `hash`); turn one off to hide it for
   good. A narrow graph also hides them on its own: the date and then the author
   while the subject has less than 50 characters of room, the hash only below 30.
+- `strata.commitOrder` (default: `topological`): The order of the commit rows.
+  `topological` keeps the commits of each branch together: the graph stays
+  narrow, and a new commit can move the rows of its whole branch. `date` lists
+  commits by commit date, newest first: a new commit moves no other row, and the
+  graph is wider when branches advance side by side. A commit is always above
+  its parents.
 - `strata.keepCommitGraphUpdated` (default: `false`): When the history of a
   repository that has a commit-graph changes (commits, fetches, rebases, branch
   changes), add the new commits to the commit-graph in the background

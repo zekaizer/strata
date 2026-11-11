@@ -190,6 +190,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       repo.state.onDidChange(() => {
         this.scheduleRefresh();
       }),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('strata.commitOrder')) void this.reset();
+      }),
       this.watchCommonDir(),
     );
   }
@@ -810,6 +813,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       refs: this.options.refs ?? undefined,
       heads: this.snapshot?.worktrees.flatMap((w) => (w.branch === undefined && w.head !== undefined ? [w.head] : [])),
       paths: this.options.path?.paths,
+      order: vscode.workspace.getConfiguration('strata').get<string>('commitOrder') === 'date' ? 'date' : 'topological',
     };
   }
 

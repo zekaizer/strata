@@ -7,6 +7,9 @@ import { isCommitId } from './details.ts';
 import { gitEnv } from './env.ts';
 import { runGit } from './run.ts';
 
+/** Row order; both list children before their parents. */
+export type CommitOrder = 'topological' | 'date';
+
 export interface LogOptions {
   /** git executable. */
   git: string;
@@ -24,6 +27,11 @@ export interface LogOptions {
   paths?: readonly string[] | undefined;
   /** Commit ids other worktrees have checked out, also shown when `refs` is undefined; missing ones are skipped. */
   heads?: readonly string[] | undefined;
+  /**
+   * 'topological' (default) keeps the commits of a line of history together; 'date' lists by commit
+   * date, so a new commit moves no other row.
+   */
+  order?: CommitOrder | undefined;
 }
 
 /**
@@ -54,7 +62,7 @@ export async function viewArgs(opts: LogOptions): Promise<string[]> {
       );
   return [
     // Topological order keeps each branch's commits together, which keeps the graph narrow.
-    '--topo-order',
+    opts.order === 'date' ? '--date-order' : '--topo-order',
     ...(firstParent ? ['--first-parent'] : []),
     // --simplify-by-decoration implies --simplify-merges: git prints nothing until the walk is
     // done (see docs/PERFORMANCE.md), and keeps merges that join the lines of kept commits.

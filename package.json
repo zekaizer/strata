@@ -1358,6 +1358,19 @@
           },
           "description": "Which columns the commit rows may show beside the subject. A narrow graph also hides them on its own while the subject has less than 80 characters of room: the hash first, then the date, then the author."
         },
+        "strata.commitOrder": {
+          "type": "string",
+          "enum": [
+            "topological",
+            "date"
+          ],
+          "enumDescriptions": [
+            "Keep the commits of each branch together. The graph stays narrow, and a new commit can move the rows of its whole branch.",
+            "List commits by commit date, newest first. A new commit moves no other row, and the graph is wider when branches advance side by side."
+          ],
+          "default": "topological",
+          "description": "The order of the commit rows. A commit is always above its parents."
+        },
         "strata.keepCommitGraphUpdated": {
           "type": "boolean",
           "default": false,

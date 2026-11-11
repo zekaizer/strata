@@ -71,6 +71,30 @@ describe('LogReader', () => {
     );
   });
 
+  describe('row order', () => {
+    const subjects = async (order?: 'topological' | 'date') => {
+      const dir = join(root, `interleaved-${order ?? 'default'}`);
+      const b = new RepoBuilder();
+      const base = b.commit('main', 'base');
+      b.commit('feature', 'f1', { parents: [base] });
+      b.commit('main', 'm1');
+      b.commit('feature', 'f2');
+      b.write(dir);
+      const r = new LogReader({ git: 'git', cwd: dir, order });
+      const { commits } = await r.next(100);
+      r.dispose();
+      return commits.map((c) => c.subject);
+    };
+
+    it('keeps the commits of a branch together by default', async () => {
+      assert.deepEqual(await subjects(), ['f2', 'f1', 'm1', 'base']);
+    });
+
+    it('lists commits in the order they were committed when asked for date order', async () => {
+      assert.deepEqual(await subjects('date'), ['f2', 'm1', 'f1', 'base']);
+    });
+  });
+
   it('limits history to the given refs', async () => {
     const dir = join(root, 'branchy');
     const refs = ['refs/heads/wip/experiment', 'refs/heads/feature/login'];
