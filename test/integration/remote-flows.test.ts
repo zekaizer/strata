@@ -96,8 +96,8 @@ describe('remote operations', () => {
       errors().map((e) => [e.message, e.actions]),
       [
         [
-          "'origin/strata-pub' has 1 commit that 'strata-pub' doesn't have. Switch to 'strata-pub' and pull it first.",
-          ['Show Output'],
+          "'origin/strata-pub' has 1 commit that 'strata-pub' doesn't have. Switch to 'strata-pub' and pull it first. A branch you rewrote needs a force push instead: the git.allowForcePush setting allows it.",
+          ['Show Output', 'Open Settings'],
         ],
       ],
     );
@@ -110,7 +110,11 @@ describe('remote operations', () => {
     await reload(panel());
     ui.press('Pull').click('Push');
     await run('strata.push', { ...branchMenu('strata-pub', mine), strataUpstream: true });
-    assert.equal(ui.first('confirm').detail, "Pulling brings it into 'strata-pub', then you can push.");
+    assert.equal(
+      ui.first('confirm').detail,
+      "Pulling brings it into 'strata-pub', then you can push.\nA branch you rewrote needs a force push instead: the git.allowForcePush setting allows it.",
+    );
+    assert.deepEqual(ui.first('confirm').buttons, ['Pull', 'Open Settings']);
     const done = ui.of('notify').find((n) => n.actions.includes('Push'));
     assert.deepEqual(done?.actions, ['Undo', 'Push']);
     await waitFor('pushed after the pull', () => remote('rev-parse', 'strata-pub') === git('rev-parse', 'strata-pub'));

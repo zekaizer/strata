@@ -352,7 +352,9 @@ wait for it.
   upstream, Pull says so and offers to publish the branch again or unset its
   upstream. A rejected push says how many commits the remote has that your
   branch doesn't, and offers Pull for the current branch (then Push again) and a
-  force push with lease when `git.allowForcePush` is on. Delete Remote Branch,
+  force push with lease when `git.allowForcePush` is on. When it is off, the
+  message names that setting and Open Settings takes you to it: a branch whose
+  pushed commits you rewrote can only be force pushed. Delete Remote Branch,
   on a remote branch badge, says which commits no other branch or tag has and
   which local branches track it (they stay). It deletes nothing when someone
   pushed to the branch since your last fetch, and asks again with what they

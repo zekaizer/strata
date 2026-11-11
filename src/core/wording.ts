@@ -1087,10 +1087,19 @@ export function pushOtherNameConfirmation(
 export const pushRejected = (upstream: string, branch: string, count: number): string =>
   `${refName(upstream)} has ${plural(count, 'commit')} that ${refName(branch)} doesn't have.`;
 
+/** VS Code's setting that allows force pushes, as Settings finds it. */
+export const FORCE_PUSH_SETTING = 'git.allowForcePush';
+
+/** Opens FORCE_PUSH_SETTING in Settings: offered after a rejected push while force pushes are off. */
+export const OPEN_SETTINGS = 'Open Settings';
+
+const FORCE_PUSH_OFF = `A branch you rewrote needs a force push instead: the ${FORCE_PUSH_SETTING} setting allows it.`;
+
 /**
  * The question after a rejected push, saying only what the offered answers do: Pull (`canPull`,
- * the branch is the current one), a force push (`canForce`, git.allowForcePush). Undefined when
- * there is nothing to offer: pushRejectedNotice says so instead.
+ * the branch is the current one), a force push (`canForce`, FORCE_PUSH_SETTING) or, without it,
+ * the setting. Undefined when the branch is neither current nor forceable: pushRejectedNotice
+ * says so instead.
  */
 export function pushRejectedConfirmation(
   upstream: string,
@@ -1098,7 +1107,7 @@ export function pushRejectedConfirmation(
   count: number,
   canPull: boolean,
   canForce: boolean,
-): Confirmation<'pull' | 'force'> | undefined {
+): Confirmation<'pull' | 'force' | 'settings'> | undefined {
   if (!canPull && !canForce) return undefined;
   const them = count === 1 ? 'it' : 'them';
   return {
@@ -1106,18 +1115,20 @@ export function pushRejectedConfirmation(
     message: pushRejected(upstream, branch, count),
     detail: [
       ...(canPull ? [`Pulling brings ${them} into ${refName(branch)}, then you can push.`] : []),
-      ...(canForce ? [`A force push removes ${them} from ${refName(upstream)}.`] : []),
+      canForce ? `A force push removes ${them} from ${refName(upstream)}.` : FORCE_PUSH_OFF,
     ].join('\n'),
     buttons: [
       ...(canPull ? [{ id: 'pull' as const, label: 'Pull' }] : []),
-      ...(canForce ? [{ id: 'force' as const, label: 'Force Push (With Lease)...' }] : []),
+      canForce
+        ? { id: 'force' as const, label: 'Force Push (With Lease)...' }
+        : { id: 'settings' as const, label: OPEN_SETTINGS },
     ],
   };
 }
 
 /** A rejected push of a branch that is not the current one, with force pushes turned off. */
 export const pushRejectedNotice = (upstream: string, branch: string, count: number): string =>
-  `${pushRejected(upstream, branch, count)} Switch to ${refName(branch)} and pull ${count === 1 ? 'it' : 'them'} first.`;
+  `${pushRejected(upstream, branch, count)} Switch to ${refName(branch)} and pull ${count === 1 ? 'it' : 'them'} first. ${FORCE_PUSH_OFF}`;
 
 export function forcePushConfirmation(
   branch: string,
