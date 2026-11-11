@@ -303,6 +303,10 @@ export class GraphPanel implements vscode.Disposable {
           });
         }
         break;
+      case 'openFolder':
+        // Without a folder the command asks for one.
+        void vscode.commands.executeCommand('vscode.openFolder');
+        break;
       case 'refresh':
         // Also retries when the git API was not available at startup.
         if (this.controller) void this.controller.handle(m);

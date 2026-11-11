@@ -119,7 +119,7 @@ let badgeRules: BadgeRule[] = (params.get('badgeRules') ?? '')
   .filter(Boolean)
   .map((p) => (p.startsWith('!') ? { pattern: p.slice(1), keep: true } : { pattern: p, keep: false }));
 const search = params.get('search');
-/** `repos=N`: N repositories are open (the switcher shows them; `open=repos` opens it). */
+/** `repos=N`: N repositories are open (the switcher shows them; `open=repos` opens it); 0: the workspace has none. */
 const repoCount = Number(params.get('repos') ?? '1');
 
 function repositories(): RepoItem[] {
@@ -229,6 +229,10 @@ async function onMessage(m: WebviewToHost): Promise<void> {
   switch (m.type) {
     case 'ready': {
       toWebview({ type: 'init', theme, columns: shownColumns });
+      if (repoCount === 0) {
+        toWebview({ type: 'noRepository' });
+        break;
+      }
       data = (await (await fetch(`data/${repo}.json`)).json()) as PlaygroundData;
       if (params.get('worktrees') === '1') data.refs.worktrees = worktrees(data);
       const detach = params.get('detach');

@@ -16,6 +16,7 @@ import {
   type OutOfView,
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
+import { emptyState } from '../core/empty-state.ts';
 import { PATH_HISTORY, TIDY_WHOLE_HISTORY } from '../core/wording.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
@@ -373,6 +374,18 @@ class App {
   private readonly geometry = new RowGeometry(ROW_HEIGHT, REF_BAND);
   private noRepository = false;
   private readonly empty = el('div', 'empty');
+  private emptyShown: string | undefined;
+  private readonly leaveEmpty = {
+    noRepository: () => {
+      vscode.postMessage({ type: 'openFolder' });
+    },
+    pathFilter: () => {
+      this.clearPath();
+    },
+    refFilter: () => {
+      this.filterRefs(null);
+    },
+  };
   private done = false;
   private loading = false;
   private selected = -1;
@@ -489,7 +502,7 @@ class App {
     });
     this.refFilter = new RefFilter(this.toolbar, {
       onRefs: (refs) => {
-        this.setOptions({ ...this.options, refs });
+        this.filterRefs(refs);
       },
       onShowStashes: (show) => {
         this.setShowStashes(show);
@@ -507,7 +520,7 @@ class App {
     });
     this.pathChip = new PathChip(this.toolbar, {
       onClear: () => {
-        this.setOptions({ ...this.options, path: null });
+        this.clearPath();
       },
       onFolder: (folder) => {
         this.setOptions({ ...this.options, path: { paths: [folder] } });
@@ -2206,6 +2219,14 @@ class App {
     vscode.postMessage({ type: 'setOptions', options });
   }
 
+  private filterRefs(refs: string[] | null): void {
+    this.setOptions({ ...this.options, refs });
+  }
+
+  private clearPath(): void {
+    this.setOptions({ ...this.options, path: null });
+  }
+
   private updateOptionControls(): void {
     this.pathChip.update(this.options.path, this.pathSummary());
     this.firstParentButton.setAttribute('aria-pressed', String(this.options.firstParent));
@@ -2687,16 +2708,27 @@ class App {
     this.drewRows = drawn;
   }
 
-  /** A message in place of the list when there is nothing to show. */
+  /** A message in place of the list when there is nothing to show, with the button that leads out. */
   private renderEmpty(): void {
-    let text: string | undefined;
-    if (this.list.length === 0) {
-      if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
-      else if (this.done && this.options.path) text = `${PATH_HISTORY.found(this.options.path.paths[0], 0)}.`;
-      else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
-    }
-    this.empty.hidden = text === undefined;
-    this.empty.textContent = text ?? '';
+    const state = emptyState({
+      rows: this.list.length,
+      noRepository: this.noRepository,
+      done: this.done,
+      path: this.options.path?.paths[0],
+      refs: this.options.refs !== null,
+    });
+    this.empty.hidden = state === undefined;
+    // Rebuilt only when it changes: every render comes here, and a rebuilt button loses the focus.
+    const shown = JSON.stringify(state);
+    if (shown === this.emptyShown) return;
+    this.emptyShown = shown;
+    // The focused button goes with its message: the keys go on in the list.
+    if (this.empty.contains(document.activeElement)) this.scroller.focus();
+    this.empty.replaceChildren(state?.text ?? '');
+    if (state?.action === undefined) return;
+    const button = el('button', 'button', state.action);
+    button.addEventListener('click', this.leaveEmpty[state.kind]);
+    this.empty.append(' ', button);
   }
 
   private renderRow(i: number): HTMLElement {
