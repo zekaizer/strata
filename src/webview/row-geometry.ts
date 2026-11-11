@@ -79,6 +79,15 @@ export function pageFrom(g: RowGeometry, index: number, view: number, dir: 1 | -
 }
 
 /**
+ * Row that Home (the first) or End (the last of the `count` rows in the list) selects; undefined
+ * for any other key and in an empty list.
+ */
+export function edgeRow(key: string, count: number): number | undefined {
+  if (count === 0) return undefined;
+  return key === 'Home' ? 0 : key === 'End' ? count - 1 : undefined;
+}
+
+/**
  * Most height the details under row `selected` may take in a view `view` px tall: `share` of the
  * view, or more when the history ends before the view does, but never so much that the selected
  * row and the row after it cannot both be seen.

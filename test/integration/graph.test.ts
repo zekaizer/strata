@@ -45,6 +45,13 @@ describe('graph panel', () => {
 
   const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
 
+  it('goes to the last loaded commit with End and back to the first with Home', async () => {
+    await panel.simulate({ kind: 'key', key: 'End' });
+    await waitFor('last commit', async () => (await panel.probe()).detailsShown === order().at(-1));
+    await panel.simulate({ kind: 'key', key: 'Home' });
+    await waitFor('first commit', async () => (await panel.probe()).detailsShown === order()[0]);
+  });
+
   async function selectCommit(subject: string): Promise<string> {
     const hash = git('log', '--all', '--format=%H', '--fixed-strings', `--grep=${subject}`, '-n1');
     // Clicking the row whose details are already open folds them.

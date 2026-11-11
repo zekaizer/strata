@@ -79,7 +79,9 @@ to get started and the requirements.
 - Click a commit to unfold its details under it; click it again, or press
   <kbd>Esc</kbd> in the list, to fold them. <kbd>Esc</kbd> inside the details
   takes you back to the list. With the list focused, ↑/↓ move the selection
-  (open details follow it) and <kbd>Enter</kbd> unfolds or folds.
+  (open details follow it), <kbd>Home</kbd> and <kbd>End</kbd> go to the first
+  commit and to the last one loaded so far, and <kbd>Enter</kbd> unfolds or
+  folds.
 - Changed files are listed as a folder tree; click a folder (or use ←/→) to fold
   it.
 - Click a file in the details to open its diff against the parent commit. Hover

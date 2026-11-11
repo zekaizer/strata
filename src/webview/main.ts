@@ -82,7 +82,7 @@ import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
 import { FindWidget, type FindCount } from './find.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
-import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
+import { edgeRow, expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { RepoSwitcher } from './repo-switcher.ts';
 import { PathChip } from './path-filter.ts';
@@ -2552,11 +2552,12 @@ class App {
   private onKey(e: KeyboardEvent): void {
     if (this.copyKey(e)) return;
     // Rows move under a still pointer; a hover there would follow the keys around.
-    if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'Enter', 'Escape'].includes(e.key))
+    if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', 'Enter', 'Escape'].includes(e.key))
       document.body.classList.add('hover-off');
     const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
     const delta = moves[e.key];
     const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
+    const edge = edgeRow(e.key, this.list.length);
     if (delta !== undefined) {
       e.preventDefault();
       const next = Math.min(this.list.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
@@ -2566,9 +2567,9 @@ class App {
       // Rows differ in height (refs), so a page is measured in pixels, not rows.
       const from = Math.max(0, this.selected);
       this.userSelect(pageFrom(this.geometry, from, this.scroller.clientHeight, page));
-    } else if (e.key === 'Home') {
+    } else if (edge !== undefined) {
       e.preventDefault();
-      this.userSelect(0);
+      this.userSelect(edge);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (this.expanded) this.userCollapse();
