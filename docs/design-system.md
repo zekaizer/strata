@@ -503,12 +503,17 @@ Link text that acts as a button, for navigation inside text: `.link-button`.
 
 #### When to use
 
-Commit links in a banner, "Show All" and "Current Branch" in a popover's actions. A confirming action is a **Button**.
+Commit links in a banner, "Show All" and "Current Branch" in a popover's actions, web addresses in the body of a commit
+message. A confirming action is a **Button**.
 
 #### What the consumer provides
 
 A `<button class="link-button">` with the link text. In a banner add `banner-link` to set a hash in `font-mono` at
 `font-size-sm`.
+
+A link in running text that has to wrap with the text around it (a web address in a commit message) is a
+`<span class="link-button" role="link" tabindex="0">`: a `<button>` is one box, so a long address would move to the next
+line whole. Enter and a click open it.
 
 #### Look
 
