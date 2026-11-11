@@ -232,8 +232,19 @@ export const undone = (label: string): string => `Undid the ${label}`;
 /** Undo clicked on the notification of an operation that is no longer the last one. */
 export const UNDO_STALE = 'Undo is no longer available: a newer operation ran.';
 
-/** A failed git command as an error notification shows it. */
-export const gitFailure = (message: string): string => message.trim().split('\n').slice(0, 3).join('\n');
+/** A line git, a server or a hook marks as why the command failed; advice (hint:) is not one. */
+const CAUSE = /^(?:remote: +)?(?:error|fatal):|^\s*! \[/i;
+
+/**
+ * A failed git command as an error notification shows it: the lines that say why, with the files
+ * they list (tab-indented under them), or the first lines when none is marked. At most 3 lines.
+ */
+export function gitFailure(message: string): string {
+  const lines = message.trim().split('\n');
+  let listing = false;
+  const cause = lines.filter((line) => (listing = CAUSE.test(line) || (listing && line.startsWith('\t'))));
+  return (cause.length > 0 ? cause : lines).slice(0, 3).join('\n');
+}
 
 /** The verb of each progress label (DOING, HISTORY_DOING, …), as "Couldn't …" says it. */
 const FAILED_VERB: Record<string, string> = {
