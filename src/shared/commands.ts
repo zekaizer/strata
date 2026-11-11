@@ -347,7 +347,8 @@ export const COMMANDS = {
   'strata.undo': {
     title: 'Undo Last Operation',
     palette: 'strata.canUndo',
-    titleBar: { group: '3_undo@1', when: 'strata.canUndo' },
+    // Not while an operation is stopped: Abort shows the same icon then, and Undo is disabled.
+    titleBar: { group: 'navigation@6', when: 'strata.canUndo && !strata.operation', icon: '$(discard)' },
     writes: true,
   },
   'strata.showOutput': { title: 'Show Git Output', palette: true, titleBar: { group: '9_output@1' } },

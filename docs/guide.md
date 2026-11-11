@@ -268,12 +268,12 @@ the commit; with several branches there, the row acts on the commit and you pick
 a branch from its badge.
 
 The graph tab's title bar has buttons for **Fetch From All Remotes**, and Pull
-and Push (or **Publish Branch...** when the current branch has no upstream);
-while an operation is stopped, for Continue, Abort and Fetch. Its **...** menu
-has the stash commands, **Show Stashes...**, Skip (while stopped), **Undo Last
-Operation** and **Show Git Output**. The Command Palette has them too. While an
-operation runs, the toolbar and the banner say which, and the other commands
-wait for it.
+and Push (or **Publish Branch...** when the current branch has no upstream),
+and for **Undo Last Operation** once there is one to undo; while an operation
+is stopped, for Continue, Abort and Fetch. Its **...** menu has the stash
+commands, **Show Stashes...**, Skip (while stopped) and **Show Git Output**.
+The Command Palette has them too. While an operation runs, the toolbar and the
+banner say which, and the other commands wait for it.
 
 - **Branches and tags:** Checkout (a remote branch checks out its local branch,
   or creates one that tracks it; when the local branch of that name tracks
