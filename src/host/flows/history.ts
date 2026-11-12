@@ -20,6 +20,7 @@ import {
   mergeAnswer,
   mergeConfirmation,
   messageEditsConfirmation,
+  NOTHING_TO_REVERT,
   type MergeParents,
   opName,
   pickConfirmation,
@@ -223,7 +224,8 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
   );
   const skip = state.kind === 'merge' ? [] : ['Skip...'];
   // No Skip at a rebase stop without conflicts: at an edit git made the commit already, and --skip keeps it.
-  const next = state.kind === 'rebase' ? ['Continue'] : skip;
+  // Nor between the commits of a cherry pick or revert: Continue leaves out the one git stopped before.
+  const next = state.kind === 'rebase' || state.applying === undefined ? ['Continue'] : skip;
   const actions = [...(state.conflictCount > 0 ? ['Resolve...', ...skip] : next), abortButton(state.kind)];
   notify(host, 'warning', message, actions, (a) =>
     a === 'Resolve...'
@@ -253,6 +255,7 @@ async function heldStash(host: FlowHost, state: OperationState) {
 export async function runStoppable(
   host: FlowHost,
   attempt: () => Promise<Restored | undefined>,
+  reason: (e: GitOpError) => string | undefined = () => undefined,
 ): Promise<Restored | undefined> {
   try {
     return await attempt();
@@ -260,7 +263,7 @@ export async function runStoppable(
     if (!(e instanceof GitOpError)) throw e;
     const state = await readOperationState(host.git, host.cwd);
     if (!state) throw e;
-    await stopped(host, state, gitFailure(e.message).split('\n')[0]!);
+    await stopped(host, state, reason(e) ?? gitFailure(e.message).split('\n')[0]!);
     return undefined;
   }
 }
@@ -480,24 +483,27 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hashes
     ...(merge === undefined ? {} : { mainline: merge.mainline }),
   };
   const label = kind === 'cherryPick' ? HISTORY_DOING.picking(what) : HISTORY_DOING.reverting(what);
-  const r = await runStoppable(host, () =>
-    runMovingUntracked(
-      host,
-      label,
-      IN_THE_WAY_OF[kind](what),
-      async (exec) => {
-        if (choice === 'stash')
-          return stashAround(
-            host,
-            exec,
-            autostashMessage(kind, `of ${what} ${kind === 'revert' ? 'on' : 'onto'} ${h.name}`),
-            () => exec(op),
-          );
-        await exec(op);
-        return { kind: 'none' } satisfies Restored;
-      },
-      [h.expect],
-    ),
+  const r = await runStoppable(
+    host,
+    () =>
+      runMovingUntracked(
+        host,
+        label,
+        IN_THE_WAY_OF[kind](what),
+        async (exec) => {
+          if (choice === 'stash')
+            return stashAround(
+              host,
+              exec,
+              autostashMessage(kind, `of ${what} ${kind === 'revert' ? 'on' : 'onto'} ${h.name}`),
+              () => exec(op),
+            );
+          await exec(op);
+          return { kind: 'none' } satisfies Restored;
+        },
+        [h.expect],
+      ),
+    (e) => (kind === 'revert' && e.kind === 'nothingToCommit' ? NOTHING_TO_REVERT : undefined),
   ).catch((e: unknown) => {
     if (kind !== 'revert' || !(e instanceof GitOpError) || e.kind !== 'nothingToCommit') throw e;
     void host.ui.notify('info', alreadyReverted(c.short, h.name));

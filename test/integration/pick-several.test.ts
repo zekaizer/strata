@@ -194,4 +194,25 @@ describe('cherry pick and revert of several commits', () => {
     assert.equal(git('rev-parse', 'HEAD'), top);
     assert.equal(api().contextValue('strata.operation'), '');
   });
+
+  it('stops a revert at a commit that is already reverted, and Continue reverts the rest', async () => {
+    const a = commitFile('a.txt', 'a\n');
+    const b = commitFile('b.txt', 'b\n');
+    const c = commitFile('c.txt', 'c\n');
+    git('revert', '--no-edit', b);
+    const top = git('rev-parse', 'HEAD');
+    await reload(panel());
+    await run('strata.revert', selection([c, b, a]));
+    assert.equal(api().contextValue('strata.operation'), 'revert');
+    assert.equal(
+      lastNotice()?.message,
+      'Revert stopped: one of the commits is already reverted, so there is nothing to undo for it.',
+    );
+    assert.deepEqual(lastNotice()?.actions, ['Continue', 'Abort Revert...']);
+    await run('strata.operation.continue');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.deepEqual(subjects(`${top}..HEAD`), ['Revert "a.txt: a"', 'Revert "c.txt: c"']);
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'main'), top);
+  });
 });

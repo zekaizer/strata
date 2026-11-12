@@ -778,6 +778,8 @@ export const mergeAmongPicked = (kind: 'cherryPick' | 'revert', merge: CommitRef
 /** A revert of `short` on `onto` found nothing to undo. */
 export const alreadyReverted = (short: string, onto: string): string =>
   `${short} is already reverted on ${onto}: there is nothing to undo.`;
+/** Why a revert of several commits stopped at one that changes nothing, as stoppedMessage's reason. */
+export const NOTHING_TO_REVERT = 'one of the commits is already reverted, so there is nothing to undo for it';
 export const alreadyBased = (branch: string, onto: string): string => `${branch} is already based on ${onto}.`;
 
 /** The reset modes in the order offered: git's default first. */
