@@ -374,7 +374,15 @@ export async function rebase(
     const buttons: { id: StashChoice | 'rebase'; label: string }[] = dirty
       ? stashButtons(op, c.choices.choices)
       : [{ id: 'rebase', label: 'Rebase' }];
-    const facts = { op, branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
+    const facts = {
+      op,
+      branch: h.name,
+      onto: onto.name,
+      ontoShort: target.short,
+      ...counts,
+      upstream: upstream?.name,
+      canForce: host.settings().allowForcePush,
+    };
     if ((await host.ui.confirm(rebaseConfirmation(facts, c.section, buttons))) === undefined) return;
   }
   const r = await runStoppable(host, () =>

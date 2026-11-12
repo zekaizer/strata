@@ -67,9 +67,11 @@ describe('wording of history operations', () => {
     assert.equal(pull.message, "Pull 'origin/main' into 'main'?");
     assert.deepEqual(labels(pull.buttons), ['Stash & Pull']);
     const facts = { branch: "'main'", onto: "'origin/main'", ontoShort: 'e4f5a6b', replay: 1, merges: 0 };
-    const r = rebaseConfirmation({ ...facts, op: 'pullRebase', onUpstream: 0, upstream: undefined }, '', [
-      { id: 'stash', label: 'Stash & Pull' },
-    ]);
+    const r = rebaseConfirmation(
+      { ...facts, op: 'pullRebase', onUpstream: 0, upstream: undefined, canForce: true },
+      '',
+      [{ id: 'stash', label: 'Stash & Pull' }],
+    );
     assert.equal(r.message, "Pull 'origin/main' into 'main'?");
   });
 
@@ -97,25 +99,32 @@ describe('wording of history operations', () => {
     );
   });
 
+  const rebased = {
+    op: 'rebase' as const,
+    branch: "'feature'",
+    onto: "'main'",
+    ontoShort: 'e4f5a6b',
+    replay: 4,
+    merges: 1,
+    onUpstream: 2,
+    upstream: 'origin/feature',
+    canForce: true,
+  };
+
   it('says what a rebase replays and drops', () => {
-    const r = rebaseConfirmation(
-      {
-        op: 'rebase',
-        branch: "'feature'",
-        onto: "'main'",
-        ontoShort: 'e4f5a6b',
-        replay: 4,
-        merges: 1,
-        onUpstream: 2,
-        upstream: 'origin/feature',
-      },
-      '',
-      [{ id: 'rebase', label: 'Rebase' }],
-    );
+    const r = rebaseConfirmation(rebased, '', [{ id: 'rebase', label: 'Rebase' }]);
     assert.equal(r.message, "Rebase 'feature' onto 'main'?");
     assert.equal(
       r.detail,
       "Replays 4 commits of 'feature' on 'main' (e4f5a6b), without its 1 merge commit. 2 are on 'origin/feature': you'll need to force push.\nUndo restores the original commits.",
+    );
+  });
+
+  it('names the setting the force push after a rebase needs while it is off', () => {
+    const r = rebaseConfirmation({ ...rebased, merges: 0, canForce: false }, '', [{ id: 'rebase', label: 'Rebase' }]);
+    assert.equal(
+      r.detail,
+      "Replays 4 commits of 'feature' on 'main' (e4f5a6b). 2 are on 'origin/feature': you'll need to force push.\nForce pushes are off: the git.allowForcePush setting allows them. Undo restores the original commits.",
     );
   });
 

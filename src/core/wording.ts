@@ -660,6 +660,8 @@ export interface RebaseFacts {
   /** Of the replayed commits, how many are on the upstream. */
   onUpstream: number;
   upstream: string | undefined;
+  /** FORCE_PUSH_SETTING is on. */
+  canForce: boolean;
 }
 
 export function rebaseConfirmation<B extends string>(
@@ -677,7 +679,7 @@ export function rebaseConfirmation<B extends string>(
     message: f.op === 'pullRebase' ? `Pull ${f.onto} into ${f.branch}?` : `Rebase ${f.branch} onto ${f.onto}?`,
     detail: [
       `Replays ${plural(f.replay, 'commit')} of ${f.branch} on ${f.onto} (${f.ontoShort})${drops}.${pushed}`,
-      'Undo restores the original commits.',
+      `${pushed !== '' && !f.canForce ? `${FORCE_PUSH_NEEDS_SETTING} ` : ''}Undo restores the original commits.`,
       section,
     ]
       .filter((s) => s !== '')
@@ -1104,6 +1106,9 @@ export const FORCE_PUSH_SETTING = 'git.allowForcePush';
 /** Opens FORCE_PUSH_SETTING in Settings: offered after a rejected push while force pushes are off. */
 export const OPEN_SETTINGS = 'Open Settings';
 
+/** Under a warning that a force push will be needed, while FORCE_PUSH_SETTING is off. */
+const FORCE_PUSH_NEEDS_SETTING = `Force pushes are off: the ${FORCE_PUSH_SETTING} setting allows them.`;
+
 const FORCE_PUSH_OFF = `A branch you rewrote needs a force push instead: the ${FORCE_PUSH_SETTING} setting allows it.`;
 
 /**
@@ -1337,8 +1342,8 @@ export interface RewriteFacts {
   what: string;
   /** Newer commits replayed on top of the edited ones. */
   onTop: number;
-  /** Rewritten commits a remote-tracking branch has, and that branch (short name). */
-  pushed: { count: number; remote: string } | undefined;
+  /** Rewritten commits a remote-tracking branch has, and that branch (short name); `canForce`: FORCE_PUSH_SETTING is on. */
+  pushed: { count: number; remote: string; canForce: boolean } | undefined;
   /** Short names of the branches that can move with the rewritten commits. */
   moves: readonly string[];
   stays: readonly { name: string; why: StayReason }[];
@@ -1428,6 +1433,7 @@ export function rewriteConfirmation(
       ...(p ? [QUESTION[f.edit](f)] : []),
       f.onTop > 0 ? `Replays ${plural(f.onTop, 'newer commit')} on top.` : '',
       ...(pushed ?? []),
+      p && !p.canForce ? FORCE_PUSH_NEEDS_SETTING : '',
       f.moves.length > 0
         ? `${names(f.moves)} ${isAre(f.moves.length)} on the rewritten commits: ${moveLabel} moves ${f.moves.length === 1 ? 'it' : 'them'} to the new ones.`
         : '',

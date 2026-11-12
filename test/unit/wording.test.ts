@@ -298,7 +298,7 @@ describe('rewrite confirmation', () => {
     branch: "'main'",
     what: 'abc1234',
     onTop: 0,
-    pushed: { count: 2, remote: 'origin/main' },
+    pushed: { count: 2, remote: 'origin/main', canForce: true },
     moves: [],
     stays: [],
   };
@@ -311,6 +311,13 @@ describe('rewrite confirmation', () => {
     assert.equal(
       rewriteConfirmation({ ...facts, pushed: { ...facts.pushed!, count: 1 } })?.detail,
       "Save the new message of abc1234?\n'origin/main' has one of them: pushing 'main' afterwards needs a force push, and anyone who fetched it keeps the old commit.\nUndo restores the original commits.",
+    );
+  });
+
+  it('names the setting the force push afterwards needs while it is off', () => {
+    assert.equal(
+      rewriteConfirmation({ ...facts, pushed: { ...facts.pushed!, canForce: false } })?.detail,
+      "Save the new message of abc1234?\n'origin/main' has 2 of them: pushing 'main' afterwards needs a force push, and anyone who fetched them keeps the old commits.\nForce pushes are off: the git.allowForcePush setting allows them.\nUndo restores the original commits.",
     );
   });
 });

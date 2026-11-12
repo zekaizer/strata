@@ -59,6 +59,7 @@ const confirmations: [string, w.Confirmation | undefined][] = [
         merges: 2,
         onUpstream: 9,
         upstream: 'origin/topic',
+        canForce: false,
       },
       section('rebase'),
       w.stashButtons('rebase', ['stash']),
