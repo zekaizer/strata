@@ -35,7 +35,8 @@ import { readGraphStatus, readOperationState } from '../git/state.ts';
 import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost, WorkingDetails } from '../shared/protocol.ts';
 import { resolveConflicts } from './flows/changes.ts';
 import { setContext, type ContextKey } from './context.ts';
-import { readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
+import { readGitVersion, readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
+import { readOnly } from '../core/git-version.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { RepoKey } from '../core/repos.ts';
 import { repoKey, type GitApi, type GitRepository } from './git-api.ts';
@@ -180,6 +181,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.revealIn = deps.reveal;
     this.visible = deps.visible;
     void this.context('strata.canUndo', this.lastUndo !== undefined);
+    void this.syncReadOnly();
     this.disposables.push(
       vscode.window.tabGroups.onDidChangeTabs(() => {
         this.syncShownFile();
@@ -330,6 +332,12 @@ export class RepoSession implements vscode.Disposable, FlowHost {
 
   private async context(key: ContextKey, value: boolean | string): Promise<void> {
     if (!this.disposed) await setContext(key, value);
+  }
+
+  /** A version read that fails leaves writes on: the command then fails with git's own error. */
+  private async syncReadOnly(): Promise<void> {
+    const v = await readGitVersion(this.api.git.path, this.cwd).catch(() => undefined);
+    await this.context('strata.readOnly', readOnly(v));
   }
 
   async handle(m: WebviewToHost): Promise<void> {

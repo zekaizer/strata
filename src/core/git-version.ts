@@ -18,5 +18,11 @@ export function atLeast(v: GitVersion, need: GitVersion): boolean {
 /** Whether Strata's write operations run with this git. */
 export const canWrite = (v: GitVersion): boolean => atLeast(v, WRITES_NEED);
 
+/**
+ * Whether write commands are off for the git whose version read gave `v`. Undefined (unparsable) is
+ * not read-only: git itself judges.
+ */
+export const readOnly = (v: GitVersion | undefined): boolean => v !== undefined && !canWrite(v);
+
 /** `git hook run`, which runs a hook as git's own commands do (core.hooksPath, Windows), is 2.36's. */
 export const HOOK_RUN: GitVersion = [2, 36, 0];

@@ -52,7 +52,8 @@ export interface CommandSpec {
   /** In the graph tab's title bar: an icon in `navigation`, or an overflow group. */
   titleBar?: { group: string; when?: string; icon?: string };
   /**
-   * Changes the repository: disabled while another operation runs, and while one is stopped
+   * Changes the repository: disabled with a git too old to write (`strata.readOnly`), while
+   * another operation runs, and while one is stopped
    * unless `whileStopped` (the ways out of a stop, and writes that leave HEAD, the index and the
    * work tree alone).
    */
@@ -391,7 +392,9 @@ export function manifestCommands(): ManifestCommand[] {
       category: 'Strata',
       ...(spec.titleBar?.icon ? { icon: spec.titleBar.icon } : {}),
       ...(spec.writes
-        ? { enablement: spec.writes === 'whileStopped' ? '!strata.busy' : '!strata.busy && !strata.operation' }
+        ? {
+            enablement: `!strata.readOnly && !strata.busy${spec.writes === 'whileStopped' ? '' : ' && !strata.operation'}`,
+          }
         : {}),
     };
   });

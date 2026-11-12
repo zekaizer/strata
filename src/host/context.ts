@@ -3,9 +3,10 @@ import * as vscode from 'vscode';
 /**
  * Context keys Strata owns. `strata.head`: 'tracking' (on a branch with an upstream), 'branch'
  * (on one without), 'detached', or '' without a repository. `strata.repositories`: how many
- * repositories VS Code has open.
+ * repositories VS Code has open. `strata.readOnly`: git is too old for Strata to change a repository.
  */
-export type ContextKey = 'strata.busy' | 'strata.canUndo' | 'strata.operation' | 'strata.head' | 'strata.repositories';
+export type ContextKey =
+  'strata.busy' | 'strata.canUndo' | 'strata.operation' | 'strata.head' | 'strata.readOnly' | 'strata.repositories';
 
 const values = new Map<ContextKey, unknown>();
 

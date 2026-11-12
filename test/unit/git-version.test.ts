@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { canWrite, parseGitVersion } from '../../src/core/git-version.ts';
+import { canWrite, parseGitVersion, readOnly } from '../../src/core/git-version.ts';
 import { readGitVersion } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
 
@@ -21,6 +21,12 @@ describe('git version', () => {
     assert.equal(canWrite([3, 0, 0]), true);
     assert.equal(canWrite([2, 33, 8]), false);
     assert.equal(canWrite([1, 99, 0]), false);
+  });
+
+  it('is read-only with a git too old to write, not with one whose version it cannot read', () => {
+    assert.equal(readOnly([2, 33, 8]), true);
+    assert.equal(readOnly([2, 34, 0]), false);
+    assert.equal(readOnly(undefined), false);
   });
 });
 

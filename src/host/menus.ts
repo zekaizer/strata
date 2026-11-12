@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { similarPattern } from '../core/badge-rules.ts';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
-import { canWrite } from '../core/git-version.ts';
+import { readOnly } from '../core/git-version.ts';
 import { isRepoPath, parentFolder, parseRepoPath } from '../core/path-filter.ts';
 import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../core/wording.ts';
 import { isCommitId } from '../git/details.ts';
@@ -129,11 +129,13 @@ const shortOf = (ctx: MenuArg) => panel().shortHash(commitArg(ctx).hash);
 
 let toldGitTooOld = false;
 
-/** Write operations need git 2.34; an older one is named once per session, then in the status bar. */
+/**
+ * Write operations need git 2.34; an older one is named once per session, then in the status bar.
+ * `strata.readOnly` disables them in menus first; this guards the ways around enablement.
+ */
 async function gitCanWrite(host: FlowHost): Promise<boolean> {
   const v = await readGitVersion(host.git, host.cwd);
-  // An unparsable version is left for git itself to judge.
-  if (!v || canWrite(v)) return true;
+  if (!v || !readOnly(v)) return true;
   const message = gitTooOld(v.join('.'));
   if (toldGitTooOld) vscode.window.setStatusBarMessage(message, 5000);
   else void host.ui.notify('error', message);

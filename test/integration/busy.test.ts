@@ -45,6 +45,11 @@ describe('while an operation runs', () => {
     assert.equal(s.status, `${order().length} commits`);
   });
 
+  it('leaves the commands that change the repository on with a git new enough to write', async () => {
+    await waitFor('the git version read', () => api.contextValue('strata.readOnly') !== undefined);
+    assert.equal(api.contextValue('strata.readOnly'), false);
+  });
+
   it('does not show its own unfinished steps as an operation that stopped, even when reloaded', async () => {
     const restore = await snapshotRepo();
     await setIdentity();
