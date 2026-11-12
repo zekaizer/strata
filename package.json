@@ -1,6 +1,6 @@
 {
   "name": "strata",
-  "displayName": "Strata",
+  "displayName": "Strata Git Graph",
   "description": "Commit graph for git repositories",
   "version": "0.0.1",
   "publisher": "zekaizer",
