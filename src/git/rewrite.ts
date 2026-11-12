@@ -60,6 +60,55 @@ export async function readUnpushed(git: string, cwd: string, base: string | unde
   return new Set(out.split('\n').filter((h) => h !== ''));
 }
 
+/** How many commits from HEAD down its first-parent line no remote-tracking branch has, `limit` at most. */
+export async function countUnpushed(git: string, cwd: string, limit = LINE_LIMIT): Promise<number> {
+  const out = await runGit(git, cwd, [
+    'rev-list',
+    '--count',
+    '--first-parent',
+    `--max-count=${limit}`,
+    'HEAD',
+    '--not',
+    '--remotes',
+    '--',
+  ]);
+  return Number(out.trim());
+}
+
+/**
+ * The paths each commit changed, by full id, newest first: HEAD's first-parent line down to the
+ * first merge (left out), `limit` commits at most. A rename lists both of its paths.
+ */
+export async function readLineFiles(git: string, cwd: string, limit = LINE_LIMIT): Promise<Map<string, string[]>> {
+  const out = await runGit(git, cwd, [
+    'log',
+    '--first-parent',
+    '--no-show-signature',
+    '--name-only',
+    '--no-renames',
+    '-z',
+    `--max-count=${limit}`,
+    '--format=%x00%H %P',
+    'HEAD',
+    '--',
+  ]);
+  // Every commit is an empty field, "<id> <parents>", then its paths, the first after a newline.
+  const files = new Map<string, string[]>();
+  const f = out.split('\0');
+  let of: string[] | undefined;
+  for (let i = 0; i < f.length; i++) {
+    if (f[i] !== '') {
+      of?.push(f[i]!.replace(/^\n/, ''));
+      continue;
+    }
+    const [hash, ...parents] = (f[++i] ?? '').split(' ').filter((p) => p !== '');
+    if (hash === undefined) continue;
+    if (parents.length > 1) break;
+    files.set(hash, (of = []));
+  }
+  return files;
+}
+
 /** The first of `upstream` (preferred) and the remote-tracking branches that has `commit`, by short name. */
 export async function readRemoteHaving(
   git: string,

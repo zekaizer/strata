@@ -15,6 +15,8 @@
 //   &refs=refs/heads/a,refs/tags/b: the ref filter's selection
 //   &changes=<staged>,<changed>,<conflicts>,<untracked>[,<submodules>]: uncommitted changes ("-" untracked: not counted)
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
+//   &reorder=<row>,<to row>[,1][;...]: the reorder mode, with those rows dragged onto the gap above <to row> (",1":
+//     still held there; "&reorder=": nothing moved yet); &reorderFacts=clash: every commit changes src/app.ts; =pushed: all but HEAD are on origin
 //   &readOnly=<git version>: git too old to change the repository, e.g. 2.30.1; its banner replaces &banner's
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
@@ -83,6 +85,12 @@ const rangeRows = params.get('range')?.split(',').map(Number);
 const editKind = params.get('edit');
 /** `editText=...`: what is typed into the editor; `saving=1` presses Save (the host never answers). */
 const editText = params.get('editText');
+const reorderDrags = params
+  .get('reorder')
+  ?.split(';')
+  .filter((d) => d !== '')
+  .map((d) => d.split(',').map(Number));
+const reorderKind = params.get('reorderFacts');
 const changes = ((q: string | null): ChangesSummary | undefined => {
   if (q === null) return undefined;
   const [staged = 0, unstaged = 0, conflicted = 0, untracked, submodules = 0] = q.split(',').map((n) => Number(n));
@@ -197,6 +205,23 @@ function reset(): void {
 }
 
 /** The draft the host would open the editor with on `hashes` (oldest first): the scenario's own facts. */
+/** The facts of the reorder mode, as the host reads them for HEAD's first-parent line. */
+function sendReorderFacts(): void {
+  const head = data?.refs.head;
+  if (!data || head === undefined) return;
+  const byHash = new Map(data.commits.map((c) => [c.hash, c]));
+  const files: Record<string, string[]> = {};
+  for (let c = byHash.get(head); c && c.parents.length === 1; c = byHash.get(c.parents[0]!))
+    files[c.hash] = reorderKind === 'clash' ? ['src/app.ts'] : (data.details[c.hash]?.files.map((f) => f.path) ?? []);
+  toWebview({
+    type: 'reorderFacts',
+    head,
+    files,
+    unpushed: reorderKind === 'pushed' ? 1 : Object.keys(files).length,
+    ...(reorderKind === 'pushed' ? { upstream: 'origin/main' } : {}),
+  });
+}
+
 function draftOf(d: PlaygroundData, kind: 'reword' | 'squash', hashes: string[]): MessageDraft {
   const at = (h: string) => d.commits.findIndex((c) => c.hash === h);
   const commits = hashes.map((hash) => {
@@ -320,6 +345,13 @@ async function onMessage(m: WebviewToHost): Promise<void> {
               type: 'editMessage',
               draft: draftOf(data!, 'squash', rangeHashes(rangeRows[0]!, rangeRows[1]!)),
             });
+        }, 50);
+      }
+      if (reorderDrags !== undefined && offset === commits.length) {
+        setTimeout(() => {
+          sendReorderFacts();
+          for (const [index, to, hold] of reorderDrags)
+            toWebview({ type: 'simulate', action: { kind: 'dragRow', index: index!, to: to!, hold: hold === 1 } });
         }, 50);
       }
       if (editText !== null && editKind !== null && offset === commits.length) {
@@ -451,6 +483,14 @@ async function onMessage(m: WebviewToHost): Promise<void> {
         toWebview({ type: 'editMessage', draft: draftOf(data, 'reword', [ctx['strataHash']]) });
       if (data && m.command === 'strata.squashSelected')
         toWebview({ type: 'editMessage', draft: draftOf(data, 'squash', selection) });
+      if (m.command === 'strata.reorderCommits') sendReorderFacts();
+      if (m.command === 'strata.applyReorder') {
+        toWebview({ type: 'busy', label: 'Reordering commits' });
+        setTimeout(() => {
+          toWebview({ type: 'busy', label: undefined });
+          toWebview({ type: 'reorderEnded', applied: false });
+        }, 1500);
+      }
       if (m.command === 'strata.saveEdit')
         setTimeout(() => {
           toWebview({ type: 'editEnded', applied: false });

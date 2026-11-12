@@ -1380,13 +1380,20 @@ export interface RewriteFacts {
   stays: readonly { name: string; why: StayReason }[];
 }
 
-const EDIT_VERB: Record<EditKind, string> = { reword: 'Save', squash: 'Squash', fixup: 'Fix Up', drop: 'Drop' };
+const EDIT_VERB: Record<EditKind, string> = {
+  reword: 'Save',
+  squash: 'Squash',
+  fixup: 'Fix Up',
+  drop: 'Drop',
+  reorder: 'Reorder',
+};
 
 const QUESTION: Record<EditKind, (f: RewriteFacts) => string> = {
   reword: (f) => `Save the new message of ${f.what}?`,
   squash: (f) => `Squash ${f.what} on ${f.branch}?`,
   fixup: (f) => `Fix up ${f.what}?`,
   drop: (f) => `Drop ${f.what} from ${f.branch}?`,
+  reorder: (f) => `Reorder ${f.what} on ${f.branch}?`,
 };
 
 const names = (refs: readonly string[]) => fileList(refs.map(refName));
@@ -1493,6 +1500,8 @@ export function rewriteRefused(r: Refusal, short: string, branch: string): strin
       return 'The commit message is empty.';
     case 'nothingLeft':
       return `Dropping every commit would leave ${branch} with none.`;
+    case 'unchanged':
+      return `The commits of ${branch} are in that order already; nothing was reordered.`;
   }
 }
 
@@ -1506,6 +1515,42 @@ export const messageTooLong = (length: number): string =>
 export const editOutdated = (branch: string): string =>
   `${branch} changed since the editor opened; nothing was rewritten and your message is kept.`;
 
+/** Apply in the reorder mode entered at another HEAD than `branch` (refName or HEAD) has now. */
+export const reorderOutdated = (branch: string): string =>
+  `${branch} changed since the reorder started; nothing was reordered.`;
+
+/** Reorder Commits... where HEAD's line has fewer than two commits down to its first merge. */
+export const nothingToReorder = (branch: string): string =>
+  `${branch} has fewer than two commits above its last merge, so there is nothing to reorder.`;
+
+/** The reorder mode: its banner, and what a draft says on the rows. `branch` as the toolbar names it. */
+export const REORDER_MODE = {
+  label: 'Reorder commits',
+  lead: (branch: string | undefined): string => `Reordering ${branch ?? 'HEAD'}`,
+  hint: 'Drag a commit, or press Alt+Up or Alt+Down.',
+  moved: (n: number): string => `${plural(n, 'commit')} moved.`,
+  /** `files`: how many paths the commits put the other way round share, `file` one of them. */
+  mayConflict: (file: string, files: number): string =>
+    `May conflict in ${file}${files > 1 ? ` and ${plural(files - 1, 'more file')}` : ''}.`,
+  /** `n` of the rewritten commits are on `upstream` (a remote-tracking branch's short name). */
+  pushed: (n: number, upstream: string | undefined): string =>
+    `Rewrites ${plural(n, 'commit')} already on ${upstream ?? 'a remote'}.`,
+  apply: 'Apply',
+  cancel: 'Cancel',
+  /** The chip of a commit that may conflict. */
+  clash: 'May conflict',
+  /** The chip of a moved commit: `rows` it went, negative is up. */
+  distance: (rows: number): string => `${rows < 0 ? '↑' : '↓'}${Math.abs(rows)}`,
+  /** What a screen reader hears of the same. */
+  distanceSpoken: (rows: number): string => `moved ${rows < 0 ? 'up' : 'down'} ${plural(Math.abs(rows), 'row')}`,
+  handle: 'Drag to reorder',
+  /** Under several selected commits. */
+  selection:
+    'Drag the selection, or press Alt+Up or Alt+Down, to move it · Shift-click another commit to change the selection',
+  /** Reorder Commits... on a branch badge while a file or folder history is shown. */
+  wholeHistory: 'Reordering commits needs the whole history: clear the path filter first.',
+} as const;
+
 export const fixupPick = (c: CommitRef): { title: string; placeholder: string } => ({
   title: `Fix Up ${commitName(c)} into…`,
   placeholder: 'The older commit its changes belong to',
@@ -1517,6 +1562,7 @@ export const REWRITE_UNDO: Record<EditKind, string> = {
   squash: 'squash',
   fixup: 'fixup',
   drop: 'drop',
+  reorder: 'reorder',
 };
 
 export const REWRITE_DOING = {
@@ -1524,6 +1570,7 @@ export const REWRITE_DOING = {
   squash: (n: number): string => `Squashing ${plural(n, 'commit')}`,
   fixup: (short: string, into: string): string => `Fixing up ${short} into ${into}`,
   drop: (n: number, branch: string): string => `Dropping ${plural(n, 'commit')} from ${branch}`,
+  reorder: (n: number, branch: string): string => `Reordering ${plural(n, 'commit')} on ${branch}`,
 };
 
 /** `moved`: the other branches that moved along (short names). */
@@ -1532,6 +1579,7 @@ export const REWRITE_DONE = {
   squash: (n: number, now: string): string => `Squashed ${n} commits into ${now}`,
   fixup: (short: string, into: string): string => `Fixed up ${short} into ${into}`,
   drop: (n: number, branch: string): string => `Dropped ${plural(n, 'commit')} from ${branch}`,
+  reorder: (n: number, branch: string): string => `Reordered ${plural(n, 'commit')} on ${branch}`,
   moved: (done: string, moved: readonly string[]): string =>
     moved.length === 0 ? done : `${done}; moved ${names(moved)} along`,
 };

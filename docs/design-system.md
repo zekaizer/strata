@@ -1,7 +1,7 @@
 # Strata design system
 
 > English copy of the [Strata design system artifact](https://claude.ai/artifact/AKgFR4o6MTFjcrnQKGsVGK), the
-> single source of truth, as of its change at 2026-11-11T06:13:21Z. Do not change this file on its own: change the
+> single source of truth, as of its change at 2026-11-12T14:00:11Z. Do not change this file on its own: change the
 > artifact, then bring this copy in line. Component previews and `components/bundle.css` live in the artifact.
 
 Strata is a git commit graph inside VS Code. It lives in the workbench, so its whole visual language is VS Code's. It
@@ -312,7 +312,7 @@ Rows and the graph canvas stack in document order, below these.
 
 ### Banner
 
-An operation's state and its actions, between the toolbar and the list: `.banner`, `.banner.warning`.
+The state of an operation or a mode and its actions, between the toolbar and the list: `.banner`, `.banner.warning`.
 
 #### When to use
 
@@ -323,6 +323,12 @@ Also while Strata cannot change the repository at all (git older than 2.34): `.b
 resolves this state, so it has no `.banner-actions`. `.banner-lead` says why and `.banner-more` says what follows from
 it. There is one banner slot. In this state every button of an operation banner is dead, so the read-only banner takes
 the place of the operation banner.
+
+Also for a mode that builds a draft in the list (reordering commits): `.banner`. The sentence names the mode and its
+target ("Reordering feature/search"); `.banner-more` says the draft's state ("2 commits moved") and what applying it
+brings. The buttons are Apply and Cancel, and Apply is `disabled` while the draft changes nothing. When the draft
+rewrites pushed commits or may conflict, the banner turns `.banner.warning` and `.banner-more` says so. The operation
+banner and the read-only banner come before this one.
 
 #### What the consumer provides
 
@@ -411,7 +417,9 @@ A ref, a stash or a short label: `.chip`. A ref is always drawn as a chip.
 
 #### When to use
 
-Every ref (branch, remote, tag, HEAD), every stash, and short status labels ("Rebasing onto", "Stopped here").
+Every ref (branch, remote, tag, HEAD), every stash, and short status labels ("Rebasing onto", "Stopped here"). A chip
+also says how a draft changed a row: the distance moved is a chip with no kind ("↑2", "↓1"), a row that may conflict
+is `chip-warning.chip-outline` ("May conflict").
 
 #### What the consumer provides
 

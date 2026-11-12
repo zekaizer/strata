@@ -5,9 +5,11 @@ import {
   fixupPick,
   MESSAGE_LIMIT,
   messageTooLong,
+  nothingToReorder,
   notMovedAlong,
   plural,
   refName,
+  reorderOutdated,
   REWRITE_DOING,
   REWRITE_DONE,
   REWRITE_UNDO,
@@ -21,7 +23,9 @@ import {
 import { readConfigBool, readGitVersion, readUpstream } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import {
+  countUnpushed,
   readLine,
+  readLineFiles,
   readRefsHaving,
   readRemoteHaving,
   readUnpushed,
@@ -48,10 +52,18 @@ interface Prepared {
   facts: RewriteFacts;
   /** Short ids by full id, of the commits the plan touches. */
   short: ReadonlyMap<string, string>;
+  /** What the edit names; of a reorder, HEAD and the deepest commit that changes place. */
+  n: Named;
 }
 
 /** The commits an edit names, newest first, and the one the result is shown at. */
-function named(edit: Edit): { newest: string; oldest: string; focus: string } {
+interface Named {
+  newest: string;
+  oldest: string;
+  focus: string;
+}
+
+function named(edit: Exclude<Edit, { kind: 'reorder' }>): Named {
   switch (edit.kind) {
     case 'reword':
       return { newest: edit.commit, oldest: edit.commit, focus: edit.commit };
@@ -83,21 +95,33 @@ type Planned = Omit<Prepared, 'fates' | 'facts'>;
 /** Plans `edit` on HEAD's line; resolves undefined, having said why, when it cannot be carried out. */
 async function plan(host: FlowHost, edit: Edit, line?: readonly LineCommit[]): Promise<Planned | undefined> {
   const h = await head(host);
-  const n = named(edit);
-  const read = line ?? (await lineTo(host, h, n.oldest));
+  const read =
+    line ??
+    (edit.kind === 'reorder'
+      ? await readLine(host.git, host.cwd, undefined, edit.order.length)
+      : await lineTo(host, h, named(edit).oldest));
   if (!read) return undefined;
   const planned = planOf(edit, read);
   if (typeof planned === 'string') {
-    const [short] = (await shortIds(host, [n.newest])).values();
-    void host.ui.notify('info', rewriteRefused(planned, short ?? n.newest, h.name));
+    // A reorder is refused for the commit that is not at the top of the line, else for the oldest it names.
+    const about =
+      edit.kind === 'reorder'
+        ? (edit.order.find((o) => !read.some((c) => c.hash === o)) ?? read[read.length - 1]?.hash ?? h.hash)
+        : named(edit).newest;
+    const [short] = (await shortIds(host, [about])).values();
+    void host.ui.notify('info', rewriteRefused(planned, short ?? about, h.name));
     return undefined;
   }
+  const n =
+    edit.kind === 'reorder'
+      ? { newest: read[0]!.hash, oldest: read[planned.steps.length - 1]!.hash, focus: read[0]!.hash }
+      : named(edit);
   const made = inPlace(planned, read) ? chain(planned, read) : undefined;
   const short = await shortIds(
     host,
     planned.steps.map((st) => st.commit),
   );
-  return { edit, h, line: read, plan: planned, made, short };
+  return { edit, h, line: read, plan: planned, made, short, n };
 }
 
 /**
@@ -106,15 +130,14 @@ async function plan(host: FlowHost, edit: Edit, line?: readonly LineCommit[]): P
  * milliseconds on a large repository (refs on other lines are walked back to the commits' date).
  */
 async function survey(host: FlowHost, p: Planned): Promise<Prepared> {
-  const { edit, h, plan: planned, made, short } = p;
-  const n = named(edit);
+  const { edit, h, plan: planned, made, short, n } = p;
   const rewritten = new Set(planned.steps.map((st) => st.commit));
   const ref = headRef(h.branch);
   // Branches checked out in other worktrees, as the graph last read them.
   const elsewhere = new Set(host.refs.worktrees.flatMap((w) => (w.branch === undefined ? [] : [w.branch])));
   const [unpushed, having, upstream] = await Promise.all([
     readUnpushed(host.git, host.cwd, planned.base),
-    readRefsHaving(host.git, host.cwd, planned.steps[0]!.commit),
+    readRefsHaving(host.git, host.cwd, n.oldest),
     h.branch === undefined ? undefined : readUpstream(host.git, host.cwd, h.branch),
   ]);
   const pushed = p.line.filter((c) => rewritten.has(c.hash) && !unpushed.has(c.hash));
@@ -135,6 +158,7 @@ async function survey(host: FlowHost, p: Planned): Promise<Prepared> {
     squash: () => plural(count, 'commit'),
     fixup: () => `${s(n.newest)} into ${s(n.oldest)}`,
     drop: () => plural(count, 'commit'),
+    reorder: () => plural(count, 'commit'),
   } satisfies Record<EditKind, () => string>;
   const facts: RewriteFacts = {
     edit: edit.kind,
@@ -238,6 +262,42 @@ export async function fixupIntoOlder(host: FlowHost, hash: string): Promise<void
   await rewrite(host, { kind: 'fixup', commit: hash, into }, line);
 }
 
+/** Reorder Commits...: reads what the reorder mode shows of HEAD's line and hands it to the graph. */
+export async function reorderFacts(host: FlowHost): Promise<void> {
+  const h = await head(host);
+  const [files, unpushed, upstream] = await Promise.all([
+    readLineFiles(host.git, host.cwd),
+    countUnpushed(host.git, host.cwd),
+    h.branch === undefined ? undefined : readUpstream(host.git, host.cwd, h.branch),
+  ]);
+  const line = [...files.keys()];
+  if (line.length < 2) {
+    void host.ui.notify('info', nothingToReorder(h.name));
+    return;
+  }
+  const pushed = line[unpushed];
+  const remote = pushed && (await readRemoteHaving(host.git, host.cwd, pushed, upstream?.ref));
+  host.reorderFacts({
+    head: line[0]!,
+    files: Object.fromEntries(files),
+    unpushed,
+    ...(remote === undefined ? {} : { upstream: remote }),
+  });
+}
+
+/**
+ * Apply in the reorder mode: `order` is the top of HEAD's line, newest first, as it is to be,
+ * unless HEAD moved since the mode was entered at `opened`. Resolves whether it was applied.
+ */
+export async function applyReorder(host: FlowHost, order: readonly string[], opened: string): Promise<boolean> {
+  const h = await head(host);
+  if (h.hash !== opened) {
+    void host.ui.notify('info', reorderOutdated(h.name));
+    return false;
+  }
+  return rewrite(host, { kind: 'reorder', order });
+}
+
 /** Drop Commit... and Drop Selected Commits...: `hashes` newest first, a run of HEAD's line. */
 export async function dropCommits(host: FlowHost, hashes: readonly string[]): Promise<void> {
   await rewrite(host, { kind: 'drop', newest: hashes[0]!, oldest: hashes[hashes.length - 1]! });
@@ -250,15 +310,32 @@ async function rewrite(host: FlowHost, edit: Edit, line?: readonly LineCommit[])
   return p.made ? rewriteInPlace(host, p, p.made) : rewriteByRebase(host, p);
 }
 
+const short = (p: Prepared) => (h: string) => p.short.get(h) ?? h.slice(0, 7);
+const dropped = (p: Prepared) => p.plan.steps.filter((st) => st.action === 'drop').length;
+const squashed = (p: Prepared) => p.made?.find((c) => c.replaces.includes(p.n.oldest))?.replaces.length ?? 0;
+
 const label = (p: Prepared): string => {
-  const n = named(p.edit);
-  const s = (h: string) => p.short.get(h) ?? h.slice(0, 7);
-  const count = p.plan.steps.filter((st) => st.action === 'drop').length;
+  const n = p.n;
+  const s = short(p);
   return {
     reword: () => REWRITE_DOING.reword(s(n.newest)),
-    squash: () => REWRITE_DOING.squash(p.made?.find((c) => c.replaces.includes(n.oldest))?.replaces.length ?? 0),
+    squash: () => REWRITE_DOING.squash(squashed(p)),
     fixup: () => REWRITE_DOING.fixup(s(n.newest), s(n.oldest)),
-    drop: () => REWRITE_DOING.drop(count, p.h.name),
+    drop: () => REWRITE_DOING.drop(dropped(p), p.h.name),
+    reorder: () => REWRITE_DOING.reorder(p.plan.steps.length, p.h.name),
+  }[p.edit.kind]();
+};
+
+/** What the rewrite did, once it ran; `now`: the short id of the commit an in-place rewrite made. */
+const done = (p: Prepared, now = ''): string => {
+  const n = p.n;
+  const s = short(p);
+  return {
+    reword: () => REWRITE_DONE.reword(s(n.oldest), now),
+    squash: () => REWRITE_DONE.squash(squashed(p), now),
+    fixup: () => REWRITE_DONE.fixup(s(n.newest), s(n.oldest)),
+    drop: () => REWRITE_DONE.drop(dropped(p), p.h.name),
+    reorder: () => REWRITE_DONE.reorder(p.plan.steps.length, p.h.name),
   }[p.edit.kind]();
 };
 
@@ -318,7 +395,7 @@ async function rewriteInPlace(host: FlowHost, p: Prepared, made: NewCommit[]): P
   if (ids === undefined) return false;
   const newHead = ids[ids.length - 1]!;
   const undoLabel = REWRITE_UNDO[p.edit.kind];
-  const focusOld = named(p.edit).focus;
+  const focusOld = p.n.focus;
   const focus = ids[made.findIndex((c) => c.replaces.includes(focusOld))] ?? newHead;
   const expect = (rev: string, hash: string, name: string): Expect => ({
     rev,
@@ -348,18 +425,9 @@ async function rewriteInPlace(host: FlowHost, p: Prepared, made: NewCommit[]): P
     ],
     focus: focusOld,
   };
-  const n = named(p.edit);
-  const s = (h: string) => p.short.get(h) ?? h.slice(0, 7);
   const [nowShort] = (await shortIds(host, [focus])).values();
-  const done = {
-    reword: () => REWRITE_DONE.reword(s(n.oldest), nowShort ?? focus),
-    squash: () =>
-      REWRITE_DONE.squash(made.find((c) => c.replaces.includes(n.oldest))!.replaces.length, nowShort ?? focus),
-    fixup: () => REWRITE_DONE.fixup(s(n.newest), s(n.oldest)),
-    drop: () => REWRITE_DONE.drop(n.oldest === n.newest ? 1 : 0, p.h.name),
-  }[p.edit.kind]();
   const message = REWRITE_DONE.moved(
-    done,
+    done(p, nowShort ?? focus),
     moved.map((m) => m.ref.short),
   );
   if (notMoved.length > 0)
@@ -386,12 +454,8 @@ async function rewriteByRebase(host: FlowHost, p: Prepared): Promise<boolean> {
   );
   if (!r) return false;
   const after = (await head(host)).hash;
-  const n = named(p.edit);
-  const s = (h: string) => p.short.get(h) ?? h.slice(0, 7);
-  const dropped = p.plan.steps.filter((st) => st.action === 'drop').length;
   await finishRestoring(host, r, {
-    message:
-      p.edit.kind === 'drop' ? REWRITE_DONE.drop(dropped, p.h.name) : REWRITE_DONE.fixup(s(n.newest), s(n.oldest)),
+    message: done(p),
     focus: after,
     undo: moveUndo(host, REWRITE_UNDO[p.edit.kind], p.h, after),
   });

@@ -159,6 +159,11 @@ export class GraphPanel implements vscode.Disposable {
     this.controller?.shown?.editEnded(applied);
   }
 
+  /** Tells the reorder mode how its Apply ended, when a repository is shown. */
+  reorderEnded(applied: boolean): void {
+    this.controller?.shown?.reorderEnded(applied);
+  }
+
   openBadgeFilter(pattern: string): void {
     this.post({ type: 'openBadgeFilter', pattern });
   }

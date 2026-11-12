@@ -26,7 +26,7 @@ import {
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
 import { emptyState } from '../core/empty-state.ts';
-import { PATH_HISTORY } from '../core/wording.ts';
+import { PATH_HISTORY, REORDER_MODE } from '../core/wording.ts';
 import { shiftClick, type ShiftClickResult } from '../core/range-select.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
@@ -68,8 +68,20 @@ import type {
   SimulatedAction,
   ViewOptions,
   MessageDraft,
+  ReorderFacts,
   ToWorker,
 } from '../shared/protocol.ts';
+import {
+  applyOrder,
+  draftView,
+  gapAt,
+  moveInDraft,
+  startReorder,
+  stepInDraft,
+  withLine,
+  type DraftView,
+  type ReorderMode,
+} from './reorder-mode.ts';
 import {
   cardRefs,
   fitBadges,
@@ -363,13 +375,37 @@ class App {
   private commits: Commit[] = [];
   /** Parents of the loaded commits, by commit: all of them, also in first-parent history. */
   private parentsOf = new Map<string, readonly string[]>();
-  /** Loaded commits Strata can rewrite (rewritableLine), newest first, by position. */
+  /** HEAD's line as it is (rewritableLine of the loaded commits), newest first. */
+  private headLine: string[] = [];
+  /** The commits Strata can rewrite as the rows show them (a draft's order in the reorder mode), by position. */
   private rewritable = new Map<string, number>();
   private rewritableLine: string[] = [];
+  /** The list row of each row of HEAD's line, while a draft is shown. */
+  private lineRows: number[] = [];
   /** A multi-selection: the rewritable commits from where it started to where Shift-click took it. */
   private range: { anchor: string; end: string } | undefined;
   /** The inline message editor: what the host opened it with, its text, and whether Save is running. */
   private editor: { draft: MessageDraft; text: string; saving: boolean } | undefined;
+  /** The reorder mode; undefined outside it. */
+  private mode: ReorderMode | undefined;
+  /** What `mode` says on the rows; undefined while HEAD's line is not loaded as far as the draft goes. */
+  private draft: DraftView | undefined;
+  /**
+   * A press on a row of the line in the reorder mode; `drag` once the pointer went DRAG_THRESHOLD
+   * away: the block order[from..to] and the gap it would drop into, `warn` when that may conflict.
+   */
+  private press:
+    | {
+        x: number;
+        y: number;
+        index: number;
+        pointer: number;
+        drag?: { from: number; to: number; gap: number; warn: boolean };
+      }
+    | undefined;
+  /** The click that follows a drag belongs to the drag. */
+  private dragged = false;
+  private readonly dropIndicator = el('div', 'drop-indicator');
   private rows: Row[] = [];
   /** The layout run (ToWorker) `rows` and `spans` come from, and the last one handed out. */
   private run = 0;
@@ -432,7 +468,10 @@ class App {
   private alerted = '';
   private readonly banner = new BannerView(
     (action) => {
-      vscode.postMessage({ type: 'menuCommand', command: action.command, context: action.context ?? {} });
+      if ('command' in action)
+        vscode.postMessage({ type: 'menuCommand', command: action.command, context: action.context ?? {} });
+      else if (action.local === 'applyReorder') this.applyReorder();
+      else this.leaveReorder();
     },
     (hash) => {
       this.selectHash(hash);
@@ -628,7 +667,8 @@ class App {
     this.empty.hidden = true;
     this.originNote.hidden = true;
     this.originNote.setAttribute('role', 'note');
-    this.sizer.append(this.rowsLayer, this.expansion, this.empty, this.originNote);
+    this.dropIndicator.hidden = true;
+    this.sizer.append(this.rowsLayer, this.expansion, this.empty, this.originNote, this.dropIndicator);
     this.scroller.append(this.sizer);
     this.viewport.append(this.scroller, this.canvas, this.findWidget.element);
     // Ctrl+F (Cmd+F) anywhere in the graph; the strata.find key binding covers focus outside it.
@@ -681,6 +721,7 @@ class App {
       this.saveState();
     });
     this.trackNodeHover();
+    this.trackDrag();
     // Shift-click extends the selection: the browser would select text instead.
     this.scroller.addEventListener('mousedown', (e) => {
       if (e.shiftKey && !e.composedPath().includes(this.expansion)) e.preventDefault();
@@ -690,6 +731,10 @@ class App {
       // By the dispatch path: the target may already be detached (a fold or a parent link
       // rebuilds the details), and its position would then hit the row under the pointer.
       if (e.composedPath().includes(this.expansion)) return;
+      if (this.dragged) {
+        this.dragged = false;
+        return;
+      }
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.list.length) return;
@@ -708,6 +753,13 @@ class App {
     // bubble up through the scroller and must not move the commit selection.
     this.scroller.addEventListener('keydown', (e) => {
       if (e.target === this.scroller) this.onKey(e);
+    });
+    // The mode's keys also work from its own buttons.
+    this.banner.element.addEventListener('keydown', (e) => {
+      if (!this.mode) return;
+      if (e.key === 'Escape') this.leaveReorder();
+      else if (!this.applyKey(e)) return;
+      e.preventDefault();
     });
     this.trackMenuTarget();
     new ResizeObserver(() => {
@@ -828,6 +880,7 @@ class App {
         this.readOnly = m.readOnly;
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
+        if (m.operation) this.leaveReorder();
         this.updateBanner();
         this.holdChangesActions();
         // Stash rows carry whether restoring them conflicted.
@@ -886,6 +939,21 @@ class App {
         {
           const effects = this.expansion.querySelector('.tidy-effects');
           if (effects) effects.textContent = ` · ${m.effects}`;
+        }
+        break;
+      case 'reorderFacts':
+        this.takeReorderFacts({
+          head: m.head,
+          files: m.files,
+          unpushed: m.unpushed,
+          ...(m.upstream === undefined ? {} : { upstream: m.upstream }),
+        });
+        break;
+      case 'reorderEnded':
+        if (m.applied) this.leaveReorder();
+        else if (this.mode) {
+          this.mode = { ...this.mode, applying: false };
+          this.redraft();
         }
         break;
       case 'editEnded':
@@ -1137,6 +1205,7 @@ class App {
       // HEAD is where it was.
       this.range = undefined;
       this.editor = undefined;
+      this.dropDraft();
       if (this.repo) this.saveState();
       const view = viewOf(this.saved, repo.root) ?? this.unkeyed;
       this.restore = view && { ...view };
@@ -1963,6 +2032,14 @@ class App {
         hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
       },
       this.readOnly,
+      this.mode && {
+        branch: this.refs.headBranch,
+        moved: this.draft?.moved.size ?? 0,
+        clashFile: this.draft?.clashFile,
+        clashFiles: this.draft?.clashFiles ?? 0,
+        pushed: this.draft?.pushed ?? 0,
+        upstream: this.mode.facts?.upstream,
+      },
     );
     const shown = !this.banner.element.hidden;
     this.banner.show(banner);
@@ -2001,6 +2078,7 @@ class App {
     // Before the first page there are no rows: that page brings any row that goes first.
     if (this.commits.length > 0 || this.done)
       this.appendRows(interleave(this.commits, 0, this.anchors, this.changesAt()));
+    this.showDraft();
     const survivor = (i: number) => {
       for (let j = i; j < old.length; j++) {
         const k = this.indexOf(rowHash(old[j]!));
@@ -2027,9 +2105,252 @@ class App {
    * are not HEAD's line: nothing is offered for rewriting there.
    */
   private findRewritable(): void {
-    const line = this.options.path ? [] : rewritableLine(this.refs.head, (h) => this.parentsOf.get(h));
-    this.rewritableLine = line;
-    this.rewritable = new Map(line.map((h, i) => [h, i]));
+    this.headLine = this.options.path ? [] : rewritableLine(this.refs.head, (h) => this.parentsOf.get(h));
+    // A draft is of the line of one HEAD, in the whole history.
+    if (this.mode && (this.mode.head !== this.refs.head || this.options.path)) {
+      this.dropDraft();
+      this.updateBanner();
+    }
+    this.showDraft();
+  }
+
+  /**
+   * Puts the commits of the reorder mode's draft in the rows of HEAD's line, or those rows' own
+   * commits back. A list row keeps its layout row, and with it its refs and its height.
+   */
+  private showDraft(): void {
+    const line = this.headLine;
+    if (this.mode) this.mode = withLine(this.mode, line);
+    // A reload shows the line as it is until it is loaded as far as the draft goes.
+    const mode = this.mode && this.mode.line.length === line.length && line.length > 0 ? this.mode : undefined;
+    const order = mode ? mode.order : line;
+    const drafted = this.draft !== undefined;
+    this.draft = mode && draftView(mode);
+    this.rewritableLine = [...order];
+    this.rewritable = new Map(order.map((h, i) => [h, i]));
+    this.lineRows = [];
+    if (!mode && !drafted) return;
+    const slots = new Map(line.map((h, i) => [h, i]));
+    let left = line.length;
+    for (let i = 0; i < this.list.length && left > 0; i++) {
+      const r = this.list[i]!;
+      const slot = r.kind === 'commit' ? slots.get(this.commits[r.row]?.hash ?? '') : undefined;
+      if (r.kind !== 'commit' || slot === undefined) continue;
+      left--;
+      this.lineRows[slot] = i;
+      const shown = this.commits[this.position(order[slot]!) ?? r.row]!;
+      if (shown !== r.commit) this.list[i] = { ...r, commit: shown };
+    }
+  }
+
+  /** The commit whose place in the history list row `r` is: another than it shows while a draft moved it. */
+  private slotHash(r: Extract<ListRow, { kind: 'commit' }>): string {
+    return this.draft ? (this.commits[r.row]?.hash ?? r.commit.hash) : r.commit.hash;
+  }
+
+  /** Reorder Commits... answered: enters the mode at HEAD, or takes the facts when it is in it. */
+  private takeReorderFacts(facts: ReorderFacts): void {
+    if (this.mode?.head === facts.head) this.mode = { ...this.mode, facts };
+    else if (this.options.path) {
+      this.tellAction(REORDER_MODE.wholeHistory);
+      return;
+    } else if (facts.head !== this.refs.head) return;
+    else {
+      this.range = undefined;
+      this.mode = startReorder(facts.head, this.headLine, facts);
+    }
+    this.redraft();
+  }
+
+  /** Shows `mode` after it changed, with the selection on the commit it was on. */
+  private redraft(): void {
+    const was = this.selectedHash();
+    this.showDraft();
+    const at = was === undefined ? -1 : this.indexOf(was);
+    if (at >= 0) this.selected = at;
+    this.updateBanner();
+    this.saveState();
+    this.queueRender();
+  }
+
+  /** Leaves the reorder mode without telling the rows. */
+  private dropDraft(): void {
+    this.mode = undefined;
+    this.endDrag();
+  }
+
+  /** Cancel, or the mode ended: the rows show HEAD's line as it is. */
+  private leaveReorder(): void {
+    if (!this.mode) return;
+    this.dropDraft();
+    this.redraft();
+  }
+
+  /** Apply: has the host rewrite what the draft changes. */
+  private applyReorder(): void {
+    const mode = this.mode;
+    if (!mode || mode.applying || this.busyLabel !== undefined) return;
+    const order = applyOrder(mode);
+    if (order.length === 0) return;
+    this.endDrag();
+    this.mode = { ...mode, applying: true };
+    this.menuCommand('strata.applyReorder', { order, head: mode.head });
+  }
+
+  /** Ctrl+Enter (Cmd on macOS) applies the draft. */
+  private applyKey(e: KeyboardEvent): boolean {
+    if (!this.mode || e.key !== 'Enter' || !(isMac ? e.metaKey : e.ctrlKey)) return false;
+    this.applyReorder();
+    return true;
+  }
+
+  /**
+   * Alt+Up or Alt+Down: moves the selected commit, or the selected run, one row in the draft.
+   * Outside the mode it enters it first, on a commit Strata can rewrite. False when the key is
+   * not the mode's.
+   */
+  private stepKey(e: KeyboardEvent): boolean {
+    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown'))
+      return false;
+    const hash = this.selectedHash();
+    const on = hash !== undefined && this.rewritable.has(hash);
+    if (!this.mode) {
+      if (
+        hash === undefined ||
+        !on ||
+        this.headLine.length < 2 ||
+        this.readOnly ||
+        this.operation ||
+        this.busyLabel !== undefined
+      )
+        return false;
+      this.mode = startReorder(this.headLine[0]!, this.headLine);
+      this.showDraft();
+      this.menuCommand('strata.reorderCommits', { webviewSection: 'commit', strataHash: hash });
+    }
+    if (hash !== undefined && on && !this.mode.applying && this.draft) {
+      const run = this.rangeHashes();
+      const block = run.length > 0 ? run : [hash];
+      const next = stepInDraft(
+        this.mode,
+        this.rewritable.get(block[0]!)!,
+        this.rewritable.get(block.at(-1)!)!,
+        e.key === 'ArrowUp' ? -1 : 1,
+      );
+      if (next) this.mode = next;
+    }
+    this.redraft();
+    if (this.selected >= 0) this.ensureVisible(this.selected);
+    if (this.draft) this.announce(this.banner.text);
+    return true;
+  }
+
+  /** In the reorder mode a press on a row of the line becomes a drag once the pointer goes DRAG_THRESHOLD away. */
+  private trackDrag(): void {
+    this.scroller.addEventListener('pointerdown', (e) => {
+      this.dragged = false;
+      if (!this.draft || this.mode?.applying || e.button !== 0 || e.shiftKey) return;
+      if (e.composedPath().includes(this.expansion)) return;
+      const index = this.rowAt(e.clientY - this.scroller.getBoundingClientRect().top + this.scroller.scrollTop);
+      const row = this.list[index];
+      if (row?.kind !== 'commit' || !this.rewritable.has(row.commit.hash)) return;
+      this.press = { x: e.clientX, y: e.clientY, index, pointer: e.pointerId };
+    });
+    this.scroller.addEventListener('pointermove', (e) => {
+      const p = this.press;
+      if (!p) return;
+      if (!p.drag && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_THRESHOLD) return;
+      p.y = e.clientY;
+      if (!p.drag && !this.startDrag(p)) return;
+      this.dragTo(e.clientY);
+    });
+    this.scroller.addEventListener('pointerup', () => {
+      const drag = this.press?.drag;
+      const next = drag && this.mode && moveInDraft(this.mode, drag.from, drag.to, drag.gap);
+      this.dragged = drag !== undefined;
+      this.endDrag();
+      if (!next) return;
+      this.mode = next;
+      this.redraft();
+      this.announce(this.banner.text);
+    });
+    this.scroller.addEventListener('pointercancel', () => {
+      this.endDrag();
+    });
+  }
+
+  /** Lifts the pressed row, or the selected run it is part of. False when it is not there any more. */
+  private startDrag(p: NonNullable<App['press']>): boolean {
+    const row = this.list[p.index];
+    const hash = row?.kind === 'commit' ? row.commit.hash : undefined;
+    const run = this.rangeHashes();
+    const block = hash !== undefined && run.includes(hash) ? run : [hash];
+    const from = this.rewritable.get(block[0] ?? '');
+    const to = this.rewritable.get(block.at(-1) ?? '');
+    if (!this.draft || from === undefined || to === undefined) {
+      this.press = undefined;
+      return false;
+    }
+    p.drag = { from, to, gap: from, warn: false };
+    document.body.classList.add('dragging-rows');
+    // Not for a simulated pointer, which has no id to capture.
+    try {
+      this.scroller.setPointerCapture(p.pointer);
+    } catch {
+      /* The drag then ends where the pointer leaves the list. */
+    }
+    const scroll = () => {
+      const now = this.press;
+      if (now !== p || !p.drag) return;
+      const box = this.scroller.getBoundingClientRect();
+      const by = p.y < box.top + DRAG_SCROLL_EDGE ? -1 : p.y > box.bottom - DRAG_SCROLL_EDGE ? 1 : 0;
+      if (by !== 0) {
+        this.scroller.scrollTop += by * DRAG_SCROLL_STEP;
+        this.dragTo(p.y);
+      }
+      requestAnimationFrame(scroll);
+    };
+    requestAnimationFrame(scroll);
+    return true;
+  }
+
+  /** Points the drag at the gap between the rows of the line nearest to the pointer. */
+  private dragTo(clientY: number): void {
+    const drag = this.press?.drag;
+    if (!drag || !this.mode) return;
+    const y = clientY - this.scroller.getBoundingClientRect().top + this.scroller.scrollTop;
+    const gap = gapAt(
+      this.lineRows.map((i) => this.rowTop(i) + this.geometry.height(i) / 2),
+      y,
+    );
+    if (gap !== drag.gap) {
+      const next = moveInDraft(this.mode, drag.from, drag.to, gap);
+      drag.warn = next !== undefined && draftView(next).clashFile !== undefined;
+    }
+    drag.gap = gap;
+    this.queueRender();
+  }
+
+  private endDrag(): void {
+    const p = this.press;
+    this.press = undefined;
+    if (!p?.drag) return;
+    document.body.classList.remove('dragging-rows');
+    if (this.scroller.hasPointerCapture(p.pointer)) this.scroller.releasePointerCapture(p.pointer);
+    this.queueRender();
+  }
+
+  /** Where a drag would drop: a line across the list in the gap, none where dropping changes nothing. */
+  private placeDropIndicator(): void {
+    const drag = this.press?.drag;
+    const rows = this.lineRows;
+    const stays = !drag || (drag.gap >= drag.from && drag.gap <= drag.to + 1) || rows.length === 0;
+    this.dropIndicator.hidden = stays;
+    if (stays) return;
+    const last = rows.at(-1)!;
+    const top = drag.gap < rows.length ? this.rowTop(rows[drag.gap]!) : this.rowTop(last) + this.geometry.height(last);
+    this.dropIndicator.style.top = `${top}px`;
+    this.dropIndicator.classList.toggle('warning', drag.warn);
   }
 
   /** The selected commits, newest first, when two or more are selected. */
@@ -2194,7 +2515,8 @@ class App {
     const index = this.rowAt(clientY - box.top + this.scroller.scrollTop);
     const item = this.list[index];
     const row = item && this.rows[item.row];
-    if (item?.kind !== 'commit' || !row) return undefined;
+    // A draft's rows show other commits than their nodes are.
+    if (item?.kind !== 'commit' || !row || this.draft) return undefined;
     const x = laneX(row.lane);
     // A node scrolled out of the clipped graph column is not on screen.
     if (x > this.canvas.clientWidth) return undefined;
@@ -2276,6 +2598,7 @@ class App {
 
   private setOptions(options: ViewOptions): void {
     this.clearActionError();
+    if (options.path) this.leaveReorder();
     this.options = options;
     this.updateOptionControls();
     this.saveState();
@@ -2631,6 +2954,10 @@ class App {
 
   private onKey(e: KeyboardEvent): void {
     if (this.copyKey(e)) return;
+    if (this.stepKey(e) || this.applyKey(e)) {
+      e.preventDefault();
+      return;
+    }
     // Rows move under a still pointer; a hover there would follow the keys around.
     if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', 'Enter', 'Escape'].includes(e.key))
       document.body.classList.add('hover-off');
@@ -2655,7 +2982,11 @@ class App {
       if (this.expanded) this.userCollapse();
       else this.expand();
     } else if (e.key === 'Escape') {
-      if (!this.stopJump()) this.userCollapse();
+      // What is open closes first: a drag, then the details, then the mode.
+      if (this.stopJump()) return;
+      if (this.press?.drag) this.endDrag();
+      else if (this.mode && !this.expanded) this.leaveReorder();
+      else this.userCollapse();
     }
   }
 
@@ -2720,6 +3051,8 @@ class App {
 
     this.syncSizer();
     if (this.expanded) this.placeExpansion();
+    this.root.classList.toggle('reordering', this.draft !== undefined);
+    this.placeDropIndicator();
     // Not on <html>: VS Code owns its style attribute, which is observed for theme changes.
     this.root.style.setProperty('--graph-width', `${gw}px`);
     const gap = width <= 600 ? 8 : 12;
@@ -2765,7 +3098,11 @@ class App {
       last,
       scrollTop,
       this.theme,
-      (c) => ({ head: c.hash === this.refs.head, merge: c.parents.length > 1 }),
+      // A draft shows another commit in HEAD's row: the node stays HEAD's.
+      (c) => ({
+        head: c.hash === (this.draft ? this.rewritableLine[0] : this.refs.head),
+        merge: c.parents.length > 1,
+      }),
       (i) => this.rowTop(i),
       (i) => this.geometry.height(i),
       this.gapHeight() > 0 ? { after: this.selected, height: this.gapHeight() } : undefined,
@@ -2834,8 +3171,9 @@ class App {
       row.classList.add('selected');
       row.setAttribute('aria-selected', 'true');
     }
-    // While several commits are selected, what Shift-click cannot add steps back.
-    if (selection.length > 0 && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
+    // While several commits are selected, what Shift-click cannot add steps back; in the reorder
+    // mode, what cannot be moved.
+    if ((selection.length > 0 || this.draft) && !this.rewritable.has(hashOf)) row.classList.add('out-of-reach');
     if (r.kind === 'changes') {
       this.fillChangesRow(row, r.changes);
       this.markMenuTarget(row, i);
@@ -2849,11 +3187,16 @@ class App {
       return row;
     }
     const c = r.commit;
-    const badgeRefs = this.badgeRefsByHash.get(c.hash) ?? [];
-    const badges = rowBadges(c.hash, badgeRefs, this.refs, (all) => this.fitBand(all), this.worktrees);
-    const hidden = (this.refsByHash.get(c.hash) ?? []).filter((r) => !badgeRefs.includes(r));
+    // Refs stay with the row a draft shows another commit in; the menu acts on the commit shown.
+    const slot = this.slotHash(r);
+    const badgeRefs = this.badgeRefsByHash.get(slot) ?? [];
+    const badges = rowBadges(slot, badgeRefs, this.refs, (all) => this.fitBand(all), this.worktrees);
+    const hidden = (this.refsByHash.get(slot) ?? []).filter((r) => !badgeRefs.includes(r));
     // The row's menu still offers the refs whose badges are hidden.
-    const refs = [...badges.flatMap((b) => b.refs), ...hidden.map((r) => r.name)];
+    const refs =
+      slot === c.hash
+        ? [...badges.flatMap((b) => b.refs), ...hidden.map((r) => r.name)]
+        : (this.refsByHash.get(c.hash) ?? []).map((r) => r.name);
     const branches = (this.refsByHash.get(c.hash) ?? []).filter(
       (r) => r.kind === 'branch' && r.short !== this.refs.headBranch,
     );
@@ -2872,9 +3215,9 @@ class App {
       strataParentRewritable: this.rewritable.has(c.parents[0] ?? ''),
       strataCompareWith: compareTarget(selectedCommit, selection.length > 0, c.hash),
     };
-    const selected: SelectionContext | undefined = selection.includes(c.hash)
-      ? this.selectionContext(c.hash, selection)
-      : undefined;
+    // Not in the reorder mode: a run of its draft need not be one of the history.
+    const selected: SelectionContext | undefined =
+      selection.includes(c.hash) && !this.mode ? this.selectionContext(c.hash, selection) : undefined;
     row.setAttribute('data-vscode-context', JSON.stringify(selected ?? context));
     if (badges.length > 0) {
       // Refs get a band of their own above the commit line, so the subject keeps its column.
@@ -2894,7 +3237,7 @@ class App {
       );
       row.append(band);
     }
-    if (c.hash === this.refs.head) row.classList.add('head');
+    if (slot === this.refs.head) row.classList.add('head');
     const path = this.options.path;
     const unchanged = path !== null && this.unchanged.has(c.hash);
     if (unchanged) row.classList.add('unchanged');
@@ -2915,6 +3258,7 @@ class App {
       if (note.warning) e.prepend(codicon('warning'));
       subject.append(e);
     }
+    const drafted = this.draftNotes(row, subject, c.hash);
     row.append(
       el('span', 'graph-spacer'),
       subject,
@@ -2931,18 +3275,52 @@ class App {
     // On the node the ref card stands in for the row's tooltip.
     if (this.refCard.hash !== c.hash) row.title = commitTitle(c);
     // Every ref, those collapsed into "+N" too, by kind: the badges show kinds by icon and color only.
-    const refsRead = refsLabel(rowBadges(c.hash, badgeRefs, this.refs, (all) => all.length, this.worktrees));
+    const refsRead = refsLabel(rowBadges(slot, badgeRefs, this.refs, (all) => all.length, this.worktrees));
     const said = [
       c.subject,
       pathNote,
       refsRead.charAt(0).toUpperCase() + refsRead.slice(1),
       hidden.length > 0 ? `Hidden: ${hidden.map((r) => r.short).join(', ')}` : undefined,
       note?.text,
+      ...drafted,
       `${c.author}, ${formatDate(c.authorTime)}, ${shortHash(c.hash)}`,
     ];
     row.setAttribute('aria-label', said.filter((t) => t).join('. '));
     this.markMenuTarget(row, i);
     return row;
+  }
+
+  /**
+   * What the reorder mode's draft says on the row of `hash`: a handle on a row that can be moved,
+   * how far it was moved, that it may conflict, and that applying rewrites it. Returns it as read out.
+   */
+  private draftNotes(row: HTMLElement, subject: HTMLElement, hash: string): string[] {
+    const at = this.rewritable.get(hash);
+    if (!this.draft || at === undefined) return [];
+    const said: string[] = [];
+    row.classList.add('movable');
+    const handle = codicon('gripper', 'reorder-handle');
+    handle.title = REORDER_MODE.handle;
+    subject.prepend(handle);
+    const drag = this.press?.drag;
+    if (drag && at >= drag.from && at <= drag.to) row.classList.add('dragging');
+    const rows = this.draft.moved.get(hash);
+    if (rows !== undefined) {
+      row.classList.add('moved');
+      const chip = el('span', 'chip draft-note');
+      chip.append(el('span', 'chip-text', REORDER_MODE.distance(rows)));
+      chip.title = REORDER_MODE.distanceSpoken(rows);
+      subject.append(chip);
+      said.push(REORDER_MODE.distanceSpoken(rows));
+    }
+    if (this.draft.clashing.has(hash)) {
+      const chip = el('span', 'chip chip-outline chip-warning draft-note');
+      chip.append(codicon('warning'), el('span', 'chip-text', REORDER_MODE.clash));
+      subject.append(chip);
+      said.push(REORDER_MODE.clash);
+    }
+    if (at < this.draft.rewritten) row.classList.add('rewritten');
+    return said;
   }
 
   /** A path history row's Diff, shown on hover: the commit's change to the filter's file. */
@@ -3395,7 +3773,9 @@ class App {
     const note = el(
       'div',
       'tidy-note',
-      `${shortHash(oldest)}..${shortHash(newest)} on ${this.refs.headBranch ?? 'HEAD'} · Shift-click another commit to change the selection`,
+      this.mode
+        ? REORDER_MODE.selection
+        : `${shortHash(oldest)}..${shortHash(newest)} on ${this.refs.headBranch ?? 'HEAD'} · Shift-click another commit to change the selection`,
     );
     const actions = el('div', 'tidy-actions');
     const button = (label: string, command: CommandId, primary = false) => {
@@ -3405,11 +3785,10 @@ class App {
       });
       return b;
     };
-    actions.append(
-      button('Squash...', 'strata.squashSelected', true),
-      button('Drop...', 'strata.dropSelected'),
-      button('Copy Hashes', 'strata.copySelectedHashes'),
-    );
+    // Squash and Drop take a run of the history, which a run of a draft need not be.
+    if (!this.mode)
+      actions.append(button('Squash...', 'strata.squashSelected', true), button('Drop...', 'strata.dropSelected'));
+    actions.append(button('Copy Hashes', 'strata.copySelectedHashes'));
     main.append(el('h2', 'details-subject', `${selection.length} commits selected`), note, actions);
     const side = el('div', 'details-files');
     side.append(el('div', 'section-title tidy-title', 'Selected commits'), this.commitRows(selection));
@@ -4165,6 +4544,25 @@ class App {
         save: this.expansion.querySelector('.tidy-actions .button.primary')?.textContent ?? '',
         saving: this.editor.saving,
       },
+      reorder: this.mode && {
+        head: this.mode.head,
+        order: [...this.mode.order],
+        facts: this.mode.facts,
+        applying: this.mode.applying,
+        shown: this.draft !== undefined,
+        drop: this.dropIndicator.hidden ? undefined : this.press?.drag?.gap,
+      },
+      draftRows: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')]
+          .map((r) => [
+            Number(r.dataset['index']),
+            [
+              ...['movable', 'moved', 'rewritten', 'dragging'].filter((c) => r.classList.contains(c)),
+              ...[...r.querySelectorAll('.draft-note')].map((n) => n.textContent),
+            ],
+          ])
+          .filter(([, tags]) => (tags as string[]).length > 0),
+      ) as Record<number, string[]>,
       selectionPanel: this.expansion.querySelector('.tidy-commits') !== null && field === null,
       repoSwitcher: this.switcher.probe(),
       commits: this.commits.length,
@@ -4333,6 +4731,7 @@ class App {
             text: this.banner.text,
             warning: this.banner.element.classList.contains('warning'),
             buttons: [...this.banner.element.querySelectorAll('.banner-button')].map((b) => b.textContent),
+            disabled: [...this.banner.element.querySelectorAll('.banner-button:disabled')].map((b) => b.textContent),
             links: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-link')].map((b) => b.title),
             busy: this.banner.element.querySelector('.banner-busy')?.textContent ?? undefined,
             tabStops: [...this.banner.element.querySelectorAll<HTMLElement>('.banner-button')]
@@ -4544,6 +4943,39 @@ class App {
         }
         break;
       }
+      case 'dragRow': {
+        this.ensureVisible(a.index);
+        this.render();
+        const box = this.scroller.getBoundingClientRect();
+        const y = (i: number, part: number) =>
+          box.top + this.rowTop(i) - this.scroller.scrollTop + this.geometry.height(i) * part;
+        const at = (type: string, clientY: number) =>
+          new PointerEvent(type, { bubbles: true, button: 0, clientX: box.left + 80, clientY });
+        const from = y(a.index, 0.5);
+        this.scroller.dispatchEvent(at('pointerdown', from));
+        this.scroller.focus({ preventScroll: true });
+        // A real drag passes the threshold on its way.
+        this.scroller.dispatchEvent(at('pointermove', from + 8));
+        if (a.edge) {
+          this.scroller.dispatchEvent(at('pointermove', a.edge === 'top' ? box.top + 4 : box.bottom - 4));
+          break;
+        }
+        this.scroller.dispatchEvent(at('pointermove', y(a.to, a.below ? 0.75 : 0.25)));
+        if (a.hold) break;
+        this.scroller.dispatchEvent(at('pointerup', y(a.to, a.below ? 0.75 : 0.25)));
+        // The browser sends a click after the release, also after a drag.
+        this.scroller.dispatchEvent(
+          new MouseEvent('click', { bubbles: true, clientX: box.left + 80, clientY: y(a.to, 0.5) }),
+        );
+        break;
+      }
+      case 'releaseDrag': {
+        const box = this.scroller.getBoundingClientRect();
+        const at = { bubbles: true, clientX: box.left + 80, clientY: this.press?.y ?? box.top };
+        this.scroller.dispatchEvent(new PointerEvent('pointerup', { ...at, button: 0 }));
+        this.scroller.dispatchEvent(new MouseEvent('click', at));
+        break;
+      }
       case 'hoverNode': {
         this.ensureVisible(a.index);
         this.render();
@@ -4636,6 +5068,12 @@ class App {
     }
   }
 }
+
+/** How far a pressed row's pointer goes, in px, before the press is a drag. */
+const DRAG_THRESHOLD = 5;
+/** A drag this near the list's top or bottom edge, in px, scrolls it, by so much a frame. */
+const DRAG_SCROLL_EDGE = 24;
+const DRAG_SCROLL_STEP = 8;
 
 /** How far from a node's centre, in px across and down, the pointer still rests on it. */
 const NODE_REACH = LANE_WIDTH / 2 + 1;

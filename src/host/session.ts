@@ -32,7 +32,14 @@ import { readWhere } from '../git/where.ts';
 import { pickStash } from './stash-pick.ts';
 import { runGit } from '../git/run.ts';
 import { readGraphStatus, readOperationState } from '../git/state.ts';
-import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost, WorkingDetails } from '../shared/protocol.ts';
+import type {
+  HostToWebview,
+  MessageDraft,
+  ReorderFacts,
+  ViewOptions,
+  WebviewToHost,
+  WorkingDetails,
+} from '../shared/protocol.ts';
 import { resolveConflicts } from './flows/changes.ts';
 import { setContext, type ContextKey } from './context.ts';
 import { readGitVersion, readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
@@ -1263,6 +1270,14 @@ export class RepoSession implements vscode.Disposable, FlowHost {
 
   editEnded(applied: boolean): void {
     this.post({ type: 'editEnded', applied });
+  }
+
+  reorderFacts(facts: ReorderFacts): void {
+    this.post({ type: 'reorderFacts', ...facts });
+  }
+
+  reorderEnded(applied: boolean): void {
+    this.post({ type: 'reorderEnded', applied });
   }
 
   busy(label: string | undefined): void {

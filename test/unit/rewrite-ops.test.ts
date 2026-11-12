@@ -4,7 +4,9 @@ import { mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { argv, env, type Operation } from '../../src/core/operations.ts';
+import { planOf, todoText } from '../../src/core/rewrite.ts';
 import { GitOpError, runOperation } from '../../src/git/op.ts';
+import { readLine } from '../../src/git/rewrite.ts';
 import { readOperationState } from '../../src/git/state.ts';
 import { tempDir } from './helpers.ts';
 
@@ -131,6 +133,53 @@ describe('history rewriting operations', () => {
     writeFileSync(todoPath, 'noop\n');
     await op(d, { kind: 'rebaseTodo', base: c1, todoPath, autostash: false });
     assert.equal(run(d, 'rev-parse', 'HEAD'), c1);
+  });
+
+  /** Runs the todo of a reorder of HEAD's line to `order` (subjects, newest first). */
+  const reorder = async (d: string, order: string[]) => {
+    const line = await readLine('git', d, undefined);
+    const hash = new Map(line.map((c) => [c.message.trim(), c.hash]));
+    const plan = planOf({ kind: 'reorder', order: order.map((s) => hash.get(s)!) }, line);
+    assert.ok(typeof plan !== 'string', `refused: ${typeof plan === 'string' ? plan : ''}`);
+    const todoPath = join(d, '.git', 'strata-todo');
+    writeFileSync(todoPath, todoText(plan));
+    return { base: plan.base, run: op(d, { kind: 'rebaseTodo', base: plan.base, todoPath, autostash: false }) };
+  };
+
+  it('runs the todo of a reorder: the commits in the new order on the commit below them', async () => {
+    const d = repo();
+    const [c1, c2] = [3, 2].map((k) => run(d, 'rev-parse', `HEAD~${k}`));
+    const tree = run(d, 'rev-parse', 'HEAD^{tree}');
+    const { base, run: ran } = await reorder(d, ['c2', 'c4', 'c3']);
+    assert.equal(base, c1, 'c1 keeps its place and is not replayed');
+    await ran;
+    assert.equal(run(d, 'log', '--format=%s').split('\n').join(' '), 'c2 c4 c3 c1');
+    assert.equal(run(d, 'rev-parse', 'HEAD~3'), c1);
+    assert.notEqual(run(d, 'rev-parse', 'HEAD'), c2);
+    assert.equal(run(d, 'rev-parse', 'HEAD^{tree}'), tree, 'the same content at the end');
+    assert.equal(run(d, 'ls-tree', '--name-only', 'HEAD~2').split('\n').join(' '), 'f1.txt f3.txt');
+  });
+
+  it('reorders down to the root commit', async () => {
+    const d = repo();
+    const { base, run: ran } = await reorder(d, ['c4', 'c3', 'c1', 'c2']);
+    assert.equal(base, undefined);
+    await ran;
+    assert.equal(run(d, 'log', '--format=%s').split('\n').join(' '), 'c4 c3 c1 c2');
+    assert.equal(run(d, 'rev-list', '--max-parents=0', '--format=%s', '--no-commit-header', 'HEAD'), 'c2');
+  });
+
+  it('stops at a reorder that conflicts with git keeping the rebase in progress', async () => {
+    const d = repo();
+    for (const t of ['a', 'b']) {
+      writeFileSync(join(d, 'f1.txt'), `${t}\n`);
+      run(d, 'commit', '--quiet', '-am', `f1 ${t}`);
+    }
+    const { run: ran } = await reorder(d, ['f1 a', 'f1 b']);
+    await assert.rejects(ran, GitOpError);
+    const state = await readOperationState('git', d);
+    assert.equal(state?.kind, 'rebase');
+    assert.match(run(d, 'status', '--porcelain'), /^UU f1\.txt$/m);
   });
 
   it('stops at a conflicting fixup with git keeping the rebase in progress', async () => {
