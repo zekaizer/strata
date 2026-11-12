@@ -48,7 +48,7 @@ export function activate(): void {
 }
 
 async function api(): Promise<StrataTestApi> {
-  const ext = vscode.extensions.getExtension<StrataTestApi>('zekaizer.strata')!;
+  const ext = vscode.extensions.getExtension<StrataTestApi>('zekaizer.strata-git-graph')!;
   return ext.activate();
 }
 
@@ -97,7 +97,7 @@ async function afterHostRestart(): Promise<Record<string, unknown>> {
   // Nothing here may activate Strata: it has to wake up by itself (onStartupFinished).
   const woke = await waitFor(
     'Strata activated after the host restart',
-    () => vscode.extensions.getExtension('zekaizer.strata')?.isActive,
+    () => vscode.extensions.getExtension('zekaizer.strata-git-graph')?.isActive,
     30_000,
   ).catch(() => false);
   if (!woke) return { reloaded: false, reason: 'not activated' };

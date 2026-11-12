@@ -4,8 +4,8 @@ import * as vscode from 'vscode';
 import type { StrataTestApi } from '../../src/extension.ts';
 
 export async function strata(): Promise<StrataTestApi> {
-  const ext = vscode.extensions.getExtension<StrataTestApi>('zekaizer.strata');
-  if (!ext) throw new Error('extension zekaizer.strata not found');
+  const ext = vscode.extensions.getExtension<StrataTestApi>('zekaizer.strata-git-graph');
+  if (!ext) throw new Error('extension zekaizer.strata-git-graph not found');
   return ext.activate();
 }
 

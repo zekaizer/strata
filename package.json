@@ -1,5 +1,5 @@
 {
-  "name": "strata",
+  "name": "strata-git-graph",
   "displayName": "Strata Git Graph",
   "description": "Commit graph for git repositories",
   "version": "0.1.0",
