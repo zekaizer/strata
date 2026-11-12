@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Attach the VSIX to the release
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check that the tag is the version in package.json
+        id: version
+        run: |
+          version=$(node -p "require('./package.json').version")
+          test "$TAG" = "v${version}"
+          echo "file=strata-${version}.vsix" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - run: npm run check
+      # The README's relative links and images point at the tag: at the default HEAD they would
+      # follow main after the release.
+      - run: >-
+          npm run package --
+          --baseContentUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${TAG}"
+          --baseImagesUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/raw/${TAG}"
+      - run: mv artifacts/strata.vsix "artifacts/${{ steps.version.outputs.file }}"
+      - run: gh release upload "$TAG" "artifacts/${{ steps.version.outputs.file }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

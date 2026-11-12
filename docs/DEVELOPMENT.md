@@ -186,8 +186,8 @@ Code stable and 1.90.0; then packages the extension. Each successful run
 uploads `strata-<version>-ci.<run>-<short sha>.vsix` as a workflow artifact,
 kept for 30 days: open the run under the repository's **Actions** tab and
 download it from **Artifacts** (requires a GitHub login). The download is the
-`.vsix` itself, not a zip. These are the test builds to share; there are no
-GitHub releases. Runners are pinned to `ubuntu-24.04`.
+`.vsix` itself, not a zip. These are the test builds to share. Runners are
+pinned to `ubuntu-24.04`.
 
 Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes
 `<version>-ci.<run number>` and the README (the extension's details page in
@@ -195,6 +195,23 @@ the Extensions view) gets the build's commit and date under its header, at the
 `<!-- ci-stamp -->` line, so an installed CI build says which one it is. The
 script fails if the README lacks that line. A release of the same version
 sorts above it. Release packaging (`npm run package`) does not stamp.
+
+## Releases
+
+1. Set the version in `package.json` and `package-lock.json`
+   (`npm version <x.y.z> --no-git-tag-version`), commit it as
+   `chore(release): v<x.y.z>` and push.
+2. Publish a GitHub release with the tag `v<x.y.z>` on that commit
+   (`gh release create v<x.y.z>`).
+3. `.github/workflows/release.yml` runs when the release is published: it
+   fails unless the tag is `v` followed by the version in `package.json`, runs
+   `npm run check`, packages and attaches `strata-<x.y.z>.vsix` to the
+   release. The README's relative links and images in that package point at
+   the tag, not at `main`.
+4. Upload that `.vsix` to the Marketplace by hand, at
+   https://marketplace.visualstudio.com/manage/publishers/zekaizer. Its display
+   name there is "Strata Git Graph": the Marketplace refuses a display name
+   another extension has.
 
 `package.json` overrides the `glob` used by mocha (through
 `@vscode/test-cli`) with glob 13: mocha 11 pins the deprecated glob 10,

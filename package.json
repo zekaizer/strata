@@ -1,8 +1,8 @@
 {
   "name": "strata",
-  "displayName": "Strata",
+  "displayName": "Strata Git Graph",
   "description": "Commit graph for git repositories",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "publisher": "zekaizer",
   "private": true,
   "type": "module",
@@ -27,6 +27,12 @@
   "extensionKind": [
     "workspace"
   ],
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Strata runs git in the repository's folder, which a virtual workspace does not have."
+    }
+  },
   "categories": [
     "SCM Providers"
   ],

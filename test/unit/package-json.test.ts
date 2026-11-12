@@ -246,6 +246,13 @@ describe('package.json activation', () => {
   });
 });
 
+describe('package.json capabilities', () => {
+  it('says it cannot work in a virtual workspace, where there is no folder for git to run in', () => {
+    const { capabilities } = JSON.parse(text) as { capabilities?: { virtualWorkspaces?: { supported: boolean } } };
+    assert.equal(capabilities?.virtualWorkspaces?.supported, false);
+  });
+});
+
 describe('product icons', () => {
   it("shows the ways into the graph with Strata's icon, from a font the package ships", () => {
     const icon = pkg.contributes.icons?.['strata-graph']?.default;
