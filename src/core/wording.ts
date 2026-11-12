@@ -1409,7 +1409,7 @@ export function rewriteConfirmation(
   const verb = EDIT_VERB[f.edit];
   const p = f.pushed;
   const pushed = p && [
-    `${refName(p.remote)} has ${p.count === 1 ? 'one of them' : plural(p.count, 'of them')}: pushing ${f.branch} afterwards needs a force push, and anyone who fetched ${p.count === 1 ? 'it' : 'them'} keeps the old ${p.count === 1 ? 'commit' : 'commits'}.`,
+    `${refName(p.remote)} has ${p.count === 1 ? 'one' : p.count} of them: pushing ${f.branch} afterwards needs a force push, and anyone who fetched ${p.count === 1 ? 'it' : 'them'} keeps the old ${p.count === 1 ? 'commit' : 'commits'}.`,
   ];
   const moveLabel =
     f.moves.length === 1 ? `${verb} and Move ${f.moves[0]!}` : `${verb} and Move ${f.moves.length} Branches`;
