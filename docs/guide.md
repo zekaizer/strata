@@ -284,6 +284,10 @@ commands, **Show Stashes...**, Skip (while stopped) and **Show Git Output**.
 The Command Palette has them too. While an operation runs, the toolbar and the
 banner say which, and the other commands wait for it.
 
+Changing the repository needs git 2.34 or later: with an older git these
+commands are disabled, and a banner above the graph says so and names the git
+it found.
+
 - **Branches and tags:** Checkout (a remote branch checks out its local branch,
   or creates one that tracks it; when the local branch of that name tracks
   something else, you choose between switching to it anyway and creating a
