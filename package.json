@@ -633,8 +633,18 @@
           "group": "3_pick@1"
         },
         {
+          "command": "strata.cherryPick",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'selection'",
+          "group": "3_pick@1"
+        },
+        {
           "command": "strata.revert",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit'",
+          "group": "3_pick@2"
+        },
+        {
+          "command": "strata.revert",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'selection'",
           "group": "3_pick@2"
         },
         {

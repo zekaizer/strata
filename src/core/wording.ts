@@ -725,23 +725,38 @@ function mergeSentence(kind: 'cherryPick' | 'revert', m: MergeParents): string {
   return kind === 'cherryPick' ? `Applies ${changes}` : `Undoes ${changes} Merging them again won't bring them back.`;
 }
 
-/** Cherry pick or revert of `c` on `onto` (a quoted branch, or HEAD); `merge`: of a merge commit. */
+/** What a cherry pick or revert of several commits does, in the order git takes them. */
+function severalSentence(kind: 'cherryPick' | 'revert', commits: readonly CommitRef[]): string {
+  const names = fileList(
+    commits.map((c) => `"${c.subject}"`),
+    2,
+  );
+  return kind === 'cherryPick'
+    ? `Applies them oldest first: ${names}.`
+    : `Undoes them newest first, in one new commit each: ${names}.`;
+}
+
+/**
+ * Cherry pick or revert of `commits`, in the order git applies them, on `onto` (a quoted branch,
+ * or HEAD); `merge`: of a single merge commit.
+ */
 export function pickConfirmation<B extends string>(
   kind: 'cherryPick' | 'revert',
-  c: CommitRef,
+  commits: readonly CommitRef[],
   onto: string,
   detached: boolean,
   section: string,
   buttons: { id: B; label: string }[],
   merge?: MergeParents,
 ): Confirmation<B> {
+  const several = commits.length > 1;
+  const what = several ? plural(commits.length, 'commit') : commitName(commits[0]!);
   return {
     ...(kind === 'revert' && merge !== undefined ? {} : { level: 'info' as const }),
-    message:
-      kind === 'cherryPick' ? `Cherry pick ${commitName(c)} onto ${onto}?` : `Revert ${commitName(c)} on ${onto}?`,
+    message: kind === 'cherryPick' ? `Cherry pick ${what} onto ${onto}?` : `Revert ${what} on ${onto}?`,
     detail: [
-      merge === undefined ? '' : mergeSentence(kind, merge),
-      detached ? 'HEAD is detached: the new commit will be on no branch.' : '',
+      several ? severalSentence(kind, commits) : merge === undefined ? '' : mergeSentence(kind, merge),
+      detached ? `HEAD is detached: the new ${several ? 'commits' : 'commit'} will be on no branch.` : '',
       section,
     ]
       .filter((s) => s !== '')
@@ -751,6 +766,15 @@ export function pickConfirmation<B extends string>(
 }
 
 export const alreadyContains = (into: string, what: string): string => `${into} already contains ${what}.`;
+/** The commits of a cherry pick or revert as its labels and result name them: one by its id, several by their count. */
+export const pickedName = (commits: readonly CommitRef[]): string =>
+  commits.length === 1 ? commits[0]!.short : plural(commits.length, 'commit');
+/** Every commit of a cherry pick is in `into` already. */
+export const alreadyContainsPicked = (into: string, commits: readonly CommitRef[]): string =>
+  alreadyContains(into, commits.length === 1 ? commits[0]!.short : `all ${plural(commits.length, 'commit')}`);
+/** A cherry pick or revert of several commits is refused: `merge` is among them. */
+export const mergeAmongPicked = (kind: 'cherryPick' | 'revert', merge: CommitRef): string =>
+  `Can't ${OP_NAME[kind]} these commits together: ${commitName(merge)} is a merge commit, and what it changes depends on the parent it is compared with. ${kind === 'cherryPick' ? 'Cherry pick' : 'Revert'} it on its own.`;
 /** A revert of `short` on `onto` found nothing to undo. */
 export const alreadyReverted = (short: string, onto: string): string =>
   `${short} is already reverted on ${onto}: there is nothing to undo.`;
@@ -924,8 +948,10 @@ export const HISTORY_DONE = {
   merged: (src: string, into: string): string => `Merged ${src} into ${into}`,
   rebased: (branch: string, onto: string, count: number): string =>
     `Rebased ${branch} onto ${onto} (${plural(count, 'commit')})`,
-  picked: (short: string, onto: string): string => `Cherry-picked ${short} onto ${onto}`,
-  reverted: (short: string): string => `Reverted ${short}`,
+  /** `what`: as pickedName names it. `already`: commits left out because `onto` had them. */
+  picked: (what: string, onto: string, already = 0): string =>
+    `Cherry-picked ${what} onto ${onto}${already === 0 ? '' : ` (${already} more ${already === 1 ? 'was' : 'were'} already there)`}`,
+  reverted: (what: string): string => `Reverted ${what}`,
   /** `kept`: the reset kept the changes that are not in `stash` in place (reset --keep). */
   reset: (branch: string, short: string, stash: string | undefined, kept = false): string =>
     `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your ${kept ? 'changes to the files the reset changes' : 'uncommitted changes'} are in ${stash}`}`,

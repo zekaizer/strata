@@ -3,13 +3,16 @@ import { describe, it } from 'node:test';
 import {
   conflictsInProgress,
   dirtySection,
+  alreadyContainsPicked,
   alreadyReverted,
   HISTORY_DONE,
   mainlinePick,
+  mergeAmongPicked,
   mergeAnswer,
   mergeConfirmation,
   operationInProgress,
   pickConfirmation,
+  pickedName,
   popPartial,
   popRefused,
   rebaseConfirmation,
@@ -129,11 +132,11 @@ describe('wording of history operations', () => {
   });
 
   it('warns that a pick on a detached HEAD lands on no branch', () => {
-    const p = pickConfirmation('cherryPick', c, 'HEAD', true, '', [{ id: 'go', label: 'Cherry Pick' }]);
+    const p = pickConfirmation('cherryPick', [c], 'HEAD', true, '', [{ id: 'go', label: 'Cherry Pick' }]);
     assert.equal(p.message, 'Cherry pick abc1234 "Add lexer" onto HEAD?');
     assert.equal(p.detail, 'HEAD is detached: the new commit will be on no branch.');
     assert.equal(
-      pickConfirmation('revert', c, "'main'", false, 'x', []).message,
+      pickConfirmation('revert', [c], "'main'", false, 'x', []).message,
       'Revert abc1234 "Add lexer" on \'main\'?',
     );
   });
@@ -144,7 +147,7 @@ describe('wording of history operations', () => {
   ];
 
   it('names what a revert of a merge undoes, and that merging those commits again brings nothing', () => {
-    const p = pickConfirmation('revert', c, "'main'", false, '', [], { parents, mainline: 1 });
+    const p = pickConfirmation('revert', [c], "'main'", false, '', [], { parents, mainline: 1 });
     assert.equal(p.message, 'Revert abc1234 "Add lexer" on \'main\'?');
     assert.equal(
       p.detail,
@@ -153,14 +156,14 @@ describe('wording of history operations', () => {
   });
 
   it('names what a cherry pick of a merge applies, relative to the parent chosen', () => {
-    const p = pickConfirmation('cherryPick', c, 'HEAD', true, '', [], { parents, mainline: 2 });
+    const p = pickConfirmation('cherryPick', [c], 'HEAD', true, '', [], { parents, mainline: 2 });
     assert.equal(
       p.detail,
       'Applies the changes of the 5 commits it merged into bbb2222 "Add parser" from aaa1111 "Release prep".\nHEAD is detached: the new commit will be on no branch.',
     );
     const octopus = [...parents, { short: 'ccc3333', subject: 'Add docs', mergedIn: 1 }];
     assert.match(
-      pickConfirmation('cherryPick', c, 'HEAD', false, '', [], { parents: octopus, mainline: 3 }).detail,
+      pickConfirmation('cherryPick', [c], 'HEAD', false, '', [], { parents: octopus, mainline: 3 }).detail,
       /^Applies the changes of the 1 commit it merged into ccc3333 "Add docs" from aaa1111 and bbb2222\.$/,
     );
   });
@@ -182,6 +185,46 @@ describe('wording of history operations', () => {
         },
       ],
     });
+  });
+
+  const several = [c, { short: 'def5678', subject: 'Add parser' }, { short: '9990000', subject: 'Add printer' }];
+
+  it('asks once about a cherry pick or revert of several commits, naming how many and the order', () => {
+    const p = pickConfirmation('cherryPick', several, "'main'", false, '', []);
+    assert.equal(p.message, "Cherry pick 3 commits onto 'main'?");
+    assert.equal(p.detail, 'Applies them oldest first: "Add lexer", "Add parser" and 1 more.');
+    assert.equal(p.level, 'info');
+    const r = pickConfirmation('revert', several.slice(0, 2), 'HEAD', true, 'x', []);
+    assert.equal(r.message, 'Revert 2 commits on HEAD?');
+    assert.equal(
+      r.detail,
+      'Undoes them newest first, in one new commit each: "Add lexer" and "Add parser".\nHEAD is detached: the new commits will be on no branch.\nx',
+    );
+  });
+
+  it('refuses several commits with a merge among them, saying why and what works', () => {
+    assert.equal(
+      mergeAmongPicked('cherryPick', c),
+      'Can\'t cherry pick these commits together: abc1234 "Add lexer" is a merge commit, and what it changes depends on the parent it is compared with. Cherry pick it on its own.',
+    );
+    assert.match(mergeAmongPicked('revert', c), /^Can't revert these commits together: .* Revert it on its own\.$/);
+  });
+
+  it('names one picked commit by its id and several by their count', () => {
+    assert.equal(pickedName([c]), 'abc1234');
+    assert.equal(pickedName(several), '3 commits');
+    assert.equal(HISTORY_DONE.picked(pickedName(several), "'main'"), "Cherry-picked 3 commits onto 'main'");
+    assert.equal(
+      HISTORY_DONE.picked(pickedName(several.slice(1)), "'main'", 1),
+      "Cherry-picked 2 commits onto 'main' (1 more was already there)",
+    );
+    assert.equal(
+      HISTORY_DONE.picked('abc1234', "'main'", 2),
+      "Cherry-picked abc1234 onto 'main' (2 more were already there)",
+    );
+    assert.equal(HISTORY_DONE.reverted(pickedName(several)), 'Reverted 3 commits');
+    assert.equal(alreadyContainsPicked("'main'", [c]), "'main' already contains abc1234.");
+    assert.equal(alreadyContainsPicked("'main'", several), "'main' already contains all 3 commits.");
   });
 
   it('says where a stopped operation is and where the changes are', () => {

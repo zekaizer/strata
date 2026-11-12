@@ -209,6 +209,10 @@ const stashHash = (ctx: MenuArg): string => {
 const on = <K extends TargetKind>(kinds: readonly K[], flow: (host: FlowHost, t: TargetOf<K>) => Promise<void>) =>
   write((host, ctx) => flow(host, parseTarget(ctx, kinds, host.refs)));
 
+/** The commits a commit row's or a selection's menu acts on, newest first. */
+const picked = (host: FlowHost, ctx: MenuArg): string[] =>
+  ctx?.['webviewSection'] === 'selection' ? selectionArg(ctx) : [parseTarget(ctx, ['commit'], host.refs).hash];
+
 /** A write command on a menu target of one of `kinds`, a commit row naming a branch being that branch. */
 const onBranch = <K extends TargetKind>(
   kinds: readonly K[],
@@ -322,8 +326,8 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.rebase': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
     rebase(host, await sourceOf(host, t)),
   ),
-  'strata.cherryPick': on(['commit'], (host, t) => pick(host, 'cherryPick', t.hash)),
-  'strata.revert': on(['commit'], (host, t) => pick(host, 'revert', t.hash)),
+  'strata.cherryPick': write((host, ctx) => pick(host, 'cherryPick', picked(host, ctx))),
+  'strata.revert': write((host, ctx) => pick(host, 'revert', picked(host, ctx))),
   'strata.reset': on(['commit'], (host, t) => reset(host, t.hash)),
   'strata.operation.continue': write(continueOperation),
   'strata.operation.abort': write(abortOperation),

@@ -26,7 +26,8 @@
 - Click a commit to unfold its message and changed files right under it, then
   open any file's diff.
 - Checkout, merge, rebase, cherry pick, revert and reset from right-click
-  menus. **Undo Last Operation** takes back all of them but a checkout.
+  menus; revert a Shift-click selection in one run. **Undo Last Operation**
+  takes back all of them but a checkout.
 - Create, rename, delete and push branches and tags; fetch, pull and push from
   the graph's title bar.
 - Stash, apply, pop and drop stashes, shown as rows above the commits they
