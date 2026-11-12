@@ -37,7 +37,8 @@
   is staged, changed or untracked, then stash it or commit in Source Control.
 - See which branches other worktrees have checked out, open or remove them.
 - Tidy recent commits before you push: edit a message in place, squash a
-  Shift-click selection, fix up or drop a commit.
+  Shift-click selection, fix up or drop a commit, drag commits into another
+  order.
 - Stopped at conflicts? Strata says where, opens the files and offers
   Continue, Skip and Abort.
 - Hide noisy badges, such as CI tags, with patterns per repository.

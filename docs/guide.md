@@ -349,12 +349,26 @@ it found.
   - **Fixup into Parent** melds a commit into the one below it, keeping that
     one's message. **Fixup into Older Commit...** lets you pick any older
     commit of the line. **Drop Commit...** removes a commit.
+  - **Reorder Commits...** (also in the menu of the current branch's badge)
+    turns the list into a draft of a new order. The commits of the line show a
+    handle: drag a row to another place, or press <kbd>Alt</kbd>+<kbd>↑</kbd>
+    or <kbd>Alt</kbd>+<kbd>↓</kbd> to move the selected commit, or a
+    Shift-click run as one block. The same keys on a selected commit of the
+    line start a draft too. A moved commit shows how far it went (`↑2`,
+    `↓1`), and every commit that would get a new hash shows its hash struck
+    through. Commits that swap places and change the same file are marked
+    **May conflict**, and the banner above the list names a file; it also says
+    when the draft rewrites commits a remote already has. Nothing changes
+    until **Apply** in the banner (<kbd>Ctrl</kbd>+<kbd>Enter</kbd>,
+    <kbd>⌘</kbd> on macOS), which runs one interactive rebase. **Cancel** or
+    <kbd>Esc</kbd> gives the draft up, as does HEAD moving, another operation
+    starting or filtering by a path.
   - Editing a message, squashing a run and fixing up into the parent keep
     every commit in place, so Strata writes the new commits directly: your
     work tree, staged changes, stashes and file times are not touched, and
     nothing can conflict. Commits are signed when `commit.gpgSign` is set, and
     the repository's `commit-msg` hook (a Gerrit Change-Id, say) runs on the
-    message you wrote. Fixing up into an older commit and dropping run an
+    message you wrote. Fixing up into an older commit, dropping and reordering run an
     interactive rebase instead, with uncommitted changes stashed around it; if
     it stops at a conflict, continue or abort from the banner.
   - Strata asks first when a remote-tracking branch already has commits that
@@ -416,8 +430,8 @@ it found.
   changes from the whole tree. Run the operation again once the history is
   there.
 - **Undo Last Operation** puts back what the last operation changed: a reset,
-  merge, rebase, cherry pick or revert, an edited message, squash, fixup or
-  drop (also one that stopped and that Continue
+  merge, rebase, cherry pick or revert, an edited message, squash, fixup,
+  drop or reorder (also one that stopped and that Continue
   or Skip finished), a created, renamed or deleted branch or tag, or a dropped
   stash. It only moves the branch the operation moved, and asks first if that
   branch moved since. Operations that change history or delete something also
