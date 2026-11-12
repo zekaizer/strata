@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { flowSuite, menu, reload, run } from './flow-helpers.ts';
-import { git, workspaceRoot } from './helpers.ts';
+import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 const write = (file: string, content: string) => {
   writeFileSync(join(workspaceRoot(), file), content);
@@ -214,5 +214,31 @@ describe('cherry pick and revert of several commits', () => {
     assert.deepEqual(subjects(`${top}..HEAD`), ['Revert "a.txt: a"', 'Revert "c.txt: c"']);
     await run('strata.undo');
     assert.equal(git('rev-parse', 'main'), top);
+  });
+
+  it('holds the stashed changes through every stop of the run, and gives them back when it ends', async () => {
+    const set = await picks(apart[0]!, ['main.txt', 'picked\n'], ['main.txt', 'picked again\n']);
+    write('NOTES.md', 'mine\n');
+    git('add', 'NOTES.md');
+    ui.press('Stash & Cherry Pick');
+    await run('strata.cherryPick', selection(set));
+    assert.equal(api().contextValue('strata.operation'), 'cherryPick');
+    const held = () =>
+      waitFor('the banner names the held stash', async () =>
+        (await panel().probe()).banner?.text.includes(
+          'Your uncommitted changes are in stash "Strata: changes set aside for the cherry pick of 3 commits onto \'main\'"',
+        ),
+      );
+    await held();
+    resolve();
+    await run('strata.operation.continue');
+    assert.equal(api().contextValue('strata.operation'), 'cherryPick', 'stopped again at the third');
+    await held();
+    assert.match(lastNotice()?.message ?? '', /Your uncommitted changes are in stash "Strata: changes set aside/);
+    resolve('resolved again\n');
+    await run('strata.operation.continue');
+    assert.equal(api().contextValue('strata.operation'), '');
+    assert.equal(git('stash', 'list'), '');
+    assert.equal(read('NOTES.md'), 'mine\n', 'the stashed change is back');
   });
 });

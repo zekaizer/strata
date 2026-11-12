@@ -628,10 +628,20 @@ async function settle(
   { keep, started }: { keep?: string | undefined; started?: string } = {},
 ): Promise<void> {
   let kept: string | undefined;
+  const held = await host.leftovers.held(state);
+  // A cherry pick or revert of several commits that stops again holds its stash at the next commit.
+  const hold = async () => {
+    if (held === undefined) return;
+    const now = await readOperationState(host.git, host.cwd);
+    if (now?.applying !== undefined) await host.leftovers.pushed(held, now.applying);
+  };
   const r = await runStoppable(host, () =>
     run(host, label, async (exec) => {
       if (keep) kept = await keepDiscarded(host, exec, state, keep);
-      const byGit = await execAutostash(host, exec, op);
+      const byGit = await execAutostash(host, exec, op).catch(async (e: unknown) => {
+        await hold();
+        throw e;
+      });
       return byGit.kind === 'none' ? restoreHeld(host, exec, state) : byGit;
     }),
   );
