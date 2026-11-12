@@ -224,6 +224,7 @@ type Handlers = Record<CommandId, (ctx: MenuArg, id: CommandId) => unknown>;
 const handlers = (env: FlowEnv): Handlers => ({
   'strata.file.openChanges': open('diff', false),
   'strata.file.openOld': open('before', false),
+  'strata.file.openCompared': open('before', false),
   'strata.file.openNew': open('after', false),
   'strata.file.openToSide': open('primary', true),
   'strata.file.copyRelativePath': copy((ctx) => fileArg(ctx).file.path, DONE.copied),
@@ -247,6 +248,11 @@ const handlers = (env: FlowEnv): Handlers => ({
     const folder = parentFolder(parseRepoPath(fileArg(ctx).file.path)!);
     if (folder === undefined) throw new Error('the file is at the top of the repository');
     return panel().showPathHistory({ paths: [folder] });
+  },
+  'strata.commit.compareWithSelected': (ctx) => {
+    const against = str(ctx?.['strataCompareWith']);
+    if (!against || !isCommitId(against)) throw new Error('invalid commit id');
+    panel().flowHost().reveal(commitArg(ctx).hash, against);
   },
   'strata.commit.copyHash': copy(
     (ctx) => commitArg(ctx).hash,

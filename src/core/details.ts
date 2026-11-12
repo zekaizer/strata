@@ -20,7 +20,10 @@ export interface CommitDetails {
   message: string;
   /** Subject of each parent, in `parents` order. */
   parentSubjects: string[];
-  /** Parent the file list is relative to; undefined for a root commit (compared with the empty tree). */
+  /**
+   * The commit the file list is relative to: the first parent, or the commit it was asked to be
+   * compared with; undefined for a root commit (compared with the empty tree).
+   */
   base: string | undefined;
   files: FileChange[];
   /** Set for a stash commit, whose files are its changes to the base. */
@@ -51,17 +54,42 @@ export function fileViews(file: FileChange, base: string | undefined): FileView[
 
 /**
  * The line above the changed files: what was compared with what. `base` is the commit the files
- * are relative to; `baseLabel` says which parent it is when that is not obvious (merges).
+ * are relative to; `baseLabel` says which parent it is when that is not obvious (merges);
+ * `compared`: it is no parent but a commit the user chose to compare with.
  */
 export function filesSummary(d: CommitDetails): {
   text: string;
   base: string | undefined;
   baseLabel: '' | 'first parent';
+  compared: boolean;
   root: boolean;
 } {
   const n = d.files.length;
   const files = `${n} file${n === 1 ? '' : 's'}`;
-  if (d.base === undefined) return { text: `${files} added`, base: undefined, baseLabel: '', root: true };
+  if (d.base === undefined)
+    return { text: `${files} added`, base: undefined, baseLabel: '', compared: false, root: true };
   const first = d.parents.length > 1 && d.base === d.parents[0];
-  return { text: `${files} changed`, base: d.base, baseLabel: first ? 'first parent' : '', root: false };
+  return {
+    text: `${files} changed`,
+    base: d.base,
+    baseLabel: first ? 'first parent' : '',
+    compared: !d.parents.includes(d.base),
+    root: false,
+  };
+}
+
+/**
+ * Whether `d` answers a request for the details of `hash` compared with `against` (none: with
+ * its first parent). Replies to earlier requests for the same commit differ in `base` only.
+ */
+export function answersRequest(d: CommitDetails, hash: string, against: string | undefined): boolean {
+  return d.hash === hash && d.base === (against ?? d.parents[0]);
+}
+
+/**
+ * The commit a row's "Compare with Selected" compares with: the one selected commit, or '' for
+ * that commit's own row, without a selected commit, and while `several` commits are selected.
+ */
+export function compareTarget(selected: string | undefined, several: boolean, hash: string): string {
+  return several || selected === undefined || selected === hash ? '' : selected;
 }

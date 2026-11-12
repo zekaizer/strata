@@ -1,5 +1,13 @@
 import type { Commit } from '../core/commit.ts';
-import { filesSummary, fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
+import {
+  answersRequest,
+  compareTarget,
+  filesSummary,
+  fileViews,
+  type CommitDetails,
+  type FileChange,
+  type FileView,
+} from '../core/details.ts';
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
@@ -407,6 +415,8 @@ class App {
   private working: WorkingDetails | undefined;
   /** Commit whose details were last requested; replies for any other commit are stale. */
   private pendingDetails: string | undefined;
+  /** The commit those details were asked to be compared with, when not the first parent. */
+  private pendingAgainst: string | undefined;
   private openedFile: string | undefined;
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
@@ -845,7 +855,8 @@ class App {
         this.queueRender();
         break;
       case 'details':
-        if (m.generation !== this.generation || m.details.hash !== this.pendingDetails || !this.expanded) return;
+        if (m.generation !== this.generation || this.pendingDetails === undefined || !this.expanded) return;
+        if (!answersRequest(m.details, this.pendingDetails, this.pendingAgainst)) return;
         this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
@@ -863,7 +874,7 @@ class App {
         this.badgeFilter.openWith(m.pattern);
         break;
       case 'reveal':
-        this.reveal(m.hash);
+        this.reveal(m.hash, m.against);
         break;
       case 'editMessage':
         this.openEditor(m.draft);
@@ -1924,14 +1935,14 @@ class App {
   }
 
   /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */
-  private reveal(hash: string): void {
+  private reveal(hash: string, against?: string): void {
     const stash = this.stashes.find((s) => s.hash === hash);
     if (stash && this.indexOf(hash) < 0 && this.unreachable(stash)) {
       this.announce(`stash@{${stash.index}} is not in this view`);
       return;
     }
     if (stash) this.setShowStashes(true);
-    this.selectHash(hash, true);
+    this.selectHash(hash, true, against);
   }
 
   /**
@@ -2405,9 +2416,10 @@ class App {
   /**
    * Selects a commit. `expand` opens its details inline (default: keep the
    * current state, so arrow keys move an open expansion along). The selected
-   * row keeps its place on screen when the expansion moves.
+   * row keeps its place on screen when the expansion moves. `against`: the commit
+   * its files are compared with instead of its first parent, for this selection only.
    */
-  private select(index: number, opts: { reveal?: boolean; expand?: boolean } = {}): void {
+  private select(index: number, opts: { reveal?: boolean; expand?: boolean; against?: string } = {}): void {
     const row = this.list[index];
     if (!row) return;
     const hash = rowHash(row);
@@ -2430,15 +2442,28 @@ class App {
       this.working = kept.working;
       this.expansion.hidden = false;
       this.renderChangesDetails(false);
-    } else if (this.expanded && row.kind !== 'changes' && kept?.details?.hash === hash) {
+    } else if (
+      this.expanded &&
+      row.kind !== 'changes' &&
+      kept?.details?.hash === hash &&
+      (opts.against === undefined || kept.details.base === opts.against)
+    ) {
       this.details = kept.details;
       this.expansion.hidden = false;
       this.renderDetails();
     } else if (this.expanded) {
+      const against = row.kind === 'commit' ? opts.against : undefined;
       this.pendingDetails = hash;
+      this.pendingAgainst = against;
       this.showLoading();
       if (row.kind === 'changes') vscode.postMessage({ type: 'selectChanges', generation: this.generation });
-      else vscode.postMessage({ type: 'select', generation: this.generation, hash });
+      else
+        vscode.postMessage({
+          type: 'select',
+          generation: this.generation,
+          hash,
+          ...(against === undefined ? {} : { against }),
+        });
     }
     this.syncSizer();
     this.scroller.scrollTop = this.rowTop(index) - screenTop;
@@ -2579,11 +2604,14 @@ class App {
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
-  private selectHash(hash: string, expand?: boolean): void {
+  private selectHash(hash: string, expand?: boolean, against?: string): void {
     this.scroller.focus();
     const index = this.indexOf(hash);
     if (index >= 0) {
-      this.select(index, expand === undefined ? {} : { expand });
+      this.select(index, {
+        ...(expand === undefined ? {} : { expand }),
+        ...(against === undefined ? {} : { against }),
+      });
       return;
     }
     this.restore = { selectedHash: hash, ...(expand === undefined ? {} : { expanded: expand }) };
@@ -2795,6 +2823,8 @@ class App {
     row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
     row.style.top = `${this.rowTop(i)}px`;
     const selection = this.rangeHashes();
+    const one = this.list[this.selected];
+    const selectedCommit = one?.kind === 'commit' ? one.commit.hash : undefined;
     const hashOf = rowHash(r);
     if (i === this.selected) {
       // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
@@ -2840,6 +2870,7 @@ class App {
       strataBranch: branches.length === 1 && free.length === 1 ? free[0]!.name : '',
       strataRewritable: this.rewritable.has(c.hash),
       strataParentRewritable: this.rewritable.has(c.parents[0] ?? ''),
+      strataCompareWith: compareTarget(selectedCommit, selection.length > 0, c.hash),
     };
     const selected: SelectionContext | undefined = selection.includes(c.hash)
       ? this.selectionContext(c.hash, selection)
@@ -3254,7 +3285,7 @@ class App {
       main.append(pre, more);
     }
     const files = el('div', 'details-files');
-    const changes = { hash: d.hash, base: d.base };
+    const changes = { hash: d.hash, base: d.base, compared: filesSummary(d).compared };
     if (stash && d.stash) {
       const summary = el('div', 'section-title files-summary', `Changes (${d.files.length})`);
       if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
@@ -3764,7 +3795,10 @@ class App {
     return copy;
   }
 
-  /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
+  /**
+   * "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit".
+   * Compared with a commit that is no parent, it ends with the way back to the commit's own changes.
+   */
   private filesSummaryLine(d: CommitDetails): HTMLElement {
     const s = filesSummary(d);
     const path = this.options.path;
@@ -3772,6 +3806,14 @@ class App {
     const line = el('div', 'section-title files-summary', path ? `${s.text} · ${inPath} in filter` : s.text);
     if (s.root) line.append(' · root commit');
     if (s.base !== undefined) line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, this.baseLink(s.base));
+    if (s.compared) {
+      const own = el('button', 'link-button', 'Show Own Changes');
+      own.title = "Compare this commit with its parent again: the commit's own changes";
+      own.addEventListener('click', () => {
+        this.userSelect(this.selected, { expand: true });
+      });
+      line.append(' · ', own);
+    }
     return line;
   }
 
@@ -4065,8 +4107,12 @@ class App {
         label,
       );
       b.tabIndex = -1;
-      b.setAttribute('aria-label', FILE_VIEW_TITLE[view]);
-      b.title = `${FILE_VIEW_TITLE[view]} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;
+      const title =
+        view === 'before' && source.compared && source.base !== undefined
+          ? `Open old version (as of ${shortHash(source.base)})`
+          : FILE_VIEW_TITLE[view];
+      b.setAttribute('aria-label', title);
+      b.title = `${title} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         open(view, e.altKey);
@@ -4129,6 +4175,7 @@ class App {
       selected: this.selectedHash(),
       detailsShown:
         this.expanded && !this.expansion.hidden ? (this.details?.hash ?? (this.working && CHANGES_ROW)) : undefined,
+      filesSummary: this.expansion.querySelector('.files-summary')?.textContent,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       rowHashes: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
@@ -4198,6 +4245,12 @@ class App {
           const ctx = row?.getAttribute('data-vscode-context');
           return ctx ? (JSON.parse(ctx) as Record<string, unknown>) : undefined;
         })(),
+        rows: Object.fromEntries(
+          [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+            const row = this.list[Number(r.dataset['index'])];
+            return row?.kind === 'commit' ? [[row.commit.hash, contextOf(r)]] : [];
+          }),
+        ),
         badges: Object.fromEntries(
           [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
             const targets = menuTargets(r).slice(1);
@@ -4598,6 +4651,8 @@ const stopKey = (op: OperationState) => `${op.kind} ${op.applying ?? ''} ${op.st
 interface FileSource {
   hash: string;
   base: string | undefined;
+  /** `base` is no parent of `hash` but a commit chosen to compare with. */
+  compared?: boolean;
 }
 
 /** A details date: full and short forms, CSS shows the one that fits. */
@@ -4627,6 +4682,7 @@ function fileMenuContext(source: FileSource, f: FileChange, views: FileView[]): 
     strataHasDiff: views.includes('diff'),
     strataHasOld: views.includes('before'),
     strataHasNew: views.includes('after'),
+    strataCompared: source.compared === true,
     strataRenamed: f.oldPath !== undefined,
     strataInFolder: f.path.includes('/'),
   };

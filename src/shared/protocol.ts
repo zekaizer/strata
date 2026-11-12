@@ -110,8 +110,11 @@ export type HostToWebview =
   | { type: 'changes'; generation: number; changes: ChangesSummary | undefined }
   /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */
   | { type: 'openBadgeFilter'; pattern: string }
-  /** Select and open a stash (or commit), loading further history to find it if needed. */
-  | { type: 'reveal'; hash: string }
+  /**
+   * Select and open a stash (or commit), loading further history to find it if needed.
+   * `against`: its files are compared with that commit instead of its first parent.
+   */
+  | { type: 'reveal'; hash: string; against?: string }
   /**
    * Go to HEAD from the command palette, or after headNotShown: `include` first adds the current
    * branch to the branch filter, or shows every branch with HEAD detached.
@@ -208,7 +211,11 @@ export type WebviewToHost =
       options: ViewOptions | undefined;
     }
   | { type: 'loadMore'; generation: number; count: number }
-  | { type: 'select'; generation: number; hash: string }
+  /**
+   * Answered with details. `against`: the commit the files are compared with instead of the
+   * first parent (a commit only, not a stash).
+   */
+  | { type: 'select'; generation: number; hash: string; against?: string }
   /** The uncommitted changes row unfolded or its changes moved: answered with changesDetails. */
   | { type: 'selectChanges'; generation: number }
   /**
@@ -335,6 +342,8 @@ export interface ProbeState {
   restoring: boolean;
   selected: string | undefined;
   detailsShown: string | undefined;
+  /** Text of the line above the changed files, as written (CSS sets it uppercase). */
+  filesSummary: string | undefined;
   /** Subjects of the rendered (visible) rows, top to bottom. */
   visibleSubjects: string[];
   /** The commit or stash commit of each rendered row, by row index. */
@@ -417,6 +426,8 @@ export interface ProbeState {
   menuContexts: {
     files: Record<string, unknown>[];
     selectedRow: Record<string, unknown> | undefined;
+    /** Of the rendered commit rows, by commit. */
+    rows: Record<string, Record<string, unknown>>;
     badges: Record<number, Record<string, unknown>[]>;
   };
   /** The element marked as the open context menu's target: its context, text and outline style. */

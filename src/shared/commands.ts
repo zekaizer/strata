@@ -23,7 +23,14 @@ export type Section =
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataHasRefs', 'strataBranch', 'strataRewritable', 'strataParentRewritable'],
+  commit: [
+    'strataIsHead',
+    'strataHasRefs',
+    'strataBranch',
+    'strataRewritable',
+    'strataParentRewritable',
+    'strataCompareWith',
+  ],
   selection: [],
   stash: ['strataLeftover'],
   changes: [],
@@ -33,7 +40,7 @@ export const SECTION_KEYS: Record<Section, readonly string[]> = {
   head: [],
   refs: [],
   worktree: ['strataLocked', 'strataPrunable', 'strataMain', 'strataShown'],
-  file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed', 'strataInFolder'],
+  file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed', 'strataInFolder', 'strataCompared'],
 };
 
 export interface MenuPlacement {
@@ -74,7 +81,14 @@ const SYNC = "!strata.operation && strata.head == 'tracking'";
 
 export const COMMANDS = {
   'strata.file.openChanges': { title: 'Open Changes', menus: [file('1_open@1', 'strataHasDiff')] },
-  'strata.file.openOld': { title: 'Open Old Version (Before This Commit)', menus: [file('1_open@2', 'strataHasOld')] },
+  'strata.file.openOld': {
+    title: 'Open Old Version (Before This Commit)',
+    menus: [file('1_open@2', 'strataHasOld && !strataCompared')],
+  },
+  'strata.file.openCompared': {
+    title: 'Open Old Version (As of the Compared Commit)',
+    menus: [file('1_open@2', 'strataHasOld && strataCompared')],
+  },
   'strata.file.openNew': { title: 'Open New Version (As of This Commit)', menus: [file('1_open@3', 'strataHasNew')] },
   'strata.file.openToSide': { title: 'Open to the Side', menus: [file('1_open@4')] },
   'strata.file.copyRelativePath': { title: 'Copy Relative Path', menus: [file('2_copy@1')] },
@@ -172,6 +186,10 @@ export const COMMANDS = {
       { section: 'remoteBranch', group: '2_apply@2' },
     ],
     writes: true,
+  },
+  'strata.commit.compareWithSelected': {
+    title: 'Compare with Selected',
+    menus: [commit('5_compare@1', 'strataCompareWith')],
   },
   'strata.commit.copyHash': { title: 'Copy Commit Hash', menus: [commit('5_copy@1')] },
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },

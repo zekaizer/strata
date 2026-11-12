@@ -101,8 +101,11 @@ export interface FlowHost extends RunnerHost {
   done(message: string): void;
   setUndo(undo: Undo | undefined): void;
   readonly leftovers: Leftovers;
-  /** Selects and opens a stash (or commit) row, loading history to find it. */
-  reveal(hash: string): void;
+  /**
+   * Selects and opens a stash (or commit) row, loading history to find it. `against`: the commit
+   * its files are compared with instead of its first parent.
+   */
+  reveal(hash: string, against?: string): void;
   /** A folder on the machine the repository is on, by the path git prints. */
   folderUri(path: string): vscode.Uri;
   /** Opens the inline message editor in the graph. */

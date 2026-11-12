@@ -89,7 +89,7 @@ export interface SessionDeps {
   /** An operation started or ended in this session's repository: the graph shows it whichever repository it shows. */
   readonly busy: (label: string | undefined) => void;
   /** Shows the stash or commit `hash` of the repository `key`, showing that repository first if needed. */
-  readonly reveal: (key: RepoKey, hash: string) => void;
+  readonly reveal: (key: RepoKey, hash: string, against?: string) => void;
   /** Whether the graph is on screen. */
   readonly visible: () => boolean;
 }
@@ -136,7 +136,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private timedGeneration = -1;
   private readonly suggested: Set<string>;
   private readonly onBusy: (label: string | undefined) => void;
-  private readonly revealIn: (key: RepoKey, hash: string) => void;
+  private readonly revealIn: (key: RepoKey, hash: string, against?: string) => void;
   private graphTimer: ReturnType<typeof setTimeout> | undefined;
   /** An update is running; `graphAgain` asks for another one when it ends. */
   private graphUpdating = false;
@@ -350,8 +350,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
           break;
         case 'select':
           if (m.generation === this.generation) {
-            const read = this.stashes.some((s) => s.hash === m.hash) ? readStashDetails : readCommitDetails;
-            const details = await read(this.api.git.path, this.cwd, m.hash);
+            const details = this.stashes.some((s) => s.hash === m.hash)
+              ? await readStashDetails(this.api.git.path, this.cwd, m.hash)
+              : await readCommitDetails(this.api.git.path, this.cwd, m.hash, m.against);
             if (m.generation === this.generation) this.post({ type: 'details', generation: m.generation, details });
           }
           break;
@@ -917,8 +918,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     keep: (hash) => this.mark(hash, undefined),
   };
 
-  reveal(hash: string): void {
-    this.revealIn(this.key, hash);
+  reveal(hash: string, against?: string): void {
+    this.revealIn(this.key, hash, against);
   }
 
   /** With strata.keepCommitGraphUpdated, adds new commits to the repository's commit-graph after a change. */

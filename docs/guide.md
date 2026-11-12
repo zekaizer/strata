@@ -118,6 +118,14 @@ to get started and the requirements.
 - The changed files follow the message, with the commit they are compared with
   (click it to select that commit). In wide editors the message and the files
   sit side by side, and a tree that fits flows into columns.
+- To compare two commits, select one, then right-click any other commit and
+  choose **Compare with Selected**. The details open on the commit you
+  right-clicked and list every file that differs from the one you had selected;
+  the line above the files names that commit, and **Old**, the compare icon and
+  **New** open the file as of that commit, the diff between the two, and the
+  file as of this one. **Show Own Changes** on the same line goes back to the
+  commit's own changes; so does selecting any other row. The menu entry is
+  there only while exactly one commit is selected, and not on that commit.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show All** to reset), and **First parent** to follow only the main line of
   merges.

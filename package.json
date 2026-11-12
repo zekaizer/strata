@@ -105,6 +105,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.file.openCompared",
+        "title": "Open Old Version (As of the Compared Commit)",
+        "category": "Strata"
+      },
+      {
         "command": "strata.file.openNew",
         "title": "Open New Version (As of This Commit)",
         "category": "Strata"
@@ -244,6 +249,11 @@
         "title": "Rebase Current Branch onto This...",
         "category": "Strata",
         "enablement": "!strata.readOnly && !strata.busy && !strata.operation"
+      },
+      {
+        "command": "strata.commit.compareWithSelected",
+        "title": "Compare with Selected",
+        "category": "Strata"
       },
       {
         "command": "strata.commit.copyHash",
@@ -534,7 +544,12 @@
         },
         {
           "command": "strata.file.openOld",
-          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataHasOld",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataHasOld && !strataCompared",
+          "group": "1_open@2"
+        },
+        {
+          "command": "strata.file.openCompared",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file' && strataHasOld && strataCompared",
           "group": "1_open@2"
         },
         {
@@ -711,6 +726,11 @@
           "command": "strata.rebase",
           "when": "webviewId == 'strata.graph' && webviewSection == 'remoteBranch'",
           "group": "2_apply@2"
+        },
+        {
+          "command": "strata.commit.compareWithSelected",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataCompareWith",
+          "group": "5_compare@1"
         },
         {
           "command": "strata.commit.copyHash",
@@ -943,6 +963,10 @@
           "when": "false"
         },
         {
+          "command": "strata.file.openCompared",
+          "when": "false"
+        },
+        {
           "command": "strata.file.openNew",
           "when": "false"
         },
@@ -1040,6 +1064,10 @@
         },
         {
           "command": "strata.rebase",
+          "when": "false"
+        },
+        {
+          "command": "strata.commit.compareWithSelected",
           "when": "false"
         },
         {
