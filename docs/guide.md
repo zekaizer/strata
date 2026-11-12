@@ -305,7 +305,9 @@ banner say which, and the other commands wait for it.
   worktree and offers to show or open it, or to prune it and try again.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current Branch
-  to Here in any of git's modes. Strata asks first only when there is a choice
+  to Here in any of git's modes. When a merge can fast-forward, Fast-Forward
+  is the first button of the confirmation, unless `merge.ff` is false: then
+  Create Merge Commit is. Strata asks first only when there is a choice
   to make, when Undo couldn't bring back what is lost, or when commits already
   pushed would be rewritten; the confirmation says what happens to which
   commits. A merge commit can be cherry picked relative to the parent you
