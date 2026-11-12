@@ -4,8 +4,10 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import {
+  countUnpushed,
   HookRefused,
   readLine,
+  readLineFiles,
   readRefsHaving,
   readRemoteHaving,
   readUnpushed,
@@ -78,6 +80,53 @@ describe('reading a rewrite from git', () => {
     assert.equal((await readUnpushed('git', dir, undefined)).size, 2);
     assert.equal(await readRemoteHaving('git', dir, rev(dir, 'HEAD~2'), 'refs/remotes/origin/main'), 'origin/main');
     assert.equal(await readRemoteHaving('git', dir, rev(dir, 'HEAD'), undefined), undefined);
+  });
+
+  it("counts the commits of HEAD's line that no remote-tracking branch has", async () => {
+    assert.equal(await countUnpushed('git', dir), 2);
+    assert.equal(await countUnpushed('git', dir, 1), 1, 'at most the limit');
+    assert.equal(await countUnpushed('git', origin), 2, 'all of them without a remote');
+  });
+
+  it("reads the files each commit of HEAD's line changed, down to the first merge", async () => {
+    const d = join(root, 'files');
+    mkdirSync(d);
+    run(d, 'init', '--quiet', '-b', 'main');
+    const commit = (subject: string) => {
+      run(d, 'add', '--all');
+      run(d, 'commit', '--quiet', '--allow-empty', '-m', subject);
+      return rev(d, 'HEAD');
+    };
+    writeFileSync(join(d, 'base'), 'base\n');
+    const below = commit('below the merge');
+    run(d, 'switch', '--quiet', '-c', 'side');
+    writeFileSync(join(d, 'side'), 'side\n');
+    commit('side');
+    run(d, 'switch', '--quiet', 'main');
+    run(d, 'merge', '--quiet', '--no-ff', '-m', 'merge', 'side');
+    mkdirSync(join(d, 'a dir'));
+    writeFileSync(join(d, 'a dir', 'né w\nline.txt'), 'x\n');
+    writeFileSync(join(d, 'one'), '1\n'.repeat(20));
+    const added = commit('two files');
+    const empty = commit('nothing');
+    run(d, 'mv', 'one', 'renamed');
+    writeFileSync(join(d, 'base'), 'changed\n');
+    const renamed = commit('a rename and a change');
+    assert.deepEqual(
+      [...(await readLineFiles('git', d))],
+      [
+        [renamed, ['base', 'one', 'renamed']],
+        [empty, []],
+        [added, ['a dir/né w\nline.txt', 'one']],
+      ],
+      'a rename names both paths; the merge and what is below it are left out',
+    );
+    assert.deepEqual([...(await readLineFiles('git', d, 1)).keys()], [renamed]);
+    run(d, 'switch', '--quiet', '--detach', below);
+    assert.deepEqual([...(await readLineFiles('git', d))], [[below, ['base']]], 'down to the root');
+    run(d, 'switch', '--quiet', 'side');
+    run(d, 'merge', '--quiet', '--no-ff', '-m', 'merge', 'main');
+    assert.deepEqual([...(await readLineFiles('git', d))], [], 'HEAD is a merge');
   });
 
   it('finds branches and tags that point inside or branched off the rewritten commits', async () => {
