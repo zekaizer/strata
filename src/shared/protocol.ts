@@ -610,9 +610,12 @@ export type SimulatedAction =
   | { kind: 'clickRow'; index: number; y?: number; shiftKey?: boolean }
   /**
    * Presses row `index` and drags it onto row `to`: into the gap above that row, or below it with
-   * `below`. `hold`: the pointer stays down.
+   * `below`. `hold`: the pointer stays down. `edge`: the drag goes to that edge of the list instead
+   * of a row, and the pointer stays down there.
    */
-  | { kind: 'dragRow'; index: number; to: number; below?: boolean; hold?: boolean }
+  | { kind: 'dragRow'; index: number; to: number; below?: boolean; hold?: boolean; edge?: 'top' | 'bottom' }
+  /** Lets go of the pointer a `dragRow` left down. */
+  | { kind: 'releaseDrag' }
   /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
   | { kind: 'scrollToRow'; index: number }
   /** Moves the pointer onto row `index`'s graph node, or `dx` px right of it. */

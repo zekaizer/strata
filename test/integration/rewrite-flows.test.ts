@@ -444,6 +444,50 @@ describe('tidying recent commits', () => {
     assert.equal(git('rev-parse', 'HEAD'), c);
   });
 
+  it('scrolls the list while a drag rests at its edge, and drops beyond what was in view', async () => {
+    for (let i = 0; i < 80; i++) git('commit', '--quiet', '--allow-empty', '-m', `filler ${i}`);
+    const head = commitFile('dragged.txt', 'd\n');
+    await reload(panel());
+    await run('strata.reorderCommits', commitMenu(head));
+    await reorderFacts(head);
+    await panel().simulate({ kind: 'scrollToRow', index: 0 });
+    const top = await rowOf(head);
+    const before = await panel().probe();
+    const inView = Math.ceil(before.listHeight / (before.rowHeights[top] ?? 1));
+    assert.ok(inView < 60, `the line is longer than the list is high (${inView} rows in view)`);
+
+    await panel().simulate({ kind: 'dragRow', index: top, to: top, edge: 'bottom' });
+    const scrolled = await waitFor('the list scrolled a screenful under the held drag', async () => {
+      const p = await panel().probe();
+      return p.scrollTop > before.scrollTop + before.listHeight && p;
+    });
+    assert.ok((scrolled.reorder?.drop ?? 0) > inView, 'the gap follows the rows passing under the pointer');
+    await panel().simulate({ kind: 'releaseDrag' });
+    const dropped = await waitFor('the dragged commit below the first screenful', async () => {
+      const p = await panel().probe();
+      return (p.reorder?.order.indexOf(head) ?? 0) > inView && p;
+    });
+    const rest = (await panel().probe()).scrollTop;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal((await panel().probe()).scrollTop, rest, 'the list rests once the pointer is up');
+
+    const at = dropped.reorder?.order.indexOf(head) ?? 0;
+    await panel().simulate({ kind: 'dragRow', index: top + at, to: top + at, edge: 'top' });
+    await waitFor('the list scrolled back up under the held drag', async () => {
+      const p = await panel().probe();
+      return p.scrollTop < rest - before.listHeight / 2;
+    });
+    await panel().simulate({ kind: 'key', key: 'Escape' });
+    const cancelled = await waitFor('the drag ended', async () => {
+      const p = await panel().probe();
+      return p.reorder?.drop === undefined && p;
+    });
+    assert.equal(cancelled.reorder?.order.indexOf(head), at, 'Escape leaves the draft as it was');
+    const after = cancelled.scrollTop;
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal((await panel().probe()).scrollTop, after, 'the list rests once the drag is cancelled');
+  });
+
   it('warns in the mode when the draft swaps commits that change the same file', async () => {
     const x = commitFile('same.txt', 'x\n');
     const y = commitFile('same.txt', 'y\n');

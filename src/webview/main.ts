@@ -4956,6 +4956,10 @@ class App {
         this.scroller.focus({ preventScroll: true });
         // A real drag passes the threshold on its way.
         this.scroller.dispatchEvent(at('pointermove', from + 8));
+        if (a.edge) {
+          this.scroller.dispatchEvent(at('pointermove', a.edge === 'top' ? box.top + 4 : box.bottom - 4));
+          break;
+        }
         this.scroller.dispatchEvent(at('pointermove', y(a.to, a.below ? 0.75 : 0.25)));
         if (a.hold) break;
         this.scroller.dispatchEvent(at('pointerup', y(a.to, a.below ? 0.75 : 0.25)));
@@ -4963,6 +4967,13 @@ class App {
         this.scroller.dispatchEvent(
           new MouseEvent('click', { bubbles: true, clientX: box.left + 80, clientY: y(a.to, 0.5) }),
         );
+        break;
+      }
+      case 'releaseDrag': {
+        const box = this.scroller.getBoundingClientRect();
+        const at = { bubbles: true, clientX: box.left + 80, clientY: this.press?.y ?? box.top };
+        this.scroller.dispatchEvent(new PointerEvent('pointerup', { ...at, button: 0 }));
+        this.scroller.dispatchEvent(new MouseEvent('click', at));
         break;
       }
       case 'hoverNode': {
