@@ -14,6 +14,12 @@ to get started and the requirements.
   badge of its own.
   The current branch and its upstream come first; badges that do not fit the row
   collapse into a `+N` badge.
+- The commit you have checked out (HEAD) and the line of its first parents stay
+  in the leftmost column, on a branch or detached, so your branch does not move
+  sideways when another branch gets newer commits. Branches newer than HEAD
+  run to its right, and one built on HEAD joins the column at HEAD. Under a
+  branch filter that picks no branch or tag on HEAD's commit, columns go to
+  the commits in the order they are listed.
 - Stashes are rows of their own, directly above the commit each was made on,
   newest on top, with a square node beside that commit's line. A stash whose
   commit is no longer on its branch (after a rebase or amend) sits above the
@@ -112,6 +118,14 @@ to get started and the requirements.
 - The changed files follow the message, with the commit they are compared with
   (click it to select that commit). In wide editors the message and the files
   sit side by side, and a tree that fits flows into columns.
+- To compare two commits, select one, then right-click any other commit and
+  choose **Compare with Selected**. The details open on the commit you
+  right-clicked and list every file that differs from the one you had selected;
+  the line above the files names that commit, and **Old**, the compare icon and
+  **New** open the file as of that commit, the diff between the two, and the
+  file as of this one. **Show Own Changes** on the same line goes back to the
+  commit's own changes; so does selecting any other row. The menu entry is
+  there only while exactly one commit is selected, and not on that commit.
 - Use the branch button in the toolbar to show only some refs (type to search,
   **Show All** to reset), and **First parent** to follow only the main line of
   merges.
@@ -278,6 +292,10 @@ commands, **Show Stashes...**, Skip (while stopped) and **Show Git Output**.
 The Command Palette has them too. While an operation runs, the toolbar and the
 banner say which, and the other commands wait for it.
 
+Changing the repository needs git 2.34 or later: with an older git these
+commands are disabled, and a banner above the graph says so and names the git
+it found.
+
 - **Branches and tags:** Checkout (a remote branch checks out its local branch,
   or creates one that tracks it; when the local branch of that name tracks
   something else, you choose between switching to it anyway and creating a
@@ -299,12 +317,21 @@ banner say which, and the other commands wait for it.
   worktree and offers to show or open it, or to prune it and try again.
 - **History:** Merge into Current Branch (fast-forward or a merge commit),
   Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current Branch
-  to Here in any of git's modes. Strata asks first only when there is a choice
+  to Here in any of git's modes. When a merge can fast-forward, Fast-Forward
+  is the first button of the confirmation, unless `merge.ff` is false: then
+  Create Merge Commit is. Strata asks first only when there is a choice
   to make, when Undo couldn't bring back what is lost, or when commits already
   pushed would be rewritten; the confirmation says what happens to which
   commits. A merge commit can be cherry picked relative to the parent you
   choose, and reverted, which undoes the commits it brought in from its other
   parents.
+- **Several commits at once:** Revert is also in the menu of a Shift-click
+  selection (see below) and undoes all of its commits in one run of git,
+  newest first, in one new commit each. Strata asks at most once, the result
+  says how many commits there were, and Undo takes back the whole run in one
+  step. A selection with a merge commit in it is refused: revert the merge on
+  its own. When one of the commits conflicts, the run stops there with the
+  rest still to do, and Continue, Skip and Abort work as for a single commit.
 - **Tidying recent commits:** commits of the current branch's first-parent
   line, from HEAD down to the first merge, can be rewritten before you push
   them. A file or folder history shows only the commits that change it, so it
@@ -344,7 +371,10 @@ banner say which, and the other commands wait for it.
   tree, and name those files so you can move them away first.
 - **Remotes:** Fetch From All Remotes (Fetch Remote on a remote branch badge
   fetches just its remote), Pull (fast-forward, merge or rebase, following
-  `pull.rebase`), Push and Publish Branch. Pull on the badge of a branch that
+  `pull.rebase`), Push and Publish Branch. A fetch removes the badges of
+  branches deleted on the remote when git's `fetch.prune` (or
+  `remote.<name>.prune`) is set; Strata does not prune on its own.
+  Pull on the badge of a branch that
   isn't checked out fast-forwards it to its upstream without switching to it; a
   branch that diverged stays as it is until you switch to it and pull, and one
   checked out in another worktree is pulled there. Set Upstream, on a branch badge,

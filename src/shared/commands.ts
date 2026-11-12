@@ -23,7 +23,14 @@ export type Section =
 
 /** The boolean context keys each section's element sets, which its menus' when-clauses may use. */
 export const SECTION_KEYS: Record<Section, readonly string[]> = {
-  commit: ['strataIsHead', 'strataHasRefs', 'strataBranch', 'strataRewritable', 'strataParentRewritable'],
+  commit: [
+    'strataIsHead',
+    'strataHasRefs',
+    'strataBranch',
+    'strataRewritable',
+    'strataParentRewritable',
+    'strataCompareWith',
+  ],
   selection: [],
   stash: ['strataLeftover'],
   changes: [],
@@ -33,7 +40,7 @@ export const SECTION_KEYS: Record<Section, readonly string[]> = {
   head: [],
   refs: [],
   worktree: ['strataLocked', 'strataPrunable', 'strataMain', 'strataShown'],
-  file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed', 'strataInFolder'],
+  file: ['strataHasDiff', 'strataHasOld', 'strataHasNew', 'strataRenamed', 'strataInFolder', 'strataCompared'],
 };
 
 export interface MenuPlacement {
@@ -52,7 +59,8 @@ export interface CommandSpec {
   /** In the graph tab's title bar: an icon in `navigation`, or an overflow group. */
   titleBar?: { group: string; when?: string; icon?: string };
   /**
-   * Changes the repository: disabled while another operation runs, and while one is stopped
+   * Changes the repository: disabled with a git too old to write (`strata.readOnly`), while
+   * another operation runs, and while one is stopped
    * unless `whileStopped` (the ways out of a stop, and writes that leave HEAD, the index and the
    * work tree alone).
    */
@@ -73,7 +81,14 @@ const SYNC = "!strata.operation && strata.head == 'tracking'";
 
 export const COMMANDS = {
   'strata.file.openChanges': { title: 'Open Changes', menus: [file('1_open@1', 'strataHasDiff')] },
-  'strata.file.openOld': { title: 'Open Old Version (Before This Commit)', menus: [file('1_open@2', 'strataHasOld')] },
+  'strata.file.openOld': {
+    title: 'Open Old Version (Before This Commit)',
+    menus: [file('1_open@2', 'strataHasOld && !strataCompared')],
+  },
+  'strata.file.openCompared': {
+    title: 'Open Old Version (As of the Compared Commit)',
+    menus: [file('1_open@2', 'strataHasOld && strataCompared')],
+  },
   'strata.file.openNew': { title: 'Open New Version (As of This Commit)', menus: [file('1_open@3', 'strataHasNew')] },
   'strata.file.openToSide': { title: 'Open to the Side', menus: [file('1_open@4')] },
   'strata.file.copyRelativePath': { title: 'Copy Relative Path', menus: [file('2_copy@1')] },
@@ -122,7 +137,11 @@ export const COMMANDS = {
     menus: [commit('3_pick@1', '!strataIsHead')],
     writes: true,
   },
-  'strata.revert': { title: 'Revert', menus: [commit('3_pick@2')], writes: true },
+  'strata.revert': {
+    title: 'Revert',
+    menus: [commit('3_pick@2'), { section: 'selection', group: '3_pick@1' }],
+    writes: true,
+  },
   'strata.editMessage': {
     title: 'Edit Message...',
     menus: [commit('3_tidy@1', 'strataRewritable')],
@@ -167,6 +186,10 @@ export const COMMANDS = {
       { section: 'remoteBranch', group: '2_apply@2' },
     ],
     writes: true,
+  },
+  'strata.commit.compareWithSelected': {
+    title: 'Compare with Selected',
+    menus: [commit('5_compare@1', 'strataCompareWith')],
   },
   'strata.commit.copyHash': { title: 'Copy Commit Hash', menus: [commit('5_copy@1')] },
   'strata.commit.copyShortHash': { title: 'Copy Short Commit Hash', menus: [commit('5_copy@2')] },
@@ -391,7 +414,9 @@ export function manifestCommands(): ManifestCommand[] {
       category: 'Strata',
       ...(spec.titleBar?.icon ? { icon: spec.titleBar.icon } : {}),
       ...(spec.writes
-        ? { enablement: spec.writes === 'whileStopped' ? '!strata.busy' : '!strata.busy && !strata.operation' }
+        ? {
+            enablement: `!strata.readOnly && !strata.busy${spec.writes === 'whileStopped' ? '' : ' && !strata.operation'}`,
+          }
         : {}),
     };
   });

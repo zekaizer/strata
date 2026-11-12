@@ -59,6 +59,7 @@ const confirmations: [string, w.Confirmation | undefined][] = [
         merges: 2,
         onUpstream: 9,
         upstream: 'origin/topic',
+        canForce: false,
       },
       section('rebase'),
       w.stashButtons('rebase', ['stash']),
@@ -68,17 +69,40 @@ const confirmations: [string, w.Confirmation | undefined][] = [
   ['reset, keep', w.resetConfirmation(reset, 'keep', true)],
   [
     'cherry pick of a merge',
-    w.pickConfirmation('cherryPick', c, 'HEAD', true, section('cherryPick'), w.stashButtons('cherryPick', ['stash']), {
-      parents,
-      mainline: 2,
-    }),
+    w.pickConfirmation(
+      'cherryPick',
+      [c],
+      'HEAD',
+      true,
+      section('cherryPick'),
+      w.stashButtons('cherryPick', ['stash']),
+      {
+        parents,
+        mainline: 2,
+      },
+    ),
   ],
   [
     'revert of a merge',
-    w.pickConfirmation('revert', c, "'main'", false, section('revert'), w.stashButtons('revert', ['stash']), {
+    w.pickConfirmation('revert', [c], "'main'", false, section('revert'), w.stashButtons('revert', ['stash']), {
       parents,
       mainline: 1,
     }),
+  ],
+  [
+    'cherry pick of several',
+    w.pickConfirmation(
+      'cherryPick',
+      [c, c, c],
+      'HEAD',
+      true,
+      section('cherryPick'),
+      w.stashButtons('cherryPick', ['stash']),
+    ),
+  ],
+  [
+    'revert of several',
+    w.pickConfirmation('revert', [c, c, c], 'HEAD', true, section('revert'), w.stashButtons('revert', ['stash'])),
   ],
   ['abort', w.abortConfirmation('rebase', 'topic', 'abc1234', true, ['a.ts', 'b.ts'], 3)],
   ['skip', w.skipConfirmation(c, "'topic'", ['a.ts'])],

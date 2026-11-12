@@ -32,7 +32,8 @@ function roveFocus(bar: HTMLElement): void {
 
 /**
  * The banner between the toolbar and the list (design §7.2): a sentence with commit links, what
- * else to know on a line of its own, then buttons that run the graph's commands. It is a region before the list, so Shift+Tab reaches it.
+ * else to know on a line of its own, then buttons that run the graph's commands (no `.banner-actions`
+ * without any). It is a region before the list, so Shift+Tab reaches it.
  */
 export class BannerView {
   readonly element = el('section', 'banner');
@@ -54,7 +55,7 @@ export class BannerView {
 
   /**
    * Renders only when the banner changed. Focus inside it stays on the button with the same text,
-   * else moves to the first action, and leaves with the banner.
+   * else moves to the first button, and leaves with the banner or when it has no button.
    */
   show(banner: Banner | undefined): void {
     const shown = JSON.stringify(banner ?? null);
@@ -100,11 +101,13 @@ export class BannerView {
       actions.append(button);
     });
     roveFocus(actions);
-    this.element.replaceChildren(icon, text, actions);
+    this.element.replaceChildren(icon, text, ...(banner.actions.length > 0 ? [actions] : []));
     this.holdActions();
     if (!focused) return;
     const same = [...this.element.querySelectorAll('button')].find((b) => b.textContent === focused.textContent);
-    (same ?? actions.querySelector('button'))?.focus();
+    const next = same ?? this.element.querySelector('button');
+    if (next) next.focus();
+    else this.leave();
   }
 
   /** Holds the buttons and says what runs while `label` runs; undefined frees them. */

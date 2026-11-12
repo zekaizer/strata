@@ -6,6 +6,7 @@ import {
   abortConfirmation,
   alreadyBased,
   alreadyContains,
+  alreadyContainsPicked,
   alreadyReverted,
   dirtySection,
   type Confirmation,
@@ -15,12 +16,15 @@ import {
   HISTORY_DONE,
   IN_THE_WAY_OF,
   mainlinePick,
+  mergeAmongPicked,
   mergeAnswer,
   mergeConfirmation,
   messageEditsConfirmation,
+  NOTHING_TO_REVERT,
   type MergeParents,
   opName,
   pickConfirmation,
+  pickedName,
   refName,
   rebaseConfirmation,
   rebaseContinues,
@@ -220,7 +224,8 @@ async function stopped(host: FlowHost, state: OperationState, reason: string): P
   );
   const skip = state.kind === 'merge' ? [] : ['Skip...'];
   // No Skip at a rebase stop without conflicts: at an edit git made the commit already, and --skip keeps it.
-  const next = state.kind === 'rebase' ? ['Continue'] : skip;
+  // Nor between the commits of a cherry pick or revert: Continue leaves out the one git stopped before.
+  const next = state.kind === 'rebase' || state.applying === undefined ? ['Continue'] : skip;
   const actions = [...(state.conflictCount > 0 ? ['Resolve...', ...skip] : next), abortButton(state.kind)];
   notify(host, 'warning', message, actions, (a) =>
     a === 'Resolve...'
@@ -250,6 +255,7 @@ async function heldStash(host: FlowHost, state: OperationState) {
 export async function runStoppable(
   host: FlowHost,
   attempt: () => Promise<Restored | undefined>,
+  reason: (e: GitOpError) => string | undefined = () => undefined,
 ): Promise<Restored | undefined> {
   try {
     return await attempt();
@@ -257,7 +263,7 @@ export async function runStoppable(
     if (!(e instanceof GitOpError)) throw e;
     const state = await readOperationState(host.git, host.cwd);
     if (!state) throw e;
-    await stopped(host, state, gitFailure(e.message).split('\n')[0]!);
+    await stopped(host, state, reason(e) ?? gitFailure(e.message).split('\n')[0]!);
     return undefined;
   }
 }
@@ -374,7 +380,15 @@ export async function rebase(
     const buttons: { id: StashChoice | 'rebase'; label: string }[] = dirty
       ? stashButtons(op, c.choices.choices)
       : [{ id: 'rebase', label: 'Rebase' }];
-    const facts = { op, branch: h.name, onto: onto.name, ontoShort: target.short, ...counts, upstream: upstream?.name };
+    const facts = {
+      op,
+      branch: h.name,
+      onto: onto.name,
+      ontoShort: target.short,
+      ...counts,
+      upstream: upstream?.name,
+      canForce: host.settings().allowForcePush,
+    };
     if ((await host.ui.confirm(rebaseConfirmation(facts, c.section, buttons))) === undefined) return;
   }
   const r = await runStoppable(host, () =>
@@ -396,30 +410,63 @@ export async function rebase(
   });
 }
 
-/** Cherry pick or revert of `hash` on HEAD; of a merge, relative to the parent picked (cherry pick) or its first. */
-export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: string): Promise<void> {
-  const [h, c] = await Promise.all([head(host), readCommit(host.git, host.cwd, hash)]);
-  if (kind === 'cherryPick' && (await isAncestor(host.git, host.cwd, c.hash, h.hash))) {
-    void host.ui.notify('info', alreadyContains(h.name, c.short));
+/**
+ * Cherry pick or revert on HEAD of `hashes`, newest first as a selection lists them, in one run of
+ * git: a cherry pick applies them oldest first and leaves out those HEAD has, a revert undoes them
+ * newest first. One merge commit goes relative to the parent picked (cherry pick) or its first;
+ * several commits with a merge among them are refused.
+ */
+export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hashes: readonly string[]): Promise<void> {
+  const [h, asked] = await Promise.all([
+    head(host),
+    Promise.all(hashes.map((hash) => readCommit(host.git, host.cwd, hash))),
+  ]);
+  const had =
+    kind === 'cherryPick'
+      ? await Promise.all(asked.map((c) => isAncestor(host.git, host.cwd, c.hash, h.hash)))
+      : asked.map(() => false);
+  const missing = asked.filter((_, i) => !had[i]);
+  if (missing.length === 0) {
+    void host.ui.notify('info', alreadyContainsPicked(h.name, asked));
     return;
   }
-  if (await atShallowEdge(host, c.hash)) return;
-  const parents = await readMergeParents(host.git, host.cwd, c.hash);
+  if (asked.length > 1) {
+    const merges = await Promise.all(asked.map((c) => readMergeParents(host.git, host.cwd, c.hash)));
+    const merged = asked.find((_, i) => merges[i] !== undefined);
+    if (merged) {
+      void host.ui.notify('info', mergeAmongPicked(kind, merged));
+      return;
+    }
+  }
+  for (const c of missing) if (await atShallowEdge(host, c.hash)) return;
+  const commits = kind === 'cherryPick' ? missing.toReversed() : missing;
+  const c = commits[0]!;
+  const what = pickedName(commits);
+  const parents = commits.length > 1 ? undefined : await readMergeParents(host.git, host.cwd, c.hash);
   let merge: MergeParents | undefined;
   if (parents !== undefined) {
-    const asked = mainlinePick(c, parents);
+    const which = mainlinePick(c, parents);
     const mainline =
       kind === 'revert'
         ? 1
-        : await host.ui.pick({ ...asked, items: asked.items.map((i, n) => ({ ...i, value: n + 1 })) });
+        : await host.ui.pick({ ...which, items: which.items.map((i, n) => ({ ...i, value: n + 1 })) });
     if (mainline === undefined) return;
     merge = { parents, mainline };
   }
-  const base = (await runGit(host.git, host.cwd, ['rev-list', '--parents', '--max-count=1', c.hash, '--']))
-    .trim()
-    .split(' ')[merge?.mainline ?? 1];
+  const bases = await Promise.all(
+    commits.map(
+      async ({ hash }) =>
+        (await runGit(host.git, host.cwd, ['rev-list', '--parents', '--max-count=1', hash, '--'])).trim().split(' ')[
+          merge?.mainline ?? 1
+        ],
+    ),
+  );
   // A root commit has no parent to diff against: git refuses on its own if the changes overlap it.
-  const ch = await changes(host, kind, base === undefined ? undefined : [base, c.hash]);
+  const ch = await changes(
+    host,
+    kind,
+    ...commits.flatMap(({ hash }, i) => (bases[i] === undefined ? [] : [[bases[i], hash] as const])),
+  );
   const detached = h.branch === undefined;
   let choice: StashChoice | 'go' | undefined = 'go';
   if (ch.choices.choices.length > 0 || detached || (merge !== undefined && kind === 'revert')) {
@@ -427,29 +474,36 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
       ch.choices.choices.length > 0
         ? stashButtons(kind, ch.choices.choices)
         : [{ id: 'go', label: kind === 'cherryPick' ? 'Cherry Pick' : 'Revert' }];
-    choice = await host.ui.confirm(pickConfirmation(kind, c, h.name, detached, ch.section, buttons, merge));
+    choice = await host.ui.confirm(pickConfirmation(kind, commits, h.name, detached, ch.section, buttons, merge));
     if (choice === undefined) return;
   }
-  const op: Operation = { kind, commit: c.hash, ...(merge === undefined ? {} : { mainline: merge.mainline }) };
-  const label = kind === 'cherryPick' ? HISTORY_DOING.picking(c.short) : HISTORY_DOING.reverting(c.short);
-  const r = await runStoppable(host, () =>
-    runMovingUntracked(
-      host,
-      label,
-      IN_THE_WAY_OF[kind](c.short),
-      async (exec) => {
-        if (choice === 'stash')
-          return stashAround(
-            host,
-            exec,
-            autostashMessage(kind, `of ${c.short} ${kind === 'revert' ? 'on' : 'onto'} ${h.name}`),
-            () => exec(op),
-          );
-        await exec(op);
-        return { kind: 'none' } satisfies Restored;
-      },
-      [h.expect],
-    ),
+  const op: Operation = {
+    kind,
+    commits: commits.map((p) => p.hash),
+    ...(merge === undefined ? {} : { mainline: merge.mainline }),
+  };
+  const label = kind === 'cherryPick' ? HISTORY_DOING.picking(what) : HISTORY_DOING.reverting(what);
+  const r = await runStoppable(
+    host,
+    () =>
+      runMovingUntracked(
+        host,
+        label,
+        IN_THE_WAY_OF[kind](what),
+        async (exec) => {
+          if (choice === 'stash')
+            return stashAround(
+              host,
+              exec,
+              autostashMessage(kind, `of ${what} ${kind === 'revert' ? 'on' : 'onto'} ${h.name}`),
+              () => exec(op),
+            );
+          await exec(op);
+          return { kind: 'none' } satisfies Restored;
+        },
+        [h.expect],
+      ),
+    (e) => (kind === 'revert' && e.kind === 'nothingToCommit' ? NOTHING_TO_REVERT : undefined),
   ).catch((e: unknown) => {
     if (kind !== 'revert' || !(e instanceof GitOpError) || e.kind !== 'nothingToCommit') throw e;
     void host.ui.notify('info', alreadyReverted(c.short, h.name));
@@ -458,7 +512,10 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
   if (!r) return;
   const after = await readHead(host.git, host.cwd);
   await finishRestoring(host, r, {
-    message: kind === 'cherryPick' ? HISTORY_DONE.picked(c.short, h.name) : HISTORY_DONE.reverted(c.short),
+    message:
+      kind === 'cherryPick'
+        ? HISTORY_DONE.picked(what, h.name, asked.length - missing.length)
+        : HISTORY_DONE.reverted(what),
     focus: after.hash,
     undo: moveUndo(host, kind === 'cherryPick' ? 'cherry pick' : 'revert', h, after.hash),
   });
@@ -571,10 +628,20 @@ async function settle(
   { keep, started }: { keep?: string | undefined; started?: string } = {},
 ): Promise<void> {
   let kept: string | undefined;
+  const held = await host.leftovers.held(state);
+  // A cherry pick or revert of several commits that stops again holds its stash at the next commit.
+  const hold = async () => {
+    if (held === undefined) return;
+    const now = await readOperationState(host.git, host.cwd);
+    if (now?.applying !== undefined) await host.leftovers.pushed(held, now.applying);
+  };
   const r = await runStoppable(host, () =>
     run(host, label, async (exec) => {
       if (keep) kept = await keepDiscarded(host, exec, state, keep);
-      const byGit = await execAutostash(host, exec, op);
+      const byGit = await execAutostash(host, exec, op).catch(async (e: unknown) => {
+        await hold();
+        throw e;
+      });
       return byGit.kind === 'none' ? restoreHeld(host, exec, state) : byGit;
     }),
   );

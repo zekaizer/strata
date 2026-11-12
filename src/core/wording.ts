@@ -282,6 +282,9 @@ export function failedDuring(label: string, message: string): string {
 export const gitTooOld = (found: string): string =>
   `Strata needs git 2.34 or newer to change repositories (found ${found}).`;
 
+/** What follows from gitTooOld(), where it stands in the graph. */
+export const WRITES_DISABLED = 'Commands that change the repository are disabled.';
+
 /**
  * A remote operation that git could not authenticate (auth) or whose host it does not know yet
  * (hostKey). `rerun`: the command to run again afterwards, when the terminal runs only part of it.
@@ -660,6 +663,8 @@ export interface RebaseFacts {
   /** Of the replayed commits, how many are on the upstream. */
   onUpstream: number;
   upstream: string | undefined;
+  /** FORCE_PUSH_SETTING is on. */
+  canForce: boolean;
 }
 
 export function rebaseConfirmation<B extends string>(
@@ -677,7 +682,7 @@ export function rebaseConfirmation<B extends string>(
     message: f.op === 'pullRebase' ? `Pull ${f.onto} into ${f.branch}?` : `Rebase ${f.branch} onto ${f.onto}?`,
     detail: [
       `Replays ${plural(f.replay, 'commit')} of ${f.branch} on ${f.onto} (${f.ontoShort})${drops}.${pushed}`,
-      'Undo restores the original commits.',
+      `${pushed !== '' && !f.canForce ? `${FORCE_PUSH_NEEDS_SETTING} ` : ''}Undo restores the original commits.`,
       section,
     ]
       .filter((s) => s !== '')
@@ -720,23 +725,38 @@ function mergeSentence(kind: 'cherryPick' | 'revert', m: MergeParents): string {
   return kind === 'cherryPick' ? `Applies ${changes}` : `Undoes ${changes} Merging them again won't bring them back.`;
 }
 
-/** Cherry pick or revert of `c` on `onto` (a quoted branch, or HEAD); `merge`: of a merge commit. */
+/** What a cherry pick or revert of several commits does, in the order git takes them. */
+function severalSentence(kind: 'cherryPick' | 'revert', commits: readonly CommitRef[]): string {
+  const names = fileList(
+    commits.map((c) => `"${c.subject}"`),
+    2,
+  );
+  return kind === 'cherryPick'
+    ? `Applies them oldest first: ${names}.`
+    : `Undoes them newest first, in one new commit each: ${names}.`;
+}
+
+/**
+ * Cherry pick or revert of `commits`, in the order git applies them, on `onto` (a quoted branch,
+ * or HEAD); `merge`: of a single merge commit.
+ */
 export function pickConfirmation<B extends string>(
   kind: 'cherryPick' | 'revert',
-  c: CommitRef,
+  commits: readonly CommitRef[],
   onto: string,
   detached: boolean,
   section: string,
   buttons: { id: B; label: string }[],
   merge?: MergeParents,
 ): Confirmation<B> {
+  const several = commits.length > 1;
+  const what = several ? plural(commits.length, 'commit') : commitName(commits[0]!);
   return {
     ...(kind === 'revert' && merge !== undefined ? {} : { level: 'info' as const }),
-    message:
-      kind === 'cherryPick' ? `Cherry pick ${commitName(c)} onto ${onto}?` : `Revert ${commitName(c)} on ${onto}?`,
+    message: kind === 'cherryPick' ? `Cherry pick ${what} onto ${onto}?` : `Revert ${what} on ${onto}?`,
     detail: [
-      merge === undefined ? '' : mergeSentence(kind, merge),
-      detached ? 'HEAD is detached: the new commit will be on no branch.' : '',
+      several ? severalSentence(kind, commits) : merge === undefined ? '' : mergeSentence(kind, merge),
+      detached ? `HEAD is detached: the new ${several ? 'commits' : 'commit'} will be on no branch.` : '',
       section,
     ]
       .filter((s) => s !== '')
@@ -746,9 +766,20 @@ export function pickConfirmation<B extends string>(
 }
 
 export const alreadyContains = (into: string, what: string): string => `${into} already contains ${what}.`;
+/** The commits of a cherry pick or revert as its labels and result name them: one by its id, several by their count. */
+export const pickedName = (commits: readonly CommitRef[]): string =>
+  commits.length === 1 ? commits[0]!.short : plural(commits.length, 'commit');
+/** Every commit of a cherry pick is in `into` already. */
+export const alreadyContainsPicked = (into: string, commits: readonly CommitRef[]): string =>
+  alreadyContains(into, commits.length === 1 ? commits[0]!.short : `all ${plural(commits.length, 'commit')}`);
+/** A cherry pick or revert of several commits is refused: `merge` is among them. */
+export const mergeAmongPicked = (kind: 'cherryPick' | 'revert', merge: CommitRef): string =>
+  `Can't ${OP_NAME[kind]} these commits together: ${commitName(merge)} is a merge commit, and what it changes depends on the parent it is compared with. ${kind === 'cherryPick' ? 'Cherry pick' : 'Revert'} it on its own.`;
 /** A revert of `short` on `onto` found nothing to undo. */
 export const alreadyReverted = (short: string, onto: string): string =>
   `${short} is already reverted on ${onto}: there is nothing to undo.`;
+/** Why a revert of several commits stopped at one that changes nothing, as stoppedMessage's reason. */
+export const NOTHING_TO_REVERT = 'one of the commits is already reverted, so there is nothing to undo for it';
 export const alreadyBased = (branch: string, onto: string): string => `${branch} is already based on ${onto}.`;
 
 /** The reset modes in the order offered: git's default first. */
@@ -919,8 +950,10 @@ export const HISTORY_DONE = {
   merged: (src: string, into: string): string => `Merged ${src} into ${into}`,
   rebased: (branch: string, onto: string, count: number): string =>
     `Rebased ${branch} onto ${onto} (${plural(count, 'commit')})`,
-  picked: (short: string, onto: string): string => `Cherry-picked ${short} onto ${onto}`,
-  reverted: (short: string): string => `Reverted ${short}`,
+  /** `what`: as pickedName names it. `already`: commits left out because `onto` had them. */
+  picked: (what: string, onto: string, already = 0): string =>
+    `Cherry-picked ${what} onto ${onto}${already === 0 ? '' : ` (${already} more ${already === 1 ? 'was' : 'were'} already there)`}`,
+  reverted: (what: string): string => `Reverted ${what}`,
   /** `kept`: the reset kept the changes that are not in `stash` in place (reset --keep). */
   reset: (branch: string, short: string, stash: string | undefined, kept = false): string =>
     `Reset ${branch} to ${short}${stash === undefined ? '' : `. Your ${kept ? 'changes to the files the reset changes' : 'uncommitted changes'} are in ${stash}`}`,
@@ -1103,6 +1136,9 @@ export const FORCE_PUSH_SETTING = 'git.allowForcePush';
 
 /** Opens FORCE_PUSH_SETTING in Settings: offered after a rejected push while force pushes are off. */
 export const OPEN_SETTINGS = 'Open Settings';
+
+/** Under a warning that a force push will be needed, while FORCE_PUSH_SETTING is off. */
+const FORCE_PUSH_NEEDS_SETTING = `Force pushes are off: the ${FORCE_PUSH_SETTING} setting allows them.`;
 
 const FORCE_PUSH_OFF = `A branch you rewrote needs a force push instead: the ${FORCE_PUSH_SETTING} setting allows it.`;
 
@@ -1337,8 +1373,8 @@ export interface RewriteFacts {
   what: string;
   /** Newer commits replayed on top of the edited ones. */
   onTop: number;
-  /** Rewritten commits a remote-tracking branch has, and that branch (short name). */
-  pushed: { count: number; remote: string } | undefined;
+  /** Rewritten commits a remote-tracking branch has, and that branch (short name); `canForce`: FORCE_PUSH_SETTING is on. */
+  pushed: { count: number; remote: string; canForce: boolean } | undefined;
   /** Short names of the branches that can move with the rewritten commits. */
   moves: readonly string[];
   stays: readonly { name: string; why: StayReason }[];
@@ -1409,7 +1445,7 @@ export function rewriteConfirmation(
   const verb = EDIT_VERB[f.edit];
   const p = f.pushed;
   const pushed = p && [
-    `${refName(p.remote)} has ${p.count === 1 ? 'one of them' : plural(p.count, 'of them')}: pushing ${f.branch} afterwards needs a force push, and anyone who fetched ${p.count === 1 ? 'it' : 'them'} keeps the old ${p.count === 1 ? 'commit' : 'commits'}.`,
+    `${refName(p.remote)} has ${p.count === 1 ? 'one' : p.count} of them: pushing ${f.branch} afterwards needs a force push, and anyone who fetched ${p.count === 1 ? 'it' : 'them'} keeps the old ${p.count === 1 ? 'commit' : 'commits'}.`,
   ];
   const moveLabel =
     f.moves.length === 1 ? `${verb} and Move ${f.moves[0]!}` : `${verb} and Move ${f.moves.length} Branches`;
@@ -1428,6 +1464,7 @@ export function rewriteConfirmation(
       ...(p ? [QUESTION[f.edit](f)] : []),
       f.onTop > 0 ? `Replays ${plural(f.onTop, 'newer commit')} on top.` : '',
       ...(pushed ?? []),
+      p && !p.canForce ? FORCE_PUSH_NEEDS_SETTING : '',
       f.moves.length > 0
         ? `${names(f.moves)} ${isAre(f.moves.length)} on the rewritten commits: ${moveLabel} moves ${f.moves.length === 1 ? 'it' : 'them'} to the new ones.`
         : '',

@@ -22,6 +22,8 @@ export interface CommitContext {
   strataRewritable: boolean;
   /** Rewritable, and so is its parent: it can be fixed up into an older commit. */
   strataParentRewritable: boolean;
+  /** The one selected commit when it is another commit than this row's, else empty. */
+  strataCompareWith: string;
 }
 
 /** A row of a multi-selection (two or more rewritable commits in a row); the row's own keys are not set. */

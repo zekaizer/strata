@@ -141,7 +141,8 @@ async function survey(host: FlowHost, p: Planned): Promise<Prepared> {
     branch: h.name,
     what: what[edit.kind](),
     onTop: at.get(edit.kind === 'fixup' ? n.oldest : n.newest)! - (edit.kind === 'fixup' ? 1 : 0),
-    pushed: remote === undefined ? undefined : { count: pushed.length, remote },
+    pushed:
+      remote === undefined ? undefined : { count: pushed.length, remote, canForce: host.settings().allowForcePush },
     moves: fates.moves.map((m) => m.ref.short),
     stays: fates.stays.map((st) => ({ name: st.ref.short, why: st.why })),
   };

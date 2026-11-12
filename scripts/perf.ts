@@ -65,7 +65,9 @@ async function layoutCost(): Promise<Record<string, unknown>> {
   const r = new LogReader({ git: 'git', cwd: repo });
   const commits = (await r.next(LAYOUT_COMMITS)).commits;
   r.dispose();
-  let state: LaneState = initialLaneState();
+  // As the extension lays out a view of all refs: column 0 held for HEAD.
+  const head = git('rev-parse', 'HEAD').trim();
+  let state: LaneState = initialLaneState(head);
   let maxWidth = 0;
   let spans = 0;
   const t = performance.now();
@@ -80,7 +82,7 @@ async function layoutCost(): Promise<Record<string, unknown>> {
     );
   }
   const ms = performance.now() - t;
-  const firstPage = await time(() => layoutPage(initialLaneState(), commits.slice(0, FIRST_PAGE)));
+  const firstPage = await time(() => layoutPage(initialLaneState(head), commits.slice(0, FIRST_PAGE)));
   return {
     commits: commits.length,
     totalMs: Math.round(ms),

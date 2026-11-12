@@ -319,11 +319,16 @@ An operation's state and its actions, between the toolbar and the list: `.banner
 A rebase, merge or cherry pick in progress or stopped at conflicts. The sentence says where; the buttons offer Continue,
 Skip… and Abort….
 
+Also while Strata cannot change the repository at all (git older than 2.34): `.banner.warning`. Nothing in Strata
+resolves this state, so it has no `.banner-actions`. `.banner-lead` says why and `.banner-more` says what follows from
+it. There is one banner slot. In this state every button of an operation banner is dead, so the read-only banner takes
+the place of the operation banner.
+
 #### What the consumer provides
 
 - A `banner-icon` codicon: `info`, or `warning` with `.warning`.
 - `.banner-text`: `.banner-lead` (commit hashes as `.link-button.banner-link`) and `.banner-more`.
-- `.banner-actions`: `.button`s, the first `.primary`.
+- `.banner-actions`: `.button`s, the first `.primary`. A banner with nothing to resolve has none.
 
 While the operation runs, hold the buttons with `aria-disabled="true"` and add a `.banner-busy` naming the operation;
 it shows a spinner.

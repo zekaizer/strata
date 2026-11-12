@@ -26,8 +26,8 @@ function withPasses(rows: readonly Row[], spans: readonly Span[], state: LaneSta
   return rows.map((r, i) => ({ ...r, passes: index.passesAt(i) }));
 }
 
-function layoutAll(commits: readonly LayoutCommit[], pageSizes?: number[], opts?: { colors: number }) {
-  let state: LaneState = initialLaneState();
+function layoutAll(commits: readonly LayoutCommit[], pageSizes?: number[], opts?: { colors: number }, head?: string) {
+  let state: LaneState = initialLaneState(head);
   const rows: Row[] = [];
   const spans: Span[] = [];
   let i = 0;
@@ -90,6 +90,23 @@ function checkRow(row: FullRow, i: number): void {
   assert.equal(new Set(ins).size, ins.length, `row ${i}: two incoming lines share a column`);
   for (const n of ins) assert.ok(!row.passes.some((p) => p.lane === n), `row ${i}: incoming overlaps pass at ${n}`);
   for (const e of [...row.passes, ...row.incoming, ...row.outgoing]) assert.ok(e.lane >= 0 && e.color >= 0);
+}
+
+/** Every column a row's node and lines touch. */
+const columns = (row: FullRow): number[] => [
+  row.lane,
+  ...[...row.incoming, ...row.outgoing, ...row.passes].map((e) => e.lane),
+];
+
+/** `head` and its first-parent line sit in column 0, which nothing uses above `head`. */
+function checkHeadColumn(commits: readonly LayoutCommit[], rows: FullRow[], head: string): void {
+  const index = new Map(commits.map((c, i) => [c.hash, i]));
+  const at = index.get(head)!;
+  for (let i = 0; i < at; i++) assert.ok(!columns(rows[i]!).includes(0), `row ${i} uses column 0 above HEAD`);
+  assert.ok(!rows[at]!.incoming.some((e) => e.lane === 0), 'a line enters HEAD in column 0');
+  for (let i: number | undefined = at; i !== undefined; i = index.get(commits[i]!.parents[0] ?? '')) {
+    assert.equal(rows[i]!.lane, 0, `${commits[i]!.hash} on HEAD's first-parent line`);
+  }
 }
 
 describe('layoutPage: hand-made histories', () => {
@@ -186,6 +203,115 @@ describe('layoutPage: hand-made histories', () => {
   });
 });
 
+describe('layoutPage: column 0 held for HEAD', () => {
+  const lanes = (commits: LayoutCommit[], head?: string) =>
+    layoutAll(commits, undefined, undefined, head).rows.map((r) => r.lane);
+
+  it('keeps HEAD and its first parents in column 0 when another branch is newer', () => {
+    //  | x2      another branch, newer than HEAD
+    //  | x1
+    //  h |       HEAD
+    //  |/
+    //  a
+    const commits = [C('x2', 'x1'), C('x1', 'a'), C('h', 'a'), C('a')];
+    assert.deepEqual(lanes(commits), [0, 0, 1, 0], 'arrival order without a HEAD');
+    const { rows } = layoutAll(commits, undefined, undefined, 'h');
+    assert.deepEqual(
+      rows.map((r) => r.lane),
+      [1, 1, 0, 0],
+    );
+    assert.deepEqual(rows[3]!.incoming.map((e) => e.lane).sort(), [0, 1]);
+    checkHeadColumn(commits, rows, 'h');
+  });
+
+  it('bends a branch built on HEAD into column 0 at HEAD, keeping its color', () => {
+    const commits = [C('f2', 'f1'), C('f1', 'h'), C('h', 'a'), C('a')];
+    const { rows } = layoutAll(commits, undefined, undefined, 'h');
+    assert.deepEqual(
+      rows.map((r) => r.lane),
+      [1, 1, 0, 0],
+    );
+    assert.deepEqual(rows[2]!.incoming, [{ lane: 1, color: rows[1]!.color }]);
+    assert.equal(rows[2]!.color, rows[1]!.color);
+    rows.forEach(checkRow);
+    assert.deepEqual(traceEdges(commits, rows), expectedEdges(commits));
+  });
+
+  it('takes column 0 for HEAD when several lines wait for it, one of them a merge line', () => {
+    const commits = [C('f', 'h'), C('m', 'b', 'h'), C('b', 'a'), C('h', 'a'), C('a')];
+    const { rows } = layoutAll(commits, undefined, undefined, 'h');
+    assert.deepEqual(
+      rows.map((r) => r.lane),
+      [1, 2, 2, 0, 0],
+    );
+    assert.deepEqual(
+      rows[3]!.incoming.map((e) => e.lane),
+      [1],
+      'the merge line joined the lane already waiting',
+    );
+    rows.forEach(checkRow);
+    assert.deepEqual(traceEdges(commits, rows), expectedEdges(commits));
+    checkHeadColumn(commits, rows, 'h');
+  });
+
+  it('takes column 0 for HEAD when lanes in several columns converge on it', () => {
+    const commits = [C('f', 'h'), C('g', 'h'), C('h', 'a'), C('a')];
+    const { rows } = layoutAll(commits, undefined, undefined, 'h');
+    assert.deepEqual(
+      rows.map((r) => r.lane),
+      [1, 2, 0, 0],
+    );
+    assert.deepEqual(
+      rows[2]!.incoming.map((e) => e.lane),
+      [1, 2],
+    );
+    assert.equal(rows[2]!.color, rows[0]!.color, 'the leftmost line keeps its color through HEAD');
+    rows.forEach(checkRow);
+    assert.deepEqual(traceEdges(commits, rows), expectedEdges(commits));
+  });
+
+  it('opens the other parents of a HEAD that is an octopus merge to its right', () => {
+    const commits = [C('t', 'r'), C('h', 'a', 'b', 'c'), C('c', 'r'), C('b', 'r'), C('a', 'r'), C('r')];
+    const { rows } = layoutAll(commits, undefined, undefined, 'h');
+    assert.equal(rows[1]!.lane, 0);
+    assert.deepEqual(
+      rows[1]!.outgoing.map((e) => e.lane),
+      [0, 2, 3],
+    );
+    assert.equal(rows[4]!.lane, 0, 'the first parent');
+    checkHeadColumn(commits, rows, 'h');
+  });
+
+  it('lays out a HEAD that is the newest commit as without one', () => {
+    const commits = [C('h', 'b', 'x'), C('b', 'a'), C('x', 'a'), C('a')];
+    assert.deepEqual(layoutAll(commits, undefined, undefined, 'h').rows, layoutAll(commits).rows);
+  });
+
+  it('holds no column without a HEAD (unborn branch)', () => {
+    assert.equal(initialLaneState().head, null);
+    assert.equal(lanes([C('b', 'a'), C('a')])[0], 0);
+  });
+
+  it('frees column 0 once the line of HEAD ends at a root', () => {
+    const commits = [C('x', 'y'), C('h'), C('y')];
+    assert.deepEqual(lanes(commits, 'h'), [1, 0, 1]);
+    assert.deepEqual(lanes([...commits, C('z')], 'h'), [1, 0, 1, 0]);
+  });
+
+  it('holds the column across pages until HEAD arrives, and no longer', () => {
+    const first = layoutPage(initialLaneState('h'), [C('x2', 'x1')]);
+    assert.equal(first.state.head, 'h');
+    assert.deepEqual(first.state.lanes, [null, 'x1']);
+    const second = layoutPage(structuredClone(first.state), [C('x1', 'a'), C('h', 'a')]);
+    assert.deepEqual(
+      second.rows.map((r) => r.lane),
+      [1, 0],
+    );
+    assert.equal(second.state.head, null);
+    assert.deepEqual(second.state.lanes, ['a', 'a']);
+  });
+});
+
 describe('layoutPage: fixture repositories', () => {
   const root = tempDir('layout');
   const names: ScenarioName[] = ['linear', 'branchy', 'octopus', 'multi-root', 'refs', 'clock-skew', 'large'];
@@ -232,6 +358,58 @@ describe('layoutPage: fixture repositories', () => {
       }
     });
   }
+
+  for (const n of ['branchy', 'octopus', 'multi-root', 'refs', 'clock-skew'] as const) {
+    it(`${n}: any commit as HEAD takes column 0 with its first parents, edges intact, at every page boundary`, () => {
+      const commits = histories.get(n)!;
+      for (const { hash } of commits) {
+        const whole = layoutAll(commits, undefined, undefined, hash);
+        whole.rows.forEach(checkRow);
+        assert.deepEqual(traceEdges(commits, whole.rows), expectedEdges(commits), hash);
+        checkHeadColumn(commits, whole.rows, hash);
+        assert.equal(whole.state.head, null);
+        for (let i = 0; i <= commits.length; i++) {
+          assert.deepEqual(layoutAll(commits, [i, commits.length - i], undefined, hash), whole, `split at ${i}`);
+        }
+      }
+    });
+
+    it(`${n}: any commit of the first-parent history as HEAD takes column 0`, () => {
+      const commits = firstParent.get(n)!;
+      for (const { hash } of commits) {
+        const { rows } = layoutAll(commits, undefined, undefined, hash);
+        assert.deepEqual(traceEdges(commits, rows), expectedEdges(commits), hash);
+        checkHeadColumn(commits, rows, hash);
+      }
+    });
+  }
+
+  it('large: a HEAD deep in the history takes column 0 at page sizes 1, 7 and 100, and across the worker boundary', () => {
+    const commits = histories.get('large')!;
+    for (const at of [0, 1, 250, 2500, commits.length - 1]) {
+      const head = commits[at]!.hash;
+      const whole = layoutAll(commits, undefined, undefined, head);
+      whole.rows.forEach(checkRow);
+      assert.deepEqual(traceEdges(commits, whole.rows), expectedEdges(commits));
+      checkHeadColumn(commits, whole.rows, head);
+      for (const size of [1, 7, 100]) {
+        const sizes = Array.from({ length: Math.ceil(commits.length / size) }, (_, k) =>
+          Math.min(size, commits.length - k * size),
+        );
+        assert.deepEqual(layoutAll(commits, sizes, undefined, head), whole, `page size ${size}`);
+      }
+      let state = initialLaneState(head);
+      const rows: Row[] = [];
+      const spans: Span[] = [];
+      for (let i = 0; i < commits.length; i += 250) {
+        const page = structuredClone(layoutPage(structuredClone(state), commits.slice(i, i + 250)));
+        rows.push(...page.rows);
+        spans.push(...page.spans);
+        state = page.state;
+      }
+      assert.deepEqual(withPasses(rows, spans, state), whole.rows);
+    }
+  });
 
   it('octopus: a page boundary right after each octopus merge', () => {
     const commits = histories.get('octopus')!;

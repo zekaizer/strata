@@ -4,6 +4,7 @@ import type { BadgeRule } from '../core/badge-rules.ts';
 import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 import type { FindHit, FindQuery } from '../core/find.ts';
+import type { ReadOnly } from '../core/git-version.ts';
 
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
@@ -109,8 +110,11 @@ export type HostToWebview =
   | { type: 'changes'; generation: number; changes: ChangesSummary | undefined }
   /** Opens the badge filter with `pattern` typed, selected (Hide Similar Badges...). */
   | { type: 'openBadgeFilter'; pattern: string }
-  /** Select and open a stash (or commit), loading further history to find it if needed. */
-  | { type: 'reveal'; hash: string }
+  /**
+   * Select and open a stash (or commit), loading further history to find it if needed.
+   * `against`: its files are compared with that commit instead of its first parent.
+   */
+  | { type: 'reveal'; hash: string; against?: string }
   /**
    * Go to HEAD from the command palette, or after headNotShown: `include` first adds the current
    * branch to the branch filter, or shows every branch with HEAD detached.
@@ -161,10 +165,15 @@ export type HostToWebview =
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
   | { type: 'busy'; label: string | undefined }
   /**
-   * The operation in progress, or else what an earlier one left behind, sent after every reset and
-   * when it changes.
+   * The operation in progress, or else what an earlier one left behind, and why Strata cannot change
+   * the repository when it cannot, sent after every reset and when it changes.
    */
-  | { type: 'repoState'; operation: OperationState | undefined; leftover: Leftover | undefined }
+  | {
+      type: 'repoState';
+      operation: OperationState | undefined;
+      leftover: Leftover | undefined;
+      readOnly: ReadOnly | undefined;
+    }
   /**
    * A page of history; fewer commits than asked for and not done while a path history is still
    * being searched. `unchanged`: commits in it that a path history keeps although they leave its paths alone (ref
@@ -202,7 +211,11 @@ export type WebviewToHost =
       options: ViewOptions | undefined;
     }
   | { type: 'loadMore'; generation: number; count: number }
-  | { type: 'select'; generation: number; hash: string }
+  /**
+   * Answered with details. `against`: the commit the files are compared with instead of the
+   * first parent (a commit only, not a stash).
+   */
+  | { type: 'select'; generation: number; hash: string; against?: string }
   /** The uncommitted changes row unfolded or its changes moved: answered with changesDetails. */
   | { type: 'selectChanges'; generation: number }
   /**
@@ -329,10 +342,14 @@ export interface ProbeState {
   restoring: boolean;
   selected: string | undefined;
   detailsShown: string | undefined;
+  /** Text of the line above the changed files, as written (CSS sets it uppercase). */
+  filesSummary: string | undefined;
   /** Subjects of the rendered (visible) rows, top to bottom. */
   visibleSubjects: string[];
   /** The commit or stash commit of each rendered row, by row index. */
   rowHashes: Record<number, string>;
+  /** The graph column of each rendered commit row the layout has reached, by commit. */
+  rowLanes: Record<string, number>;
   /** Accessible names of the rendered rows, by commit or stash commit. */
   rowLabels: Record<string, string>;
   /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
@@ -409,6 +426,8 @@ export interface ProbeState {
   menuContexts: {
     files: Record<string, unknown>[];
     selectedRow: Record<string, unknown> | undefined;
+    /** Of the rendered commit rows, by commit. */
+    rows: Record<string, Record<string, unknown>>;
     badges: Record<number, Record<string, unknown>[]>;
   };
   /** The element marked as the open context menu's target: its context, text and outline style. */
@@ -544,6 +563,7 @@ export interface ProbeState {
   /** The operation in progress, and what an earlier one left behind, as the host last reported them. */
   operation: OperationState | undefined;
   leftover: Leftover | undefined;
+  readOnly: ReadOnly | undefined;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */
@@ -573,11 +593,15 @@ export type SimulatedAction =
   | { kind: 'focus'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 
-export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };
+/**
+ * `run`: one layout from the first commit on; pages of a run arrive in order, another run restarts
+ * the layout. `head`: the commit column 0 is held for (laneHead), read from a run's first page only.
+ */
+export type ToWorker =
+  { type: 'ping' } | { type: 'layout'; run: number; head: string | undefined; commits: LayoutCommit[] };
 
 /** `state` describes the lines still open below the last row (see SpanIndex.setOpen). */
-export type FromWorker =
-  { type: 'pong' } | { type: 'rows'; generation: number; rows: Row[]; spans: Span[]; state: LaneState };
+export type FromWorker = { type: 'pong' } | { type: 'rows'; run: number; rows: Row[]; spans: Span[]; state: LaneState };
 
 /** The `strata.columns` setting: which optional columns rows may show. */
 export interface ShownColumns {

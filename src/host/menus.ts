@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { similarPattern } from '../core/badge-rules.ts';
 import type { FileChange, FileStatus, FileView } from '../core/details.ts';
-import { canWrite } from '../core/git-version.ts';
+import { readOnly } from '../core/git-version.ts';
 import { isRepoPath, parentFolder, parseRepoPath } from '../core/path-filter.ts';
 import { conflictsInProgress, DONE, gitTooOld, operationInProgress } from '../core/wording.ts';
 import { isCommitId } from '../git/details.ts';
@@ -129,11 +129,13 @@ const shortOf = (ctx: MenuArg) => panel().shortHash(commitArg(ctx).hash);
 
 let toldGitTooOld = false;
 
-/** Write operations need git 2.34; an older one is named once per session, then in the status bar. */
+/**
+ * Write operations need git 2.34; an older one is named once per session, then in the status bar.
+ * `strata.readOnly` disables them in menus first; this guards the ways around enablement.
+ */
 async function gitCanWrite(host: FlowHost): Promise<boolean> {
   const v = await readGitVersion(host.git, host.cwd);
-  // An unparsable version is left for git itself to judge.
-  if (!v || canWrite(v)) return true;
+  if (!v || !readOnly(v)) return true;
   const message = gitTooOld(v.join('.'));
   if (toldGitTooOld) vscode.window.setStatusBarMessage(message, 5000);
   else void host.ui.notify('error', message);
@@ -207,6 +209,10 @@ const stashHash = (ctx: MenuArg): string => {
 const on = <K extends TargetKind>(kinds: readonly K[], flow: (host: FlowHost, t: TargetOf<K>) => Promise<void>) =>
   write((host, ctx) => flow(host, parseTarget(ctx, kinds, host.refs)));
 
+/** The commits a commit row's or a selection's menu acts on, newest first. */
+const picked = (host: FlowHost, ctx: MenuArg): string[] =>
+  ctx?.['webviewSection'] === 'selection' ? selectionArg(ctx) : [parseTarget(ctx, ['commit'], host.refs).hash];
+
 /** A write command on a menu target of one of `kinds`, a commit row naming a branch being that branch. */
 const onBranch = <K extends TargetKind>(
   kinds: readonly K[],
@@ -218,6 +224,7 @@ type Handlers = Record<CommandId, (ctx: MenuArg, id: CommandId) => unknown>;
 const handlers = (env: FlowEnv): Handlers => ({
   'strata.file.openChanges': open('diff', false),
   'strata.file.openOld': open('before', false),
+  'strata.file.openCompared': open('before', false),
   'strata.file.openNew': open('after', false),
   'strata.file.openToSide': open('primary', true),
   'strata.file.copyRelativePath': copy((ctx) => fileArg(ctx).file.path, DONE.copied),
@@ -241,6 +248,11 @@ const handlers = (env: FlowEnv): Handlers => ({
     const folder = parentFolder(parseRepoPath(fileArg(ctx).file.path)!);
     if (folder === undefined) throw new Error('the file is at the top of the repository');
     return panel().showPathHistory({ paths: [folder] });
+  },
+  'strata.commit.compareWithSelected': (ctx) => {
+    const against = str(ctx?.['strataCompareWith']);
+    if (!against || !isCommitId(against)) throw new Error('invalid commit id');
+    panel().flowHost().reveal(commitArg(ctx).hash, against);
   },
   'strata.commit.copyHash': copy(
     (ctx) => commitArg(ctx).hash,
@@ -320,8 +332,8 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.rebase': onBranch(['commit', 'branch', 'remoteBranch'], async (host, t) =>
     rebase(host, await sourceOf(host, t)),
   ),
-  'strata.cherryPick': on(['commit'], (host, t) => pick(host, 'cherryPick', t.hash)),
-  'strata.revert': on(['commit'], (host, t) => pick(host, 'revert', t.hash)),
+  'strata.cherryPick': write((host, ctx) => pick(host, 'cherryPick', picked(host, ctx))),
+  'strata.revert': write((host, ctx) => pick(host, 'revert', picked(host, ctx))),
   'strata.reset': on(['commit'], (host, t) => reset(host, t.hash)),
   'strata.operation.continue': write(continueOperation),
   'strata.operation.abort': write(abortOperation),

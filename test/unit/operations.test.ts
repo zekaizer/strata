@@ -267,7 +267,7 @@ describe('operations', () => {
     });
     await op(d, { kind: 'abort', operation: 'merge' });
     assert.equal(head(d), before);
-    await assert.rejects(op(d, { kind: 'cherryPick', commit: run(d, 'rev-parse', 'topic~1') }));
+    await assert.rejects(op(d, { kind: 'cherryPick', commits: [run(d, 'rev-parse', 'topic~1')] }));
     await op(d, { kind: 'skip', operation: 'cherryPick' });
     assert.equal(await readOperationState('git', d), undefined);
     assert.equal(head(d), before);
@@ -275,9 +275,9 @@ describe('operations', () => {
 
   it('cherry-picks, reverts and resets in every mode', async () => {
     const d = repo();
-    await op(d, { kind: 'cherryPick', commit: run(d, 'rev-parse', 'topic') });
+    await op(d, { kind: 'cherryPick', commits: [run(d, 'rev-parse', 'topic')] });
     assert.equal(run(d, 'log', '-1', '--format=%s'), 'topic2');
-    await op(d, { kind: 'revert', commit: head(d) });
+    await op(d, { kind: 'revert', commits: [head(d)] });
     assert.equal(run(d, 'log', '-1', '--format=%s'), 'Revert "topic2"');
     const base = run(d, 'rev-parse', 'main~3');
     await op(d, { kind: 'reset', commit: run(d, 'rev-parse', 'HEAD~1'), mode: 'soft' });
@@ -287,6 +287,24 @@ describe('operations', () => {
     await op(d, { kind: 'reset', commit: base, mode: 'hard' });
     assert.equal(head(d), base);
     assert.equal(run(d, 'status', '--porcelain', '--untracked-files=no'), '');
+  });
+
+  it('cherry-picks and reverts several commits in the order given, one commit each', async () => {
+    const d = repo();
+    run(d, 'switch', '--quiet', '--create', 'side', 'main');
+    for (const name of ['a', 'b', 'c']) {
+      writeFileSync(join(d, `${name}.txt`), `${name}\n`);
+      run(d, 'add', '.');
+      run(d, 'commit', '--quiet', '-m', name);
+    }
+    const [a, b, c] = ['side~2', 'side~1', 'side'].map((r) => run(d, 'rev-parse', r));
+    run(d, 'switch', '--quiet', 'main');
+    await op(d, { kind: 'cherryPick', commits: [a!, b!, c!] });
+    assert.equal(run(d, 'log', '-3', '--format=%s'), 'c\nb\na');
+    const picked = ['HEAD', 'HEAD~1', 'HEAD~2'].map((r) => run(d, 'rev-parse', r));
+    await op(d, { kind: 'revert', commits: picked });
+    assert.equal(run(d, 'log', '-3', '--format=%s'), 'Revert "a"\nRevert "b"\nRevert "c"');
+    assert.equal(run(d, 'rev-parse', 'HEAD^{tree}'), run(d, 'rev-parse', 'HEAD~6^{tree}'));
   });
 
   it('cherry-picks and reverts a merge relative to the parent given', async () => {
@@ -301,25 +319,25 @@ describe('operations', () => {
     const show = (rev: string) => run(d, 'ls-tree', '--name-only', rev);
 
     run(d, 'switch', '--quiet', 'main');
-    await op(d, { kind: 'cherryPick', commit: merge, mainline: 1 });
+    await op(d, { kind: 'cherryPick', commits: [merge], mainline: 1 });
     assert.equal(show('HEAD'), 'f.txt\nh.txt', 'side1 only: topic is parent 1');
     assert.equal(run(d, 'cat-file', '-p', 'HEAD:f.txt'), 'main');
 
     run(d, 'switch', '--quiet', 'topic');
-    await op(d, { kind: 'revert', commit: merge, mainline: 1 });
+    await op(d, { kind: 'revert', commits: [merge], mainline: 1 });
     assert.equal(show('HEAD'), show(`${merge}^1`), "side1's changes undone");
 
     run(d, 'switch', '--quiet', '--create', 'from-side', 'side');
-    await op(d, { kind: 'cherryPick', commit: merge, mainline: 2 });
+    await op(d, { kind: 'cherryPick', commits: [merge], mainline: 2 });
     assert.equal(show('HEAD'), 'f.txt\ng.txt\nh.txt', "topic's commits, relative to side");
   });
 
   it('fails a revert of an already reverted commit as nothing to commit, leaving no revert in progress', async () => {
     const d = repo();
     const main1 = head(d);
-    await op(d, { kind: 'revert', commit: main1 });
+    await op(d, { kind: 'revert', commits: [main1] });
     const reverted = head(d);
-    await assert.rejects(op(d, { kind: 'revert', commit: main1 }), { kind: 'nothingToCommit' });
+    await assert.rejects(op(d, { kind: 'revert', commits: [main1] }), { kind: 'nothingToCommit' });
     assert.equal(await readOperationState('git', d), undefined);
     assert.equal(head(d), reverted);
   });
@@ -552,9 +570,9 @@ describe('operations refused by untracked files in the way', () => {
   it('lists them for a cherry pick and a revert', async () => {
     const d = repo();
     mine(d, ...both);
-    await blocks(d, { kind: 'cherryPick', commit: side(d) }, both);
+    await blocks(d, { kind: 'cherryPick', commits: [side(d)] }, both);
     mine(d, 'gone.txt');
-    await blocks(d, { kind: 'revert', commit: run(d, 'rev-parse', 'main') }, ['gone.txt']);
+    await blocks(d, { kind: 'revert', commits: [run(d, 'rev-parse', 'main')] }, ['gone.txt']);
   });
 
   it('lists them for a branch from a stash made on another commit', async () => {
@@ -599,7 +617,7 @@ describe('operations refused by untracked files in the way', () => {
     for (const o of [
       { kind: 'switch', branch: 'side', migrate: false },
       { kind: 'merge', ref: 'side', mode: 'ff', autostash: false },
-      { kind: 'cherryPick', commit: side(d) },
+      { kind: 'cherryPick', commits: [side(d)] },
     ] satisfies Operation[]) {
       const e = await refused(d, o);
       assert.equal(e.kind, 'localChanges');

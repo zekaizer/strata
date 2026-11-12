@@ -168,8 +168,8 @@ export class GraphController implements vscode.Disposable {
       busy: (label) => {
         this.post({ type: 'busy', label });
       },
-      reveal: (key, hash) => {
-        void this.reveal(key, hash);
+      reveal: (key, hash, against) => {
+        void this.reveal(key, hash, against);
       },
       visible: this.visible,
     });
@@ -177,9 +177,9 @@ export class GraphController implements vscode.Disposable {
     return session;
   }
 
-  private async reveal(key: RepoKey, hash: string): Promise<void> {
+  private async reveal(key: RepoKey, hash: string, against?: string): Promise<void> {
     if (this.session?.key !== key) await this.choose(key);
-    if (this.session?.key === key) this.post({ type: 'reveal', hash });
+    if (this.session?.key === key) this.post({ type: 'reveal', hash, ...(against === undefined ? {} : { against }) });
   }
 
   private post(m: HostToWebview): void {

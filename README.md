@@ -24,9 +24,11 @@
 - Fast on very large repositories: history loads page by page, and the Linux
   kernel opens in about 0.2 seconds once it has a commit-graph.
 - Click a commit to unfold its message and changed files right under it, then
-  open any file's diff.
+  open any file's diff. **Compare with Selected** lists what differs between
+  any two commits instead.
 - Checkout, merge, rebase, cherry pick, revert and reset from right-click
-  menus. **Undo Last Operation** takes back all of them but a checkout.
+  menus; revert a Shift-click selection in one run. **Undo Last Operation**
+  takes back all of them but a checkout.
 - Create, rename, delete and push branches and tags; fetch, pull and push from
   the graph's title bar.
 - Stash, apply, pop and drop stashes, shown as rows above the commits they

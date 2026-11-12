@@ -6,7 +6,7 @@ function post(m: FromWorker): void {
   postMessage(m);
 }
 
-let generation = -1;
+let run = -1;
 let state: LaneState = initialLaneState();
 
 addEventListener('message', (e: MessageEvent<ToWorker>) => {
@@ -16,14 +16,13 @@ addEventListener('message', (e: MessageEvent<ToWorker>) => {
       post({ type: 'pong' });
       break;
     case 'layout': {
-      // Pages of one generation arrive in order; a new generation restarts the layout.
-      if (m.generation !== generation) {
-        generation = m.generation;
-        state = initialLaneState();
+      if (m.run !== run) {
+        run = m.run;
+        state = initialLaneState(m.head);
       }
       const page = layoutPage(state, m.commits, { colors: LANE_HUES.length });
       state = page.state;
-      post({ type: 'rows', generation, rows: page.rows, spans: page.spans, state });
+      post({ type: 'rows', run, rows: page.rows, spans: page.spans, state });
       break;
     }
   }

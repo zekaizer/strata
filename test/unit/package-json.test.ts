@@ -69,9 +69,12 @@ describe('package.json commands', () => {
     for (const id of commandsOn(row('stash'))) assert.match(id, /^strata\.stash\./, `${id} on stash rows`);
   });
 
-  it('disables every command that changes the repository while another one runs or is stopped', () => {
+  it('disables every command that changes the repository while another one runs or is stopped, or git is too old', () => {
     const byId = new Map(pkg.contributes.commands.map((c) => [c.command, c]));
-    const expected = { true: '!strata.busy && !strata.operation', whileStopped: '!strata.busy' };
+    const expected = {
+      true: '!strata.readOnly && !strata.busy && !strata.operation',
+      whileStopped: '!strata.readOnly && !strata.busy',
+    };
     for (const id of COMMAND_IDS) {
       const spec: CommandSpec = COMMANDS[id];
       assert.equal(byId.get(id)?.enablement, spec.writes && expected[String(spec.writes) as keyof typeof expected], id);
@@ -83,7 +86,11 @@ describe('package.json commands', () => {
       'strata.fetch',
       'strata.fetchRemote',
     ])
-      assert.equal(byId.get(id)?.enablement, '!strata.busy', `${id} runs while an operation is stopped`);
+      assert.equal(
+        byId.get(id)?.enablement,
+        '!strata.readOnly && !strata.busy',
+        `${id} runs while an operation is stopped`,
+      );
   });
 
   it("decides a menu's visibility only from context keys its own section carries", () => {

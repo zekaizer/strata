@@ -1,5 +1,13 @@
 import type { Commit } from '../core/commit.ts';
-import { filesSummary, fileViews, type CommitDetails, type FileChange, type FileView } from '../core/details.ts';
+import {
+  answersRequest,
+  compareTarget,
+  filesSummary,
+  fileViews,
+  type CommitDetails,
+  type FileChange,
+  type FileView,
+} from '../core/details.ts';
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
@@ -23,7 +31,7 @@ import { shiftClick, type ShiftClickResult } from '../core/range-select.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
-import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, headUpstream, laneHead, type Ref, type RefSnapshot } from '../core/refs.ts';
 import {
   changeCounts,
   describeChanges,
@@ -34,6 +42,7 @@ import {
   type Leftover,
   type OperationState,
 } from '../core/repo-state.ts';
+import type { ReadOnly } from '../core/git-version.ts';
 import { samePath } from '../core/worktrees.ts';
 import {
   anchoredAt,
@@ -59,6 +68,7 @@ import type {
   SimulatedAction,
   ViewOptions,
   MessageDraft,
+  ToWorker,
 } from '../shared/protocol.ts';
 import {
   cardRefs,
@@ -288,6 +298,8 @@ class App {
         limit: number;
         read: number;
         pages: Extract<HostToWebview, { type: 'commits' }>[];
+        /** The layout run of its pages (ToWorker). */
+        run: number;
         laidOut: Extract<FromWorker, { type: 'rows' }>[];
         held: HostToWebview[];
       }
@@ -359,6 +371,11 @@ class App {
   /** The inline message editor: what the host opened it with, its text, and whether Save is running. */
   private editor: { draft: MessageDraft; text: string; saving: boolean } | undefined;
   private rows: Row[] = [];
+  /** The layout run (ToWorker) `rows` and `spans` come from, and the last one handed out. */
+  private run = 0;
+  private lastRun = 0;
+  /** The run lays the loaded commits out again: its first rows replace those shown. */
+  private relaying = false;
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
   private stashes: StashEntry[] = [];
@@ -398,6 +415,8 @@ class App {
   private working: WorkingDetails | undefined;
   /** Commit whose details were last requested; replies for any other commit are stale. */
   private pendingDetails: string | undefined;
+  /** The commit those details were asked to be compared with, when not the first parent. */
+  private pendingAgainst: string | undefined;
   private openedFile: string | undefined;
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
@@ -446,6 +465,8 @@ class App {
   /** What rows say about the operation in progress, by commit. */
   private operationNotes = new Map<string, OperationNote>();
   private leftover: Leftover | undefined;
+  /** Why Strata cannot change the repository, while it cannot. */
+  private readOnly: ReadOnly | undefined;
   /** The Strata operation running, by its progress label. */
   private busyLabel: string | undefined;
   /** Selections the user made; an operation's focus is not applied once the user moved during it. */
@@ -804,6 +825,7 @@ class App {
         this.operation = m.operation;
         this.operationNotes = operationNotes(m.operation);
         this.leftover = m.leftover;
+        this.readOnly = m.readOnly;
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
         this.updateBanner();
@@ -814,7 +836,7 @@ class App {
       case 'commits':
         if (staged?.reset.generation === m.generation) {
           staged.pages.push(m);
-          this.layout(m);
+          this.layout(staged.run, m.commits, staged.reset);
           staged.read += m.commits.length;
           for (const c of m.commits) staged.wanted.delete(c.hash);
           staged.loading = staged.wanted.size > 0 && !m.done && staged.read < staged.limit;
@@ -833,7 +855,8 @@ class App {
         this.queueRender();
         break;
       case 'details':
-        if (m.generation !== this.generation || m.details.hash !== this.pendingDetails || !this.expanded) return;
+        if (m.generation !== this.generation || this.pendingDetails === undefined || !this.expanded) return;
+        if (!answersRequest(m.details, this.pendingDetails, this.pendingAgainst)) return;
         this.pendingDetails = undefined;
         this.details = m.details;
         this.renderDetails();
@@ -851,7 +874,7 @@ class App {
         this.badgeFilter.openWith(m.pattern);
         break;
       case 'reveal':
-        this.reveal(m.hash);
+        this.reveal(m.hash, m.against);
         break;
       case 'editMessage':
         this.openEditor(m.draft);
@@ -942,6 +965,7 @@ class App {
         this.operation = undefined;
         this.operationNotes.clear();
         this.leftover = undefined;
+        this.readOnly = undefined;
         this.updateBanner();
         this.setStashes([]);
         this.changes = undefined;
@@ -952,6 +976,8 @@ class App {
         this.geometry.clear();
         this.rows = [];
         this.spans.clear();
+        this.run = ++this.lastRun;
+        this.relaying = false;
         this.queueRender();
         break;
       case 'error':
@@ -998,7 +1024,7 @@ class App {
     for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
     this.findRewritable();
     this.measureTexts(m.commits);
-    if (layout) this.layout(m);
+    if (layout) this.layout(this.run, m.commits, { refs: this.refs, options: this.options });
     this.updateStatus();
     this.updateStashButton();
     this.updateHeadButton();
@@ -1010,12 +1036,14 @@ class App {
     this.queueRender();
   }
 
-  private layout(m: Extract<HostToWebview, { type: 'commits' }>): void {
+  /** Has the worker lay out the next commits of `run`, of the history `view` (its reset) shows. */
+  private layout(run: number, commits: readonly Commit[], view: { refs: RefSnapshot; options: ViewOptions }): void {
     this.worker?.postMessage({
       type: 'layout',
-      generation: m.generation,
-      commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
-    });
+      run,
+      head: laneHead(view.refs, view.options.refs),
+      commits: commits.map((c) => ({ hash: c.hash, parents: c.parents })),
+    } satisfies ToWorker);
   }
 
   /**
@@ -1037,6 +1065,7 @@ class App {
       limit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
       read: 0,
       pages: [],
+      run: ++this.lastRun,
       laidOut: [],
       held: [],
     };
@@ -1050,6 +1079,7 @@ class App {
     const m = s.reset;
     this.badgeRules = m.badgeRules;
     this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result, false);
+    this.run = s.run;
     for (const page of s.pages) this.addCommits(page, false);
     if (s.loading) this.loading = true;
     for (const rows of s.laidOut) this.onWorker(rows);
@@ -1058,12 +1088,18 @@ class App {
 
   private onWorker(m: FromWorker): void {
     const staged = this.staged;
-    if (m.type === 'rows' && staged?.reset.generation === m.generation) {
+    if (m.type === 'rows' && staged?.run === m.run) {
       staged.laidOut.push(m);
       if (!staged.loading && staged.laidOut.length === staged.pages.length) this.swap();
       return;
     }
-    if (m.type !== 'rows' || m.generation !== this.generation) return;
+    if (m.type !== 'rows' || m.run !== this.run) return;
+    if (this.relaying) {
+      this.relaying = false;
+      this.rows = [];
+      this.spans.clear();
+      this.shownLanes = 1;
+    }
     this.rows.push(...m.rows);
     this.spans.add(m.spans);
     this.spans.setOpen(m.state);
@@ -1124,6 +1160,8 @@ class App {
     this.geometry.clear();
     this.rows = [];
     this.spans.clear();
+    this.run = ++this.lastRun;
+    this.relaying = false;
     this.shownLanes = 1;
     this.textWidths = { author: 0, date: 0, digit: 0 };
     this.hashPx = undefined;
@@ -1199,7 +1237,14 @@ class App {
     if (m.result?.focus !== undefined)
       this.restore ??= { expanded: this.expanded, searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE };
     this.takeResult(m.result, m.refs, m.stashes);
+    const head = laneHead(this.refs, this.options.refs);
     this.setRefs(m.refs, m.stashes);
+    // The same commits around another HEAD: the rows shown stay until the new ones arrive.
+    if (laneHead(this.refs, this.options.refs) !== head) {
+      this.run = ++this.lastRun;
+      this.relaying = true;
+      this.layout(this.run, this.commits, { refs: this.refs, options: this.options });
+    }
     this.findRewritable();
     this.refFilter.update(this.refs, this.options.refs);
     const search = this.search;
@@ -1890,30 +1935,35 @@ class App {
   }
 
   /** Selects and opens a row picked from Show Stashes, showing stash rows again if they are hidden. */
-  private reveal(hash: string): void {
+  private reveal(hash: string, against?: string): void {
     const stash = this.stashes.find((s) => s.hash === hash);
     if (stash && this.indexOf(hash) < 0 && this.unreachable(stash)) {
       this.announce(`stash@{${stash.index}} is not in this view`);
       return;
     }
     if (stash) this.setShowStashes(true);
-    this.selectHash(hash, true);
+    this.selectHash(hash, true, against);
   }
 
   /**
-   * Shows the operation in progress or what one left behind. It is said politely when it says
+   * Shows why the repository cannot be changed, else the operation in progress or what one left behind. It is said politely when it says
    * something new, unless the host notified it: VS Code reads that notification out.
    */
   private updateBanner(): void {
     const op = this.operation;
-    const banner = bannerOf(op, this.leftover, {
-      subject: (hash) => this.commits.find((c) => c.hash === hash)?.subject,
-      name: (hash) => {
-        const refs = this.refsByHash.get(hash) ?? [];
-        return (refs.find((r) => r.kind === 'branch') ?? refs.find((r) => r.kind === 'remote') ?? refs[0])?.short;
+    const banner = bannerOf(
+      op,
+      this.leftover,
+      {
+        subject: (hash) => this.commits.find((c) => c.hash === hash)?.subject,
+        name: (hash) => {
+          const refs = this.refsByHash.get(hash) ?? [];
+          return (refs.find((r) => r.kind === 'branch') ?? refs.find((r) => r.kind === 'remote') ?? refs[0])?.short;
+        },
+        hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
       },
-      hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
-    });
+      this.readOnly,
+    );
     const shown = !this.banner.element.hidden;
     this.banner.show(banner);
     if (
@@ -1922,9 +1972,12 @@ class App {
       !this.status.classList.contains('error')
     )
       this.updateStatus();
-    const said = banner
-      ? JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null])
-      : '';
+    // The read-only banner says the same whatever is in progress under it.
+    const said = !banner
+      ? ''
+      : banner.state === 'readOnly'
+        ? banner.state
+        : JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null]);
     if (said === this.bannerSaid) return;
     this.bannerSaid = said;
     if (!banner) return;
@@ -2363,9 +2416,10 @@ class App {
   /**
    * Selects a commit. `expand` opens its details inline (default: keep the
    * current state, so arrow keys move an open expansion along). The selected
-   * row keeps its place on screen when the expansion moves.
+   * row keeps its place on screen when the expansion moves. `against`: the commit
+   * its files are compared with instead of its first parent, for this selection only.
    */
-  private select(index: number, opts: { reveal?: boolean; expand?: boolean } = {}): void {
+  private select(index: number, opts: { reveal?: boolean; expand?: boolean; against?: string } = {}): void {
     const row = this.list[index];
     if (!row) return;
     const hash = rowHash(row);
@@ -2388,15 +2442,28 @@ class App {
       this.working = kept.working;
       this.expansion.hidden = false;
       this.renderChangesDetails(false);
-    } else if (this.expanded && row.kind !== 'changes' && kept?.details?.hash === hash) {
+    } else if (
+      this.expanded &&
+      row.kind !== 'changes' &&
+      kept?.details?.hash === hash &&
+      (opts.against === undefined || kept.details.base === opts.against)
+    ) {
       this.details = kept.details;
       this.expansion.hidden = false;
       this.renderDetails();
     } else if (this.expanded) {
+      const against = row.kind === 'commit' ? opts.against : undefined;
       this.pendingDetails = hash;
+      this.pendingAgainst = against;
       this.showLoading();
       if (row.kind === 'changes') vscode.postMessage({ type: 'selectChanges', generation: this.generation });
-      else vscode.postMessage({ type: 'select', generation: this.generation, hash });
+      else
+        vscode.postMessage({
+          type: 'select',
+          generation: this.generation,
+          hash,
+          ...(against === undefined ? {} : { against }),
+        });
     }
     this.syncSizer();
     this.scroller.scrollTop = this.rowTop(index) - screenTop;
@@ -2537,11 +2604,14 @@ class App {
   }
 
   /** Selects a commit by hash, loading further pages until it shows up (like a restore). */
-  private selectHash(hash: string, expand?: boolean): void {
+  private selectHash(hash: string, expand?: boolean, against?: string): void {
     this.scroller.focus();
     const index = this.indexOf(hash);
     if (index >= 0) {
-      this.select(index, expand === undefined ? {} : { expand });
+      this.select(index, {
+        ...(expand === undefined ? {} : { expand }),
+        ...(against === undefined ? {} : { against }),
+      });
       return;
     }
     this.restore = { selectedHash: hash, ...(expand === undefined ? {} : { expanded: expand }) };
@@ -2753,6 +2823,8 @@ class App {
     row.setAttribute('aria-setsize', this.done ? String(this.list.length) : '-1');
     row.style.top = `${this.rowTop(i)}px`;
     const selection = this.rangeHashes();
+    const one = this.list[this.selected];
+    const selectedCommit = one?.kind === 'commit' ? one.commit.hash : undefined;
     const hashOf = rowHash(r);
     if (i === this.selected) {
       // Drawn as selected only while its details are open; folded, it is just where the keys go on from.
@@ -2798,6 +2870,7 @@ class App {
       strataBranch: branches.length === 1 && free.length === 1 ? free[0]!.name : '',
       strataRewritable: this.rewritable.has(c.hash),
       strataParentRewritable: this.rewritable.has(c.parents[0] ?? ''),
+      strataCompareWith: compareTarget(selectedCommit, selection.length > 0, c.hash),
     };
     const selected: SelectionContext | undefined = selection.includes(c.hash)
       ? this.selectionContext(c.hash, selection)
@@ -3212,7 +3285,7 @@ class App {
       main.append(pre, more);
     }
     const files = el('div', 'details-files');
-    const changes = { hash: d.hash, base: d.base };
+    const changes = { hash: d.hash, base: d.base, compared: filesSummary(d).compared };
     if (stash && d.stash) {
       const summary = el('div', 'section-title files-summary', `Changes (${d.files.length})`);
       if (d.base !== undefined) summary.append(' · vs ', this.baseLink(d.base));
@@ -3722,7 +3795,10 @@ class App {
     return copy;
   }
 
-  /** "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit". */
+  /**
+   * "N files changed · vs <base>" (the base selects that commit), or "N files added · root commit".
+   * Compared with a commit that is no parent, it ends with the way back to the commit's own changes.
+   */
   private filesSummaryLine(d: CommitDetails): HTMLElement {
     const s = filesSummary(d);
     const path = this.options.path;
@@ -3730,6 +3806,14 @@ class App {
     const line = el('div', 'section-title files-summary', path ? `${s.text} · ${inPath} in filter` : s.text);
     if (s.root) line.append(' · root commit');
     if (s.base !== undefined) line.append(` · vs ${s.baseLabel ? `${s.baseLabel} ` : ''}`, this.baseLink(s.base));
+    if (s.compared) {
+      const own = el('button', 'link-button', 'Show Own Changes');
+      own.title = "Compare this commit with its parent again: the commit's own changes";
+      own.addEventListener('click', () => {
+        this.userSelect(this.selected, { expand: true });
+      });
+      line.append(' · ', own);
+    }
     return line;
   }
 
@@ -4023,8 +4107,12 @@ class App {
         label,
       );
       b.tabIndex = -1;
-      b.setAttribute('aria-label', FILE_VIEW_TITLE[view]);
-      b.title = `${FILE_VIEW_TITLE[view]} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;
+      const title =
+        view === 'before' && source.compared && source.base !== undefined
+          ? `Open old version (as of ${shortHash(source.base)})`
+          : FILE_VIEW_TITLE[view];
+      b.setAttribute('aria-label', title);
+      b.title = `${title} (${FILE_VIEW_KEY[view]}) · Alt: to the side`;
       b.addEventListener('click', (e) => {
         e.stopPropagation();
         open(view, e.altKey);
@@ -4087,11 +4175,19 @@ class App {
       selected: this.selectedHash(),
       detailsShown:
         this.expanded && !this.expansion.hidden ? (this.details?.hash ?? (this.working && CHANGES_ROW)) : undefined,
+      filesSummary: this.expansion.querySelector('.files-summary')?.textContent,
       visibleSubjects: [...this.rowsLayer.querySelectorAll('.row .text')].map((e) => e.textContent),
       rowHashes: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
           const i = Number(r.dataset['index']);
           return [i, this.list[i] ? rowHash(this.list[i]) : ''];
+        }),
+      ),
+      rowLanes: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+          const item = this.list[Number(r.dataset['index'])];
+          const row = item?.kind === 'commit' ? this.rows[item.row] : undefined;
+          return row ? [[rowHash(item!), row.lane]] : [];
         }),
       ),
       rowLabels: Object.fromEntries(
@@ -4149,6 +4245,12 @@ class App {
           const ctx = row?.getAttribute('data-vscode-context');
           return ctx ? (JSON.parse(ctx) as Record<string, unknown>) : undefined;
         })(),
+        rows: Object.fromEntries(
+          [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+            const row = this.list[Number(r.dataset['index'])];
+            return row?.kind === 'commit' ? [[row.commit.hash, contextOf(r)]] : [];
+          }),
+        ),
         badges: Object.fromEntries(
           [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
             const targets = menuTargets(r).slice(1);
@@ -4170,6 +4272,7 @@ class App {
       options: this.options,
       operation: this.operation,
       leftover: this.leftover,
+      readOnly: this.readOnly,
       expandedHeight: this.gapHeight(),
       rowTops: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [
@@ -4548,6 +4651,8 @@ const stopKey = (op: OperationState) => `${op.kind} ${op.applying ?? ''} ${op.st
 interface FileSource {
   hash: string;
   base: string | undefined;
+  /** `base` is no parent of `hash` but a commit chosen to compare with. */
+  compared?: boolean;
 }
 
 /** A details date: full and short forms, CSS shows the one that fits. */
@@ -4577,6 +4682,7 @@ function fileMenuContext(source: FileSource, f: FileChange, views: FileView[]): 
     strataHasDiff: views.includes('diff'),
     strataHasOld: views.includes('before'),
     strataHasNew: views.includes('after'),
+    strataCompared: source.compared === true,
     strataRenamed: f.oldPath !== undefined,
     strataInFolder: f.path.includes('/'),
   };

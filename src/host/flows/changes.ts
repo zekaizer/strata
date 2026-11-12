@@ -38,10 +38,17 @@ export interface Changes {
   resolve: (dirty: DirtyFacts) => StashChoices;
 }
 
-/** `touches`: the two commits whose difference is what the operation changes in the work tree. */
-export async function changes(host: FlowHost, op: StashOp, touches?: readonly [string, string]): Promise<Changes> {
+/** `touches`: pairs of commits whose differences are what the operation changes in the work tree. */
+export async function changes(
+  host: FlowHost,
+  op: StashOp,
+  ...touches: (readonly [string, string])[]
+): Promise<Changes> {
   const working = await readWorkingChanges(host.git, host.cwd);
-  const overlap = touches === undefined ? [] : await readOverlap(host.git, host.cwd, touches, working.paths);
+  const touched = new Set(
+    (await Promise.all(touches.map((t) => readOverlap(host.git, host.cwd, t, working.paths)))).flat(),
+  );
+  const overlap = working.paths.filter((p) => touched.has(p));
   // Changes inside submodules cannot be stashed and never block: they alone ask nothing.
   const files = Math.max(0, working.paths.length - working.submodules);
   const dirty = { files, staged: working.staged, overlap: overlap.length > 0, fastForward: false };

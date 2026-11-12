@@ -35,7 +35,8 @@ import { readGraphStatus, readOperationState } from '../git/state.ts';
 import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost, WorkingDetails } from '../shared/protocol.ts';
 import { resolveConflicts } from './flows/changes.ts';
 import { setContext, type ContextKey } from './context.ts';
-import { readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
+import { readGitVersion, readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
+import { readOnly, readOnlyOf, type ReadOnly } from '../core/git-version.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { RepoKey } from '../core/repos.ts';
 import { repoKey, type GitApi, type GitRepository } from './git-api.ts';
@@ -88,7 +89,7 @@ export interface SessionDeps {
   /** An operation started or ended in this session's repository: the graph shows it whichever repository it shows. */
   readonly busy: (label: string | undefined) => void;
   /** Shows the stash or commit `hash` of the repository `key`, showing that repository first if needed. */
-  readonly reveal: (key: RepoKey, hash: string) => void;
+  readonly reveal: (key: RepoKey, hash: string, against?: string) => void;
   /** Whether the graph is on screen. */
   readonly visible: () => boolean;
 }
@@ -117,8 +118,10 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private served = new Set<string>();
   private stashList: StashEntry[] = [];
   private readonly stashCache = stashCache();
-  /** What the graph was last told is in progress or left behind. */
-  private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
+  /** What the graph was last told is in progress or left behind, and why the repository cannot be changed. */
+  private repoState:
+    | { operation: OperationState | undefined; leftover: Leftover | undefined; readOnly: ReadOnly | undefined }
+    | undefined;
   private gitDirOf: Promise<string> | undefined;
   private commonDirOf: Promise<string> | undefined;
   private running: string | undefined;
@@ -133,7 +136,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private timedGeneration = -1;
   private readonly suggested: Set<string>;
   private readonly onBusy: (label: string | undefined) => void;
-  private readonly revealIn: (key: RepoKey, hash: string) => void;
+  private readonly revealIn: (key: RepoKey, hash: string, against?: string) => void;
   private graphTimer: ReturnType<typeof setTimeout> | undefined;
   /** An update is running; `graphAgain` asks for another one when it ends. */
   private graphUpdating = false;
@@ -180,6 +183,7 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     this.revealIn = deps.reveal;
     this.visible = deps.visible;
     void this.context('strata.canUndo', this.lastUndo !== undefined);
+    void this.syncReadOnly();
     this.disposables.push(
       vscode.window.tabGroups.onDidChangeTabs(() => {
         this.syncShownFile();
@@ -332,6 +336,12 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (!this.disposed) await setContext(key, value);
   }
 
+  /** A version read that fails leaves writes on: the command then fails with git's own error. */
+  private async syncReadOnly(): Promise<void> {
+    const v = await readGitVersion(this.api.git.path, this.cwd).catch(() => undefined);
+    await this.context('strata.readOnly', readOnly(v));
+  }
+
   async handle(m: WebviewToHost): Promise<void> {
     try {
       switch (m.type) {
@@ -340,8 +350,9 @@ export class RepoSession implements vscode.Disposable, FlowHost {
           break;
         case 'select':
           if (m.generation === this.generation) {
-            const read = this.stashes.some((s) => s.hash === m.hash) ? readStashDetails : readCommitDetails;
-            const details = await read(this.api.git.path, this.cwd, m.hash);
+            const details = this.stashes.some((s) => s.hash === m.hash)
+              ? await readStashDetails(this.api.git.path, this.cwd, m.hash)
+              : await readCommitDetails(this.api.git.path, this.cwd, m.hash, m.against);
             if (m.generation === this.generation) this.post({ type: 'details', generation: m.generation, details });
           }
           break;
@@ -579,10 +590,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** Tells the graph and the `strata.operation` context key which operation is in progress; `force` even if unchanged. */
   private async syncRepoState(force: boolean): Promise<void> {
     const cwd = this.cwd;
-    const [operation, unmerged, dir] = await Promise.all([
+    const [operation, unmerged, dir, version] = await Promise.all([
       readOperationState(this.api.git.path, cwd).catch(() => undefined),
       readUnmerged(this.api.git.path, cwd).catch(() => []),
       this.gitDir().catch(() => undefined),
+      readGitVersion(this.api.git.path, cwd).catch(() => undefined),
     ]);
     if (this.disposed) return;
     // A running flow's own stash is not a leftover, and its marks are the flow's to change.
@@ -599,7 +611,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       });
     }
     // A running flow's own steps are not an operation that stopped; it reports how it ended.
-    const state = { operation: this.running === undefined ? operation : this.repoState?.operation, leftover };
+    const state = {
+      operation: this.running === undefined ? operation : this.repoState?.operation,
+      leftover,
+      readOnly: readOnlyOf(version),
+    };
     if (!force && JSON.stringify(state) === JSON.stringify(this.repoState)) return;
     this.repoState = state;
     this.post({ type: 'repoState', ...state });
@@ -902,8 +918,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     keep: (hash) => this.mark(hash, undefined),
   };
 
-  reveal(hash: string): void {
-    this.revealIn(this.key, hash);
+  reveal(hash: string, against?: string): void {
+    this.revealIn(this.key, hash, against);
   }
 
   /** With strata.keepCommitGraphUpdated, adds new commits to the repository's commit-graph after a change. */

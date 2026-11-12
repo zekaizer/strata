@@ -111,6 +111,7 @@ describe('tidying recent commits', () => {
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Rewrite 2 commits that 'origin/strata-pushed' already has?");
     assert.deepEqual(asked.buttons, ['Save Anyway']);
+    assert.match(asked.detail, /^Force pushes are off: the git\.allowForcePush setting allows them\.$/m);
     assert.notEqual(message(a), 'pushed', 'cancelled: nothing changed');
     assert.equal(git('rev-parse', 'HEAD~2'), a);
   });

@@ -11,6 +11,9 @@ import {
   failedDuring,
   gitFailure,
   gitTooOld,
+  WRITES_DISABLED,
+  rewriteConfirmation,
+  type RewriteFacts,
   HISTORY_DONE,
   resetConfirmation,
   signInConfirmation,
@@ -250,6 +253,10 @@ describe('wording of undo and failures', () => {
   it('names the git that is too old to write', () => {
     assert.equal(gitTooOld('2.33.8'), 'Strata needs git 2.34 or newer to change repositories (found 2.33.8).');
   });
+
+  it('says what follows from a git too old to write', () => {
+    assert.equal(WRITES_DISABLED, 'Commands that change the repository are disabled.');
+  });
 });
 
 /** VS Code's title case for buttons: every word capitalized but short conjunctions, articles and prepositions. */
@@ -287,5 +294,35 @@ describe('graph tab title', () => {
   it('is the shown repository, and Strata before there is one; the tab icon says it is the graph', () => {
     assert.equal(graphTitle('alpha'), 'alpha');
     assert.equal(graphTitle(undefined), 'Strata');
+  });
+});
+
+describe('rewrite confirmation', () => {
+  const facts: RewriteFacts = {
+    edit: 'reword',
+    branch: "'main'",
+    what: 'abc1234',
+    onTop: 0,
+    pushed: { count: 2, remote: 'origin/main', canForce: true },
+    moves: [],
+    stays: [],
+  };
+
+  it('says what rewriting commits a remote has costs', () => {
+    assert.equal(
+      rewriteConfirmation(facts)?.detail,
+      "Save the new message of abc1234?\n'origin/main' has 2 of them: pushing 'main' afterwards needs a force push, and anyone who fetched them keeps the old commits.\nUndo restores the original commits.",
+    );
+    assert.equal(
+      rewriteConfirmation({ ...facts, pushed: { ...facts.pushed!, count: 1 } })?.detail,
+      "Save the new message of abc1234?\n'origin/main' has one of them: pushing 'main' afterwards needs a force push, and anyone who fetched it keeps the old commit.\nUndo restores the original commits.",
+    );
+  });
+
+  it('names the setting the force push afterwards needs while it is off', () => {
+    assert.equal(
+      rewriteConfirmation({ ...facts, pushed: { ...facts.pushed!, canForce: false } })?.detail,
+      "Save the new message of abc1234?\n'origin/main' has 2 of them: pushing 'main' afterwards needs a force push, and anyone who fetched them keeps the old commits.\nForce pushes are off: the git.allowForcePush setting allows them.\nUndo restores the original commits.",
+    );
   });
 });

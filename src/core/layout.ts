@@ -12,6 +12,11 @@ export interface LaneState {
   row: number;
   /** Next color index in rotation. */
   nextColor: number;
+  /**
+   * The commit column 0 is held for: no node or line uses the column until it arrives. Null when
+   * there is none, and from its arrival on.
+   */
+  head: string | null;
 }
 
 /** A line end at `lane`, drawn in `color`. */
@@ -55,15 +60,21 @@ export interface LayoutOptions {
 
 export type LayoutCommit = Pick<Commit, 'hash' | 'parents'>;
 
-export function initialLaneState(): LaneState {
-  return { lanes: [], colors: [], since: [], row: 0, nextColor: 0 };
+/**
+ * The state before the first page. `head`: a commit that takes column 0 whenever it arrives, as its
+ * first-parent line does after it. It must be one the history lists (see laneHead): the column is
+ * left empty until it arrives.
+ */
+export function initialLaneState(head?: string): LaneState {
+  return { lanes: [], colors: [], since: [], row: 0, nextColor: 0, head: head ?? null };
 }
 
 /**
  * Lays out one page of commits given the state left by the previous page.
  * Commits must arrive children-before-parents (git --topo-order/--date-order).
  * Columns never shift: a lane keeps its column until the commit it waits for
- * arrives, and freed columns are reused. Returns the rows of the page and the
+ * arrives, and freed columns are reused. `state.head` takes column 0 when it
+ * arrives, from whichever columns waited for it. Returns the rows of the page and the
  * spans that ended in it; spans still open are described by the returned
  * state (see {@link openSpans}). Pure: `state` is not modified.
  */
@@ -77,6 +88,7 @@ export function layoutPage(
   const since = [...state.since];
   let nextColor = state.nextColor;
   let rowIndex = state.row;
+  let head = state.head;
   const rows: Row[] = [];
   const spans: Span[] = [];
 
@@ -117,13 +129,20 @@ export function layoutPage(
     return c;
   };
 
-  /** First free column at or after `from`, else a new column on the right. */
+  /** First free column at or after `from`, else a new column on the right; not column 0 while it is held. */
   const freeLane = (from: number): number => {
-    for (let i = from; i < lanes.length; i++) if (lanes[i] == null) return i;
-    return lanes.length;
+    const first = head === null ? from : Math.max(from, 1);
+    for (let i = first; i < lanes.length; i++) if (lanes[i] == null) return i;
+    return Math.max(lanes.length, first);
   };
 
   const open = (lane: number, hash: string, color: number) => {
+    // Free columns are null, not holes - the state is compared and cloned as plain data.
+    while (lanes.length < lane) {
+      lanes.push(null);
+      colors.push(0);
+      since.push(0);
+    }
     lanes[lane] = hash;
     colors[lane] = color;
     since[lane] = rowIndex;
@@ -135,19 +154,16 @@ export function layoutPage(
     waiting.delete(commit.hash);
     const incoming: Edge[] = arriving.map((l) => ({ lane: l, color: colors[l]! }));
 
-    // Lanes converging into this commit end here; the node keeps the leftmost.
+    // Lanes converging into this commit end here; the node keeps the leftmost, or column 0 as HEAD.
     for (const l of arriving) {
       if (rowIndex - since[l]! >= 2) spans.push({ lane: l, color: colors[l]!, from: since[l]!, to: rowIndex });
       lanes[l] = null;
     }
-    let lane = arriving[0] ?? -1;
-    let color: number;
-    if (lane < 0) {
-      lane = freeLane(0);
-      color = pickColor(lane, []);
-    } else {
-      color = colors[lane]!;
-    }
+    const from = arriving[0];
+    const isHead = commit.hash === head;
+    if (isHead) head = null;
+    const lane = isHead ? 0 : (from ?? freeLane(0));
+    const color = from === undefined ? pickColor(lane, []) : colors[from]!;
 
     const outgoing: Edge[] = [];
     const parents = [...new Set(commit.parents)];
@@ -189,6 +205,7 @@ export function layoutPage(
       since: since.slice(0, lanes.length),
       row: rowIndex,
       nextColor,
+      head,
     },
   };
 }
