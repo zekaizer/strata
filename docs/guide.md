@@ -14,6 +14,12 @@ to get started and the requirements.
   badge of its own.
   The current branch and its upstream come first; badges that do not fit the row
   collapse into a `+N` badge.
+- The commit you have checked out (HEAD) and the line of its first parents stay
+  in the leftmost column, on a branch or detached, so your branch does not move
+  sideways when another branch gets newer commits. Branches newer than HEAD
+  run to its right, and one built on HEAD joins the column at HEAD. Under a
+  branch filter that picks no branch or tag on HEAD's commit, columns go to
+  the commits in the order they are listed.
 - Stashes are rows of their own, directly above the commit each was made on,
   newest on top, with a square node beside that commit's line. A stash whose
   commit is no longer on its branch (after a rebase or amend) sits above the
