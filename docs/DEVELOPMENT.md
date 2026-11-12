@@ -196,6 +196,11 @@ the Extensions view) gets the build's commit and date under its header, at the
 script fails if the README lacks that line. A release of the same version
 sorts above it. Release packaging (`npm run package`) does not stamp.
 
+Every build that is not a release is packaged with `--pre-release`: all CI
+builds, and a GitHub release marked as a pre-release. VS Code shows such a
+build as a pre-release once installed, and the Marketplace offers it only to
+those who switch to pre-release versions.
+
 ## Releases
 
 1. Set the version in `package.json` and `package-lock.json`
@@ -207,7 +212,9 @@ sorts above it. Release packaging (`npm run package`) does not stamp.
    fails unless the tag is `v` followed by the version in `package.json`, runs
    `npm run check`, packages and attaches `strata-<x.y.z>.vsix` to the
    release. The README's relative links and images in that package point at
-   the tag, not at `main`.
+   the tag, not at `main`. For a pre-release, pass `--prerelease` to
+   `gh release create`. The Marketplace takes no `-beta` suffix: a
+   pre-release needs a plain `x.y.z` that no release has.
 4. Upload that `.vsix` to the Marketplace by hand, at
    https://marketplace.visualstudio.com/manage/publishers/zekaizer. Its display
    name there is "Strata Git Graph": the Marketplace refuses a display name

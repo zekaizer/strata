@@ -117,7 +117,8 @@ jobs:
       # build note under the README header, which the Extensions view shows as the details page.
       - name: Mark as a CI build
         run: node scripts/ci-stamp.mjs "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"
-      - run: npm run package
+      # Not a release: VS Code shows the installed build as a pre-release.
+      - run: npm run package -- --pre-release
       - name: Name the VSIX after version and commit
         id: name
         run: |

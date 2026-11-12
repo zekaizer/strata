@@ -30,11 +30,13 @@ jobs:
       - run: npm ci
       - run: npm run check
       # The README's relative links and images point at the tag: at the default HEAD they would
-      # follow main after the release.
+      # follow main after the release. A release marked as a pre-release on GitHub is packaged as
+      # one, which is what the Marketplace goes by.
       - run: >-
           npm run package --
           --baseContentUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${TAG}"
           --baseImagesUrl "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/raw/${TAG}"
+          ${{ github.event.release.prerelease && '--pre-release' || '' }}
       - run: mv artifacts/strata.vsix "artifacts/${{ steps.version.outputs.file }}"
       - run: gh release upload "$TAG" "artifacts/${{ steps.version.outputs.file }}"
         env:
