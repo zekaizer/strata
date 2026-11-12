@@ -134,12 +134,12 @@ export const COMMANDS = {
   'strata.createTag': { title: 'Create Tag...', menus: [commit('2_checkout@4')], writes: true },
   'strata.cherryPick': {
     title: 'Cherry Pick',
-    menus: [commit('3_pick@1', '!strataIsHead'), { section: 'selection', group: '3_pick@1' }],
+    menus: [commit('3_pick@1', '!strataIsHead')],
     writes: true,
   },
   'strata.revert': {
     title: 'Revert',
-    menus: [commit('3_pick@2'), { section: 'selection', group: '3_pick@2' }],
+    menus: [commit('3_pick@2'), { section: 'selection', group: '3_pick@1' }],
     writes: true,
   },
   'strata.editMessage': {

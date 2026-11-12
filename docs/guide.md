@@ -325,15 +325,13 @@ it found.
   commits. A merge commit can be cherry picked relative to the parent you
   choose, and reverted, which undoes the commits it brought in from its other
   parents.
-- **Several commits at once:** Cherry Pick and Revert are also in the menu of
-  a Shift-click selection (see below) and act on all of its commits in one run
-  of git. A revert undoes them newest first, in one new commit each; a cherry
-  pick applies them oldest first and leaves out the commits the branch already
-  has. Strata asks at most once, the result says how many commits there were,
-  and Undo takes back the whole run in one step. A selection with a merge
-  commit in it is refused: cherry pick or revert the merge on its own. When
-  one of the commits conflicts, the run stops there with the rest still to do,
-  and Continue, Skip and Abort work as for a single commit.
+- **Several commits at once:** Revert is also in the menu of a Shift-click
+  selection (see below) and undoes all of its commits in one run of git,
+  newest first, in one new commit each. Strata asks at most once, the result
+  says how many commits there were, and Undo takes back the whole run in one
+  step. A selection with a merge commit in it is refused: revert the merge on
+  its own. When one of the commits conflicts, the run stops there with the
+  rest still to do, and Continue, Skip and Abort work as for a single commit.
 - **Tidying recent commits:** commits of the current branch's first-parent
   line, from HEAD down to the first merge, can be rewritten before you push
   them. A file or folder history shows only the commits that change it, so it
