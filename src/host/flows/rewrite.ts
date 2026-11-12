@@ -250,15 +250,30 @@ async function rewrite(host: FlowHost, edit: Edit, line?: readonly LineCommit[])
   return p.made ? rewriteInPlace(host, p, p.made) : rewriteByRebase(host, p);
 }
 
+const short = (p: Prepared) => (h: string) => p.short.get(h) ?? h.slice(0, 7);
+const dropped = (p: Prepared) => p.plan.steps.filter((st) => st.action === 'drop').length;
+const squashed = (p: Prepared) => p.made?.find((c) => c.replaces.includes(named(p.edit).oldest))?.replaces.length ?? 0;
+
 const label = (p: Prepared): string => {
   const n = named(p.edit);
-  const s = (h: string) => p.short.get(h) ?? h.slice(0, 7);
-  const count = p.plan.steps.filter((st) => st.action === 'drop').length;
+  const s = short(p);
   return {
     reword: () => REWRITE_DOING.reword(s(n.newest)),
-    squash: () => REWRITE_DOING.squash(p.made?.find((c) => c.replaces.includes(n.oldest))?.replaces.length ?? 0),
+    squash: () => REWRITE_DOING.squash(squashed(p)),
     fixup: () => REWRITE_DOING.fixup(s(n.newest), s(n.oldest)),
-    drop: () => REWRITE_DOING.drop(count, p.h.name),
+    drop: () => REWRITE_DOING.drop(dropped(p), p.h.name),
+  }[p.edit.kind]();
+};
+
+/** What the rewrite did, once it ran; `now`: the short id of the commit an in-place rewrite made. */
+const done = (p: Prepared, now = ''): string => {
+  const n = named(p.edit);
+  const s = short(p);
+  return {
+    reword: () => REWRITE_DONE.reword(s(n.oldest), now),
+    squash: () => REWRITE_DONE.squash(squashed(p), now),
+    fixup: () => REWRITE_DONE.fixup(s(n.newest), s(n.oldest)),
+    drop: () => REWRITE_DONE.drop(dropped(p), p.h.name),
   }[p.edit.kind]();
 };
 
@@ -348,18 +363,9 @@ async function rewriteInPlace(host: FlowHost, p: Prepared, made: NewCommit[]): P
     ],
     focus: focusOld,
   };
-  const n = named(p.edit);
-  const s = (h: string) => p.short.get(h) ?? h.slice(0, 7);
   const [nowShort] = (await shortIds(host, [focus])).values();
-  const done = {
-    reword: () => REWRITE_DONE.reword(s(n.oldest), nowShort ?? focus),
-    squash: () =>
-      REWRITE_DONE.squash(made.find((c) => c.replaces.includes(n.oldest))!.replaces.length, nowShort ?? focus),
-    fixup: () => REWRITE_DONE.fixup(s(n.newest), s(n.oldest)),
-    drop: () => REWRITE_DONE.drop(n.oldest === n.newest ? 1 : 0, p.h.name),
-  }[p.edit.kind]();
   const message = REWRITE_DONE.moved(
-    done,
+    done(p, nowShort ?? focus),
     moved.map((m) => m.ref.short),
   );
   if (notMoved.length > 0)
@@ -386,12 +392,8 @@ async function rewriteByRebase(host: FlowHost, p: Prepared): Promise<boolean> {
   );
   if (!r) return false;
   const after = (await head(host)).hash;
-  const n = named(p.edit);
-  const s = (h: string) => p.short.get(h) ?? h.slice(0, 7);
-  const dropped = p.plan.steps.filter((st) => st.action === 'drop').length;
   await finishRestoring(host, r, {
-    message:
-      p.edit.kind === 'drop' ? REWRITE_DONE.drop(dropped, p.h.name) : REWRITE_DONE.fixup(s(n.newest), s(n.oldest)),
+    message: done(p),
     focus: after,
     undo: moveUndo(host, REWRITE_UNDO[p.edit.kind], p.h, after),
   });
