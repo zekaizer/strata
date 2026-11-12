@@ -122,6 +122,19 @@ export function historyStarts(snapshot: RefSnapshot, refs: readonly string[] | n
   return starts;
 }
 
+/**
+ * The commit the graph holds its first column for (initialLaneState): HEAD's, when the view's
+ * history is read from it, so git lists it whatever the view's other options are. That is every
+ * view of all refs, and a ref filter (`refs`) with a picked ref at HEAD's commit. Undefined on an
+ * unborn branch, and under a ref filter whose refs are all elsewhere: HEAD's commit may then be
+ * outside the history.
+ */
+export function laneHead(snapshot: RefSnapshot, refs: readonly string[] | null): string | undefined {
+  const { head } = snapshot;
+  if (refs === null || head === undefined) return head;
+  return snapshot.refs.some((r) => r.hash === head && refs.includes(r.name)) ? head : undefined;
+}
+
 /** What a change of a view's starts does to its history; `check`: see historyChange. */
 export type HistoryChange =
   { kind: 'same' } | { kind: 'check'; added: string[]; removed: string[] } | { kind: 'reload' };

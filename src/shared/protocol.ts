@@ -333,6 +333,8 @@ export interface ProbeState {
   visibleSubjects: string[];
   /** The commit or stash commit of each rendered row, by row index. */
   rowHashes: Record<number, string>;
+  /** The graph column of each rendered commit row the layout has reached, by commit. */
+  rowLanes: Record<string, number>;
   /** Accessible names of the rendered rows, by commit or stash commit. */
   rowLabels: Record<string, string>;
   /** What rendered rows say about the operation in progress (where it stopped, its target), by commit. */
@@ -573,11 +575,15 @@ export type SimulatedAction =
   | { kind: 'focus'; selector: string }
   | { kind: 'type'; selector: string; text: string };
 
-export type ToWorker = { type: 'ping' } | { type: 'layout'; generation: number; commits: LayoutCommit[] };
+/**
+ * `run`: one layout from the first commit on; pages of a run arrive in order, another run restarts
+ * the layout. `head`: the commit column 0 is held for (laneHead), read from a run's first page only.
+ */
+export type ToWorker =
+  { type: 'ping' } | { type: 'layout'; run: number; head: string | undefined; commits: LayoutCommit[] };
 
 /** `state` describes the lines still open below the last row (see SpanIndex.setOpen). */
-export type FromWorker =
-  { type: 'pong' } | { type: 'rows'; generation: number; rows: Row[]; spans: Span[]; state: LaneState };
+export type FromWorker = { type: 'pong' } | { type: 'rows'; run: number; rows: Row[]; spans: Span[]; state: LaneState };
 
 /** The `strata.columns` setting: which optional columns rows may show. */
 export interface ShownColumns {

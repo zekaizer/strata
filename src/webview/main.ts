@@ -23,7 +23,7 @@ import { shiftClick, type ShiftClickResult } from '../core/range-select.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
-import { badgeOrder, headUpstream, type Ref, type RefSnapshot } from '../core/refs.ts';
+import { badgeOrder, headUpstream, laneHead, type Ref, type RefSnapshot } from '../core/refs.ts';
 import {
   changeCounts,
   describeChanges,
@@ -59,6 +59,7 @@ import type {
   SimulatedAction,
   ViewOptions,
   MessageDraft,
+  ToWorker,
 } from '../shared/protocol.ts';
 import {
   cardRefs,
@@ -288,6 +289,8 @@ class App {
         limit: number;
         read: number;
         pages: Extract<HostToWebview, { type: 'commits' }>[];
+        /** The layout run of its pages (ToWorker). */
+        run: number;
         laidOut: Extract<FromWorker, { type: 'rows' }>[];
         held: HostToWebview[];
       }
@@ -359,6 +362,11 @@ class App {
   /** The inline message editor: what the host opened it with, its text, and whether Save is running. */
   private editor: { draft: MessageDraft; text: string; saving: boolean } | undefined;
   private rows: Row[] = [];
+  /** The layout run (ToWorker) `rows` and `spans` come from, and the last one handed out. */
+  private run = 0;
+  private lastRun = 0;
+  /** The run lays the loaded commits out again: its first rows replace those shown. */
+  private relaying = false;
   /** What the list shows, top to bottom: the commits with the stashes drawn above them. Row indexes count these. */
   private list: ListRow[] = [];
   private stashes: StashEntry[] = [];
@@ -814,7 +822,7 @@ class App {
       case 'commits':
         if (staged?.reset.generation === m.generation) {
           staged.pages.push(m);
-          this.layout(m);
+          this.layout(staged.run, m.commits, staged.reset);
           staged.read += m.commits.length;
           for (const c of m.commits) staged.wanted.delete(c.hash);
           staged.loading = staged.wanted.size > 0 && !m.done && staged.read < staged.limit;
@@ -952,6 +960,8 @@ class App {
         this.geometry.clear();
         this.rows = [];
         this.spans.clear();
+        this.run = ++this.lastRun;
+        this.relaying = false;
         this.queueRender();
         break;
       case 'error':
@@ -998,7 +1008,7 @@ class App {
     for (const c of m.commits) this.parentsOf.set(c.hash, [...c.parents, ...(c.otherParents ?? [])]);
     this.findRewritable();
     this.measureTexts(m.commits);
-    if (layout) this.layout(m);
+    if (layout) this.layout(this.run, m.commits, { refs: this.refs, options: this.options });
     this.updateStatus();
     this.updateStashButton();
     this.updateHeadButton();
@@ -1010,12 +1020,14 @@ class App {
     this.queueRender();
   }
 
-  private layout(m: Extract<HostToWebview, { type: 'commits' }>): void {
+  /** Has the worker lay out the next commits of `run`, of the history `view` (its reset) shows. */
+  private layout(run: number, commits: readonly Commit[], view: { refs: RefSnapshot; options: ViewOptions }): void {
     this.worker?.postMessage({
       type: 'layout',
-      generation: m.generation,
-      commits: m.commits.map((c) => ({ hash: c.hash, parents: c.parents })),
-    });
+      run,
+      head: laneHead(view.refs, view.options.refs),
+      commits: commits.map((c) => ({ hash: c.hash, parents: c.parents })),
+    } satisfies ToWorker);
   }
 
   /**
@@ -1037,6 +1049,7 @@ class App {
       limit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE,
       read: 0,
       pages: [],
+      run: ++this.lastRun,
       laidOut: [],
       held: [],
     };
@@ -1050,6 +1063,7 @@ class App {
     const m = s.reset;
     this.badgeRules = m.badgeRules;
     this.reset(m.generation, m.repo, m.refs, m.options, m.stashes, m.result, false);
+    this.run = s.run;
     for (const page of s.pages) this.addCommits(page, false);
     if (s.loading) this.loading = true;
     for (const rows of s.laidOut) this.onWorker(rows);
@@ -1058,12 +1072,18 @@ class App {
 
   private onWorker(m: FromWorker): void {
     const staged = this.staged;
-    if (m.type === 'rows' && staged?.reset.generation === m.generation) {
+    if (m.type === 'rows' && staged?.run === m.run) {
       staged.laidOut.push(m);
       if (!staged.loading && staged.laidOut.length === staged.pages.length) this.swap();
       return;
     }
-    if (m.type !== 'rows' || m.generation !== this.generation) return;
+    if (m.type !== 'rows' || m.run !== this.run) return;
+    if (this.relaying) {
+      this.relaying = false;
+      this.rows = [];
+      this.spans.clear();
+      this.shownLanes = 1;
+    }
     this.rows.push(...m.rows);
     this.spans.add(m.spans);
     this.spans.setOpen(m.state);
@@ -1124,6 +1144,8 @@ class App {
     this.geometry.clear();
     this.rows = [];
     this.spans.clear();
+    this.run = ++this.lastRun;
+    this.relaying = false;
     this.shownLanes = 1;
     this.textWidths = { author: 0, date: 0, digit: 0 };
     this.hashPx = undefined;
@@ -1199,7 +1221,14 @@ class App {
     if (m.result?.focus !== undefined)
       this.restore ??= { expanded: this.expanded, searchLimit: Math.max(this.commits.length, FIRST_PAGE) + NEXT_PAGE };
     this.takeResult(m.result, m.refs, m.stashes);
+    const head = laneHead(this.refs, this.options.refs);
     this.setRefs(m.refs, m.stashes);
+    // The same commits around another HEAD: the rows shown stay until the new ones arrive.
+    if (laneHead(this.refs, this.options.refs) !== head) {
+      this.run = ++this.lastRun;
+      this.relaying = true;
+      this.layout(this.run, this.commits, { refs: this.refs, options: this.options });
+    }
     this.findRewritable();
     this.refFilter.update(this.refs, this.options.refs);
     const search = this.search;
@@ -4092,6 +4121,13 @@ class App {
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => {
           const i = Number(r.dataset['index']);
           return [i, this.list[i] ? rowHash(this.list[i]) : ''];
+        }),
+      ),
+      rowLanes: Object.fromEntries(
+        [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].flatMap((r) => {
+          const item = this.list[Number(r.dataset['index'])];
+          const row = item?.kind === 'commit' ? this.rows[item.row] : undefined;
+          return row ? [[rowHash(item!), row.lane]] : [];
         }),
       ),
       rowLabels: Object.fromEntries(

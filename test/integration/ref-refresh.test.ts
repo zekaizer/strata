@@ -108,6 +108,22 @@ describe('graph updates after ref changes', () => {
     );
   });
 
+  it('lays the graph out around the new HEAD after a switch, without reading the history again', async () => {
+    const to = git('rev-parse', 'feature/search');
+    const shown = await waitFor('the history', async () => {
+      const p = await panel().probe();
+      return p.done && !p.restoring && p;
+    });
+    assert.equal(shown.rowLanes[git('rev-parse', 'HEAD')], 0);
+    assert.notEqual(shown.rowLanes[to], 0, 'the branch is beside HEAD before the switch');
+    const { after } = await inPlace(
+      () => git('switch', '--quiet', 'feature/search'),
+      (p) => p.rowLanes[to] === 0,
+      'feature/search in the leftmost column',
+    );
+    assert.equal(after.laidOut, after.commits);
+  });
+
   it('drops the commits of a deleted unmerged branch without going blank', async () => {
     const s = await unfold(panel(), 'Search UI');
     const gone = git('rev-parse', 'wip/experiment');
