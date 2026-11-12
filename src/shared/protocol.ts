@@ -4,6 +4,7 @@ import type { BadgeRule } from '../core/badge-rules.ts';
 import type { Commit } from '../core/commit.ts';
 import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 import type { FindHit, FindQuery } from '../core/find.ts';
+import type { ReadOnly } from '../core/git-version.ts';
 
 export type { FileView };
 import type { LaneState, LayoutCommit, Row, Span } from '../core/layout.ts';
@@ -161,10 +162,15 @@ export type HostToWebview =
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
   | { type: 'busy'; label: string | undefined }
   /**
-   * The operation in progress, or else what an earlier one left behind, sent after every reset and
-   * when it changes.
+   * The operation in progress, or else what an earlier one left behind, and why Strata cannot change
+   * the repository when it cannot, sent after every reset and when it changes.
    */
-  | { type: 'repoState'; operation: OperationState | undefined; leftover: Leftover | undefined }
+  | {
+      type: 'repoState';
+      operation: OperationState | undefined;
+      leftover: Leftover | undefined;
+      readOnly: ReadOnly | undefined;
+    }
   /**
    * A page of history; fewer commits than asked for and not done while a path history is still
    * being searched. `unchanged`: commits in it that a path history keeps although they leave its paths alone (ref
@@ -546,6 +552,7 @@ export interface ProbeState {
   /** The operation in progress, and what an earlier one left behind, as the host last reported them. */
   operation: OperationState | undefined;
   leftover: Leftover | undefined;
+  readOnly: ReadOnly | undefined;
 }
 
 /** UI actions integration tests ask the webview to perform through real DOM events. */

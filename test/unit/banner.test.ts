@@ -244,6 +244,28 @@ describe('the banner of what an operation left behind', () => {
   });
 });
 
+describe('the banner of a repository Strata cannot change', () => {
+  const readOnly = { gitVersion: '2.30.1' };
+
+  it('says why and what follows, as a warning with nothing to click', () => {
+    const b = bannerOf(undefined, undefined, facts(), readOnly);
+    assert.equal(b?.state, 'readOnly');
+    assert.equal(b.warning, true);
+    assert.equal(b.label, 'Read-only');
+    assert.equal(text(b), 'Strata needs git 2.34 or newer to change repositories (found 2.30.1).');
+    assert.equal(b.more, 'Commands that change the repository are disabled.');
+    assert.deepEqual(b.actions, []);
+    assert.deepEqual(links(b), []);
+  });
+
+  it('takes the place of an operation banner and of a leftover banner', () => {
+    const leftover: Leftover = { kind: 'pendingStash', stash, operation: 'cherry pick' };
+    assert.equal(bannerOf(rebase, undefined, facts(), readOnly)?.state, 'readOnly');
+    assert.equal(bannerOf(undefined, leftover, facts(), readOnly)?.state, 'readOnly');
+    assert.deepEqual(bannerOf(pick, leftover, facts(), readOnly)?.actions, []);
+  });
+});
+
 describe('the rows an operation marks', () => {
   it("marks the commit a rebase stopped at with its conflicts, and the rebase's target", () => {
     assert.deepEqual(

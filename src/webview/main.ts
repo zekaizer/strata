@@ -34,6 +34,7 @@ import {
   type Leftover,
   type OperationState,
 } from '../core/repo-state.ts';
+import type { ReadOnly } from '../core/git-version.ts';
 import { samePath } from '../core/worktrees.ts';
 import {
   anchoredAt,
@@ -454,6 +455,8 @@ class App {
   /** What rows say about the operation in progress, by commit. */
   private operationNotes = new Map<string, OperationNote>();
   private leftover: Leftover | undefined;
+  /** Why Strata cannot change the repository, while it cannot. */
+  private readOnly: ReadOnly | undefined;
   /** The Strata operation running, by its progress label. */
   private busyLabel: string | undefined;
   /** Selections the user made; an operation's focus is not applied once the user moved during it. */
@@ -812,6 +815,7 @@ class App {
         this.operation = m.operation;
         this.operationNotes = operationNotes(m.operation);
         this.leftover = m.leftover;
+        this.readOnly = m.readOnly;
         if (!m.operation) this.conflictedStops.clear();
         else if (m.operation.conflictCount > 0) this.conflictedStops.add(stopKey(m.operation));
         this.updateBanner();
@@ -950,6 +954,7 @@ class App {
         this.operation = undefined;
         this.operationNotes.clear();
         this.leftover = undefined;
+        this.readOnly = undefined;
         this.updateBanner();
         this.setStashes([]);
         this.changes = undefined;
@@ -1930,19 +1935,24 @@ class App {
   }
 
   /**
-   * Shows the operation in progress or what one left behind. It is said politely when it says
+   * Shows why the repository cannot be changed, else the operation in progress or what one left behind. It is said politely when it says
    * something new, unless the host notified it: VS Code reads that notification out.
    */
   private updateBanner(): void {
     const op = this.operation;
-    const banner = bannerOf(op, this.leftover, {
-      subject: (hash) => this.commits.find((c) => c.hash === hash)?.subject,
-      name: (hash) => {
-        const refs = this.refsByHash.get(hash) ?? [];
-        return (refs.find((r) => r.kind === 'branch') ?? refs.find((r) => r.kind === 'remote') ?? refs[0])?.short;
+    const banner = bannerOf(
+      op,
+      this.leftover,
+      {
+        subject: (hash) => this.commits.find((c) => c.hash === hash)?.subject,
+        name: (hash) => {
+          const refs = this.refsByHash.get(hash) ?? [];
+          return (refs.find((r) => r.kind === 'branch') ?? refs.find((r) => r.kind === 'remote') ?? refs[0])?.short;
+        },
+        hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
       },
-      hadConflicts: op !== undefined && this.conflictedStops.has(stopKey(op)),
-    });
+      this.readOnly,
+    );
     const shown = !this.banner.element.hidden;
     this.banner.show(banner);
     if (
@@ -1951,9 +1961,12 @@ class App {
       !this.status.classList.contains('error')
     )
       this.updateStatus();
-    const said = banner
-      ? JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null])
-      : '';
+    // The read-only banner says the same whatever is in progress under it.
+    const said = !banner
+      ? ''
+      : banner.state === 'readOnly'
+        ? banner.state
+        : JSON.stringify([banner.state, op && stopKey(op), op?.conflictCount, this.leftover ?? null]);
     if (said === this.bannerSaid) return;
     this.bannerSaid = said;
     if (!banner) return;
@@ -4206,6 +4219,7 @@ class App {
       options: this.options,
       operation: this.operation,
       leftover: this.leftover,
+      readOnly: this.readOnly,
       expandedHeight: this.gapHeight(),
       rowTops: Object.fromEntries(
         [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')].map((r) => [

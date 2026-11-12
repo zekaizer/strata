@@ -282,6 +282,9 @@ export function failedDuring(label: string, message: string): string {
 export const gitTooOld = (found: string): string =>
   `Strata needs git 2.34 or newer to change repositories (found ${found}).`;
 
+/** What follows from gitTooOld(), where it stands in the graph. */
+export const WRITES_DISABLED = 'Commands that change the repository are disabled.';
+
 /**
  * A remote operation that git could not authenticate (auth) or whose host it does not know yet
  * (hostKey). `rerun`: the command to run again afterwards, when the terminal runs only part of it.

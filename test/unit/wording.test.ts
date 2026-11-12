@@ -11,6 +11,7 @@ import {
   failedDuring,
   gitFailure,
   gitTooOld,
+  WRITES_DISABLED,
   rewriteConfirmation,
   type RewriteFacts,
   HISTORY_DONE,
@@ -251,6 +252,10 @@ describe('wording of undo and failures', () => {
 
   it('names the git that is too old to write', () => {
     assert.equal(gitTooOld('2.33.8'), 'Strata needs git 2.34 or newer to change repositories (found 2.33.8).');
+  });
+
+  it('says what follows from a git too old to write', () => {
+    assert.equal(WRITES_DISABLED, 'Commands that change the repository are disabled.');
   });
 });
 

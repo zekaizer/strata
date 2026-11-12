@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { canWrite, parseGitVersion, readOnly } from '../../src/core/git-version.ts';
+import { canWrite, parseGitVersion, readOnly, readOnlyOf } from '../../src/core/git-version.ts';
 import { readGitVersion } from '../../src/git/facts.ts';
 import { tempDir } from './helpers.ts';
 
@@ -27,6 +27,12 @@ describe('git version', () => {
     assert.equal(readOnly([2, 33, 8]), true);
     assert.equal(readOnly([2, 34, 0]), false);
     assert.equal(readOnly(undefined), false);
+  });
+
+  it('names the git found when it is read-only, and nothing otherwise', () => {
+    assert.deepEqual(readOnlyOf([2, 30, 1]), { gitVersion: '2.30.1' });
+    assert.equal(readOnlyOf([2, 34, 0]), undefined);
+    assert.equal(readOnlyOf(undefined), undefined);
   });
 });
 

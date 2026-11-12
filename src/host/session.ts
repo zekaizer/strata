@@ -36,7 +36,7 @@ import type { HostToWebview, MessageDraft, ViewOptions, WebviewToHost, WorkingDe
 import { resolveConflicts } from './flows/changes.ts';
 import { setContext, type ContextKey } from './context.ts';
 import { readGitVersion, readUnmerged, readUpstream, refsReach } from '../git/facts.ts';
-import { readOnly } from '../core/git-version.ts';
+import { readOnly, readOnlyOf, type ReadOnly } from '../core/git-version.ts';
 import type { FlowEnv, FlowHost, FlowSettings, Leftovers, Undo } from './flow.ts';
 import type { RepoKey } from '../core/repos.ts';
 import { repoKey, type GitApi, type GitRepository } from './git-api.ts';
@@ -118,8 +118,10 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   private served = new Set<string>();
   private stashList: StashEntry[] = [];
   private readonly stashCache = stashCache();
-  /** What the graph was last told is in progress or left behind. */
-  private repoState: { operation: OperationState | undefined; leftover: Leftover | undefined } | undefined;
+  /** What the graph was last told is in progress or left behind, and why the repository cannot be changed. */
+  private repoState:
+    | { operation: OperationState | undefined; leftover: Leftover | undefined; readOnly: ReadOnly | undefined }
+    | undefined;
   private gitDirOf: Promise<string> | undefined;
   private commonDirOf: Promise<string> | undefined;
   private running: string | undefined;
@@ -587,10 +589,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   /** Tells the graph and the `strata.operation` context key which operation is in progress; `force` even if unchanged. */
   private async syncRepoState(force: boolean): Promise<void> {
     const cwd = this.cwd;
-    const [operation, unmerged, dir] = await Promise.all([
+    const [operation, unmerged, dir, version] = await Promise.all([
       readOperationState(this.api.git.path, cwd).catch(() => undefined),
       readUnmerged(this.api.git.path, cwd).catch(() => []),
       this.gitDir().catch(() => undefined),
+      readGitVersion(this.api.git.path, cwd).catch(() => undefined),
     ]);
     if (this.disposed) return;
     // A running flow's own stash is not a leftover, and its marks are the flow's to change.
@@ -607,7 +610,11 @@ export class RepoSession implements vscode.Disposable, FlowHost {
       });
     }
     // A running flow's own steps are not an operation that stopped; it reports how it ended.
-    const state = { operation: this.running === undefined ? operation : this.repoState?.operation, leftover };
+    const state = {
+      operation: this.running === undefined ? operation : this.repoState?.operation,
+      leftover,
+      readOnly: readOnlyOf(version),
+    };
     if (!force && JSON.stringify(state) === JSON.stringify(this.repoState)) return;
     this.repoState = state;
     this.post({ type: 'repoState', ...state });

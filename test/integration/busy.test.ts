@@ -48,6 +48,9 @@ describe('while an operation runs', () => {
   it('leaves the commands that change the repository on with a git new enough to write', async () => {
     await waitFor('the git version read', () => api.contextValue('strata.readOnly') !== undefined);
     assert.equal(api.contextValue('strata.readOnly'), false);
+    const s = await panel.probe();
+    assert.equal(s.readOnly, undefined);
+    assert.equal(s.banner, undefined);
   });
 
   it('does not show its own unfinished steps as an operation that stopped, even when reloaded', async () => {

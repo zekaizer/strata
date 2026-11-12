@@ -402,6 +402,13 @@ function surfaces(): HTMLElement {
     b.append(codicon(warning ? 'warning' : 'info', 'banner-icon'), t, actions);
     return b;
   };
+  const readOnly = el('section', 'banner warning');
+  const said = el('span', 'banner-text');
+  said.append(
+    el('span', 'banner-lead', 'Strata needs git 2.34 or newer to change repositories (found 2.30.1).'),
+    el('span', 'banner-more', 'Commands that change the repository are disabled.'),
+  );
+  readOnly.append(codicon('warning', 'banner-icon'), said);
   const wide = (e: HTMLElement) => {
     e.style.width = '900px';
     return e;
@@ -413,6 +420,7 @@ function surfaces(): HTMLElement {
     row(spec('.banner', wide(banner(false, false, 'Rebasing feature/search onto main: 2 of 4, stopped at ')))),
     row(spec('.banner.warning', wide(banner(true, false, 'Conflicts in 2 files after applying ')))),
     row(spec('.banner held (busy)', wide(banner(false, true, 'Conflicts resolved at ')))),
+    row(spec('.banner.warning without actions (read-only)', wide(readOnly))),
     row(
       spec('.toolbar-status', status('', '22 commits')),
       spec('.toolbar-status.busy', status('busy', 'Fetching…')),

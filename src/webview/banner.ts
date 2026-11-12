@@ -1,5 +1,6 @@
+import type { ReadOnly } from '../core/git-version.ts';
 import type { Leftover, OperationKind, OperationState } from '../core/repo-state.ts';
-import { fileList, plural, rebaseContinues, stashLabel } from '../core/wording.ts';
+import { fileList, gitTooOld, plural, rebaseContinues, stashLabel, WRITES_DISABLED } from '../core/wording.ts';
 import type { CommandId } from '../shared/commands.ts';
 
 /** Which of the banner's sentences shows (design §7.2); "Resolved" and "Stopped" have no conflicts left. */
@@ -18,7 +19,8 @@ export type BannerState =
   | 'leftover'
   | 'leftoverResolved'
   | 'pending'
-  | 'conflicts';
+  | 'conflicts'
+  | 'readOnly';
 
 /** Text, or a commit's short hash that selects its row. */
 export type BannerPart = string | { short: string; hash: string };
@@ -40,6 +42,7 @@ export interface Banner {
   parts: BannerPart[];
   /** What else to know before acting, on a line of its own. */
   more: string;
+  /** Empty when nothing in Strata resolves the state. */
   actions: BannerAction[];
 }
 
@@ -60,12 +63,26 @@ export const OPERATION_LABEL: Record<OperationKind, string> = {
   revert: 'Revert',
 };
 
-/** The operation in progress, else what one left behind; undefined when there is nothing to say. */
+/**
+ * Why Strata cannot change the repository, else the operation in progress, else what one left
+ * behind; undefined when there is nothing to say. Read-only comes first: every button of the other
+ * banners runs a command that is off (design system, Banner).
+ */
 export function bannerOf(
   operation: OperationState | undefined,
   leftover: Leftover | undefined,
   facts: BannerFacts,
+  readOnly?: ReadOnly,
 ): Banner | undefined {
+  if (readOnly)
+    return {
+      state: 'readOnly',
+      warning: true,
+      label: 'Read-only',
+      parts: [gitTooOld(readOnly.gitVersion)],
+      more: WRITES_DISABLED,
+      actions: [],
+    };
   if (operation) return stopped(operation, leftover, facts);
   if (!leftover) return undefined;
   const on = (label: string, command: CommandId, hash: string): BannerAction => ({

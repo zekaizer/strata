@@ -14,6 +14,7 @@
 //   &refs=refs/heads/a,refs/tags/b: the ref filter's selection
 //   &changes=<staged>,<changed>,<conflicts>,<untracked>[,<submodules>]: uncommitted changes ("-" untracked: not counted)
 //   &banner=rebase|rebaseResolved|rebaseStopped|merge|mergeResolved|sequencer|leftover|leftoverResolved|pending|conflicts
+//   &readOnly=<git version>: git too old to change the repository, e.g. 2.30.1; its banner replaces &banner's
 import { autostashMessage } from '../src/core/autostash.ts';
 import type { BadgeRule } from '../src/core/badge-rules.ts';
 import type { Commit } from '../src/core/commit.ts';
@@ -59,6 +60,7 @@ const openPopover = params.get('open');
 const menuAt = params.get('menu');
 const busy = params.get('busy');
 const bannerState = params.get('banner');
+const readOnly = params.has('readOnly') ? { gitVersion: params.get('readOnly') || '2.30.1' } : undefined;
 const land = params.get('land');
 /**
  * `find=<text>` opens the find widget with that text typed; `findList=1` shows the match list;
@@ -360,9 +362,9 @@ async function onMessage(m: WebviewToHost): Promise<void> {
           });
         }
       }
-      if (bannerState !== null && offset === commits.length)
+      if ((bannerState !== null || readOnly) && offset === commits.length)
         for (const [operation, leftover] of repoStates(bannerState, data))
-          toWebview({ type: 'repoState', operation, leftover });
+          toWebview({ type: 'repoState', operation, leftover, readOnly });
       if (menuAt !== null && offset === commits.length) {
         setTimeout(() => {
           toWebview({ type: 'simulate', action: { kind: 'contextMenu', selector: menuAt } });
@@ -505,7 +507,7 @@ function worktrees(d: PlaygroundData): WorktreeInfo[] {
 }
 
 /** repoState messages that bring the banner into `state`, from the scenario's commits and refs. */
-function repoStates(state: string, d: PlaygroundData): [OperationState | undefined, Leftover | undefined][] {
+function repoStates(state: string | null, d: PlaygroundData): [OperationState | undefined, Leftover | undefined][] {
   const at = (short: string) => d.refs.refs.find((r) => r.short === short)?.hash ?? d.commits[0]!.hash;
   const applying = d.commits.find((c) => c.subject === 'Search UI')?.hash ?? d.commits[1]!.hash;
   const hash = d.stashes[0]?.hash ?? d.commits[0]!.hash;
@@ -558,7 +560,7 @@ function repoStates(state: string, d: PlaygroundData): [OperationState | undefin
     pending: [[undefined, { kind: 'pendingStash', stash: held, operation: 'cherry pick' }]],
     conflicts: [[undefined, { kind: 'unmerged', files: ['a.txt', 'b.txt'], count: 2, autostash: gitStash }]],
   };
-  return states[state] ?? [];
+  return (state !== null && states[state]) || [[undefined, undefined]];
 }
 
 Object.assign(window, {
