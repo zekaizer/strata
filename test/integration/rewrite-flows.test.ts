@@ -491,6 +491,26 @@ describe('tidying recent commits', () => {
     assert.equal(after.draftRows[await rowOf(c)], undefined);
   });
 
+  it('keeps the draft when the question before a reorder is cancelled', async () => {
+    const [a, b, c] = await three();
+    git('branch', 'strata-at-b', b);
+    await reload(panel());
+    await run('strata.reorderCommits', commitMenu(b));
+    await reorderFacts(c);
+    await drafted([c, b, a]);
+    await panel().simulate({ kind: 'dragRow', index: await rowOf(b), to: await rowOf(c) });
+    await drafted([b, c, a]);
+    await panel().simulate({ kind: 'click', selector: '.banner-button.primary' });
+    await waitFor('the question', () => ui.of('confirm').length > 0);
+    const kept = await waitFor('the draft, no longer applying', async () => {
+      const p = await panel().probe();
+      return p.reorder?.applying === false && p;
+    });
+    assert.deepEqual(kept.reorder?.order.slice(0, 3), [b, c, a]);
+    assert.deepEqual(kept.banner?.disabled, [], 'Apply can be pressed again');
+    assert.equal(git('rev-parse', 'HEAD'), c);
+  });
+
   it('reorders commits through a rebase the mode gets the facts for, which Undo takes back', async () => {
     const [a, b, c] = await three();
     await run('strata.reorderCommits', commitMenu(b));

@@ -162,7 +162,7 @@ export type HostToWebview =
   | { type: 'editEnded'; applied: boolean }
   /** Reorder Commits...: the graph enters the reorder mode at HEAD `head`, or takes the facts when it is in it. */
   | ({ type: 'reorderFacts' } & ReorderFacts)
-  /** Apply in the reorder mode ended: the mode is left either way; `applied` says the commits were reordered. */
+  /** Apply in the reorder mode ended: `applied` says the commits were reordered; when not, the draft stays. */
   | { type: 'reorderEnded'; applied: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }

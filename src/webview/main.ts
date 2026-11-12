@@ -950,7 +950,11 @@ class App {
         });
         break;
       case 'reorderEnded':
-        this.leaveReorder();
+        if (m.applied) this.leaveReorder();
+        else if (this.mode) {
+          this.mode = { ...this.mode, applying: false };
+          this.redraft();
+        }
         break;
       case 'editEnded':
         if (!this.editor) break;
