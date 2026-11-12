@@ -16,6 +16,7 @@ import {
   rewriteInTheWay,
   rewriteRefused,
   reorderOutdated,
+  REORDER_MODE,
   nothingToReorder,
   REWRITE_DOING,
   REWRITE_DONE,
@@ -362,6 +363,22 @@ describe('reordering commits', () => {
     assert.equal(REWRITE_DONE.reorder(3, "'feature/x'"), "Reordered 3 commits on 'feature/x'");
     assert.equal(undone(REWRITE_UNDO.reorder), 'Undid the reorder');
     assert.equal(rewriteInTheWay('reorder', '3 commits'), 'reorder of 3 commits');
+  });
+
+  it('says what the draft of the reorder mode does', () => {
+    assert.equal(REORDER_MODE.lead('feature/x'), 'Reordering feature/x');
+    assert.equal(REORDER_MODE.lead(undefined), 'Reordering HEAD');
+    assert.equal(REORDER_MODE.moved(1), '1 commit moved.');
+    assert.equal(REORDER_MODE.moved(2), '2 commits moved.');
+    assert.equal(REORDER_MODE.mayConflict('src/a.ts', 1), 'May conflict in src/a.ts.');
+    assert.equal(REORDER_MODE.mayConflict('src/a.ts', 2), 'May conflict in src/a.ts and 1 more file.');
+    assert.equal(REORDER_MODE.mayConflict('src/a.ts', 3), 'May conflict in src/a.ts and 2 more files.');
+    assert.equal(REORDER_MODE.pushed(1, 'origin/main'), 'Rewrites 1 commit already on origin/main.');
+    assert.equal(REORDER_MODE.pushed(3, undefined), 'Rewrites 3 commits already on a remote.');
+    assert.equal(REORDER_MODE.distance(-2), '↑2');
+    assert.equal(REORDER_MODE.distance(1), '↓1');
+    assert.equal(REORDER_MODE.distanceSpoken(-2), 'moved up 2 rows');
+    assert.equal(REORDER_MODE.distanceSpoken(1), 'moved down 1 row');
   });
 
   it('says why nothing was reordered', () => {

@@ -1523,6 +1523,34 @@ export const reorderOutdated = (branch: string): string =>
 export const nothingToReorder = (branch: string): string =>
   `${branch} has fewer than two commits above its last merge, so there is nothing to reorder.`;
 
+/** The reorder mode: its banner, and what a draft says on the rows. `branch` as the toolbar names it. */
+export const REORDER_MODE = {
+  label: 'Reorder commits',
+  lead: (branch: string | undefined): string => `Reordering ${branch ?? 'HEAD'}`,
+  hint: 'Drag a commit, or press Alt+Up or Alt+Down.',
+  moved: (n: number): string => `${plural(n, 'commit')} moved.`,
+  /** `files`: how many paths the commits put the other way round share, `file` one of them. */
+  mayConflict: (file: string, files: number): string =>
+    `May conflict in ${file}${files > 1 ? ` and ${plural(files - 1, 'more file')}` : ''}.`,
+  /** `n` of the rewritten commits are on `upstream` (a remote-tracking branch's short name). */
+  pushed: (n: number, upstream: string | undefined): string =>
+    `Rewrites ${plural(n, 'commit')} already on ${upstream ?? 'a remote'}.`,
+  apply: 'Apply',
+  cancel: 'Cancel',
+  /** The chip of a commit that may conflict. */
+  clash: 'May conflict',
+  /** The chip of a moved commit: `rows` it went, negative is up. */
+  distance: (rows: number): string => `${rows < 0 ? '↑' : '↓'}${Math.abs(rows)}`,
+  /** What a screen reader hears of the same. */
+  distanceSpoken: (rows: number): string => `moved ${rows < 0 ? 'up' : 'down'} ${plural(Math.abs(rows), 'row')}`,
+  handle: 'Drag to reorder',
+  /** Under several selected commits. */
+  selection:
+    'Drag the selection, or press Alt+Up or Alt+Down, to move it · Shift-click another commit to change the selection',
+  /** Reorder Commits... on a branch badge while a file or folder history is shown. */
+  wholeHistory: 'Reordering commits needs the whole history: clear the path filter first.',
+} as const;
+
 export const fixupPick = (c: CommitRef): { title: string; placeholder: string } => ({
   title: `Fix Up ${commitName(c)} into…`,
   placeholder: 'The older commit its changes belong to',
