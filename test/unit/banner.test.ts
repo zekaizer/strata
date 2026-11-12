@@ -1,7 +1,13 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Leftover, OperationState } from '../../src/core/repo-state.ts';
-import { bannerOf, operationNotes, type Banner, type BannerFacts } from '../../src/webview/banner.ts';
+import {
+  bannerOf,
+  operationNotes,
+  type Banner,
+  type BannerFacts,
+  type ReorderDraft,
+} from '../../src/webview/banner.ts';
 
 const h = (c: string) => c.repeat(40);
 const SUBJECTS: Record<string, string> = { [h('a')]: 'Add lexer', [h('c')]: 'Fix parser' };
@@ -12,7 +18,8 @@ const facts = (hadConflicts = false): BannerFacts => ({
   hadConflicts,
 });
 const text = (b: Banner | undefined) => b?.parts.map((p) => (typeof p === 'string' ? p : p.short)).join('');
-const actions = (b: Banner | undefined) => b?.actions.map((a) => [a.label, a.command, a.context ?? {}]);
+const actions = (b: Banner | undefined) =>
+  b?.actions.map((a) => ('command' in a ? [a.label, a.command, a.context ?? {}] : [a.label, a.local, !!a.disabled]));
 const links = (b: Banner | undefined) => b?.parts.filter((p) => typeof p !== 'string');
 
 const rebase: OperationState = {
@@ -281,5 +288,65 @@ describe('the rows an operation marks', () => {
     const resolved = { ...merge, conflicts: [], conflictCount: 0 };
     assert.deepEqual([...operationNotes(resolved)], [[h('d'), { text: 'Stopped here', warning: false }]]);
     assert.equal(operationNotes(undefined).size, 0);
+  });
+});
+
+describe('the banner of the reorder mode', () => {
+  const draft = (over: Partial<ReorderDraft> = {}): ReorderDraft => ({
+    branch: 'feature/search',
+    moved: 0,
+    clashFile: undefined,
+    clashFiles: 0,
+    pushed: 0,
+    upstream: undefined,
+    ...over,
+  });
+  const reorder = (over?: Partial<ReorderDraft>) => {
+    const b = bannerOf(undefined, undefined, facts(), undefined, draft(over));
+    assert.ok(b);
+    return b;
+  };
+
+  it('names the branch and says how to move a commit while nothing moved', () => {
+    const b = reorder();
+    assert.equal(b.state, 'reorder');
+    assert.equal(b.label, 'Reorder commits');
+    assert.equal(text(b), 'Reordering feature/search');
+    assert.equal(b.more, 'Drag a commit, or press Alt+Up or Alt+Down.');
+    assert.equal(b.warning, false);
+    assert.deepEqual(actions(b), [
+      ['Apply', 'applyReorder', true],
+      ['Cancel', 'cancelReorder', false],
+    ]);
+    assert.equal(text(reorder({ branch: undefined })), 'Reordering HEAD');
+  });
+
+  it('counts the moved commits and offers Apply', () => {
+    const b = reorder({ moved: 2 });
+    assert.equal(b.more, '2 commits moved.');
+    assert.equal(b.warning, false);
+    assert.deepEqual(actions(b), [
+      ['Apply', 'applyReorder', false],
+      ['Cancel', 'cancelReorder', false],
+    ]);
+  });
+
+  it('warns of a likely conflict and of rewriting pushed commits', () => {
+    const clash = reorder({ moved: 1, clashFile: 'src/a.ts', clashFiles: 3 });
+    assert.equal(clash.more, '1 commit moved. May conflict in src/a.ts and 2 more files.');
+    assert.equal(clash.warning, true);
+    const pushed = reorder({ moved: 1, pushed: 2, upstream: 'origin/main' });
+    assert.equal(pushed.more, '1 commit moved. Rewrites 2 commits already on origin/main.');
+    assert.equal(pushed.warning, true);
+    const both = reorder({ moved: 1, clashFile: 'a.ts', clashFiles: 1, pushed: 1, upstream: 'origin/x' });
+    assert.equal(both.more, '1 commit moved. May conflict in a.ts. Rewrites 1 commit already on origin/x.');
+  });
+
+  it('gives way to an operation and to the read-only state, and comes before what an operation left', () => {
+    const d = draft({ moved: 1 });
+    assert.equal(bannerOf(rebase, undefined, facts(), undefined, d)?.state, 'rebase');
+    assert.equal(bannerOf(undefined, undefined, facts(), { gitVersion: '2.30.1' }, d)?.state, 'readOnly');
+    const left: Leftover = { kind: 'unmerged', files: ['a.txt'], count: 1, autostash: undefined };
+    assert.equal(bannerOf(undefined, left, facts(), undefined, d)?.state, 'reorder');
   });
 });

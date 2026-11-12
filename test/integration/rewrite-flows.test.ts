@@ -356,10 +356,140 @@ describe('tidying recent commits', () => {
   const reorderFacts = async (head: string) =>
     waitFor('the facts of the reorder mode', async () => {
       const r = (await panel().probe()).reorder;
-      return r?.head === head && r;
+      return r?.facts?.head === head && r.facts;
     });
   const applyReorder = (order: string[], head = git('rev-parse', 'HEAD')) =>
     run('strata.applyReorder', menu({ order, head }));
+
+  /** The reorder mode once the top of its draft is `order`, newest first. */
+  const drafted = (order: string[]) =>
+    waitFor(`the draft ${order.map((h) => h.slice(0, 7)).join(' ')}`, async () => {
+      const p = await panel().probe();
+      return p.reorder?.shown && p.reorder.order.slice(0, order.length).join() === order.join() && p;
+    });
+  const noMode = () =>
+    waitFor('the list without the reorder mode', async () => {
+      const p = await panel().probe();
+      return p.reorder === undefined && p.banner?.state !== 'reorder' && p;
+    });
+
+  it('drags a commit in the reorder mode and applies the draft from the banner', async () => {
+    const [a, b, c] = await three();
+    await run('strata.reorderCommits', commitMenu(b));
+    await reorderFacts(c);
+    const idle = await drafted([c, b, a]);
+    assert.equal(idle.banner?.text, 'Reordering main Drag a commit, or press Alt+Up or Alt+Down.');
+    assert.deepEqual(idle.banner.buttons, ['Apply', 'Cancel']);
+    assert.deepEqual(idle.banner.disabled, ['Apply'], 'nothing moved yet');
+    assert.equal(idle.banner.warning, false);
+    const [top, mid, low] = [await rowOf(c), await rowOf(b), await rowOf(a)];
+    assert.deepEqual(idle.draftRows[top], ['movable']);
+
+    await panel().simulate({ kind: 'dragRow', index: low, to: top });
+    const moved = await drafted([a, c, b]);
+    assert.deepEqual(
+      [top, mid, low].map((i) => moved.rowHashes[i]),
+      [a, c, b],
+      'the rows show the draft',
+    );
+    assert.deepEqual(moved.draftRows[top], ['movable', 'moved', 'rewritten', '↑2']);
+    assert.deepEqual(moved.draftRows[mid], ['movable', 'rewritten']);
+    assert.equal(moved.banner?.text, 'Reordering main 1 commit moved.');
+    assert.deepEqual(moved.banner.disabled, []);
+    assert.equal(moved.banner.warning, false, 'the three commits change different files');
+    assert.equal(git('rev-parse', 'HEAD'), c, 'a draft changes nothing');
+
+    await panel().simulate({ kind: 'click', selector: '.banner-button.primary' });
+    await waitFor('the reordered history', () => git('log', '--format=%s', '-3') === 'a.txt: a\nc.txt: c\nb.txt: b');
+    const after = await noMode();
+    assert.equal(after.draftRows[top], undefined);
+    assert.equal(ui.of('notify').at(-1)?.message, "Reordered 3 commits on 'main'");
+  });
+
+  it('enters the mode on Alt+Down, moves the selection with it, and gives the draft up on Escape', async () => {
+    const [a, b, c] = await three();
+    const top = await rowOf(c);
+    await panel().simulate({ kind: 'clickRow', index: top });
+    await waitFor('the selection', async () => (await panel().probe()).selected === c);
+    await panel().simulate({ kind: 'key', key: 'ArrowDown', altKey: true });
+    const one = await drafted([b, c, a]);
+    assert.equal(one.selected, c, 'the selection goes with the commit');
+    assert.deepEqual(one.draftRows[top + 1], ['movable', 'moved', 'rewritten', '↓1']);
+    await reorderFacts(c);
+    await panel().simulate({ kind: 'key', key: 'ArrowDown', altKey: true });
+    await drafted([b, a, c]);
+    await panel().simulate({ kind: 'key', key: 'ArrowUp', altKey: true });
+    await panel().simulate({ kind: 'key', key: 'ArrowUp', altKey: true });
+    const back = await drafted([c, b, a]);
+    assert.deepEqual(back.banner?.disabled, ['Apply'], 'back in place is nothing to apply');
+    assert.deepEqual(back.draftRows[top], ['movable']);
+
+    await panel().simulate({ kind: 'key', key: 'ArrowDown', altKey: true });
+    await drafted([b, c, a]);
+    await panel().simulate({ kind: 'key', key: 'Escape' });
+    await panel().simulate({ kind: 'key', key: 'Escape' });
+    const left = await noMode();
+    assert.deepEqual(
+      [top, top + 1, top + 2].map((i) => left.rowHashes[i]),
+      [c, b, a],
+    );
+    assert.equal(git('rev-parse', 'HEAD'), c);
+
+    await run('strata.reorderCommits', commitMenu(a));
+    await drafted([c, b, a]);
+    await panel().simulate({ kind: 'dragRow', index: top, to: top + 2, below: true });
+    await drafted([b, a, c]);
+    await panel().simulate({ kind: 'click', selector: '.banner-button:last-child' });
+    await noMode();
+    assert.equal(git('rev-parse', 'HEAD'), c);
+  });
+
+  it('warns in the mode when the draft swaps commits that change the same file', async () => {
+    const x = commitFile('same.txt', 'x\n');
+    const y = commitFile('same.txt', 'y\n');
+    const z = commitFile('other.txt', 'z\n');
+    await reload(panel());
+    await run('strata.reorderCommits', commitMenu(z));
+    await reorderFacts(z);
+    await drafted([z, y, x]);
+    const top = await rowOf(z);
+    await panel().simulate({ kind: 'dragRow', index: top + 2, to: top + 1, hold: true });
+    const held = await waitFor('the gap the drag would drop into', async () => {
+      const p = await panel().probe();
+      return p.reorder?.drop !== undefined && p;
+    });
+    assert.equal(held.reorder?.drop, top + 1);
+    assert.ok(held.draftRows[top + 2]?.includes('dragging'));
+    await panel().simulate({ kind: 'key', key: 'Escape' });
+    const dropped = await drafted([z, y, x]);
+    assert.equal(dropped.reorder?.drop, undefined, 'Escape ends the drag, not the mode');
+
+    await panel().simulate({ kind: 'dragRow', index: top + 2, to: top + 1 });
+    const clash = await drafted([z, x, y]);
+    assert.equal(clash.banner?.text, 'Reordering main 1 commit moved. May conflict in same.txt.');
+    assert.equal(clash.banner.warning, true);
+    assert.deepEqual(clash.draftRows[top + 1], ['movable', 'moved', 'rewritten', '↑1', 'May conflict']);
+    assert.deepEqual(clash.draftRows[top + 2], ['movable', 'rewritten', 'May conflict']);
+    assert.deepEqual(clash.draftRows[top], ['movable', 'rewritten'], 'replayed on the swapped commits');
+    assert.deepEqual(clash.draftRows[top + 3], ['movable'], 'the commits below the swap stay as they are');
+    await panel().simulate({ kind: 'key', key: 'Escape' });
+    await noMode();
+  });
+
+  it('drops the draft when HEAD moves', async () => {
+    const [a, b, c] = await three();
+    await run('strata.reorderCommits', commitMenu(c));
+    await drafted([c, b, a]);
+    const top = await rowOf(c);
+    await panel().simulate({ kind: 'dragRow', index: top, to: top + 1, below: true });
+    await drafted([b, c, a]);
+    const d = commitFile('d.txt', 'd\n');
+    await reload(panel());
+    const after = await noMode();
+    assert.equal(after.rowHashes[await rowOf(d)], d);
+    assert.equal(after.rowHashes[await rowOf(c)], c);
+    assert.equal(after.draftRows[await rowOf(c)], undefined);
+  });
 
   it('reorders commits through a rebase the mode gets the facts for, which Undo takes back', async () => {
     const [a, b, c] = await three();

@@ -1476,6 +1476,74 @@ body:not(.hover-off) .row:hover .row-diff,
   opacity: var(--opacity-disabled);
 }
 
+/*
+ * The reorder mode. Every subject makes room for the handle, so the subjects of the rows that
+ * cannot move stay in line with the ones that can.
+ */
+.reordering .subject {
+  position: relative;
+}
+
+.reordering .subject,
+.reordering .row .refs {
+  padding-left: calc(var(--icon-size) + var(--space-4));
+}
+
+.reorder-handle.codicon {
+  position: absolute;
+  left: 0;
+  color: var(--color-muted);
+}
+
+.row.movable {
+  cursor: grab;
+}
+
+body.dragging-rows,
+body.dragging-rows .row {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.row.moved {
+  box-shadow: inset 3px 0 0 var(--color-focus);
+}
+
+body.vscode-high-contrast .row.moved {
+  box-shadow: inset 3px 0 0 var(--vscode-contrastActiveBorder, var(--color-focus));
+}
+
+.row.rewritten .hash {
+  text-decoration: line-through;
+}
+
+.row.dragging {
+  opacity: var(--opacity-disabled);
+}
+
+.draft-note {
+  flex: none;
+}
+
+/* The gap a dragged row would drop into. */
+.drop-indicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-focus);
+  pointer-events: none;
+  transform: translateY(-1px);
+}
+
+.drop-indicator.warning {
+  background: var(--color-warning);
+}
+
+.drop-indicator[hidden] {
+  display: none;
+}
+
 /* Edit Message beside a rewritable commit's subject: shown on hover or keyboard focus. */
 .details-edit {
   margin-left: var(--space-4);

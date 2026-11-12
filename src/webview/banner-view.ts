@@ -1,4 +1,4 @@
-import type { Banner, BannerAction } from './banner.ts';
+import type { Banner, BannerAction, LocalAction } from './banner.ts';
 import { codicon, el } from './format.ts';
 
 /**
@@ -6,7 +6,7 @@ import { codicon, el } from './format.ts';
  * arrow keys, Home and End move between, wrapping around.
  */
 function roveFocus(bar: HTMLElement): void {
-  const buttons = () => [...bar.querySelectorAll<HTMLButtonElement>('.banner-button')];
+  const buttons = () => [...bar.querySelectorAll<HTMLButtonElement>('.banner-button:not(:disabled)')];
   bar.addEventListener('focusin', (e) => {
     for (const b of buttons()) b.tabIndex = b === e.target ? 0 : -1;
   });
@@ -30,10 +30,18 @@ function roveFocus(bar: HTMLElement): void {
   });
 }
 
+const isMac = navigator.platform.toUpperCase().includes('MAC');
+
+/** The key that does what a mode's button does, as its tooltip says it. */
+const LOCAL_KEYS: Record<LocalAction, string> = {
+  applyReorder: `${isMac ? '⌘' : 'Ctrl'}+Enter`,
+  cancelReorder: 'Esc',
+};
+
 /**
  * The banner between the toolbar and the list (design §7.2): a sentence with commit links, what
- * else to know on a line of its own, then buttons that run the graph's commands (no `.banner-actions`
- * without any). It is a region before the list, so Shift+Tab reaches it.
+ * else to know on a line of its own, then buttons that run the graph's commands or act on a mode
+ * of the list (no `.banner-actions` without any). It is a region before the list, so Shift+Tab reaches it.
  */
 export class BannerView {
   readonly element = el('section', 'banner');
@@ -92,9 +100,13 @@ export class BannerView {
     const actions = el('span', 'banner-actions');
     actions.setAttribute('role', 'toolbar');
     actions.setAttribute('aria-label', 'Actions');
+    const off = (action: BannerAction) => 'local' in action && action.disabled === true;
+    const stop = banner.actions.findIndex((a) => !off(a));
     banner.actions.forEach((action, i) => {
       const button = el('button', i === 0 ? 'button primary banner-button' : 'button banner-button', action.label);
-      button.tabIndex = i === 0 ? 0 : -1;
+      button.tabIndex = i === stop ? 0 : -1;
+      button.disabled = off(action);
+      if ('local' in action) button.title = LOCAL_KEYS[action.local];
       button.addEventListener('click', () => {
         if (this.busy === undefined) this.run(action);
       });
@@ -105,8 +117,9 @@ export class BannerView {
     this.holdActions();
     if (!focused) return;
     const same = [...this.element.querySelectorAll('button')].find((b) => b.textContent === focused.textContent);
-    const next = same ?? this.element.querySelector('button');
-    if (next) next.focus();
+    const next =
+      same instanceof HTMLButtonElement && !same.disabled ? same : this.element.querySelector('button:not(:disabled)');
+    if (next instanceof HTMLElement) next.focus();
     else this.leave();
   }
 

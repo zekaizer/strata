@@ -1,6 +1,14 @@
 import type { ReadOnly } from '../core/git-version.ts';
 import type { Leftover, OperationKind, OperationState } from '../core/repo-state.ts';
-import { fileList, gitTooOld, plural, rebaseContinues, stashLabel, WRITES_DISABLED } from '../core/wording.ts';
+import {
+  fileList,
+  gitTooOld,
+  plural,
+  rebaseContinues,
+  REORDER_MODE,
+  stashLabel,
+  WRITES_DISABLED,
+} from '../core/wording.ts';
 import type { CommandId } from '../shared/commands.ts';
 
 /** Which of the banner's sentences shows (design §7.2); "Resolved" and "Stopped" have no conflicts left. */
@@ -20,16 +28,40 @@ export type BannerState =
   | 'leftoverResolved'
   | 'pending'
   | 'conflicts'
-  | 'readOnly';
+  | 'readOnly'
+  | 'reorder';
 
 /** Text, or a commit's short hash that selects its row. */
 export type BannerPart = string | { short: string; hash: string };
 
-export interface BannerAction {
-  label: string;
-  command: CommandId;
-  /** The command's menu context. */
-  context?: Record<string, string>;
+/** What a button of a mode does in the webview itself. */
+export type LocalAction = 'applyReorder' | 'cancelReorder';
+
+export type BannerAction =
+  | {
+      label: string;
+      command: CommandId;
+      /** The command's menu context. */
+      context?: Record<string, string>;
+    }
+  | {
+      label: string;
+      local: LocalAction;
+      /** The button does nothing yet. */
+      disabled?: boolean;
+    };
+
+/** The draft of the reorder mode, as its banner says it. */
+export interface ReorderDraft {
+  /** The current branch's short name; undefined on a detached HEAD. */
+  branch: string | undefined;
+  /** How many commits the user moved. */
+  moved: number;
+  clashFile: string | undefined;
+  clashFiles: number;
+  /** How many commits applying rewrites that `upstream` has. */
+  pushed: number;
+  upstream: string | undefined;
 }
 
 export interface Banner {
@@ -64,8 +96,8 @@ export const OPERATION_LABEL: Record<OperationKind, string> = {
 };
 
 /**
- * Why Strata cannot change the repository, else the operation in progress, else what one left
- * behind; undefined when there is nothing to say. Read-only comes first: every button of the other
+ * Why Strata cannot change the repository, else the operation in progress, else the draft of the
+ * reorder mode, else what an operation left behind; undefined when there is nothing to say. Read-only comes first: every button of the other
  * banners runs a command that is off (design system, Banner).
  */
 export function bannerOf(
@@ -73,6 +105,7 @@ export function bannerOf(
   leftover: Leftover | undefined,
   facts: BannerFacts,
   readOnly?: ReadOnly,
+  reorder?: ReorderDraft,
 ): Banner | undefined {
   if (readOnly)
     return {
@@ -84,6 +117,7 @@ export function bannerOf(
       actions: [],
     };
   if (operation) return stopped(operation, leftover, facts);
+  if (reorder) return drafting(reorder);
   if (!leftover) return undefined;
   const on = (label: string, command: CommandId, hash: string): BannerAction => ({
     label,
@@ -140,6 +174,28 @@ export function bannerOf(
       };
     }
   }
+}
+
+function drafting(draft: ReorderDraft): Banner {
+  const clash = draft.clashFile !== undefined;
+  return {
+    state: 'reorder',
+    warning: clash || draft.pushed > 0,
+    label: REORDER_MODE.label,
+    parts: [REORDER_MODE.lead(draft.branch)],
+    more:
+      draft.moved === 0
+        ? REORDER_MODE.hint
+        : [
+            REORDER_MODE.moved(draft.moved),
+            ...(clash ? [REORDER_MODE.mayConflict(draft.clashFile!, draft.clashFiles)] : []),
+            ...(draft.pushed > 0 ? [REORDER_MODE.pushed(draft.pushed, draft.upstream)] : []),
+          ].join(' '),
+    actions: [
+      { label: REORDER_MODE.apply, local: 'applyReorder', disabled: draft.moved === 0 },
+      { label: REORDER_MODE.cancel, local: 'cancelReorder' },
+    ],
+  };
 }
 
 export interface OperationNote {

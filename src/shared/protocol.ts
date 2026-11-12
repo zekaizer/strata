@@ -338,8 +338,26 @@ export interface ProbeState {
         saving: boolean;
       }
     | undefined;
-  /** The facts the host sent for the reorder mode, until its Apply ended. */
-  reorder: ReorderFacts | undefined;
+  /** The reorder mode; undefined outside it. */
+  reorder:
+    | {
+        head: string;
+        /** The draft, newest first. */
+        order: string[];
+        /** What the host read for the mode, once it answered. */
+        facts: ReorderFacts | undefined;
+        applying: boolean;
+        /** The rows show the draft: HEAD's line is loaded as far as it goes. */
+        shown: boolean;
+        /** The gap of the line a drag in progress would drop into, where the drop indicator shows. */
+        drop: number | undefined;
+      }
+    | undefined;
+  /**
+   * What the reorder mode's draft marks on the drawn rows, by row index: `movable`, `moved`,
+   * `rewritten`, `dragging`, then the texts of its chips. Rows it marks nothing on are left out.
+   */
+  draftRows: Record<number, string[]>;
   /** The multi-selection's panel is shown under its oldest commit. */
   selectionPanel: boolean;
   /**
@@ -564,6 +582,8 @@ export interface ProbeState {
         text: string;
         warning: boolean;
         buttons: string[];
+        /** The buttons that cannot be pressed yet. */
+        disabled: string[];
         links: string[];
         busy: string | undefined;
         /** Buttons Tab reaches, and the button with focus. */
@@ -588,6 +608,11 @@ export interface ProbeState {
 export type SimulatedAction =
   /** `y`: px below the row's top to click at (default: its middle); `shiftKey`: Shift-click. */
   | { kind: 'clickRow'; index: number; y?: number; shiftKey?: boolean }
+  /**
+   * Presses row `index` and drags it onto row `to`: into the gap above that row, or below it with
+   * `below`. `hold`: the pointer stays down.
+   */
+  | { kind: 'dragRow'; index: number; to: number; below?: boolean; hold?: boolean }
   /** Scrolls the list so row `index` is at the top, as far as the list can scroll. */
   | { kind: 'scrollToRow'; index: number }
   /** Moves the pointer onto row `index`'s graph node, or `dx` px right of it. */
