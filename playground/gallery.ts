@@ -402,6 +402,17 @@ function surfaces(): HTMLElement {
     b.append(codicon(warning ? 'warning' : 'info', 'banner-icon'), t, actions);
     return b;
   };
+  const mode = (warning: boolean, more: string, ready: boolean) => {
+    const b = el('section', `banner${warning ? ' warning' : ''}`);
+    const t = el('span', 'banner-text');
+    t.append(el('span', 'banner-lead', 'Reordering feature/search'), el('span', 'banner-more', more));
+    const actions = el('span', 'banner-actions');
+    const apply = el('button', 'button primary', 'Apply');
+    apply.disabled = !ready;
+    actions.append(apply, el('button', 'button', 'Cancel'));
+    b.append(codicon(warning ? 'warning' : 'info', 'banner-icon'), t, actions);
+    return b;
+  };
   const readOnly = el('section', 'banner warning');
   const said = el('span', 'banner-text');
   said.append(
@@ -421,6 +432,18 @@ function surfaces(): HTMLElement {
     row(spec('.banner.warning', wide(banner(true, false, 'Conflicts in 2 files after applying ')))),
     row(spec('.banner held (busy)', wide(banner(false, true, 'Conflicts resolved at ')))),
     row(spec('.banner.warning without actions (read-only)', wide(readOnly))),
+    row(
+      spec(
+        '.banner of a mode, nothing drafted (primary disabled)',
+        wide(mode(false, 'Drag a commit, or press Alt+Up or Alt+Down.', false)),
+      ),
+    ),
+    row(
+      spec(
+        '.banner.warning of a mode with a risky draft',
+        wide(mode(true, '2 commits moved. May conflict in src/search.ts and 1 more file.', true)),
+      ),
+    ),
     row(
       spec('.toolbar-status', status('', '22 commits')),
       spec('.toolbar-status.busy', status('busy', 'Fetching…')),
