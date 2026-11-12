@@ -43,8 +43,11 @@ export type Operation =
    * the branch forked from a rewritten upstream), not every commit `onto` lacks.
    */
   | { kind: 'rebase'; onto: string; from: string | undefined; autostash: boolean }
-  /** `mainline`: for a merge commit, the parent (1-based) its changes are taken relative to. */
-  | { kind: 'cherryPick' | 'revert'; commit: string; mainline?: number }
+  /**
+   * `commits`: in the order git applies them. `mainline`: for a single merge commit, the parent
+   * (1-based) its changes are taken relative to.
+   */
+  | { kind: 'cherryPick' | 'revert'; commits: readonly string[]; mainline?: number }
   | { kind: 'reset'; commit: string; mode: ResetMode }
   /** Puts `paths` back as HEAD has them, in the index and the work tree, deleting those HEAD lacks. */
   | { kind: 'restoreHead'; paths: readonly string[] }
@@ -204,9 +207,9 @@ export function argv(op: Operation): string[] {
         ...(op.from === undefined ? [op.onto] : ['--onto', op.onto, op.from]),
       ];
     case 'cherryPick':
-      return ['cherry-pick', ...mainline(op.mainline), op.commit];
+      return ['cherry-pick', ...mainline(op.mainline), ...op.commits];
     case 'revert':
-      return ['revert', '--no-edit', ...mainline(op.mainline), op.commit];
+      return ['revert', '--no-edit', ...mainline(op.mainline), ...op.commits];
     case 'reset':
       return ['reset', `--${op.mode}`, op.commit];
     case 'restoreHead':

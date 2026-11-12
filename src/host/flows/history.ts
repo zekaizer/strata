@@ -438,7 +438,7 @@ export async function pick(host: FlowHost, kind: 'cherryPick' | 'revert', hash: 
     choice = await host.ui.confirm(pickConfirmation(kind, c, h.name, detached, ch.section, buttons, merge));
     if (choice === undefined) return;
   }
-  const op: Operation = { kind, commit: c.hash, ...(merge === undefined ? {} : { mainline: merge.mainline }) };
+  const op: Operation = { kind, commits: [c.hash], ...(merge === undefined ? {} : { mainline: merge.mainline }) };
   const label = kind === 'cherryPick' ? HISTORY_DOING.picking(c.short) : HISTORY_DOING.reverting(c.short);
   const r = await runStoppable(host, () =>
     runMovingUntracked(
