@@ -261,6 +261,10 @@ export type WebviewToHost =
   /** Runs a command of the table from a keyboard shortcut or a button, with the element's menu context. */
   | { type: 'menuCommand'; command: CommandId; context: Record<string, unknown> }
   | { type: 'refresh' }
+  /** The empty list's Open Folder... button, shown when the workspace has no repository. */
+  | { type: 'openFolder' }
+  /** A link in a commit message. The host opens http and https URLs only. */
+  | { type: 'openExternal'; url: string }
   /** The view state the webview also keeps with setState, mirrored for re-creating the panel. */
   | { type: 'state'; state: unknown }
   | { type: 'themeVars'; vars: Record<string, string> }

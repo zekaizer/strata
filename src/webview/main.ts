@@ -3,6 +3,7 @@ import { filesSummary, fileViews, type CommitDetails, type FileChange, type File
 import { buildFileTree, type FileTreeNode } from '../core/file-tree.ts';
 import { SpanIndex, type Row } from '../core/layout.ts';
 import { reflowBody } from '../core/message.ts';
+import { messageSegments } from '../core/message-links.ts';
 import {
   matchCount,
   matchRanges,
@@ -16,7 +17,9 @@ import {
   type OutOfView,
 } from '../core/find.ts';
 import { inFilter, isFolder, pathName, withPath, type PathOrigin } from '../core/path-filter.ts';
-import { PATH_HISTORY, TIDY_WHOLE_HISTORY } from '../core/wording.ts';
+import { emptyState } from '../core/empty-state.ts';
+import { PATH_HISTORY } from '../core/wording.ts';
+import { shiftClick, type ShiftClickResult } from '../core/range-select.ts';
 import { cleanMessage, rewritableLine } from '../core/rewrite.ts';
 import { hiddenRefs, type BadgeRule } from '../core/badge-rules.ts';
 import { whereAsk } from '../core/where.ts';
@@ -81,7 +84,7 @@ import { RefCard, type CardTarget } from './ref-card.ts';
 import { RefFilter } from './ref-filter.ts';
 import { FindWidget, type FindCount } from './find.ts';
 import { chooseColumns, type ColumnChoice } from './columns.ts';
-import { expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
+import { edgeRow, expansionCap, pageFrom, RowGeometry } from './row-geometry.ts';
 import { resolveGraphTheme, type GraphTheme } from './theme.ts';
 import { RepoSwitcher } from './repo-switcher.ts';
 import { PathChip } from './path-filter.ts';
@@ -172,7 +175,7 @@ const TREE_MIN = 200;
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
 /** The subject's width, in digits of the row font, that the other columns give way to. */
-const SUBJECT_CH = 50;
+const SUBJECT_CH = 60;
 /** Subject width in digits below which the hash column gives way too. */
 const HASH_FLOOR_CH = 30;
 /** Author names wider than this many digits are cut with an ellipsis; the row's tooltip has them whole. */
@@ -373,6 +376,18 @@ class App {
   private readonly geometry = new RowGeometry(ROW_HEIGHT, REF_BAND);
   private noRepository = false;
   private readonly empty = el('div', 'empty');
+  private emptyShown: string | undefined;
+  private readonly leaveEmpty = {
+    noRepository: () => {
+      vscode.postMessage({ type: 'openFolder' });
+    },
+    pathFilter: () => {
+      this.clearPath();
+    },
+    refFilter: () => {
+      this.filterRefs(null);
+    },
+  };
   private done = false;
   private loading = false;
   private selected = -1;
@@ -489,7 +504,7 @@ class App {
     });
     this.refFilter = new RefFilter(this.toolbar, {
       onRefs: (refs) => {
-        this.setOptions({ ...this.options, refs });
+        this.filterRefs(refs);
       },
       onShowStashes: (show) => {
         this.setShowStashes(show);
@@ -507,7 +522,7 @@ class App {
     });
     this.pathChip = new PathChip(this.toolbar, {
       onClear: () => {
-        this.setOptions({ ...this.options, path: null });
+        this.clearPath();
       },
       onFolder: (folder) => {
         this.setOptions({ ...this.options, path: { paths: [folder] } });
@@ -657,11 +672,16 @@ class App {
       const top = this.scroller.getBoundingClientRect().top;
       const index = this.rowAt(e.clientY - top + this.scroller.scrollTop);
       if (index < 0 || index >= this.list.length) return;
-      if (e.shiftKey && this.extendRange(index)) return;
+      const shift = e.shiftKey ? this.shiftClick(index) : undefined;
+      if (shift?.kind === 'range') {
+        this.selectRange(shift.anchor, shift.end);
+        return;
+      }
       // Clicking the expanded row folds it; any other row opens its details.
       if (index === this.selected && this.expanded) this.userCollapse();
       else this.userSelect(index, { expand: true });
-      if (e.shiftKey && this.options.path) this.tellAction(TIDY_WHOLE_HISTORY);
+      // After the selection, which clears the status.
+      if (shift?.why !== undefined) this.tellAction(shift.why);
     });
     // List keys only when the list itself has focus: keys typed in the details (file tree, links)
     // bubble up through the scroller and must not move the commit selection.
@@ -1968,21 +1988,24 @@ class App {
     return this.rewritableLine.slice(Math.min(a, b), Math.max(a, b) + 1);
   }
 
-  /**
-   * Shift-click on row `index`: selects the rewritable commits from the selected one to it and
-   * opens the selection's panel under the oldest. False when either end cannot be rewritten.
-   */
-  private extendRange(index: number): boolean {
+  /** What a Shift-click on row `index` does: from the selected commit, or from where the run started. */
+  private shiftClick(index: number): ShiftClickResult {
     const row = this.list[index];
-    const anchor = this.range?.anchor ?? this.selectedHash();
-    if (row?.kind !== 'commit' || anchor === undefined || anchor === row.commit.hash) return false;
-    if (!this.rewritable.has(anchor) || !this.rewritable.has(row.commit.hash)) return false;
-    this.range = { anchor, end: row.commit.hash };
+    return shiftClick({
+      anchor: this.range?.anchor ?? this.selectedHash(),
+      target: row?.kind === 'commit' ? row.commit.hash : undefined,
+      pathFiltered: this.options.path !== null,
+      rewritable: (hash) => this.rewritable.has(hash),
+    });
+  }
+
+  /** Selects the rewritable commits between the two and opens the selection's panel under the oldest. */
+  private selectRange(anchor: string, end: string): void {
+    this.range = { anchor, end };
     const oldest = this.rangeHashes().at(-1)!;
     this.selections++;
     this.restore = undefined;
     this.select(this.indexOf(oldest), { expand: true });
-    return true;
   }
 
   /** Where the uncommitted changes row goes, if there is one. */
@@ -2204,6 +2227,14 @@ class App {
     this.updateOptionControls();
     this.saveState();
     vscode.postMessage({ type: 'setOptions', options });
+  }
+
+  private filterRefs(refs: string[] | null): void {
+    this.setOptions({ ...this.options, refs });
+  }
+
+  private clearPath(): void {
+    this.setOptions({ ...this.options, path: null });
   }
 
   private updateOptionControls(): void {
@@ -2531,11 +2562,12 @@ class App {
   private onKey(e: KeyboardEvent): void {
     if (this.copyKey(e)) return;
     // Rows move under a still pointer; a hover there would follow the keys around.
-    if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'Enter', 'Escape'].includes(e.key))
+    if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', 'Enter', 'Escape'].includes(e.key))
       document.body.classList.add('hover-off');
     const moves: Record<string, number> = { ArrowDown: 1, ArrowUp: -1 };
     const delta = moves[e.key];
     const page = e.key === 'PageDown' ? 1 : e.key === 'PageUp' ? -1 : 0;
+    const edge = edgeRow(e.key, this.list.length);
     if (delta !== undefined) {
       e.preventDefault();
       const next = Math.min(this.list.length - 1, Math.max(0, (this.selected < 0 ? -1 : this.selected) + delta));
@@ -2545,9 +2577,9 @@ class App {
       // Rows differ in height (refs), so a page is measured in pixels, not rows.
       const from = Math.max(0, this.selected);
       this.userSelect(pageFrom(this.geometry, from, this.scroller.clientHeight, page));
-    } else if (e.key === 'Home') {
+    } else if (edge !== undefined) {
       e.preventDefault();
-      this.userSelect(0);
+      this.userSelect(edge);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (this.expanded) this.userCollapse();
@@ -2687,16 +2719,27 @@ class App {
     this.drewRows = drawn;
   }
 
-  /** A message in place of the list when there is nothing to show. */
+  /** A message in place of the list when there is nothing to show, with the button that leads out. */
   private renderEmpty(): void {
-    let text: string | undefined;
-    if (this.list.length === 0) {
-      if (this.noRepository) text = 'No git repository in this workspace. Open a folder that contains one.';
-      else if (this.done && this.options.path) text = `${PATH_HISTORY.found(this.options.path.paths[0], 0)}.`;
-      else if (this.done) text = this.options.refs ? 'No commits on the selected refs.' : 'No commits yet.';
-    }
-    this.empty.hidden = text === undefined;
-    this.empty.textContent = text ?? '';
+    const state = emptyState({
+      rows: this.list.length,
+      noRepository: this.noRepository,
+      done: this.done,
+      path: this.options.path?.paths[0],
+      refs: this.options.refs !== null,
+    });
+    this.empty.hidden = state === undefined;
+    // Rebuilt only when it changes: every render comes here, and a rebuilt button loses the focus.
+    const shown = JSON.stringify(state);
+    if (shown === this.emptyShown) return;
+    this.emptyShown = shown;
+    // The focused button goes with its message: the keys go on in the list.
+    if (this.empty.contains(document.activeElement)) this.scroller.focus();
+    this.empty.replaceChildren(state?.text ?? '');
+    if (state?.action === undefined) return;
+    const button = el('button', 'button', state.action);
+    button.addEventListener('click', this.leaveEmpty[state.kind]);
+    this.empty.append(' ', button);
   }
 
   private renderRow(i: number): HTMLElement {
@@ -3157,7 +3200,7 @@ class App {
       this.withEdit(marked('details-subject', subject, this.detailsNeedle(d.hash), 'h2'), stash ? undefined : d.hash),
     );
     if (body) {
-      const pre = marked('details-message', reflowBody(body), this.detailsNeedle(d.hash), 'pre');
+      const pre = messageBody(reflowBody(body), this.detailsNeedle(d.hash));
       pre.id = 'details-body';
       const more = el('button', 'link-button details-more');
       more.hidden = true;
@@ -3751,6 +3794,10 @@ class App {
       pre.classList.toggle('clamped', clamped);
       if (clamped) pre.style.maxHeight = `${lines * line}px`;
       pre.dataset['hiddenLines'] = String(clamped ? total - lines : 0);
+      // Focus on a link below the cut would scroll the clamped text.
+      const cut = pre.getBoundingClientRect().top + lines * line;
+      for (const link of pre.querySelectorAll<HTMLElement>('.link-button'))
+        link.tabIndex = clamped && link.getBoundingClientRect().bottom > cut ? -1 : 0;
       // A focused "Show less" that disappears would drop focus to <body>.
       if (!clampable && document.activeElement === more) this.scroller.focus({ preventScroll: true });
       more.hidden = !clampable;
@@ -4553,12 +4600,7 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
 
 /** A badge; it and each remote name in it carry their own menu context. */
 /** A `className` element (a span by default) of `text`, with each occurrence of `needle` (any case) in a <mark>. */
-function marked(
-  className: string,
-  text: string,
-  needle: string | undefined,
-  tag: 'span' | 'h2' | 'pre' = 'span',
-): HTMLElement {
+function marked(className: string, text: string, needle: string | undefined, tag: 'span' | 'h2' = 'span'): HTMLElement {
   const e = el(tag, className);
   let at = 0;
   for (const [start, end] of needle === undefined ? [] : matchRanges(text, needle)) {
@@ -4567,6 +4609,35 @@ function marked(
   }
   e.append(text.slice(at));
   return e;
+}
+
+/** A commit's message body: `needle` marked as in `marked`, its http and https URLs as links the host opens. */
+function messageBody(text: string, needle: string | undefined): HTMLElement {
+  const pre = el('pre', 'details-message');
+  for (const { url, pieces } of messageSegments(text, needle === undefined ? [] : matchRanges(text, needle))) {
+    const nodes = pieces.map((p) => (p.marked ? el('mark', 'find-mark', p.text) : p.text));
+    if (url === undefined) {
+      pre.append(...nodes);
+      continue;
+    }
+    // Not a <button>: a button is one box, and a URL has to wrap with the text around it.
+    const link = el('span', 'link-button');
+    link.setAttribute('role', 'link');
+    link.tabIndex = 0;
+    link.append(...nodes);
+    const open = () => {
+      vscode.postMessage({ type: 'openExternal', url });
+    };
+    link.addEventListener('click', () => {
+      // A drag that selects part of the URL ends in a click too.
+      if ((getSelection()?.toString() ?? '') === '') open();
+    });
+    link.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') open();
+    });
+    pre.append(link);
+  }
+  return pre;
 }
 
 function renderBadge(b: Badge): HTMLElement {

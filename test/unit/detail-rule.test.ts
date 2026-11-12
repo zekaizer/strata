@@ -106,6 +106,7 @@ const confirmations: [string, w.Confirmation | undefined][] = [
   ],
   ['push other name', w.pushOtherNameConfirmation('feature', 'origin', 'main')],
   ['push rejected', w.pushRejectedConfirmation('origin/main', 'main', 2, true, true)],
+  ['push rejected, force pushes off', w.pushRejectedConfirmation('origin/main', 'main', 2, true, false)],
   ['force push', w.forcePushConfirmation('main', 'origin', 'origin/main', 2, 'Fix CI')],
   ['delete remote branch', w.deleteRemoteBranchConfirmation('origin', 'x', 'origin/x', c, [c], ['x', 'y'], true)],
   ['delete remote tag', w.deleteRemoteTagConfirmation('v1', 'origin', c)],
@@ -114,7 +115,7 @@ const confirmations: [string, w.Confirmation | undefined][] = [
 ];
 
 /** Settings the user can't get an option without changing (the only config keys a detail may name). */
-const NEEDED_SETTINGS = /pull\.ff/;
+const NEEDED_SETTINGS = /pull\.ff|git\.allowForcePush/;
 const CONFIG_KEY = /\b(?:merge|pull|branch|rebase|strata|git)\.[a-zA-Z]+\b/;
 const JARGON = /\b(?:sequencer|ORIG_HEAD|autostash|credential helper|fsck)\b/i;
 

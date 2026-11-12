@@ -388,7 +388,7 @@ describe('ref operations', () => {
     assert.deepEqual(ui.of('confirm'), []);
     assert.match(
       ui.of('notify').find((n) => n.level === 'error')?.message ?? '',
-      /^Couldn't switch to 'strata-new': error: The following untracked working tree files would be overwritten by checkout:\n\ta\nb\.txt$/,
+      /^Couldn't switch to 'strata-new': error: The following untracked working tree files would be overwritten by checkout:\n\ta$/,
     );
     assert.equal(git('branch', '--show-current'), 'main');
   });

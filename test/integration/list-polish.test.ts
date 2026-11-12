@@ -7,7 +7,7 @@ import { delay, git, strata, waitFor, workspaceRoot } from './helpers.ts';
 describe('commit list polish', () => {
   let panel: GraphPanel;
   /**
-   * The column tests need a graph wide enough for the subject's 80 characters and every column,
+   * The column tests need a graph wide enough for the subject's 60 characters and every column,
    * whatever the test window's size: without the side bar, zoomed out until they all show.
    */
   async function widen(): Promise<void> {
@@ -66,14 +66,14 @@ describe('commit list polish', () => {
     );
   });
 
-  it('gives the subject 50 characters before the date and author, and keeps the hash longest', async () => {
+  it('gives the subject 60 characters before the date and author, and keeps the hash longest', async () => {
     const shown = (s: { columns: string[] }) => s.columns.filter((c) => ['author', 'date', 'hash'].includes(c));
     const order = ['author date hash', 'author hash', 'hash', ''];
     const check = (s: Awaited<ReturnType<GraphPanel['probe']>>) => {
       const columns = shown(s).join(' ');
       assert.ok(order.includes(columns), `${s.listWidth}px: ${columns}`);
       if (columns.includes('author'))
-        assert.ok(s.subjectCh >= 49.5, `${s.listWidth}px: subject ${s.subjectCh}ch with ${columns}`);
+        assert.ok(s.subjectCh >= 59.5, `${s.listWidth}px: subject ${s.subjectCh}ch with ${columns}`);
       else if (columns === 'hash')
         assert.ok(s.subjectCh >= 29.5, `${s.listWidth}px: subject ${s.subjectCh}ch with the hash`);
       return columns;

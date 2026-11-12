@@ -174,17 +174,27 @@ describe('graph title bar', () => {
       'strata.stash.pushUntracked',
       'strata.showStashes',
       'strata.operation.skip',
-      'strata.undo',
       'strata.showOutput',
     ]);
   });
 
-  it('keeps the stash commands, Undo and Show Git Output in the overflow menu', () => {
+  it('shows Undo as the last icon once an operation can be undone, with an icon of its own among those shown', () => {
+    const undoable = bar({ 'strata.head': 'tracking', 'strata.canUndo': true });
+    assert.deepEqual(undoable.icons, ['strata.fetch', 'strata.pull', 'strata.push', 'strata.undo']);
+    assert.ok(!bar({ 'strata.head': 'tracking' }).icons.includes('strata.undo'), 'nothing to undo');
+    const icon = (id: string) => pkg.contributes.commands.find((c) => c.command === id)?.icon;
+    assert.ok(icon('strata.undo'), 'Undo has an icon');
+    assert.deepEqual(
+      undoable.icons.filter((id) => id !== 'strata.undo' && icon(id) === icon('strata.undo')),
+      [],
+    );
+  });
+
+  it('keeps the stash commands and Show Git Output in the overflow menu', () => {
     assert.deepEqual(bar({ 'strata.head': 'tracking', 'strata.canUndo': true }).overflow, [
       'strata.stash.push',
       'strata.stash.pushUntracked',
       'strata.showStashes',
-      'strata.undo',
       'strata.showOutput',
     ]);
   });

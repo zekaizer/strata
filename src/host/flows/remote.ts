@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import type { Operation } from '../../core/operations.ts';
 import type { Ref } from '../../core/refs.ts';
 import { remoteBranch } from '../../core/remote-branch.ts';
@@ -8,9 +9,11 @@ import {
   detachedNoBranch,
   divergedConfirmation,
   divergedNotice,
+  FORCE_PUSH_SETTING,
   forcePushConfirmation,
   HISTORY_DONE,
   NO_REMOTE,
+  OPEN_SETTINGS,
   noUpstream,
   noUpstreamCandidate,
   publishPick,
@@ -301,18 +304,24 @@ async function rejected(
     host.settings().allowForcePush,
   );
   if (!ask) {
-    notify(host, 'error', pushRejectedNotice(destName, op.branch, count), ['Show Output'], () => {
-      host.runner.showOutput();
+    notify(host, 'error', pushRejectedNotice(destName, op.branch, count), ['Show Output', OPEN_SETTINGS], async (a) => {
+      if (a === OPEN_SETTINGS) await openForcePushSetting();
+      else host.runner.showOutput();
     });
     return;
   }
   const answer = await host.ui.confirm(ask);
+  if (answer === 'settings') return openForcePushSetting();
   if (answer === 'pull') return pull(host, { action: 'Push', run: () => push(host, op.branch) });
   if (answer !== 'force') return;
   if (!(await host.ui.confirm(forcePushConfirmation(op.branch, op.remote, destName, count, newest.subject)))) return;
   const force = { ...op, forceWithLease: theirs };
   if (await remoteRun(host, REMOTE_DOING.pushing(op.branch, destName), op.remote, force))
     await finish(host, { message: REMOTE_DONE.forcePushed(op.branch, destName) });
+}
+
+async function openForcePushSetting(): Promise<void> {
+  await vscode.commands.executeCommand('workbench.action.openSettings', FORCE_PUSH_SETTING);
 }
 
 /** The remote to push to: the only one, or the user's choice with remote.pushDefault (or origin) first. */

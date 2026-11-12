@@ -497,6 +497,7 @@
         "command": "strata.undo",
         "title": "Undo Last Operation",
         "category": "Strata",
+        "icon": "$(discard)",
         "enablement": "!strata.busy && !strata.operation"
       },
       {
@@ -1269,8 +1270,8 @@
         },
         {
           "command": "strata.undo",
-          "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo",
-          "group": "3_undo@1"
+          "when": "activeWebviewPanelId == 'strata.graph' && strata.canUndo && !strata.operation",
+          "group": "navigation@6"
         },
         {
           "command": "strata.showOutput",
@@ -1356,7 +1357,7 @@
             "date": true,
             "hash": true
           },
-          "description": "Which columns the commit rows may show beside the subject. A narrow graph also hides them on its own while the subject has less than 80 characters of room: the hash first, then the date, then the author."
+          "description": "Which columns the commit rows may show beside the subject. A narrow graph also hides them on its own: the date and then the author while the subject has less than 60 characters of room, the hash only below 30."
         },
         "strata.commitOrder": {
           "type": "string",

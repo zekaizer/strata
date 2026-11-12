@@ -9,6 +9,7 @@ import type { FlowEnv, FlowHost } from './flow.ts';
 import { isCommandId } from '../shared/commands.ts';
 import type { PathFilter } from '../core/path-filter.ts';
 import { parseRepoKey, type RepoKey } from '../core/repos.ts';
+import { isWebUrl } from '../core/message-links.ts';
 import { repoList } from './repositories.ts';
 
 export type ReadyInfo = Extract<WebviewToHost, { type: 'ready' }>;
@@ -302,6 +303,14 @@ export class GraphPanel implements vscode.Disposable {
             this.post({ type: 'error', message: e instanceof Error ? e.message : String(e) });
           });
         }
+        break;
+      case 'openFolder':
+        // Without a folder the command asks for one.
+        void vscode.commands.executeCommand('vscode.openFolder');
+        break;
+      case 'openExternal':
+        // The URL is commit message text: nothing but the web may be opened from it.
+        if (isWebUrl(m.url)) void vscode.env.openExternal(vscode.Uri.parse(m.url, true));
         break;
       case 'refresh':
         // Also retries when the git API was not available at startup.

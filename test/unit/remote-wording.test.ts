@@ -65,6 +65,24 @@ describe('wording of remote operations', () => {
     ]);
   });
 
+  it('names the setting a force push needs when a push is rejected with force pushes off', () => {
+    const r = pushRejectedConfirmation('origin/x', 'x', 1, true, false);
+    assert.ok(r);
+    assert.equal(
+      r.detail,
+      "Pulling brings it into 'x', then you can push.\nA branch you rewrote needs a force push instead: the git.allowForcePush setting allows it.",
+    );
+    assert.deepEqual(r.buttons, [
+      { id: 'pull', label: 'Pull' },
+      { id: 'settings', label: 'Open Settings' },
+    ]);
+    assert.equal(pushRejectedConfirmation('origin/x', 'x', 1, false, false), undefined);
+    assert.equal(
+      pushRejectedNotice('origin/x', 'x', 1),
+      "'origin/x' has 1 commit that 'x' doesn't have. Switch to 'x' and pull it first. A branch you rewrote needs a force push instead: the git.allowForcePush setting allows it.",
+    );
+  });
+
   it('says what a rejected push would overwrite', () => {
     const r = pushRejectedConfirmation('origin/x', 'x', 2, true, true);
     assert.ok(r);
@@ -80,15 +98,6 @@ describe('wording of remote operations', () => {
     assert.equal(
       pushRejectedConfirmation('origin/x', 'x', 1, false, true)?.detail,
       "A force push removes it from 'origin/x'.",
-    );
-    assert.equal(
-      pushRejectedConfirmation('origin/x', 'x', 1, true, false)?.detail,
-      "Pulling brings it into 'x', then you can push.",
-    );
-    assert.equal(pushRejectedConfirmation('origin/x', 'x', 1, false, false), undefined);
-    assert.equal(
-      pushRejectedNotice('origin/x', 'x', 1),
-      "'origin/x' has 1 commit that 'x' doesn't have. Switch to 'x' and pull it first.",
     );
     const f = forcePushConfirmation('x', 'origin', 'origin/x', 2, 'Their fix');
     assert.equal(f.message, "Force push 'x' to 'origin'?");

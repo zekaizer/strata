@@ -173,9 +173,39 @@ describe('wording of undo and failures', () => {
     );
   });
 
-  it("shows the first three lines of git's message", () => {
-    assert.equal(gitFailure('error: one\nhint: two\nhint: three\nhint: four\n'), 'error: one\nhint: two\nhint: three');
+  it('shows the lines of a failed command that say why, past the banners before them', () => {
+    const rejected =
+      " ! [remote rejected] main -> main (protected branch hook declined)\nerror: failed to push some refs to 'example.com:x/y.git'";
+    assert.equal(
+      gitFailure(
+        `remote: ==========\nremote: Welcome to Example Git\nremote: ==========\nremote: error: GH006: Protected branch update failed for refs/heads/main.\nTo example.com:x/y.git\n${rejected}\n`,
+      ),
+      `remote: error: GH006: Protected branch update failed for refs/heads/main.\n${rejected}`,
+    );
+    assert.equal(
+      gitFailure(`Running pre-push checks\nlint: 2 problems\nTo example.com:x/y.git\n${rejected}\n`),
+      rejected,
+      'a rejection without a line of the server',
+    );
+    assert.equal(gitFailure('error: one\nhint: two\nhint: three\n'), 'error: one', 'no advice');
     assert.equal(gitFailure('  fatal: bad\n'), 'fatal: bad');
+    assert.equal(gitFailure('error: 1\nerror: 2\nerror: 3\nerror: 4\n'), 'error: 1\nerror: 2\nerror: 3');
+  });
+
+  it('keeps the files an error lists under it', () => {
+    assert.equal(
+      gitFailure(
+        'Updating 1a2b3c4..5d6e7f8\nerror: Your local changes to the following files would be overwritten by merge:\n\ta.txt\nPlease commit your changes or stash them before you merge.\nAborting\n',
+      ),
+      'error: Your local changes to the following files would be overwritten by merge:\n\ta.txt',
+    );
+  });
+
+  it('shows the first three lines of a message that marks no line as the cause', () => {
+    assert.equal(
+      gitFailure('The previous cherry-pick is now empty.\nTo commit it anyway, use:\n\n    git commit --allow-empty\n'),
+      'The previous cherry-pick is now empty.\nTo commit it anyway, use:\n',
+    );
   });
 
   it('names the operation a git failure happened in', () => {

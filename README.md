@@ -81,11 +81,11 @@ Badges...**.
 
 ### Undo an operation
 
-Run **Undo Last Operation** from the graph tab's **...** menu or the Command
-Palette. It puts back the last reset, merge, rebase, cherry pick or revert, a
-created, renamed or deleted branch or tag, or a dropped stash. Operations that
-change history or delete something also offer Undo in the notification that
-reports them.
+Click **Undo Last Operation** in the graph tab's title bar, or run it from the
+Command Palette. It puts back the last reset, merge, rebase, cherry pick or
+revert, a created, renamed or deleted branch or tag, or a dropped stash.
+Operations that change history or delete something also offer Undo in the
+notification that reports them.
 
 ### Speed up a very large repository
 

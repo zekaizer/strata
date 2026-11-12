@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { expansionCap, pageFrom, RowGeometry } from '../../src/webview/row-geometry.ts';
+import { edgeRow, expansionCap, pageFrom, RowGeometry } from '../../src/webview/row-geometry.ts';
 
 const rows = (...banded: boolean[]) => {
   const g = new RowGeometry(24, 16);
@@ -74,6 +74,19 @@ describe('pageFrom', () => {
     assert.equal(pageFrom(g, 2, 10, -1), 1);
     assert.equal(pageFrom(g, 2, 480, 1), 2);
     assert.equal(pageFrom(g, 0, 480, -1), 0);
+  });
+});
+
+describe('edgeRow', () => {
+  it('takes Home to the first row and End to the last one in the list', () => {
+    assert.equal(edgeRow('Home', 300), 0);
+    assert.equal(edgeRow('End', 300), 299);
+    assert.equal(edgeRow('End', 1), 0);
+  });
+  it('selects nothing in an empty list or for another key', () => {
+    assert.equal(edgeRow('Home', 0), undefined);
+    assert.equal(edgeRow('End', 0), undefined);
+    assert.equal(edgeRow('PageDown', 300), undefined);
   });
 });
 
