@@ -46,8 +46,16 @@ import {
 } from './flows/remote.ts';
 import { dropStash, restoreStash, stashBranch, stashPush } from './flows/stash.ts';
 import { pruneWorktrees, removeWorktree } from './flows/worktree.ts';
-import { dropCommits, fixupIntoOlder, fixupIntoParent, openEditor, saveEdit } from './flows/rewrite.ts';
-import type { Edit } from '../core/rewrite.ts';
+import {
+  applyReorder,
+  dropCommits,
+  fixupIntoOlder,
+  fixupIntoParent,
+  openEditor,
+  reorderFacts,
+  saveEdit,
+} from './flows/rewrite.ts';
+import { LINE_LIMIT, type Edit } from '../core/rewrite.ts';
 import { remoteBranch } from '../core/remote-branch.ts';
 import { GraphPanel } from './panel.ts';
 import { repoList } from './repositories.ts';
@@ -102,6 +110,16 @@ function editArg(ctx: MenuArg): { edit: Edit; head: string } {
   if (kind === 'squash' && hashes.length > 1)
     return { edit: { kind, oldest: hashes[0]!, newest: hashes[hashes.length - 1]!, message }, head };
   throw new Error(`invalid edit: ${String(kind)}`);
+}
+
+/** Apply in the reorder mode: the top of HEAD's line in its new order, newest first, and HEAD when the mode was entered. */
+function reorderArg(ctx: MenuArg): { order: string[]; head: string } {
+  const order = ctx?.['order'];
+  const head = str(ctx?.['head']);
+  const ids = (v: unknown[]): v is string[] => v.every((h) => typeof h === 'string' && isCommitId(h));
+  if (!head || !isCommitId(head) || !Array.isArray(order) || !ids(order)) throw new Error('invalid commit id');
+  if (order.length < 2 || order.length > LINE_LIMIT) throw new Error('invalid order');
+  return { order, head };
 }
 
 function panel(): GraphPanel {
@@ -306,6 +324,18 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.fixupIntoParent': on(['commit'], (host, t) => fixupIntoParent(host, t.hash)),
   'strata.fixupIntoOlder': on(['commit'], (host, t) => fixupIntoOlder(host, t.hash)),
   'strata.dropCommit': on(['commit'], (host, t) => dropCommits(host, [t.hash])),
+  'strata.reorderCommits': on(['commit', 'branch'], (host) => reorderFacts(host)),
+  'strata.applyReorder': async (ctx, id) => {
+    let applied = false;
+    try {
+      await write(async (host, c) => {
+        const { order, head } = reorderArg(c);
+        applied = await applyReorder(host, order, head);
+      })(ctx, id);
+    } finally {
+      GraphPanel.current?.reorderEnded(applied);
+    }
+  },
   'strata.squashSelected': write((host, ctx) => {
     const hashes = selectionArg(ctx);
     return openEditor(host, 'squash', hashes[hashes.length - 1]!, hashes[0]!);

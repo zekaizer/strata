@@ -158,6 +158,11 @@ export const COMMANDS = {
     writes: true,
   },
   'strata.dropCommit': { title: 'Drop Commit...', menus: [commit('3_tidy@4', 'strataRewritable')], writes: true },
+  'strata.reorderCommits': {
+    title: 'Reorder Commits...',
+    menus: [commit('3_tidy@5', 'strataRewritable'), { section: 'branch', group: '5_tidy@1', when: 'strataIsCurrent' }],
+    writes: true,
+  },
   'strata.squashSelected': {
     title: 'Squash Selected Commits...',
     menus: [{ section: 'selection', group: '1_tidy@1' }],
@@ -363,6 +368,8 @@ export const COMMANDS = {
 
   /** Save in the inline message editor (menuCommand); the editor stays open unless it was applied. */
   'strata.saveEdit': { title: 'Save Commit Message' },
+  /** Apply in the reorder mode (menuCommand): context `order`, full ids newest first, and `head`, HEAD when the mode was entered. */
+  'strata.applyReorder': { title: 'Apply Reorder' },
   /** Banner buttons (menuCommand): resolve conflicts, show or keep a leftover stash. */
   'strata.resolveConflicts': { title: 'Resolve Conflicts...' },
   'strata.showStash': { title: 'Show Stash' },

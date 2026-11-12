@@ -222,6 +222,12 @@
         "enablement": "!strata.readOnly && !strata.busy && !strata.operation"
       },
       {
+        "command": "strata.reorderCommits",
+        "title": "Reorder Commits...",
+        "category": "Strata",
+        "enablement": "!strata.readOnly && !strata.busy && !strata.operation"
+      },
+      {
         "command": "strata.squashSelected",
         "title": "Squash Selected Commits...",
         "category": "Strata",
@@ -489,6 +495,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.applyReorder",
+        "title": "Apply Reorder",
+        "category": "Strata"
+      },
+      {
         "command": "strata.resolveConflicts",
         "title": "Resolve Conflicts...",
         "category": "Strata"
@@ -676,6 +687,16 @@
           "command": "strata.dropCommit",
           "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataRewritable",
           "group": "3_tidy@4"
+        },
+        {
+          "command": "strata.reorderCommits",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'commit' && strataRewritable",
+          "group": "3_tidy@5"
+        },
+        {
+          "command": "strata.reorderCommits",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'branch' && strataIsCurrent",
+          "group": "5_tidy@1"
         },
         {
           "command": "strata.squashSelected",
@@ -1042,6 +1063,10 @@
           "when": "false"
         },
         {
+          "command": "strata.reorderCommits",
+          "when": "false"
+        },
+        {
           "command": "strata.squashSelected",
           "when": "false"
         },
@@ -1227,6 +1252,10 @@
         },
         {
           "command": "strata.saveEdit",
+          "when": "false"
+        },
+        {
+          "command": "strata.applyReorder",
           "when": "false"
         },
         {

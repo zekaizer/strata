@@ -68,6 +68,7 @@ import type {
   SimulatedAction,
   ViewOptions,
   MessageDraft,
+  ReorderFacts,
   ToWorker,
 } from '../shared/protocol.ts';
 import {
@@ -370,6 +371,8 @@ class App {
   private range: { anchor: string; end: string } | undefined;
   /** The inline message editor: what the host opened it with, its text, and whether Save is running. */
   private editor: { draft: MessageDraft; text: string; saving: boolean } | undefined;
+  /** What the host read for the reorder mode, until its Apply ended. */
+  private reorder: ReorderFacts | undefined;
   private rows: Row[] = [];
   /** The layout run (ToWorker) `rows` and `spans` come from, and the last one handed out. */
   private run = 0;
@@ -887,6 +890,17 @@ class App {
           const effects = this.expansion.querySelector('.tidy-effects');
           if (effects) effects.textContent = ` · ${m.effects}`;
         }
+        break;
+      case 'reorderFacts':
+        this.reorder = {
+          head: m.head,
+          files: m.files,
+          unpushed: m.unpushed,
+          ...(m.upstream === undefined ? {} : { upstream: m.upstream }),
+        };
+        break;
+      case 'reorderEnded':
+        this.reorder = undefined;
         break;
       case 'editEnded':
         if (!this.editor) break;
@@ -4165,6 +4179,7 @@ class App {
         save: this.expansion.querySelector('.tidy-actions .button.primary')?.textContent ?? '',
         saving: this.editor.saving,
       },
+      reorder: this.reorder,
       selectionPanel: this.expansion.querySelector('.tidy-commits') !== null && field === null,
       repoSwitcher: this.switcher.probe(),
       commits: this.commits.length,

@@ -266,6 +266,7 @@ describe('ref actions (keyboard access to badges)', () => {
       'strata.setUpstream',
       'strata.renameBranch',
       'strata.copyRefName',
+      'strata.reorderCommits',
     ]);
     assert.deepEqual(refActions('branch', { strataIsCurrent: false, strataUpstream: false }), [
       'strata.checkout',

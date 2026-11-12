@@ -5,9 +5,11 @@ import {
   fixupPick,
   MESSAGE_LIMIT,
   messageTooLong,
+  nothingToReorder,
   notMovedAlong,
   plural,
   refName,
+  reorderOutdated,
   REWRITE_DOING,
   REWRITE_DONE,
   REWRITE_UNDO,
@@ -21,7 +23,9 @@ import {
 import { readConfigBool, readGitVersion, readUpstream } from '../../git/facts.ts';
 import { GitOpError } from '../../git/op.ts';
 import {
+  countUnpushed,
   readLine,
+  readLineFiles,
   readRefsHaving,
   readRemoteHaving,
   readUnpushed,
@@ -256,6 +260,42 @@ export async function fixupIntoOlder(host: FlowHost, hash: string): Promise<void
   });
   if (into === undefined) return;
   await rewrite(host, { kind: 'fixup', commit: hash, into }, line);
+}
+
+/** Reorder Commits...: reads what the reorder mode shows of HEAD's line and hands it to the graph. */
+export async function reorderFacts(host: FlowHost): Promise<void> {
+  const h = await head(host);
+  const [files, unpushed, upstream] = await Promise.all([
+    readLineFiles(host.git, host.cwd),
+    countUnpushed(host.git, host.cwd),
+    h.branch === undefined ? undefined : readUpstream(host.git, host.cwd, h.branch),
+  ]);
+  const line = [...files.keys()];
+  if (line.length < 2) {
+    void host.ui.notify('info', nothingToReorder(h.name));
+    return;
+  }
+  const pushed = line[unpushed];
+  const remote = pushed && (await readRemoteHaving(host.git, host.cwd, pushed, upstream?.ref));
+  host.reorderFacts({
+    head: line[0]!,
+    files: Object.fromEntries(files),
+    unpushed,
+    ...(remote === undefined ? {} : { upstream: remote }),
+  });
+}
+
+/**
+ * Apply in the reorder mode: `order` is the top of HEAD's line, newest first, as it is to be,
+ * unless HEAD moved since the mode was entered at `opened`. Resolves whether it was applied.
+ */
+export async function applyReorder(host: FlowHost, order: readonly string[], opened: string): Promise<boolean> {
+  const h = await head(host);
+  if (h.hash !== opened) {
+    void host.ui.notify('info', reorderOutdated(h.name));
+    return false;
+  }
+  return rewrite(host, { kind: 'reorder', order });
 }
 
 /** Drop Commit... and Drop Selected Commits...: `hashes` newest first, a run of HEAD's line. */

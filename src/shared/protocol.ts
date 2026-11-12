@@ -160,6 +160,10 @@ export type HostToWebview =
   | { type: 'editEffects'; head: string; effects: string }
   /** Save in the message editor ended: `applied` closes it; otherwise it stays open with its text. */
   | { type: 'editEnded'; applied: boolean }
+  /** Reorder Commits...: the graph enters the reorder mode at HEAD `head`, or takes the facts when it is in it. */
+  | ({ type: 'reorderFacts' } & ReorderFacts)
+  /** Apply in the reorder mode ended: the mode is left either way; `applied` says the commits were reordered. */
+  | { type: 'reorderEnded'; applied: boolean }
   /** Show Stashes from the Command Palette or the title bar: answered with pickStash, as the stash button does. */
   | { type: 'pickStash' }
   /** A Strata operation started (its progress label, e.g. "Rebasing feature onto main") or ended. */
@@ -301,6 +305,18 @@ export interface BadgeFilterProbe {
   showHidden: string | undefined;
 }
 
+/** What the reorder mode needs to know of HEAD's first-parent line down to its first merge. */
+export interface ReorderFacts {
+  /** HEAD when the facts were read. */
+  head: string;
+  /** The paths each commit of the line changed, by full id. */
+  files: Record<string, string[]>;
+  /** How many commits from HEAD down the line no remote-tracking branch has. */
+  unpushed: number;
+  /** A remote-tracking branch (short name) that has the others, the upstream when it does. */
+  upstream?: string;
+}
+
 /** Webview state reported for integration tests. */
 export interface ProbeState {
   generation: number;
@@ -322,6 +338,8 @@ export interface ProbeState {
         saving: boolean;
       }
     | undefined;
+  /** The facts the host sent for the reorder mode, until its Apply ended. */
+  reorder: ReorderFacts | undefined;
   /** The multi-selection's panel is shown under its oldest commit. */
   selectionPanel: boolean;
   /**

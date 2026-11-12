@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
-import { commitMenu, flowSuite, menu, reload, run } from './flow-helpers.ts';
+import { branchMenu, commitMenu, flowSuite, menu, reload, run } from './flow-helpers.ts';
 import { git, waitFor, workspaceRoot } from './helpers.ts';
 
 const write = (file: string, content: string) => {
@@ -351,6 +351,110 @@ describe('tidying recent commits', () => {
     assert.equal(await rewritable(below), false);
     await panel().simulate({ kind: 'click', selector: '.first-parent-button' });
     await waitFor('the whole history again', async () => !(await panel().probe()).options.firstParent);
+  });
+
+  const reorderFacts = async (head: string) =>
+    waitFor('the facts of the reorder mode', async () => {
+      const r = (await panel().probe()).reorder;
+      return r?.head === head && r;
+    });
+  const applyReorder = (order: string[], head = git('rev-parse', 'HEAD')) =>
+    run('strata.applyReorder', menu({ order, head }));
+
+  it('reorders commits through a rebase the mode gets the facts for, which Undo takes back', async () => {
+    const [a, b, c] = await three();
+    await run('strata.reorderCommits', commitMenu(b));
+    const facts = await reorderFacts(c);
+    assert.deepEqual(
+      [c, b, a].map((h) => facts.files[h]),
+      [['c.txt'], ['b.txt'], ['a.txt']],
+    );
+    assert.equal(Object.keys(facts.files)[0], c, 'newest first');
+    assert.ok(facts.unpushed >= 3, 'none of the three is on a remote');
+    await applyReorder([a, c, b]);
+    assert.equal(ui.of('confirm').length, 0, 'nothing pushed, no other branch, a clean work tree: nothing to ask');
+    assert.deepEqual(git('log', '--format=%s', '-3').split('\n'), ['a.txt: a', 'c.txt: c', 'b.txt: b']);
+    assert.equal(git('rev-parse', 'HEAD~3'), git('rev-parse', `${a}~1`));
+    assert.equal(git('rev-parse', 'HEAD^{tree}'), git('rev-parse', `${c}^{tree}`));
+    assert.equal(ui.of('notify').at(-1)?.message, "Reordered 3 commits on 'main'");
+    await waitFor('the mode to hear that Apply ended', async () => (await panel().probe()).reorder === undefined);
+    await run('strata.undo');
+    assert.equal(git('rev-parse', 'HEAD'), c);
+  });
+
+  it('replays only from the deepest commit a reorder moves, and offers the mode on the current branch', async () => {
+    const [a, b, c] = await three();
+    git('update-ref', 'refs/remotes/origin/strata-reorder', a);
+    try {
+      await run('strata.reorderCommits', { ...branchMenu('main', c), strataIsCurrent: true });
+      const facts = await reorderFacts(c);
+      assert.equal(facts.unpushed, 2);
+      assert.equal(facts.upstream, 'origin/strata-reorder', 'the remote branch that has the commits below them');
+    } finally {
+      git('update-ref', '-d', 'refs/remotes/origin/strata-reorder');
+    }
+    await applyReorder([b, c, a]);
+    assert.deepEqual(git('log', '--format=%s', '-2').split('\n'), ['b.txt: b', 'c.txt: c']);
+    assert.equal(git('rev-parse', 'HEAD~2'), a, 'the commit below the reorder is the one it was');
+    assert.equal(ui.of('notify').at(-1)?.message, "Reordered 2 commits on 'main'");
+  });
+
+  it('stops at a conflict of a reorder, which Continue goes on from', async () => {
+    const a = commitFile('f.txt', 'a\n');
+    const b = commitFile('f.txt', 'b\n');
+    const c = commitFile('f.txt', 'c\n');
+    await reload(panel());
+    await applyReorder([b, c, a]);
+    const stops = () => ui.of('notify').filter((n) => n.level === 'warning' && n.actions.includes('Resolve...'));
+    await waitFor('the stop at the commit that moved down', () => stops().length === 1);
+    write('f.txt', 'c\n');
+    git('add', 'f.txt');
+    await run('strata.operation.continue');
+    await waitFor('the stop at the commit that moved up', () => stops().length === 2);
+    write('f.txt', 'b\n');
+    git('add', 'f.txt');
+    await run('strata.operation.continue');
+    await waitFor('the end of the rebase', () => !git('status').includes('rebase'));
+    assert.deepEqual(git('log', '--format=%s', '-3').split('\n'), ['f.txt: b', 'f.txt: c', 'f.txt: a']);
+    assert.equal(git('rev-parse', 'HEAD~2'), a);
+    assert.equal(git('show', 'HEAD:f.txt'), 'b');
+  });
+
+  it('asks before a reorder leaves a branch on the old commits, with changes in the way stashed', async () => {
+    const [a, b, c] = await three();
+    git('branch', 'strata-at-b', b);
+    await reload(panel());
+    write('a.txt', 'dirty\n');
+    ui.press('Stash & Reorder');
+    await applyReorder([b, c, a]);
+    const asked = ui.first('confirm');
+    assert.equal(asked.message, "Reorder 2 commits on 'main'?");
+    assert.match(asked.detail, /'strata-at-b' keeps the old commits\./);
+    assert.deepEqual(git('log', '--format=%s', '-2').split('\n'), ['b.txt: b', 'c.txt: c']);
+    assert.equal(git('rev-parse', 'strata-at-b'), b);
+    assert.equal(readFileSync(join(workspaceRoot(), 'a.txt'), 'utf8'), 'dirty\n');
+  });
+
+  it('refuses a reorder drafted at another HEAD, one that changes nothing and one of other commits', async () => {
+    const [a, b, c] = await three();
+    await applyReorder([b, c], b);
+    assert.equal(ui.of('notify').at(-1)?.message, "'main' changed since the reorder started; nothing was reordered.");
+    await applyReorder([c, b, a]);
+    assert.equal(
+      ui.of('notify').at(-1)?.message,
+      "The commits of 'main' are in that order already; nothing was reordered.",
+    );
+    await applyReorder([a, c]);
+    assert.match(ui.of('notify').at(-1)?.message ?? '', /is not on the first-parent line of 'main'/);
+    assert.equal(git('rev-parse', 'HEAD'), c);
+    const errors = () =>
+      ui
+        .of('notify')
+        .filter((n) => n.level === 'error')
+        .map((n) => n.message);
+    await run('strata.applyReorder', menu({ order: [c], head: c }));
+    await run('strata.applyReorder', menu({ order: `${b} ${c}`, head: c }));
+    assert.deepEqual(errors(), ['invalid order', 'invalid commit id']);
   });
 
   it('offers no rewriting in a file history, whose rows are not the commit history, and says why', async () => {

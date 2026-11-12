@@ -25,7 +25,7 @@ import { runGit } from '../git/run.ts';
 import { commandLine, type Exec, type OpRunner, type RunnerHost } from './runner.ts';
 import { Outdated } from './target.ts';
 import type { Ui } from './ui.ts';
-import type { MessageDraft } from '../shared/protocol.ts';
+import type { MessageDraft, ReorderFacts } from '../shared/protocol.ts';
 
 /** VS Code settings flows follow, read fresh each time. */
 export interface FlowSettings {
@@ -114,6 +114,8 @@ export interface FlowHost extends RunnerHost {
   editEffects(head: string, effects: string): void;
   /** Tells the message editor how its Save ended: applied closes it. */
   editEnded(applied: boolean): void;
+  /** Hands the graph what its reorder mode shows; it enters the mode. */
+  reorderFacts(facts: ReorderFacts): void;
 }
 
 /** What a confirmation described: `rev` still points at `hash` (undefined: does not exist) when the operation starts. */
