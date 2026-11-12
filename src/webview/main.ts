@@ -175,7 +175,7 @@ const TREE_MIN = 200;
 const TREE_COL_GAP = 24;
 const TREE_MAX_COLS = 4;
 /** The subject's width, in digits of the row font, that the other columns give way to. */
-const SUBJECT_CH = 50;
+const SUBJECT_CH = 60;
 /** Subject width in digits below which the hash column gives way too. */
 const HASH_FLOOR_CH = 30;
 /** Author names wider than this many digits are cut with an ellipsis; the row's tooltip has them whole. */

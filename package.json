@@ -1357,7 +1357,7 @@
             "date": true,
             "hash": true
           },
-          "description": "Which columns the commit rows may show beside the subject. A narrow graph also hides them on its own: the date and then the author while the subject has less than 50 characters of room, the hash only below 30."
+          "description": "Which columns the commit rows may show beside the subject. A narrow graph also hides them on its own: the date and then the author while the subject has less than 60 characters of room, the hash only below 30."
         },
         "strata.commitOrder": {
           "type": "string",

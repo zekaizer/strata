@@ -47,7 +47,7 @@ to get started and the requirements.
 - Rows show the subject, then the author (long names are cut after about 16
   characters), the date (`11-15 07:35` this year, `2023-11-15` before) and the
   short hash; the row's tooltip has the author's full name and the full date.
-- Works in narrow editors: while the subject has less than 50 characters of
+- Works in narrow editors: while the subject has less than 60 characters of
   room the date gives way first, then the author; the short hash stays until
   the subject would have less than 30. Commit details unfold right under the
   commit instead of taking a side or bottom pane.
@@ -461,7 +461,7 @@ only updates repositories that already have a commit-graph.
 - `strata.columns` (default: all `true`): Which columns the commit rows may show
   beside the subject (`author`, `date`, `hash`); turn one off to hide it for
   good. A narrow graph also hides them on its own: the date and then the author
-  while the subject has less than 50 characters of room, the hash only below 30.
+  while the subject has less than 60 characters of room, the hash only below 30.
 - `strata.commitOrder` (default: `topological`): The order of the commit rows.
   `topological` keeps the commits of each branch together: the graph stays
   narrow, and a new commit can move the rows of its whole branch. `date` lists
