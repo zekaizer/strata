@@ -75,6 +75,34 @@ describe('rewrite plans', () => {
     assert.equal(root.base, undefined);
   });
 
+  it('reorders the top of the line with picks, from the deepest commit out of place up', () => {
+    const p = plan(planOf({ kind: 'reorder', order: ['d', 'e', 'c', 'b', 'a'] }, line()));
+    assert.equal(p.base, 'c');
+    assert.equal(steps(p), 'pick e, pick d');
+    assert.equal(inPlace(p, line()), false);
+    assert.equal(todoText(p), 'pick e\npick d\n');
+    const top = plan(planOf({ kind: 'reorder', order: ['e', 'b', 'd', 'c'] }, line()));
+    assert.equal(top.base, 'a');
+    assert.equal(steps(top), 'pick c, pick d, pick b, pick e');
+    const root = plan(planOf({ kind: 'reorder', order: ['e', 'd', 'c', 'a', 'b'] }, line()));
+    assert.equal(root.base, undefined);
+    assert.equal(steps(root), 'pick b, pick a, pick c, pick d, pick e');
+    const aboveMerge = plan(planOf({ kind: 'reorder', order: ['d', 'e', 'c'] }, line(['c'])));
+    assert.equal(steps(aboveMerge), 'pick e, pick d', 'a merge below the commits that move is left alone');
+  });
+
+  it('refuses an order that is not one of the top of the line, changes nothing or moves a merge', () => {
+    const reorder = (order: string[], merges: string[] = []) => planOf({ kind: 'reorder', order }, line(merges));
+    assert.equal(reorder(['e', 'd', 'c']), 'unchanged');
+    assert.equal(reorder([]), 'unchanged');
+    assert.equal(reorder(['e', 'x']), 'notOnHeadLine');
+    assert.equal(reorder(['d', 'd']), 'notOnHeadLine');
+    assert.equal(reorder(['d', 'c']), 'notOnHeadLine', 'it leaves out HEAD');
+    assert.equal(reorder(['a', 'b', 'c', 'd', 'e', 'f']), 'notOnHeadLine');
+    assert.equal(reorder(['c', 'd', 'e'], ['d']), 'merge');
+    assert.equal(reorder(['d', 'e'], ['d']), 'merge');
+  });
+
   it('refuses what it cannot carry out', () => {
     assert.equal(planOf({ kind: 'reword', commit: 'x', message: 'm' }, line()), 'notOnHeadLine');
     assert.equal(planOf({ kind: 'reword', commit: 'b', message: 'm' }, line(['d'])), 'merge');

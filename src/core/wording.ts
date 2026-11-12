@@ -1380,13 +1380,20 @@ export interface RewriteFacts {
   stays: readonly { name: string; why: StayReason }[];
 }
 
-const EDIT_VERB: Record<EditKind, string> = { reword: 'Save', squash: 'Squash', fixup: 'Fix Up', drop: 'Drop' };
+const EDIT_VERB: Record<EditKind, string> = {
+  reword: 'Save',
+  squash: 'Squash',
+  fixup: 'Fix Up',
+  drop: 'Drop',
+  reorder: 'Reorder',
+};
 
 const QUESTION: Record<EditKind, (f: RewriteFacts) => string> = {
   reword: (f) => `Save the new message of ${f.what}?`,
   squash: (f) => `Squash ${f.what} on ${f.branch}?`,
   fixup: (f) => `Fix up ${f.what}?`,
   drop: (f) => `Drop ${f.what} from ${f.branch}?`,
+  reorder: (f) => `Reorder ${f.what} on ${f.branch}?`,
 };
 
 const names = (refs: readonly string[]) => fileList(refs.map(refName));
@@ -1493,6 +1500,8 @@ export function rewriteRefused(r: Refusal, short: string, branch: string): strin
       return 'The commit message is empty.';
     case 'nothingLeft':
       return `Dropping every commit would leave ${branch} with none.`;
+    case 'unchanged':
+      return `The commits of ${branch} are in that order already; nothing was reordered.`;
   }
 }
 
@@ -1506,6 +1515,14 @@ export const messageTooLong = (length: number): string =>
 export const editOutdated = (branch: string): string =>
   `${branch} changed since the editor opened; nothing was rewritten and your message is kept.`;
 
+/** Apply in the reorder mode entered at another HEAD than `branch` (refName or HEAD) has now. */
+export const reorderOutdated = (branch: string): string =>
+  `${branch} changed since the reorder started; nothing was reordered.`;
+
+/** Reorder Commits... where HEAD's line has fewer than two commits down to its first merge. */
+export const nothingToReorder = (branch: string): string =>
+  `${branch} has fewer than two commits above its last merge, so there is nothing to reorder.`;
+
 export const fixupPick = (c: CommitRef): { title: string; placeholder: string } => ({
   title: `Fix Up ${commitName(c)} into…`,
   placeholder: 'The older commit its changes belong to',
@@ -1517,6 +1534,7 @@ export const REWRITE_UNDO: Record<EditKind, string> = {
   squash: 'squash',
   fixup: 'fixup',
   drop: 'drop',
+  reorder: 'reorder',
 };
 
 export const REWRITE_DOING = {
@@ -1524,6 +1542,7 @@ export const REWRITE_DOING = {
   squash: (n: number): string => `Squashing ${plural(n, 'commit')}`,
   fixup: (short: string, into: string): string => `Fixing up ${short} into ${into}`,
   drop: (n: number, branch: string): string => `Dropping ${plural(n, 'commit')} from ${branch}`,
+  reorder: (n: number, branch: string): string => `Reordering ${plural(n, 'commit')} on ${branch}`,
 };
 
 /** `moved`: the other branches that moved along (short names). */
@@ -1532,6 +1551,7 @@ export const REWRITE_DONE = {
   squash: (n: number, now: string): string => `Squashed ${n} commits into ${now}`,
   fixup: (short: string, into: string): string => `Fixed up ${short} into ${into}`,
   drop: (n: number, branch: string): string => `Dropped ${plural(n, 'commit')} from ${branch}`,
+  reorder: (n: number, branch: string): string => `Reordered ${plural(n, 'commit')} on ${branch}`,
   moved: (done: string, moved: readonly string[]): string =>
     moved.length === 0 ? done : `${done}; moved ${names(moved)} along`,
 };

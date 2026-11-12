@@ -13,6 +13,13 @@ import {
   gitTooOld,
   WRITES_DISABLED,
   rewriteConfirmation,
+  rewriteInTheWay,
+  rewriteRefused,
+  reorderOutdated,
+  nothingToReorder,
+  REWRITE_DOING,
+  REWRITE_DONE,
+  REWRITE_UNDO,
   type RewriteFacts,
   HISTORY_DONE,
   resetConfirmation,
@@ -323,6 +330,49 @@ describe('rewrite confirmation', () => {
     assert.equal(
       rewriteConfirmation({ ...facts, pushed: { ...facts.pushed!, canForce: false } })?.detail,
       "Save the new message of abc1234?\n'origin/main' has 2 of them: pushing 'main' afterwards needs a force push, and anyone who fetched them keeps the old commits.\nForce pushes are off: the git.allowForcePush setting allows them.\nUndo restores the original commits.",
+    );
+  });
+});
+
+describe('reordering commits', () => {
+  const facts: RewriteFacts = {
+    edit: 'reorder',
+    branch: "'feature/x'",
+    what: '3 commits',
+    onTop: 0,
+    pushed: undefined,
+    moves: [],
+    stays: [],
+  };
+
+  it('asks only when commits were pushed, a ref is on them or changes are in the way', () => {
+    assert.equal(rewriteConfirmation(facts), undefined);
+    const pushed = rewriteConfirmation({ ...facts, pushed: { count: 2, remote: 'origin/feature/x', canForce: true } });
+    assert.equal(pushed?.message, "Rewrite 2 commits that 'origin/feature/x' already has?");
+    assert.equal(pushed.detail.split('\n')[0], "Reorder 3 commits on 'feature/x'?");
+    assert.deepEqual(pushed.buttons, [{ id: 'only', label: 'Reorder Anyway' }]);
+    const stays = rewriteConfirmation({ ...facts, stays: [{ name: 'wip', why: 'old' }] });
+    assert.equal(stays?.message, "Reorder 3 commits on 'feature/x'?");
+    assert.equal(stays.detail, "'wip' keeps the old commits.\nUndo restores the original commits.");
+    assert.deepEqual(stays.buttons, [{ id: 'only', label: 'Reorder' }]);
+  });
+
+  it('says what it is doing, what it did and what Undo takes back', () => {
+    assert.equal(REWRITE_DOING.reorder(3, "'feature/x'"), "Reordering 3 commits on 'feature/x'");
+    assert.equal(REWRITE_DONE.reorder(3, "'feature/x'"), "Reordered 3 commits on 'feature/x'");
+    assert.equal(undone(REWRITE_UNDO.reorder), 'Undid the reorder');
+    assert.equal(rewriteInTheWay('reorder', '3 commits'), 'reorder of 3 commits');
+  });
+
+  it('says why nothing was reordered', () => {
+    assert.equal(
+      rewriteRefused('unchanged', 'abc1234', "'main'"),
+      "The commits of 'main' are in that order already; nothing was reordered.",
+    );
+    assert.equal(reorderOutdated("'main'"), "'main' changed since the reorder started; nothing was reordered.");
+    assert.equal(
+      nothingToReorder("'main'"),
+      "'main' has fewer than two commits above its last merge, so there is nothing to reorder.",
     );
   });
 });

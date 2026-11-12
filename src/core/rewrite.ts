@@ -21,7 +21,9 @@ export type Edit =
   | { kind: 'squash'; oldest: string; newest: string; message: string }
   /** Melds `commit` into the older commit `into`, keeping `into`'s message. */
   | { kind: 'fixup'; commit: string; into: string }
-  | { kind: 'drop'; oldest: string; newest: string };
+  | { kind: 'drop'; oldest: string; newest: string }
+  /** `order`: the new sequence, newest first, of the top of HEAD's line: the same commits as line[0..order.length-1]. */
+  | { kind: 'reorder'; order: readonly string[] };
 
 export type EditKind = Edit['kind'];
 
@@ -44,9 +46,10 @@ export interface RewritePlan {
 /**
  * Why an edit cannot be planned: a commit is not on HEAD's first-parent line, a merge is in the
  * way (a merge or a merge newer than it), there is no parent to fold into, the commits are given
- * newest first, the message is empty, or nothing would be left of the branch.
+ * newest first, the message is empty, nothing would be left of the branch, or a reorder leaves
+ * every commit where it is.
  */
-export type Refusal = 'notOnHeadLine' | 'merge' | 'noParent' | 'order' | 'emptyMessage' | 'nothingLeft';
+export type Refusal = 'notOnHeadLine' | 'merge' | 'noParent' | 'order' | 'emptyMessage' | 'nothingLeft' | 'unchanged';
 
 /**
  * git's "whitespace" cleanup: trailing spaces, leading and trailing blank lines and repeated blank
@@ -68,6 +71,7 @@ export function cleanMessage(text: string): string {
  * first parent, ...), which reaches at least the oldest commit the edit names.
  */
 export function planOf(edit: Edit, line: readonly LineCommit[]): RewritePlan | Refusal {
+  if (edit.kind === 'reorder') return reorderPlan(edit.order, line);
   const at = new Map(line.map((c, i) => [c.hash, i]));
   const named =
     edit.kind === 'reword'
@@ -128,6 +132,24 @@ export function planOf(edit: Edit, line: readonly LineCommit[]): RewritePlan | R
       };
     }
   }
+}
+
+/** Picks in the new order, from the deepest commit that changes place up: the ones below it are not replayed. */
+function reorderPlan(order: readonly string[], line: readonly LineCommit[]): RewritePlan | Refusal {
+  const top = line.slice(0, order.length);
+  const given = new Set(order);
+  if (top.length < order.length || given.size < order.length || top.some((c) => !given.has(c.hash)))
+    return 'notOnHeadLine';
+  const deepest = top.findLastIndex((c, i) => c.hash !== order[i]);
+  if (deepest < 0) return 'unchanged';
+  if (top.slice(0, deepest + 1).some((c) => c.parents.length > 1)) return 'merge';
+  return {
+    base: top[deepest]!.parents[0],
+    steps: order
+      .slice(0, deepest + 1)
+      .reverse()
+      .map((commit) => ({ action: 'pick', commit })),
+  };
 }
 
 /** A plan's original commits, oldest first, as `line` (newest first) has them. */
