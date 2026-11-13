@@ -36,6 +36,10 @@ const FAMILIES: readonly { pattern: RegExp; reason: string }[] = [
 /** Tokens outside a family that may have a single use, each with the design decision it holds. */
 const SINGLE_USE: readonly { token: string; reason: string }[] = [
   {
+    token: '--color-subdued',
+    reason: 'derived: foreground at 70%, as color-muted equals color-fg in Light Modern',
+  },
+  {
     token: '--surface-sunken-hover',
     reason: 'theme-specific: list hover mixed with black in light themes, plain list hover in dark and high contrast',
   },

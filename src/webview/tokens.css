@@ -64,6 +64,7 @@
   /* Semantic colors */
   --color-fg: var(--vscode-foreground);
   --color-muted: var(--vscode-descriptionForeground);
+  --color-subdued: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
   --color-disabled: var(--vscode-disabledForeground);
   --color-icon: var(--vscode-icon-foreground, var(--vscode-foreground));
   --color-border: var(--vscode-widget-border, color-mix(in srgb, var(--vscode-foreground) 16%, transparent));

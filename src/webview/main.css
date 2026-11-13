@@ -1392,7 +1392,7 @@ body:not(.hover-off) .file:hover .file-actions,
 /* A merge steps back: its changes are its parents'. */
 .row.merge .text,
 .find-row.merge .list-row-text {
-  color: var(--color-muted);
+  color: var(--color-subdued);
 }
 
 .row.selected.merge .text {
