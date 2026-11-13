@@ -398,6 +398,10 @@ export interface ProbeState {
   pathNote: string | undefined;
   /** Rendered rows of commits a path history keeps although they leave its paths alone, by row index. */
   unchangedRows: number[];
+  /** Rendered commit rows whose subject is not in the row's own text color, by row index. */
+  dimmedRows: number[];
+  /** Text of the list rows (find list, details) whose text is not in the row's own text color. */
+  dimmedListRows: string[];
   /**
    * Accessible names of the shown buttons in the toolbar and the inline details, as a screen reader
    * reads them: aria-label, else the text and CSS-generated content (icon glyphs) of what is not

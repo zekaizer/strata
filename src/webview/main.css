@@ -1389,6 +1389,16 @@ body:not(.hover-off) .file:hover .file-actions,
   overflow-wrap: anywhere;
 }
 
+/* A merge steps back: its changes are its parents'. */
+.row.merge .text,
+.find-row.merge .list-row-text {
+  color: var(--color-muted);
+}
+
+.row.selected.merge .text {
+  color: inherit;
+}
+
 /* A commit a path history keeps although it leaves the paths alone: a ref tip, a joining merge. */
 .row.unchanged :is(.text, .author, .date, .hash) {
   color: var(--color-disabled);

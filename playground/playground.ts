@@ -434,7 +434,13 @@ async function onMessage(m: WebviewToHost): Promise<void> {
       const { text, author, hashPrefix } = m.query;
       const has = (s: string, part: string | undefined) =>
         part === undefined || s.toLowerCase().includes(part.toLowerCase());
-      const hit = (c: Commit) => ({ hash: c.hash, subject: c.subject, author: c.author, authorTime: c.authorTime });
+      const hit = (c: Commit) => ({
+        hash: c.hash,
+        subject: c.subject,
+        author: c.author,
+        authorTime: c.authorTime,
+        merge: c.parents.length + (c.otherParents?.length ?? 0) > 1,
+      });
       const hits = visible.filter((c) => (text === '' || has(c.subject, text)) && has(c.author, author)).map(hit);
       const exact =
         hashPrefix === undefined

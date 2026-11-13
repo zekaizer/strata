@@ -56,6 +56,7 @@ describe('findCommits', () => {
       subject: git(large, 'log', '-1', '--format=%s', expected[0]!),
       author: 'Ada Lovelace',
       authorTime: Number(git(large, 'log', '-1', '--format=%at', expected[0]!)),
+      merge: false,
     });
   });
 
@@ -133,6 +134,7 @@ describe('findExact', () => {
           subject: git(dir, 'log', '-1', '--format=%s', head),
           author: git(dir, 'log', '-1', '--format=%aN', head),
           authorTime: Number(git(dir, 'log', '-1', '--format=%at', head)),
+          merge: false,
         },
       ]);
     }

@@ -13,7 +13,10 @@ export interface FindQuery {
 }
 
 /** A commit the search found: what its row and the match list show. */
-export type FindHit = Pick<Commit, 'hash' | 'subject' | 'author' | 'authorTime'>;
+export type FindHit = Pick<Commit, 'hash' | 'subject' | 'author' | 'authorTime'> & {
+  /** More than one parent, first-parent history or not. */
+  merge: boolean;
+};
 
 const HASH_PREFIX = /^[0-9a-f]{4,40}$/i;
 /** `author:` at the start of a word, then a quoted value (closing quote optional) or a word. */

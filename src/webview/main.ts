@@ -1853,6 +1853,7 @@ class App {
     const commitRow = (h: FindHit, note?: string) => {
       const row = el('button', 'list-row clickable find-row');
       row.classList.toggle('current', h.hash === current);
+      row.classList.toggle('merge', h.merge && !this.options.firstParent);
       row.title = `${h.subject}\n${h.author}, ${formatDate(h.authorTime)}, ${shortHash(h.hash)}`;
       row.append(
         codicon('git-commit'),
@@ -3238,6 +3239,8 @@ class App {
       row.append(band);
     }
     if (slot === this.refs.head) row.classList.add('head');
+    // In first-parent history `parents` holds the first parent only, so no row is a merge there.
+    if (c.parents.length > 1) row.classList.add('merge');
     const path = this.options.path;
     const unchanged = path !== null && this.unchanged.has(c.hash);
     if (unchanged) row.classList.add('unchanged');
@@ -4764,6 +4767,18 @@ class App {
       unchangedRows: [...this.rowsLayer.querySelectorAll<HTMLElement>('.row.unchanged')].map((r) =>
         Number(r.dataset['index']),
       ),
+      dimmedRows: [...this.rowsLayer.querySelectorAll<HTMLElement>('.row')]
+        .filter((r) => {
+          const text = r.querySelector('.subject .text');
+          return text !== null && getComputedStyle(text).color !== getComputedStyle(r).color;
+        })
+        .map((r) => Number(r.dataset['index'])),
+      dimmedListRows: [...document.querySelectorAll<HTMLElement>('.list-row')]
+        .filter((r) => {
+          const text = r.querySelector('.list-row-text');
+          return text !== null && getComputedStyle(text).color !== getComputedStyle(r).color;
+        })
+        .map((r) => r.querySelector('.list-row-text')!.textContent),
       buttonNames: {
         toolbar: [...this.toolbar.querySelectorAll<HTMLElement>(':scope > button:not([hidden])')].map(accessibleName),
         details: [...this.expansion.querySelectorAll<HTMLElement>('button')].map(accessibleName),

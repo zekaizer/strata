@@ -41,7 +41,7 @@ export async function findCommits(
     'log',
     '--encoding=UTF-8',
     '-z',
-    '--format=%H%x00%s%x00%aN%x00%at',
+    '--format=%H%x00%s%x00%aN%x00%at%x00%P',
     '--no-color',
     '-i',
     '-F',
@@ -70,8 +70,8 @@ export async function findCommits(
       rest = parts.pop()!;
       for (const part of parts) {
         fields.push(part);
-        if (fields.length < 4) continue;
-        const [hash, subject, author, time] = fields as [string, string, string, string];
+        if (fields.length < 5) continue;
+        const [hash, subject, author, time, parents] = fields as [string, string, string, string, string];
         fields = [];
         if (found === cap) {
           capped = true;
@@ -79,7 +79,7 @@ export async function findCommits(
           return;
         }
         found++;
-        pending.push({ hash, subject, author, authorTime: Number(time) });
+        pending.push({ hash, subject, author, authorTime: Number(time), merge: parents.includes(' ') });
       }
       if (pending.length >= BATCH_HITS) flush(false);
       else if (pending.length > 0)
@@ -112,14 +112,20 @@ export async function findExact(git: string, cwd: string, prefix: string): Promi
     '--encoding=UTF-8',
     '--no-walk=unsorted',
     '-z',
-    '--format=%H%x00%s%x00%aN%x00%at',
+    '--format=%H%x00%s%x00%aN%x00%at%x00%P',
     ...commits,
     '--',
   ]);
   const f = out.split('\0');
   const hits: FindHit[] = [];
-  for (let i = 0; i + 3 < f.length; i += 4)
-    hits.push({ hash: f[i]!, subject: f[i + 1]!, author: f[i + 2]!, authorTime: Number(f[i + 3]) });
+  for (let i = 0; i + 4 < f.length; i += 5)
+    hits.push({
+      hash: f[i]!,
+      subject: f[i + 1]!,
+      author: f[i + 2]!,
+      authorTime: Number(f[i + 3]),
+      merge: f[i + 4]!.includes(' '),
+    });
   return hits;
 }
 
