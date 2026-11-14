@@ -28,12 +28,33 @@ describe('ci-stamp', () => {
   it('puts the build note under the README header, at its marker', () => {
     const dir = workspace(`${header}\n<!-- ci-stamp -->\n${body}`);
     assert.equal(stamp(dir).status, 0);
-    assert.equal(version(dir), '0.1.0-ci.42');
+    assert.equal(version(dir), '0.3.42');
     const date = new Date().toISOString().slice(0, 10);
     assert.equal(
       read(dir, 'README.md'),
-      `${header}\n<!-- ci-stamp -->\n\n> CI build 0.1.0-ci.42 · commit 0123456 · ${date}. Not a release.\n${body}`,
+      `${header}\n<!-- ci-stamp -->\n\n> CI build 0.3.42 · commit 0123456 · ${date}. Not a release.\n${body}`,
     );
+  });
+
+  it('versions a build as a pre-release: the next odd minor, the run as its patch', () => {
+    for (const [release, stamped] of [
+      ['0.1.0', '0.3.42'],
+      ['0.2.0', '0.3.42'],
+      ['0.2.5', '0.3.42'],
+      ['0.4.1', '0.5.42'],
+      ['1.10.0', '1.11.42'],
+    ]) {
+      const dir = workspace(`${header}\n<!-- ci-stamp -->\n${body}`, release);
+      assert.equal(stamp(dir).status, 0);
+      assert.equal(version(dir), stamped, release);
+    }
+  });
+
+  it('refuses a version that is not three numbers', () => {
+    const dir = workspace(`${header}\n<!-- ci-stamp -->\n${body}`, '0.1.0-beta.1');
+    const r = stamp(dir);
+    assert.equal(r.status, 1);
+    assert.equal(version(dir), '0.1.0-beta.1');
   });
 
   it('changes nothing when the README has no marker', () => {
@@ -46,9 +67,13 @@ describe('ci-stamp', () => {
     assert.equal(version(dir), '0.1.0');
   });
 
-  it('does not stamp a pre-release twice', () => {
-    const dir = workspace(`${header}\n<!-- ci-stamp -->\n${body}`, '0.1.0-ci.41');
-    assert.equal(stamp(dir).status, 1);
-    assert.equal(version(dir), '0.1.0-ci.41');
+  it('does not stamp twice', () => {
+    const dir = workspace(`${header}\n<!-- ci-stamp -->\n${body}`);
+    assert.equal(stamp(dir).status, 0);
+    const readme = read(dir, 'README.md');
+    const r = stamp(dir);
+    assert.equal(r.status, 1);
+    assert.equal(version(dir), '0.3.42');
+    assert.equal(read(dir, 'README.md'), readme);
   });
 });

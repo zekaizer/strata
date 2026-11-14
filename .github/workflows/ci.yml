@@ -113,8 +113,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # CI builds only (release packaging does not do this): version <version>-ci.<run> and a
-      # build note under the README header, which the Extensions view shows as the details page.
+      # CI builds only (release packaging does not do this): a pre-release version (ADR 4: the next
+      # odd minor, the run as its patch) and a build note under the README header, which the
+      # Extensions view shows as the details page.
       - name: Mark as a CI build
         run: node scripts/ci-stamp.mjs "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"
       # Not a release: VS Code shows the installed build as a pre-release.

@@ -183,18 +183,19 @@ convert artifacts/shots/readme.png -crop 1440x864+80+86 +repage -strip \
 `.github/workflows/ci.yml` runs on every push and pull request: typecheck,
 lint, format and unit tests; integration and restart tests under Xvfb on VS
 Code stable and 1.90.0; then packages the extension. Each successful run
-uploads `strata-<version>-ci.<run>-<short sha>.vsix` as a workflow artifact,
+uploads `strata-<pre-release version>-<short sha>.vsix` as a workflow artifact,
 kept for 30 days: open the run under the repository's **Actions** tab and
 download it from **Artifacts** (requires a GitHub login). The download is the
 `.vsix` itself, not a zip. These are the test builds to share. Runners are
 pinned to `ubuntu-24.04`.
 
-Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes
-`<version>-ci.<run number>` and the README (the extension's details page in
-the Extensions view) gets the build's commit and date under its header, at the
-`<!-- ci-stamp -->` line, so an installed CI build says which one it is. The
-script fails if the README lacks that line. A release of the same version
-sorts above it. Release packaging (`npm run package`) does not stamp.
+Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes a
+pre-release version, `<major>.<first odd minor above package.json's>.<run
+number>` (`0.2.0` gives `0.3.<run>`; see Versions below), and the README (the
+extension's details page in the Extensions view) gets the build's commit and
+date under its header, at the `<!-- ci-stamp -->` line, so an installed CI
+build says which one it is. The script fails if the README lacks that line.
+Release packaging (`npm run package`) does not stamp.
 
 Every build that is not a release is packaged with `--pre-release`: all CI
 builds, and a GitHub release marked as a pre-release. VS Code shows such a
@@ -202,6 +203,12 @@ build as a pre-release once installed, and the Marketplace offers it only to
 those who switch to pre-release versions.
 
 ## Releases
+
+Versions follow [ADR 4](adr/0004-version-numbers.md): a release has an even
+minor version and a pre-release an odd one, so the next release after `0.2.x`
+is `0.4.0`. The Marketplace takes numbers only, and never the same version
+twice. CI builds are pre-releases as they are: upload one to the Marketplace
+as a pre-release to offer it.
 
 1. Set the version in `package.json` and `package-lock.json`
    (`npm version <x.y.z> --no-git-tag-version`), commit it as
@@ -213,8 +220,8 @@ those who switch to pre-release versions.
    `npm run check`, packages and attaches `strata-<x.y.z>.vsix` to the
    release. The README's relative links and images in that package point at
    the tag, not at `main`. For a pre-release, pass `--prerelease` to
-   `gh release create`. The Marketplace takes no `-beta` suffix: a
-   pre-release needs a plain `x.y.z` that no release has.
+   `gh release create`. The workflow fails when the minor version does not
+   fit: odd for a pre-release, even for a release.
 4. Upload that `.vsix` to the Marketplace by hand, at
    https://marketplace.visualstudio.com/manage/publishers/zekaizer. Its display
    name there is "Strata Git Graph": the Marketplace refuses a display name
