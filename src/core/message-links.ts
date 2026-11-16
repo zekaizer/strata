@@ -27,9 +27,8 @@ function urlRanges(text: string): [number, number][] {
     let url = m[0];
     for (;;) {
       const last = url.at(-1)!;
-      // A closing parenthesis belongs to the URL only when the URL opened it.
-      const outside = last === ')' && url.split('(').length < url.split(')').length;
-      if (!AFTER.includes(last) && !outside) break;
+      const unopenedParen = last === ')' && url.split('(').length < url.split(')').length;
+      if (!AFTER.includes(last) && !unopenedParen) break;
       url = url.slice(0, -1);
     }
     if (url.replace(SCHEME, '') !== '') ranges.push([m.index, m.index + url.length]);

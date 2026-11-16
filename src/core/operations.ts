@@ -127,7 +127,10 @@ const merge = (migrate: boolean) => (migrate ? ['--merge'] : []);
 const mainline = (parent: number | undefined) => (parent === undefined ? [] : ['--mainline', String(parent)]);
 const autostash = (on: boolean) => [on ? '--autostash' : '--no-autostash'];
 
-/** What a plain rebase does: no other branch moves, merges are not kept, no fixup! commit is reordered. */
+/**
+ * What a plain rebase does: no other branch moves, merges are dropped (their commits replayed one
+ * by one), no fixup! commit is reordered. A git without one of these keys ignores it.
+ */
 const PLAIN_REBASE = [
   '-c',
   'rebase.updateRefs=false',
@@ -203,8 +206,6 @@ export function argv(op: Operation): string[] {
         op.ref,
       ];
     case 'rebase':
-      // The confirmation names what a plain rebase does: no other branch moves, merges are dropped
-      // (their commits replayed one by one), and no fixup! commits are reordered. Unknown keys are ignored.
       return [
         ...PLAIN_REBASE,
         'rebase',

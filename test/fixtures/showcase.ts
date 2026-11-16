@@ -110,7 +110,6 @@ export function showcase(): RepoBuilder {
   const pr = (n: number, branch: string, user: string, title: string) =>
     `Merge pull request #${n} from ${user}/${branch}\n\n${title}`;
 
-  // Releases 1.2.x.
   commitFiles('main', '2026-09-28 09:12', MIRA, 'Import quillboard from the prototype repository', {
     ...pkg('1.1.0'),
     ...files('Initial import', [
@@ -205,7 +204,6 @@ export function showcase(): RepoBuilder {
     pr(12, 'feature/board-search', 'tlindqvist', 'Search notes across a board'),
   );
 
-  // Release 1.3.0.
   commit(
     'fix/session-timeout',
     '2026-10-05 10:12',
@@ -275,7 +273,6 @@ export function showcase(): RepoBuilder {
     'src/client/components/ColorPicker.tsx',
   );
 
-  // Share links, with main merged in halfway.
   commit(
     'feature/share-links',
     '2026-10-12 10:02',
@@ -320,7 +317,6 @@ export function showcase(): RepoBuilder {
     pr(21, 'feature/share-links', 'smarchetti', 'Read-only share links for boards'),
   );
 
-  // Release 1.4 on its own branch.
   commit(
     'main',
     '2026-10-19 10:40',

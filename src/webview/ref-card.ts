@@ -3,7 +3,6 @@ import type { Where, WhereAsk } from '../core/where.ts';
 import type { CardRef } from './badges.ts';
 import { codicon, el } from './format.ts';
 
-/** How long the pointer rests on a node before its card shows. */
 const SHOW_DELAY_MS = 300;
 /** Lines listed before "+N more". */
 const MAX_LINES = 12;
@@ -56,7 +55,6 @@ export class RefCard {
     this.element.hidden = true;
   }
 
-  /** The commit whose card is shown or pending. */
   get hash(): string | undefined {
     return this.target?.hash;
   }
@@ -83,7 +81,6 @@ export class RefCard {
     }
   }
 
-  /** Where commit `hash` is, as the host answered. */
   answer(hash: string, where: Where): void {
     this.answers.set(hash, where);
     if (this.asked === hash) this.asked = undefined;

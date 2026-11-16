@@ -128,7 +128,6 @@ const NEXT_PAGE = 1000;
 const LOAD_AHEAD = 200;
 const OVERSCAN = 8;
 const MAX_GRAPH_SHARE = 0.4;
-/** Narrow lists keep most of their width for the text. */
 const NARROW_LIST = 600;
 const NARROW_GRAPH_SHARE = 0.25;
 /** Height of the band above the commit line of rows with refs; matches --ref-band in main.css. */
@@ -465,7 +464,6 @@ class App {
   /** Folders folded in the changed-files tree of the expanded commit. */
   private foldedFolders = new Set<string>();
   private metaOpen: boolean;
-  /** Whether the selected commit's body is shown in full. */
   private bodyExpanded = false;
   private copiedTimer: ReturnType<typeof setTimeout> | undefined;
   /** Announces results of actions (a copy) to screen readers. */
@@ -548,9 +546,7 @@ class App {
   private readonly canvas = el('canvas', 'graph');
   /** Rendered rows; kept apart from the expansion so re-rendering rows does not touch it. */
   private readonly rowsLayer = el('div', 'rows');
-  /** Commit details shown inline under the selected row. */
   private readonly expansion = el('section', 'expansion');
-  /** Whether the selected commit's details are open under it. */
   private expanded = false;
   /** Measured height of the expansion in px; 0 when collapsed. */
   private gap = 0;
@@ -1456,7 +1452,6 @@ class App {
     return undefined;
   }
 
-  /** The other worktrees, each marked whether this window has it open. */
   private worktreesShown(): Worktrees {
     const roots = this.openRoots;
     return worktreesOf(this.refs, (path) => roots.some((root) => samePath(path, root)));
@@ -1470,7 +1465,6 @@ class App {
     if (this.refs.worktrees.length > 0) this.queueRender();
   }
 
-  /** Works out which badges the rules hide from the rules and the refs. */
   private applyBadgeRules(): void {
     this.hiddenBadges = hiddenRefs(this.badgeRules, this.refs);
     this.badgeRefsByHash = shownRefs(this.refsByHash, this.showHiddenBadges ? new Set() : this.hiddenBadges);
@@ -1569,7 +1563,6 @@ class App {
     this.selections++;
     this.clearActionError();
     this.scroller.focus({ preventScroll: true });
-    // The keyboard's focus outline marks the row.
     document.body.classList.add('keyboard-nav');
     const restore: Restore = { selectedHash: head, centre: true, head: true, expanded: this.expanded };
     if (include && this.options.refs !== null) {
@@ -1973,7 +1966,6 @@ class App {
     return hash !== undefined && this.search?.matchSet.has(hash) === true;
   }
 
-  /** Index of a loaded commit in the history; undefined when not loaded. */
   private position(hash: string): number | undefined {
     this.commitIndex ??= new Map(this.commits.map((c, i) => [c.hash, i]));
     return this.commitIndex.get(hash);
@@ -2024,8 +2016,9 @@ class App {
   }
 
   /**
-   * Shows why the repository cannot be changed, else the operation in progress or what one left behind. It is said politely when it says
-   * something new, unless the host notified it: VS Code reads that notification out.
+   * Shows why the repository cannot be changed, else the operation in progress or what one left
+   * behind. It is said politely when it says something new, unless the host notified it: VS Code
+   * reads that notification out.
    */
   private updateBanner(): void {
     const op = this.operation;
@@ -2720,7 +2713,6 @@ class App {
     note.append(include);
   }
 
-  /** Height of the space open under the selected row. */
   private gapHeight(): number {
     return this.expanded && this.selected >= 0 ? this.gap : 0;
   }
@@ -3654,7 +3646,6 @@ class App {
     const subject = stash ? stashLabel(stash).text : first;
     const body = rest.join('\n').trim();
 
-    // The commit's text in one column, the change in the other (side by side on wide lists).
     const main = el('div', 'details-main');
     main.append(
       stash ? this.stashByline(d, stash) : this.byline(d),
@@ -3769,7 +3760,6 @@ class App {
     };
   }
 
-  /** The commit of a loaded row, by hash. */
   private commitOf(hash: string): Commit | undefined {
     const row = this.list[this.indexOf(hash)];
     return row?.kind === 'commit' ? row.commit : undefined;
@@ -4283,7 +4273,6 @@ class App {
       const rows = tree.querySelectorAll('li:not([hidden])').length;
       const rowHeight = tree.querySelector<HTMLElement>('li:not([hidden])')?.offsetHeight || 22;
       const area = files.clientWidth - parseFloat(getComputedStyle(files).paddingLeft);
-      // A column is as wide as the widest row, within the files' room.
       const columnWidth = Math.min(Math.max(this.treeNatural, TREE_MIN), Math.floor(area));
       layout.style.setProperty('--tree-col-w', `${columnWidth}px`);
       const byWidth = Math.min(
@@ -5167,7 +5156,6 @@ function fadeRightEdge(ctx: CanvasRenderingContext2D, width: number, height: num
   ctx.restore();
 }
 
-/** A badge; it and each remote name in it carry their own menu context. */
 /** A `className` element (a span by default) of `text`, with each occurrence of `needle` (any case) in a <mark>. */
 function marked(className: string, text: string, needle: string | undefined, tag: 'span' | 'h2' = 'span'): HTMLElement {
   const e = el(tag, className);

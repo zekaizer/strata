@@ -92,7 +92,6 @@ describe('perf: find', function () {
       )!;
     await jump('far jump to a commit near the end (message)', unique.h, unique.subject);
 
-    // Escape while loading down to the oldest commit.
     await panel.simulate({ kind: 'click', selector: '.codicon-refresh' });
     await until('reloaded', (s) => s.laidOut >= 300 && !s.restoring);
     await panel.simulate({ kind: 'type', selector: '.find-input', text: oldest.slice(0, 12) });

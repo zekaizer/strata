@@ -37,15 +37,13 @@ export function buildFileTree<F extends FileChange>(files: readonly F[]): FileTr
     }
     folder.children.push({ kind: 'file', name: `${parts[parts.length - 1]!}${dir ? '/' : ''}`, change });
   }
-  return finish(root.children);
+  return compactAndSort(root.children);
 }
 
-/** Compacts single-child folder chains and sorts each level. */
-function finish<F extends FileChange>(nodes: FileTreeNode<F>[]): FileTreeNode<F>[] {
+function compactAndSort<F extends FileChange>(nodes: FileTreeNode<F>[]): FileTreeNode<F>[] {
   const out = nodes.map((n): FileTreeNode<F> => {
     if (n.kind === 'file') return n;
     let folder = n;
-    // A folder whose only child is a folder reads as one entry, like VS Code's compact folders.
     for (
       let only = folder.children[0];
       folder.children.length === 1 && only?.kind === 'folder';
@@ -53,7 +51,7 @@ function finish<F extends FileChange>(nodes: FileTreeNode<F>[]): FileTreeNode<F>
     ) {
       folder = { ...only, name: `${folder.name}/${only.name}` };
     }
-    return { ...folder, children: finish(folder.children) };
+    return { ...folder, children: compactAndSort(folder.children) };
   });
   return out.sort((a, b) => (a.kind === b.kind ? collator.compare(a.name, b.name) : a.kind === 'folder' ? -1 : 1));
 }

@@ -97,8 +97,9 @@ export const OPERATION_LABEL: Record<OperationKind, string> = {
 
 /**
  * Why Strata cannot change the repository, else the operation in progress, else the draft of the
- * reorder mode, else what an operation left behind; undefined when there is nothing to say. Read-only comes first: every button of the other
- * banners runs a command that is off (design system, Banner).
+ * reorder mode, else what an operation left behind; undefined when there is nothing to say.
+ * Read-only comes first: every button of the other banners runs a command that is off (design
+ * system, Banner).
  */
 export function bannerOf(
   operation: OperationState | undefined,

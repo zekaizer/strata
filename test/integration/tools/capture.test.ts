@@ -39,7 +39,6 @@ after(() => setTheme('dark'));
       await setTheme(id);
       const panel = (await strata()).show();
       await panel.whenReady();
-      // Show a merge commit with its details, the most informative state.
       await waitFor('history', async () => (await panel.probe()).done);
       await panel.simulate({ kind: 'clickRow', index: 1 });
       await waitFor('details', async () => (await panel.probe()).detailsShown !== undefined);
@@ -96,7 +95,6 @@ after(() => setTheme('dark'));
     await gitRetry('remote', 'add', 'origin', 'https://example.com/origin.git');
     await gitRetry('update-ref', 'refs/remotes/origin/main', 'main');
     await gitRetry('branch', '--quiet', '--set-upstream-to=origin/main', 'main');
-    // A rebase stopped at a conflict, for the banner.
     await gitRetry('switch', '--quiet', '--create', 'strata-onto', 'main');
     write('conflict.txt', 'onto\n');
     await gitRetry('add', 'conflict.txt');
@@ -120,14 +118,12 @@ after(() => setTheme('dark'));
       await panel.whenReady();
       await waitFor('banner', async () => (await panel.probe()).banner !== undefined);
       await mkdir(shotDir!, { recursive: true });
-      // The banner, with an operation running.
       const host = panel.flowHost();
       await host.runner.run(host, 'Rebasing strata-topic onto strata-onto', false, async () => {
         await waitFor('busy', async () => (await panel.probe()).listBusy);
         await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
         await screenshot(join(shotDir!, `workflow-${id}.png`));
       });
-      // A right-click on a remote name: its menu, or the nearest that has one, outlined.
       await panel.simulate({ kind: 'contextMenu', selector: '.badge-remote-name' });
       await delay(800);
       await screenshot(join(shotDir!, `workflow-menu-${id}.png`));
@@ -145,7 +141,6 @@ after(() => setTheme('dark'));
       const panel = (await strata()).show();
       await panel.whenReady();
       await waitFor('history', async () => (await panel.probe()).done);
-      // A rule in the badge filter and the toolbar's count, with the next pattern previewed.
       await panel.simulate({ kind: 'click', selector: '.badge-filter-button' });
       await panel.simulate({ kind: 'type', selector: '.badge-pattern', text: 'cross/*' });
       await panel.simulate({ kind: 'click', selector: '.badge-hide' });
@@ -154,7 +149,6 @@ after(() => setTheme('dark'));
       await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
       await mkdir(shotDir!, { recursive: true });
       await screenshot(join(shotDir!, `hidden-badges-${id}.png`));
-      // The ref card of a commit whose badge the rule hides.
       await panel.simulate({ kind: 'key', key: 'Escape' });
       const x = git('rev-parse', 'cross/x');
       const row = Number(Object.entries((await panel.probe()).rowHashes).find(([, h]) => h === x)?.[0]);
@@ -332,7 +326,6 @@ const menuDir = process.env['STRATA_MENU_SHOT_DIR'];
       await setTheme(id);
       const panel = (await strata()).show();
       await panel.whenReady();
-      // The row above HEAD, unfolded into its groups.
       await waitFor('changes row', async () => {
         const s = await panel.probe();
         return s.done && Object.values(s.rowHashes).includes('changes');

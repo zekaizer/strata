@@ -833,8 +833,10 @@ export const resetPick = (
       : 'How should the reset treat your files?',
 });
 
-/** `held`: where Strata stashed the uncommitted changes (stashLabel), when it did. */
-/** `reason`: what git said, for a stop without conflicts. */
+/**
+ * `held`: where Strata stashed the uncommitted changes (stashLabel), when it did. `reason`: what
+ * git said, for a stop without conflicts.
+ */
 export function stoppedMessage(
   kind: OperationKind,
   step: { current: number; total: number } | undefined,

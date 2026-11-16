@@ -43,7 +43,6 @@ export async function readCommitDetails(git: string, cwd: string, hash: string, 
   ];
   const parentList = parents ? parents.split(' ') : [];
   const from = base ?? parentList[0];
-  // Independent of each other: run the parents' subjects and the file list together.
   const [subjects, files] = await Promise.all([
     parentSubjects(git, cwd, parentList),
     readChangedFiles(git, cwd, hash, from),

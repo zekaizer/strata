@@ -153,7 +153,6 @@ export class GraphPanel implements vscode.Disposable {
     return this.session().hideBadge(ref);
   }
 
-  /** Opens the graph's badge filter with `pattern` typed. */
   /** Tells the message editor how its Save ended, when a repository is shown. */
   editEnded(applied: boolean): void {
     this.controller?.shown?.editEnded(applied);
@@ -359,11 +358,10 @@ export class GraphPanel implements vscode.Disposable {
   }
 
   private post(m: HostToWebview): void {
-    // Fails once the webview is disposed; replies to it no longer matter.
     try {
       this.panel.webview.postMessage(m).then(undefined, () => undefined);
     } catch {
-      // disposed
+      // Fails once the webview is disposed; replies to it no longer matter.
     }
   }
 

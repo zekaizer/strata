@@ -59,7 +59,6 @@ describe('details layout', () => {
     const d = await openDetails(1);
     assert.ok(d.treeWidth >= 150, `tree width ${d.treeWidth}`);
     assert.equal(d.stacked, !d.sideBySide);
-    // Opening the meta table changes the height only, never the arrangement.
     await panel.simulate({ kind: 'click', selector: '.byline-toggle' });
     const open = await waitFor('meta open', async () => {
       const p = await panel.probe();

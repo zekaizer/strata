@@ -1,6 +1,5 @@
 import { el } from './format.ts';
 
-/** Typing settles this long before the search runs. */
 const DEBOUNCE_MS = 200;
 
 export interface FindWidgetEvents {
@@ -11,7 +10,6 @@ export interface FindWidgetEvents {
   /** Escape: stops the jump in progress, if any; true when it did, and the widget stays open. */
   onStop(): boolean;
   onClose(): void;
-  /** The match list was shown or hidden. */
   onList(shown: boolean): void;
 }
 
@@ -163,7 +161,6 @@ export class FindWidget {
     this.fill.style.width = done === null || done === undefined ? '' : `${Math.round(Math.min(1, done) * 100)}%`;
   }
 
-  /** Runs the pending query at once, if the input changed since the last one. */
   private settle(): void {
     clearTimeout(this.timer);
     this.timer = undefined;

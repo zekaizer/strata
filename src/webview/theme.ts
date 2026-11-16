@@ -5,7 +5,6 @@ import { lanePalette } from '../core/palette.ts';
 export interface GraphTheme {
   lanes: string[];
   foreground: string;
-  /** Ring around the HEAD commit. */
   headRing: string;
   /** Stash nodes and spines; an autostash left behind uses the warning color. */
   stash: string;
@@ -17,11 +16,7 @@ export interface GraphTheme {
 
 const read = (style: CSSStyleDeclaration, name: string) => style.getPropertyValue(name).trim();
 
-/**
- * Resolves graph colors from the VS Code theme variables currently applied to
- * the document. The lane palette is computed against the actual editor,
- * selection and hover backgrounds, so any theme gets readable lines.
- */
+/** Reads the VS Code theme variables currently applied to the document. */
 export function resolveGraphTheme(): GraphTheme {
   const style = getComputedStyle(document.documentElement);
   const highContrast =

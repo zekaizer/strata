@@ -22,7 +22,6 @@ const git = (...a: string[]) => execFileSync('git', a, { cwd: scratch, env: clea
 git('-c', 'init.defaultBranch=main', 'init', '--quiet');
 git('-c', 'user.name=Outer', '-c', 'user.email=outer@example.com', 'commit', '--quiet', '--allow-empty', '-m', 'outer');
 
-/** Every file and directory of the scratch repository with its size and modification time. */
 function snapshot(): Map<string, string> {
   const out = new Map<string, string>();
   for (const e of readdirSync(scratch, { recursive: true, withFileTypes: true })) {

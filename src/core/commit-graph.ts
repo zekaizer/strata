@@ -3,7 +3,7 @@ export const GRAPH_HEADER_BYTES = 8 + 256 * 12;
 
 /**
  * Chunk ids listed in a commit-graph file's chunk table, read from its first bytes; empty when
- * they are not a commit-graph header. 'BIDX' and 'BDAT' are its changed-path (Bloom) filters.
+ * they are not a commit-graph header.
  */
 export function graphChunks(header: Uint8Array): string[] {
   const ascii = (at: number) => String.fromCharCode(...header.subarray(at, at + 4));

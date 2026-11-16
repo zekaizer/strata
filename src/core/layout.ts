@@ -92,7 +92,6 @@ export function layoutPage(
   const rows: Row[] = [];
   const spans: Span[] = [];
 
-  /** Lanes waiting for each commit, ascending. */
   const waiting = new Map<string, number[]>();
   const wait = (hash: string, lane: number) => {
     const list = waiting.get(hash);
@@ -154,7 +153,6 @@ export function layoutPage(
     waiting.delete(commit.hash);
     const incoming: Edge[] = arriving.map((l) => ({ lane: l, color: colors[l]! }));
 
-    // Lanes converging into this commit end here; the node keeps the leftmost, or column 0 as HEAD.
     for (const l of arriving) {
       if (rowIndex - since[l]! >= 2) spans.push({ lane: l, color: colors[l]!, from: since[l]!, to: rowIndex });
       lanes[l] = null;

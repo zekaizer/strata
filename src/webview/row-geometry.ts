@@ -78,10 +78,6 @@ export function pageFrom(g: RowGeometry, index: number, view: number, dir: 1 | -
   return Math.max(0, Math.min(index - 1, fits));
 }
 
-/**
- * Row that Home (the first) or End (the last of the `count` rows in the list) selects; undefined
- * for any other key and in an empty list.
- */
 export function edgeRow(key: string, count: number): number | undefined {
   if (count === 0) return undefined;
   return key === 'Home' ? 0 : key === 'End' ? count - 1 : undefined;

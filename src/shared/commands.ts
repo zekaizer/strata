@@ -296,7 +296,6 @@ export const COMMANDS = {
     writes: true,
   },
 
-  /** Another worktree (its part in a branch's badge, or its badge on a detached HEAD). */
   'strata.worktree.show': {
     title: 'Show Worktree in Graph',
     menus: [{ section: 'worktree', group: '1_open@1', when: 'strataShown' }],

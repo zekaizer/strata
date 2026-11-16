@@ -470,7 +470,6 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     if (this.snapshot && refs.headBranch !== this.snapshot.headBranch) this.setUndo(undefined);
     this.snapshot = refs;
     this.stashList = stashes;
-    // Drop filtered refs that no longer exist; with none left, show everything.
     const known = new Set(refs.refs.map((r) => r.name));
     const kept = this.options.refs?.filter((r) => known.has(r)) ?? [];
     this.options = { ...this.options, refs: kept.length > 0 ? kept : null };

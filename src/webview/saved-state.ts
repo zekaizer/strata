@@ -34,8 +34,7 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 /**
  * The saved state, and the view a state saved before views were kept per repository describes:
- * that view belongs to the repository the panel shows first. The state is the webview's own, but
- * an extension host restart hands it back through the host.
+ * that view belongs to the repository the panel shows first.
  */
 export function parseSaved(raw: unknown): { state: SavedState; unkeyed: RepoView | undefined } {
   if (!isObject(raw)) return { state: {}, unkeyed: undefined };
@@ -64,7 +63,6 @@ export function viewOf(state: SavedState, root: string): RepoView | undefined {
   return state.repos?.find(([r]) => r === root)?.[1];
 }
 
-/** The saved view options of each repository, by root. */
 export function savedOptions(state: SavedState): Record<string, ViewOptions> {
   const all: Record<string, ViewOptions> = {};
   for (const [root, view] of state.repos ?? []) if (view.options) all[root] = view.options;

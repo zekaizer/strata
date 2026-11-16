@@ -1,4 +1,3 @@
-/** User settings for test VS Code instances: a deterministic, uncluttered window. */
 export const testSettings = {
   'workbench.startupEditor': 'none',
   'workbench.secondarySideBar.defaultVisibility': 'hidden',

@@ -79,7 +79,6 @@ export function nextMatch(
     return back ? matches.at(-1) : done ? matches[0] : undefined;
   }
   const key = (h: string) => pos(h) ?? Infinity;
-  // Ties (matches not loaded yet) keep the order of `matches`.
   let best: string | undefined;
   for (const m of matches) {
     const k = key(m);
@@ -117,7 +116,6 @@ export function outOfView(
   const short = (name: string) => name.replace(/^refs\/(heads|remotes|tags)\//, '');
   const shown = (name: string) =>
     view.refs === null ? /^refs\/(heads|remotes)\//.test(name) : view.refs.includes(name);
-  // A path history leaves out what does not change its paths, whatever else would show it.
   if (view.path && reachedBy.some(shown))
     return {
       text: `it does not change ${view.path.paths[0]}.`,
