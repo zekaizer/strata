@@ -91,12 +91,14 @@ to get started and the requirements.
 - Changed files are listed as a folder tree; click a folder (or use ←/→) to fold
   it.
 - Click a file in the details to open its diff against the parent commit. Hover
-  a file (or focus it) for **Old**, the compare icon and **New**: the file as it
-  was before the commit, the diff, and the file as of the commit. Added files
-  only have **New** and deleted files only **Old**. <kbd>Alt</kbd> opens to the
-  side. With a file focused, ↑/↓ move between files, <kbd>Enter</kbd> opens it,
-  and <kbd>O</kbd>, <kbd>D</kbd>, <kbd>N</kbd> open the old version, the diff
-  and the new version.
+  a file (or focus it) for **Old**, the compare icon, **New** and the open-file
+  icon: the file as it was before the commit, the diff, the file as of the
+  commit, and the file as it is now in the working tree. Added files only have
+  **New** and deleted files only **Old**, besides the open-file icon.
+  <kbd>Alt</kbd> opens to the side. With a file focused, ↑/↓ move between
+  files, <kbd>Enter</kbd> opens it, and <kbd>O</kbd>, <kbd>D</kbd>,
+  <kbd>N</kbd>, <kbd>F</kbd> open the old version, the diff, the new version
+  and the working tree's file.
 - Right-click a file for open and copy actions: **Copy Relative Path** (relative
   to the repository root), **Copy Path**, and for renamed files **Copy Old
   Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> (<kbd>⌥⇧⌘C</kbd>

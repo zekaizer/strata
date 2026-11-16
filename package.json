@@ -121,6 +121,11 @@
         "category": "Strata"
       },
       {
+        "command": "strata.file.openFile",
+        "title": "Open File",
+        "category": "Strata"
+      },
+      {
         "command": "strata.file.openToSide",
         "title": "Open to the Side",
         "category": "Strata"
@@ -575,9 +580,14 @@
           "group": "1_open@3"
         },
         {
-          "command": "strata.file.openToSide",
+          "command": "strata.file.openFile",
           "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
           "group": "1_open@4"
+        },
+        {
+          "command": "strata.file.openToSide",
+          "when": "webviewId == 'strata.graph' && webviewSection == 'file'",
+          "group": "1_open@5"
         },
         {
           "command": "strata.file.copyRelativePath",
@@ -990,6 +1000,10 @@
         },
         {
           "command": "strata.file.openNew",
+          "when": "false"
+        },
+        {
+          "command": "strata.file.openFile",
           "when": "false"
         },
         {

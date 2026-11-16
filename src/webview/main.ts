@@ -222,17 +222,25 @@ const LIST_MORE = 100;
 
 /**
  * Old and New are words: no icon says "this file before / after the commit" without being read as
- * history or navigation. The diff keeps Source Control's "Open Changes" icon.
+ * history or navigation. The rest take Source Control's icons (FILE_VIEW_ICON).
  */
-const FILE_VIEW_LABEL: Record<FileView, string | undefined> = { before: 'Old', diff: undefined, after: 'New' };
-/** Buttons follow time: before, the change, after. */
-const FILE_VIEW_ORDER: readonly FileView[] = ['before', 'diff', 'after'];
+const FILE_VIEW_LABEL: Record<FileView, string | undefined> = {
+  before: 'Old',
+  diff: undefined,
+  after: 'New',
+  current: undefined,
+};
+/** Buttons follow time: before, the change, after, now. */
+const FILE_VIEW_ORDER: readonly FileView[] = ['before', 'diff', 'after', 'current'];
+/** Source Control's "Open Changes" and "Open File" icons. */
+const FILE_VIEW_ICON: Partial<Record<FileView, string>> = { diff: 'git-compare', current: 'go-to-file' };
 const FILE_VIEW_TITLE: Record<FileView, string> = {
   diff: 'Open changes',
   before: 'Open old version (before this commit)',
   after: 'Open new version (as of this commit)',
+  current: 'Open file (as it is in the working tree)',
 };
-const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N' };
+const FILE_VIEW_KEY: Record<FileView, string> = { diff: 'D', before: 'O', after: 'N', current: 'F' };
 
 /** Right padding of a row (main.css .row). */
 const ROW_PADDING = 12;
@@ -4481,12 +4489,14 @@ class App {
     // The row opens the first view that exists: the diff, or the only side an added/deleted file has.
     const primary = views[0]!;
     const actions = el('span', 'file-actions');
-    for (const view of FILE_VIEW_ORDER.filter((v) => views.includes(v))) {
-      const label = FILE_VIEW_LABEL[view];
+    // The working tree's file goes with every change: the commit's views say nothing about it.
+    const offered: FileView[] = [...views, 'current'];
+    for (const view of FILE_VIEW_ORDER.filter((v) => offered.includes(v))) {
+      const icon = FILE_VIEW_ICON[view];
       const b = el(
         'button',
-        `inline-button file-action file-action-${view}${label === undefined ? ' codicon codicon-git-compare' : ''}`,
-        label,
+        `inline-button file-action file-action-${view}${icon === undefined ? '' : ` codicon codicon-${icon}`}`,
+        FILE_VIEW_LABEL[view],
       );
       b.tabIndex = -1;
       const title =
@@ -4508,7 +4518,7 @@ class App {
     });
     // Arrow keys are handled by the tree (onTreeKey).
     li.addEventListener('keydown', (e) => {
-      const keyed = views.find((v) => FILE_VIEW_KEY[v] === e.key.toUpperCase() && !e.ctrlKey && !e.metaKey);
+      const keyed = offered.find((v) => FILE_VIEW_KEY[v] === e.key.toUpperCase() && !e.ctrlKey && !e.metaKey);
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         open(primary, e.altKey);

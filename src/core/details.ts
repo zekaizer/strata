@@ -38,8 +38,8 @@ export interface StashDetails {
   untracked: { hash: string; files: FileChange[] } | undefined;
 }
 
-/** How a changed file can be opened. */
-export type FileView = 'diff' | 'before' | 'after';
+/** How a changed file can be opened; `current` is the file in the working tree, offered for every file. */
+export type FileView = 'diff' | 'before' | 'after' | 'current';
 
 /**
  * Views that exist for a change: an added file has no "before" and nothing

@@ -244,6 +244,7 @@ const handlers = (env: FlowEnv): Handlers => ({
   'strata.file.openOld': open('before', false),
   'strata.file.openCompared': open('before', false),
   'strata.file.openNew': open('after', false),
+  'strata.file.openFile': open('current', false),
   'strata.file.openToSide': open('primary', true),
   'strata.file.copyRelativePath': copy((ctx) => fileArg(ctx).file.path, DONE.copied),
   'strata.file.copyPath': copy((ctx) => panel().absolutePath(fileArg(ctx).file.path), DONE.copied),

@@ -1047,7 +1047,8 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     for (const p of [file.path, file.oldPath]) {
       if (p !== undefined && !isRepoPath(p)) throw new Error(`invalid path: ${p}`);
     }
-    if (!fileViews(file, base).includes(m.view)) throw new Error(`cannot open ${m.view} of ${file.path}`);
+    if (m.view !== 'current' && !fileViews(file, base).includes(m.view))
+      throw new Error(`cannot open ${m.view} of ${file.path}`);
     const uri = (path: string) => vscode.Uri.joinPath(this.repo.rootUri, ...path.split('/'));
     const git = (path: string, ref: string) => {
       const u = this.api.toGitUri(uri(path), ref);
@@ -1066,6 +1067,13 @@ export class RepoSession implements vscode.Disposable, FlowHost {
     };
     // fileViews guarantees a base for 'diff' and 'before'.
     switch (m.view) {
+      case 'current': {
+        // A file no longer there opens as VS Code's "could not be found" editor, which offers to create it.
+        const u = uri(file.path);
+        opened.add(u.toString());
+        await vscode.commands.executeCommand('vscode.open', u, options);
+        break;
+      }
       case 'after':
         await vscode.commands.executeCommand('vscode.open', git(file.path, hash), options, `${name} (${short(hash)})`);
         break;

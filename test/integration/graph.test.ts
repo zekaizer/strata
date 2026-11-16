@@ -151,6 +151,13 @@ describe('graph panel', () => {
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   });
 
+  it('opens the file as it is in the working tree', async () => {
+    const { file, input } = await openView('Search ranking', 'current');
+    assert.ok(input instanceof vscode.TabInputText);
+    assert.equal(input.uri.toString(), vscode.Uri.joinPath(vscode.Uri.file(workspaceRoot()), file).toString());
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+
   it('offers only the views that exist for added files', async () => {
     await selectCommit('Search index');
     const { fileViews } = await panel.probe();
