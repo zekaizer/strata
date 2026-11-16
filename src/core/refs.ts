@@ -85,17 +85,17 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
     return undefined;
   };
   const locals = new Map(refs.filter((r) => r.kind === 'branch').map((r) => [r.short, r]));
-  const owner = new Map<Ref, Ref>();
+  const localOf = new Map<Ref, Ref>();
   for (const r of refs) {
     if (r.kind !== 'remote') continue;
     const branch = branchOf(r);
     const local = branch === undefined ? undefined : locals.get(branch);
-    if (local?.upstream === r.name) owner.set(r, local);
+    if (local?.upstream === r.name) localOf.set(r, local);
   }
   const out: BadgeRefs[] = [];
   const byLocal = new Map<Ref, BadgeRefs>();
   for (const r of refs) {
-    const local = owner.get(r) ?? r;
+    const local = localOf.get(r) ?? r;
     let badge = byLocal.get(local);
     if (!badge) {
       badge = { ref: local, remote: undefined };
