@@ -1,7 +1,6 @@
 import type { Row, SpanIndex } from '../core/layout.ts';
 import type { ListRow } from '../core/stash.ts';
 
-/** Highest column a row's node or its own lines use, plus one. */
 export function rowWidth(row: Row): number {
   let w = row.lane;
   for (const e of row.incoming) w = Math.max(w, e.lane);
@@ -31,7 +30,6 @@ export function lanesUsed(
   return lanes;
 }
 
-/** Highest column of the node and of the lines entering it from above, plus one. */
 function enteringWidth(row: Row): number {
   let w = row.lane;
   for (const e of row.incoming) w = Math.max(w, e.lane);

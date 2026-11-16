@@ -33,7 +33,6 @@
   --icon-size: 16px;
   --icon-size-sm: 12px;
 
-  /* Sizes */
   --control-height: 22px;
   --chip-height: 14px;
   --toolbar-height: 32px;
@@ -51,7 +50,6 @@
   /* Elevation: popovers and cards, as VS Code's hover widget. */
   --shadow: 0 2px 8px var(--vscode-widget-shadow, rgb(0 0 0 / 30%));
 
-  /* Interaction */
   --focus-ring: 1px solid var(--color-focus);
   /* High contrast themes outline what the pointer is on; transparent elsewhere. */
   --hover-outline: 1px dashed var(--vscode-contrastActiveBorder, transparent);
@@ -61,7 +59,6 @@
   /* Motion: body.vscode-reduce-motion and prefers-reduced-motion turn the animations off. */
   --duration-landing: 1.2s;
 
-  /* Semantic colors */
   --color-fg: var(--vscode-foreground);
   --color-muted: var(--vscode-descriptionForeground);
   --color-subdued: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);

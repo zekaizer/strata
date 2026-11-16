@@ -204,7 +204,6 @@ function reset(): void {
   toWebview({ type: 'repositories', repos: repositories() });
 }
 
-/** The draft the host would open the editor with on `hashes` (oldest first): the scenario's own facts. */
 /** The facts of the reorder mode, as the host reads them for HEAD's first-parent line. */
 function sendReorderFacts(): void {
   const head = data?.refs.head;

@@ -2,7 +2,6 @@ import { execFileSync } from 'node:child_process';
 import { RepoBuilder, type Mark } from './builder.ts';
 import { addBranchyStashes } from './stashes.ts';
 
-/** 30 commits on main. */
 export function linear(): RepoBuilder {
   const b = new RepoBuilder();
   for (let i = 1; i <= 30; i++) b.commit('main', `Linear commit ${i}`);

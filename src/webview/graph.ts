@@ -28,7 +28,6 @@ const STASH_NODE = 7;
 /** How far a displaced stash's spine reaches below its node: it joins nothing. */
 const DANGLING = ROW_HEIGHT / 4;
 
-/** A stash's node sits in the gap left of the column of the commit its row is drawn above. */
 const stashX = (anchor: Row) => laneX(anchor.lane) - LANE_WIDTH / 2;
 
 type StashRow = Extract<ListRow, { kind: 'stash' }>;
@@ -99,7 +98,6 @@ export function drawGraph(
     stroke(ctx, spineColor(r), path);
     ctx.restore();
   };
-  /** The uncommitted changes' spine straight down HEAD's column from `from` to `to`. */
   const headSpine = (r: ChangesRow, x: number, from: number, to: number) => {
     spine(
       r,
@@ -196,7 +194,6 @@ export function drawGraph(
       );
   }
 
-  // Lines leaving the row above the gap continue straight through it to the row below.
   const above = gap && gap.after >= first && gap.after < end ? list[gap.after] : undefined;
   const aboveRow = above && rows[above.row];
   if (gap && above && aboveRow) {

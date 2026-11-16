@@ -78,7 +78,6 @@ describe('operation banner', () => {
 
   it('runs the command of a button, and selects the commit a link names', async () => {
     await panel.simulate({ kind: 'click', selector: '.banner-button.primary' });
-    // Resolve... with one conflicted file opens it.
     const conflict = vscode.Uri.file(join(workspaceRoot(), 'conflict.txt')).toString();
     const tab = await waitFor('conflict.txt opened', () => {
       const t = vscode.window.tabGroups.activeTabGroup.activeTab;

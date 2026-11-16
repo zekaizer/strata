@@ -75,7 +75,6 @@ function expectedEdges(commits: readonly LayoutCommit[]): Set<string> {
   return new Set(commits.flatMap((c) => [...new Set(c.parents)].map((p) => `${c.hash}>${present.has(p) ? p : '…'}`)));
 }
 
-/** Structural invariants of a single row. */
 function checkRow(row: FullRow, i: number): void {
   const cols = [row.lane, ...row.passes.map((e) => e.lane)];
   assert.equal(new Set(cols).size, cols.length, `row ${i}: node overlaps a pass-through line`);

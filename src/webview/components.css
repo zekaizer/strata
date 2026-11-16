@@ -127,7 +127,6 @@ body:not(.hover-off) :is(.tool-button:not(.active), .icon-button:not(.active), .
   outline-offset: -1px;
 }
 
-/* A toggle that is on. */
 :is(.tool-button, .icon-button).active,
 body:not(.hover-off) :is(.tool-button, .icon-button).active:hover {
   background: var(--vscode-inputOption-activeBackground);
@@ -220,7 +219,6 @@ body.vscode-high-contrast .link-button {
   border-radius: var(--radius-sm);
 }
 
-/* Text input. */
 .field {
   box-sizing: border-box;
   height: var(--control-height);
@@ -285,7 +283,6 @@ body.vscode-high-contrast .link-button {
   outline-offset: 1px;
 }
 
-/* The title of a group of rows. */
 .section-title {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-strong);
@@ -493,7 +490,6 @@ body.vscode-reduce-motion .popover-progress.indeterminate .popover-progress-bar 
   color: var(--color-muted);
 }
 
-/* Link buttons. */
 .popover-actions {
   display: flex;
   gap: var(--space-12);
@@ -787,7 +783,6 @@ body.vscode-reduce-motion :is(.toolbar-status.busy, .banner-busy)::before {
   }
 }
 
-/* Visually hidden, still read by screen readers. */
 .sr-only {
   position: absolute;
   width: 1px;

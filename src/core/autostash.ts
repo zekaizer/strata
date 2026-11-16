@@ -39,7 +39,6 @@ export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: Aut
   if (dirty.files === 0) return none;
   switch (op) {
     case 'resetHard':
-      // Strata never pops this stash: popping would undo the reset. Offered first even with "never".
       return {
         choices: ['stash', 'discard'],
         mechanism: 'safety',

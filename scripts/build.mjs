@@ -1,5 +1,3 @@
-// Single esbuild entry point for every bundle: extension host, webview, worker,
-// integration tests and the webview playground.
 import * as esbuild from 'esbuild';
 import { execFileSync } from 'node:child_process';
 import { cp, mkdir, readdir, rm } from 'node:fs/promises';

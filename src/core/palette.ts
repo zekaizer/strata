@@ -21,8 +21,7 @@ const CHROMA = 0.15;
 /**
  * Lane colors as hex, one per entry of LANE_HUES. Lightness starts from a
  * fixed value per background polarity and moves away from the background until
- * every color meets `minContrast` against every surface, so custom themes get
- * a palette as readable as the built-in ones.
+ * every color meets `minContrast` against every surface.
  */
 export function lanePalette({ background, surfaces, minContrast }: PaletteInput): string[] {
   const all = [background, ...surfaces];

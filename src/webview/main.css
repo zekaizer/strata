@@ -105,7 +105,6 @@ body {
   right: auto;
 }
 
-/* Two lines: name and path. */
 .repo-row {
   padding-block: var(--space-2);
 }
@@ -1535,7 +1534,6 @@ body.vscode-high-contrast .row.moved {
   flex: none;
 }
 
-/* The gap a dragged row would drop into. */
 .drop-indicator {
   position: absolute;
   left: 0;

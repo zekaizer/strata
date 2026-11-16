@@ -144,7 +144,6 @@ export class RepoSwitcher {
         row.title = r.root;
         const text = el('span', 'repo-row-text');
         text.append(el('span', 'repo-row-name', r.name));
-        // A repository at the top of its workspace folder is where its name says.
         if (r.path !== r.name) text.append(el('span', 'repo-row-path', r.path));
         const head = el('span', 'repo-row-head');
         if (r.head !== undefined) head.append(codicon('git-branch'), el('span', 'repo-row-branch', r.head));

@@ -85,7 +85,6 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
     return undefined;
   };
   const locals = new Map(refs.filter((r) => r.kind === 'branch').map((r) => [r.short, r]));
-  /** Remote-tracking ref -> the local branch it merges into. */
   const owner = new Map<Ref, Ref>();
   for (const r of refs) {
     if (r.kind !== 'remote') continue;

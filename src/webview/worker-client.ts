@@ -16,7 +16,6 @@ export async function startWorker(src: string): Promise<Worker> {
   }
 }
 
-/** Round-trips a ping to prove the worker runs. */
 export function ping(worker: Worker, timeoutMs = 5000): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {

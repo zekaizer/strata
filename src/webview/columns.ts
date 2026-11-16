@@ -1,8 +1,6 @@
 /** Natural widths in px of the optional row columns and the fixed parts around the subject. */
 export interface ColumnWidths {
-  /** Width of the list. */
   list: number;
-  /** Graph column. */
   graph: number;
   /** Widest author name (capped), widest date, the short hash. */
   author: number;
@@ -20,7 +18,6 @@ export interface ColumnChoice {
   hash: boolean;
 }
 
-/** The order the columns give way in while the subject is narrower than it wants; the hash stays. */
 const GIVE_WAY = ['date', 'author'] as const;
 
 /**

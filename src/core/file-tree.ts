@@ -40,12 +40,10 @@ export function buildFileTree<F extends FileChange>(files: readonly F[]): FileTr
   return finish(root.children);
 }
 
-/** Compacts single-child folder chains and sorts each level. */
 function finish<F extends FileChange>(nodes: FileTreeNode<F>[]): FileTreeNode<F>[] {
   const out = nodes.map((n): FileTreeNode<F> => {
     if (n.kind === 'file') return n;
     let folder = n;
-    // A folder whose only child is a folder reads as one entry, like VS Code's compact folders.
     for (
       let only = folder.children[0];
       folder.children.length === 1 && only?.kind === 'folder';

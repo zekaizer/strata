@@ -72,7 +72,6 @@ export class RepoBuilder {
     return this;
   }
 
-  /** Creates or moves a ref (branch, remote-tracking branch, ...) to `target`. */
   ref(name: string, target: Mark): this {
     this.refs.set(qualify(name), target);
     return this;
@@ -107,7 +106,6 @@ export class RepoBuilder {
     return m;
   }
 
-  /** The fast-import stream. Exposed for tests. */
   stream(): string {
     const out: string[] = [];
     const data = (s: string) => `data ${Buffer.byteLength(s)}\n${s}\n`;

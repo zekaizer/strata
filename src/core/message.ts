@@ -27,7 +27,6 @@ export function reflowBody(body: string): string {
     } else {
       out.push(line);
     }
-    // Only a long prose line can have been wrapped onto the next one.
     joinable = !fenced && !isLaidOut(line) && !FENCE.test(line) && line.length >= WRAPPED_MIN;
   }
   return out.join('\n');
