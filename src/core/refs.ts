@@ -1,3 +1,4 @@
+import { remoteBranch } from './remote-branch.ts';
 import type { WorktreeInfo } from './worktrees.ts';
 
 export type RefKind = 'branch' | 'remote' | 'tag';
@@ -72,23 +73,11 @@ export interface BadgeRefs {
  * member. Differently named upstreams and other remotes' same-named branches stay separate.
  */
 export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): BadgeRefs[] {
-  // Longest remote first: refs/remotes/team/x/main is remote "team/x", not "team" with branch "x/main".
-  const known = [...remotes].sort((a, b) => b.length - a.length);
-  const branchOf = (r: Ref): string | undefined => {
-    for (const remote of known) {
-      const prefix = `refs/remotes/${remote}/`;
-      if (r.name.startsWith(prefix)) {
-        const branch = r.name.slice(prefix.length);
-        return branch === 'HEAD' ? undefined : branch;
-      }
-    }
-    return undefined;
-  };
   const locals = new Map(refs.filter((r) => r.kind === 'branch').map((r) => [r.short, r]));
   const localOf = new Map<Ref, Ref>();
   for (const r of refs) {
     if (r.kind !== 'remote') continue;
-    const branch = branchOf(r);
+    const branch = remoteBranch(r.name, remotes)?.branch;
     const local = branch === undefined ? undefined : locals.get(branch);
     if (local?.upstream === r.name) localOf.set(r, local);
   }
