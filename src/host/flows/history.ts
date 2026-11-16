@@ -365,24 +365,41 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | PullRun =
  * Merge's Squash: stages the changes of `count` commits up to `from` on HEAD, which stays where it
  * is, for Source Control to commit (VS Code fills its message from SQUASH_MSG). No Undo: what it
  * changed is the index, which the user may have changed again since.
+ *
+ * `stash`: Strata stashes around it, not git: before 2.38, git applies its autostash over the
+ * conflicts a squash stops at.
  */
-async function squash(host: FlowHost, src: Source, h: Head, from: string, count: number, autostash: boolean) {
-  const label = HISTORY_DOING.squashing(src.name, h.name);
-  const op = { kind: 'merge', ref: src.arg, mode: 'squash', autostash } as const;
+async function squash(host: FlowHost, src: Source, h: Head, from: string, count: number, stash: boolean) {
+  const op = { kind: 'merge', ref: src.arg, mode: 'squash', autostash: false } as const;
   const r = await runMovingUntracked(
     host,
-    label,
+    HISTORY_DOING.squashing(src.name, h.name),
     IN_THE_WAY_OF.merge(src.name),
-    (exec) => execAutostash(host, exec, op),
+    (exec): Promise<Restored> =>
+      stash
+        ? stashAround(host, exec, autostashMessage('squash', `of ${src.name} into ${h.name}`), () => exec(op))
+        : exec(op).then(() => ({ kind: 'none' })),
     [h.expect, ...sourceExpect(src, from)],
   ).catch(async (e: unknown) => {
     // git keeps no merge in progress for a squash, so its conflicts are not a stop runStoppable sees.
     const conflicts = e instanceof GitOpError ? await readUnmerged(host.git, host.cwd) : [];
     if (conflicts.length === 0) throw e;
+    // stashAround left the stash it pushed in the list, on top.
+    const top = stash ? await readStashTop(host.git, host.cwd) : undefined;
+    const kept = top === undefined ? undefined : await readStash(host.git, host.cwd, top);
     await host.refresh(h.hash);
     host.setUndo(undefined);
-    notify(host, 'warning', squashConflicted(src.name, h.name, conflicts, autostash), ['Resolve...', OPEN_SCM], (a) =>
-      a === OPEN_SCM ? openScm() : resolveConflicts(host, conflicts),
+    const actions = ['Resolve...', OPEN_SCM, ...(kept ? ['Show Stash'] : [])];
+    notify(
+      host,
+      'warning',
+      squashConflicted(src.name, h.name, conflicts, kept && stashLabel(kept.message)),
+      actions,
+      async (a) => {
+        if (a === OPEN_SCM) await openScm();
+        else if (a === 'Show Stash' && kept) host.reveal(kept.hash);
+        else await resolveConflicts(host, conflicts);
+      },
     );
     return undefined;
   });

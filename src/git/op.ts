@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { readFile, rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { classifyGitError, parseProgress, type GitErrorKind } from '../core/git-error.ts';
-import { argv, env, type MergeMode, type Operation } from '../core/operations.ts';
+import { argv, env, type Operation } from '../core/operations.ts';
 import { gitEnv } from './env.ts';
 import { runGit } from './run.ts';
 
@@ -95,7 +95,7 @@ export async function runOperation(
   try {
     return await runGitOp(git, cwd, argv(op), { ...opts, env: { ...opts.env, ...env(op) } });
   } catch (e) {
-    if (op.kind === 'merge' && op.autostash && e instanceof GitOpError && !(await squashConflicted(git, cwd, op.mode)))
+    if (op.kind === 'merge' && op.autostash && e instanceof GitOpError)
       await applyLeftMergeAutostash(git, cwd, opts.env === undefined ? {} : { env: opts.env });
     throw e;
   }
@@ -125,14 +125,6 @@ async function applyLeftMergeAutostash(git: string, cwd: string, opts: Pick<OpOp
     runGitOp(git, cwd, ['stash', 'store', '--quiet', '--message', 'autostash', stash], opts),
   );
   await rm(file!, { force: true });
-}
-
-/**
- * A squash that stopped at conflicts: git keeps its autostash in MERGE_AUTOSTASH, with no merge in
- * progress, for the commit that ends the squash to apply.
- */
-async function squashConflicted(git: string, cwd: string, mode: MergeMode): Promise<boolean> {
-  return mode === 'squash' && (await runGit(git, cwd, ['ls-files', '--unmerged'])) !== '';
 }
 
 /** Kills git and what it started (ssh, hooks): they share its process group. */

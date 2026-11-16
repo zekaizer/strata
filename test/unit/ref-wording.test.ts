@@ -153,6 +153,7 @@ describe("Strata's autostash entries", () => {
     assert.equal(strataAutostashOf(`On main: ${message}`), 'cherryPick');
     assert.equal(strataAutostashOf(`On feature/x: ${autostashMessage('switch', "to 'b'")}`), 'switch');
     assert.equal(strataAutostashOf(`On main: ${autostashMessage('revert', 'a1b2c3d')}`), 'revert');
+    assert.equal(strataAutostashOf(`On main: ${autostashMessage('squash', "of 'b' into 'main'")}`), 'squash');
     assert.equal(strataAutostashOf('autostash'), undefined, "git's own autostash");
     assert.equal(strataAutostashOf('On main: my work'), undefined);
     assert.equal(strataAutostashOf('WIP on main: abc1234 Strata autostash: cherry pick x'), undefined);

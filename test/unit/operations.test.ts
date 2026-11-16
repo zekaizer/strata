@@ -224,22 +224,6 @@ describe('operations', () => {
     assert.equal(run(d, 'diff', '--name-only'), 'f.txt', 'changes came back unstaged');
   });
 
-  it('leaves the autostash of a squash that conflicts for the commit that ends it', async () => {
-    const d = repo();
-    run(d, 'checkout', '--quiet', '-b', 'side', 'main~1');
-    writeFileSync(join(d, 'f.txt'), 'side\n');
-    run(d, 'commit', '--quiet', '-am', 'side');
-    run(d, 'checkout', '--quiet', 'main');
-    writeFileSync(join(d, 'g.txt'), 'staged\n');
-    run(d, 'add', 'g.txt');
-    await assert.rejects(op(d, { kind: 'merge', ref: 'side', mode: 'squash', autostash: true }), GitOpError);
-    assert.equal(run(d, 'diff', '--name-only', '--diff-filter=U'), 'f.txt');
-    assert.ok(!existsSync(join(d, 'g.txt')), 'stashed, not applied over the conflict');
-    writeFileSync(join(d, 'f.txt'), 'resolved\n');
-    run(d, 'commit', '--quiet', '-am', 'squashed');
-    assert.equal(readFileSync(join(d, 'g.txt'), 'utf8'), 'staged\n', 'back with the commit');
-  });
-
   it('rebases only the current branch, replaying merged commits one by one, whatever the config', async () => {
     const d = repo();
     const commitOn = (branch: string, from: string, file: string) => {

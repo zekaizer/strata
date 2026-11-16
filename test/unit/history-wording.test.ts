@@ -87,12 +87,12 @@ describe('wording of history operations', () => {
       "Staged the changes of 2 commits from 'topic' on 'main': commit them to finish the squash",
     );
     assert.equal(
-      squashConflicted("'topic'", "'main'", ['a.txt'], false),
+      squashConflicted("'topic'", "'main'", ['a.txt'], undefined),
       "Squashing 'topic' into 'main' stopped at conflicts in a.txt. Resolve them, then commit to finish the squash.",
     );
     assert.equal(
-      squashConflicted("'topic'", "'main'", ['a.txt', 'b.txt'], true),
-      "Squashing 'topic' into 'main' stopped at conflicts in a.txt and b.txt. Resolve them, then commit to finish the squash; your uncommitted changes come back with that commit.",
+      squashConflicted("'topic'", "'main'", ['a.txt', 'b.txt'], 'stash "x"'),
+      "Squashing 'topic' into 'main' stopped at conflicts in a.txt and b.txt. Resolve them, then commit to finish the squash. Your uncommitted changes are in stash \"x\".",
     );
   });
 

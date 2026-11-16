@@ -667,11 +667,16 @@ export function mergeConfirmation(
 }
 
 /**
- * A squash that stopped at conflicts, which git does not keep as a merge in progress. `stashed`:
- * git holds the uncommitted changes it stashed until the commit that ends the squash.
+ * A squash that stopped at conflicts, which git does not keep as a merge in progress. `stash`: as
+ * stashLabel names the one holding the uncommitted changes stashed for it.
  */
-export const squashConflicted = (src: string, into: string, paths: readonly string[], stashed: boolean): string =>
-  `Squashing ${src} into ${into} stopped at conflicts in ${fileList(paths)}. Resolve them, then commit to finish the squash${stashed ? '; your uncommitted changes come back with that commit' : ''}.`;
+export const squashConflicted = (
+  src: string,
+  into: string,
+  paths: readonly string[],
+  stash: string | undefined,
+): string =>
+  `Squashing ${src} into ${into} stopped at conflicts in ${fileList(paths)}. Resolve them, then commit to finish the squash.${stash === undefined ? '' : ` Your uncommitted changes are in ${stash}.`}`;
 
 export interface RebaseFacts {
   /** A rebase from the menu, or the rebase of a pull, which the title calls Pull. */

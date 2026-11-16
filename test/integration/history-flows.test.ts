@@ -197,7 +197,20 @@ describe('history operations', () => {
     assert.deepEqual(done.actions, ['Open Source Control View']);
   });
 
-  it('says how to finish a squash that stopped at conflicts, keeping its stash for the commit', async () => {
+  it('squashes over staged changes through its own stash, giving them back', async () => {
+    branchWith('strata-side', 'main~1', 'side.txt', 'side\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Stash & Squash');
+    await run('strata.merge', branchMenu('strata-side', git('rev-parse', 'strata-side')));
+    assert.equal(git('diff', '--cached', '--name-only'), 'side.txt');
+    assert.equal(read('NOTES.md'), 'staged\n');
+    assert.equal(git('stash', 'list'), '');
+  });
+
+  it('says how to finish a squash that stopped at conflicts, leaving the changes it stashed in the stash', async () => {
     const pick = await conflicting();
     write('NOTES.md', 'staged\n');
     git('add', 'NOTES.md');
@@ -206,17 +219,22 @@ describe('history operations', () => {
     await run('strata.merge', branchMenu('strata-pick', pick));
     assert.deepEqual(ui.first('confirm').buttons, ['Stash & Create Merge Commit', 'Stash & Squash']);
     assert.equal(git('diff', '--name-only', '--diff-filter=U'), 'main.txt');
+    const stashed = "Strata: changes set aside for the squash of 'strata-pick' into 'main'";
+    assert.equal(git('stash', 'list', '--format=%s'), `On main: ${stashed}`);
+    assert.equal(
+      git('status', '--porcelain', '--untracked-files=no'),
+      'UU main.txt',
+      'not restored over the conflicts',
+    );
     const told = ui.of('notify').at(-1);
     assert.ok(told, 'told');
     assert.equal(told.level, 'warning');
     assert.equal(
       told.message,
-      "Squashing 'strata-pick' into 'main' stopped at conflicts in main.txt. Resolve them, then commit to finish the squash; your uncommitted changes come back with that commit.",
+      `Squashing 'strata-pick' into 'main' stopped at conflicts in main.txt. Resolve them, then commit to finish the squash. Your uncommitted changes are in stash "${stashed}".`,
     );
-    assert.deepEqual(told.actions, ['Resolve...', 'Open Source Control View']);
-    write('main.txt', 'resolved\n');
-    git('commit', '--quiet', '-am', 'Squashed');
-    assert.equal(read('NOTES.md'), 'staged\n');
+    assert.deepEqual(told.actions, ['Resolve...', 'Open Source Control View', 'Show Stash']);
+    assert.equal((await leftover())?.kind, 'pendingStash');
   });
 
   it('gives staged changes back staged after a cherry pick stashed around them', async () => {

@@ -86,12 +86,17 @@ export function resolveStashChoices(op: StashOp, dirty: DirtyFacts, setting: Aut
   }
 }
 
-/** Operations Strata stashes around itself (git has no autostash for them). */
-export type ExplicitStashOp = 'switch' | 'cherryPick' | 'revert';
+/** Operations Strata stashes around itself (git has none for them, or one it cannot rely on: squash). */
+export type ExplicitStashOp = 'switch' | 'cherryPick' | 'revert' | 'squash';
 
 /** What Strata's stash messages start with, new first: older versions wrote "Strata autostash: ". */
 const PREFIXES = ['Strata: changes set aside for the ', 'Strata autostash: '];
-const EXPLICIT: Record<ExplicitStashOp, string> = { switch: 'switch', cherryPick: 'cherry pick', revert: 'revert' };
+const EXPLICIT: Record<ExplicitStashOp, string> = {
+  switch: 'switch',
+  cherryPick: 'cherry pick',
+  revert: 'revert',
+  squash: 'squash',
+};
 
 /** The message of a stash Strata pushes before `op` and pops after it; `target` names what it was for. */
 export const autostashMessage = (op: ExplicitStashOp, target: string): string =>

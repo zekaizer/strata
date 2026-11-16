@@ -323,12 +323,13 @@ it found.
   would bring on the current branch without committing them or moving it;
   commit them in Source Control, which fills in git's squash message. A squash
   that stops at conflicts leaves no merge in progress: resolve them and
-  commit. A squash has no Undo; discard the staged changes instead. Strata
-  asks first only when there is a choice to make, when Undo couldn't bring
-  back what is lost, or when commits already pushed would be rewritten; the
-  confirmation says what happens to which commits. A merge commit can be
-  cherry picked relative to the parent you choose, and reverted, which undoes
-  the commits it brought in from its other parents.
+  commit; uncommitted changes Strata stashed for it stay in that stash. A
+  squash has no Undo; discard the staged changes instead. Strata asks first
+  only when there is a choice to make, when Undo couldn't bring back what is
+  lost, or when commits already pushed would be rewritten; the confirmation
+  says what happens to which commits. A merge commit can be cherry picked
+  relative to the parent you choose, and reverted, which undoes the commits it
+  brought in from its other parents.
 - **Several commits at once:** Revert is also in the menu of a Shift-click
   selection (see below) and undoes all of its commits in one run of git,
   newest first, in one new commit each. Strata asks at most once, the result

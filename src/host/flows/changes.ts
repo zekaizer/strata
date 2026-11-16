@@ -112,7 +112,8 @@ export async function restore(host: FlowHost, exec: Exec, hash: string, pop = tr
 /**
  * Runs `body` between Strata's own `stash push` and a pop of the stash that push created. A body
  * that stops (fails, leaving its operation in progress) leaves the stash to that operation, whose
- * Continue, Abort or Skip restores it (the error propagates); one that fails otherwise gets the
+ * Continue, Abort or Skip restores it (the error propagates); one that leaves conflicts with no
+ * operation in progress (a squash) leaves it in the stash list; one that fails otherwise gets the
  * changes back at once.
  */
 export async function stashAround(
@@ -133,8 +134,9 @@ export async function stashAround(
     if (created !== undefined) {
       const stopped = e instanceof GitOpError ? await readOperationState(host.git, host.cwd) : undefined;
       if (stopped) await host.leftovers.pushed(created, stopped.applying);
-      // Refused before changing anything: give the changes back now.
-      else await restore(host, exec, created).catch(() => undefined);
+      // Refused before changing anything: give the changes back now. Over conflicts git refuses that.
+      else if (!(e instanceof GitOpError) || (await readUnmerged(host.git, host.cwd)).length === 0)
+        await restore(host, exec, created).catch(() => undefined);
     }
     throw e;
   }
