@@ -43,6 +43,7 @@ const confirmations: [string, w.Confirmation | undefined][] = [
       modes: [
         { mode: 'ff', choices: resolveStashChoices('merge', dirty, 'gitConfig').choices },
         { mode: 'noFastForward', choices: ['stash'] },
+        { mode: 'squash', choices: ['stash'] },
       ],
     }),
   ],

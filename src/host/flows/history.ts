@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import { autostashMessage, type StashChoice } from '../../core/autostash.ts';
 import { MORE_HISTORY, type MergeMode, type Operation, type ResetMode } from '../../core/operations.ts';
 import { CONFLICTS_SHOWN, type OperationState } from '../../core/repo-state.ts';
@@ -21,6 +22,7 @@ import {
   mergeConfirmation,
   messageEditsConfirmation,
   NOTHING_TO_REVERT,
+  OPEN_SCM,
   type MergeParents,
   opName,
   pickConfirmation,
@@ -34,6 +36,7 @@ import {
   shallowConfirmation,
   shallowEdgeConfirmation,
   skipConfirmation,
+  squashConflicted,
   stashButtons,
   stashLabel,
   stillConflicted,
@@ -57,6 +60,7 @@ import {
   readResetFacts,
   readStash,
   readStashTop,
+  readUnmerged,
   readUntrackedAt,
   readUpstream,
   type CommitInfo,
@@ -295,10 +299,13 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | PullRun =
   const c = await changes(host, op, [base ?? h.hash, from.hash]);
   const facts = { op, src: src.name, into: h.name, short: from.short, count, canFastForward };
   const preferred: MergeMode = mergeFf === false ? 'noFastForward' : 'ff';
-  let mode = preferred;
+  let mode: MergeMode = preferred;
   let autostash = false;
-  const modes: MergeMode[] =
-    !pull && canFastForward ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff'] : [preferred];
+  // A pull merges as git pull would; the menu also offers the other way of recording it, and a squash.
+  const recorded: MergeMode[] = canFastForward
+    ? [preferred, preferred === 'ff' ? 'noFastForward' : 'ff']
+    : ['noFastForward'];
+  const modes: MergeMode[] = pull ? [preferred] : [...recorded, 'squash'];
   const options = modes.map((m) => ({
     mode: m,
     choices: c.resolve({ ...c.dirty, fastForward: canFastForward && m === 'ff' }),
@@ -322,11 +329,12 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | PullRun =
     const picked = mergeAnswer(answer);
     mode = picked.mode;
     autostash = picked.choice === 'stash';
-  } else if (!pull && canFastForward) {
+  } else if (!pull) {
     const answer = await host.ui.confirm(mergeConfirmation(facts, mergeFf));
     if (answer === undefined) return;
     mode = answer;
-  } else mode = pull ? 'ff' : preferred;
+  } else mode = 'ff';
+  if (mode === 'squash') return squash(host, src, h, from.hash, count, autostash);
   const r = await runStoppable(host, () =>
     runMovingUntracked(
       host,
@@ -352,6 +360,43 @@ export async function merge(host: FlowHost, src: Source, via: 'menu' | PullRun =
     ...(pull?.next ? { next: pull.next } : {}),
   });
 }
+
+/**
+ * Merge's Squash: stages the changes of `count` commits up to `from` on HEAD, which stays where it
+ * is, for Source Control to commit (VS Code fills its message from SQUASH_MSG). No Undo: what it
+ * changed is the index, which the user may have changed again since.
+ */
+async function squash(host: FlowHost, src: Source, h: Head, from: string, count: number, autostash: boolean) {
+  const label = HISTORY_DOING.squashing(src.name, h.name);
+  const op = { kind: 'merge', ref: src.arg, mode: 'squash', autostash } as const;
+  const r = await runMovingUntracked(
+    host,
+    label,
+    IN_THE_WAY_OF.merge(src.name),
+    (exec) => execAutostash(host, exec, op),
+    [h.expect, ...sourceExpect(src, from)],
+  ).catch(async (e: unknown) => {
+    // git keeps no merge in progress for a squash, so its conflicts are not a stop runStoppable sees.
+    const conflicts = e instanceof GitOpError ? await readUnmerged(host.git, host.cwd) : [];
+    if (conflicts.length === 0) throw e;
+    await host.refresh(h.hash);
+    host.setUndo(undefined);
+    notify(host, 'warning', squashConflicted(src.name, h.name, conflicts, autostash), ['Resolve...', OPEN_SCM], (a) =>
+      a === OPEN_SCM ? openScm() : resolveConflicts(host, conflicts),
+    );
+    return undefined;
+  });
+  if (!r) return;
+  await finishRestoring(host, r, {
+    message: HISTORY_DONE.squashed(src.name, h.name, count),
+    focus: h.hash,
+    next: { action: OPEN_SCM, run: openScm },
+  });
+}
+
+const openScm = async () => {
+  await vscode.commands.executeCommand('workbench.view.scm');
+};
 
 /** `from`: replay only the commits after it (a pull's fork point), not every commit `onto` lacks. */
 export async function rebase(

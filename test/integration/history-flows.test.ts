@@ -62,7 +62,7 @@ describe('history operations', () => {
     await run('strata.merge', branchMenu('strata-ahead', ahead));
     const asked = ui.first('confirm');
     assert.equal(asked.message, "Merge 'strata-ahead' into 'main'?");
-    assert.deepEqual(asked.buttons, ['Fast-Forward', 'Create Merge Commit']);
+    assert.deepEqual(asked.buttons, ['Fast-Forward', 'Create Merge Commit', 'Squash']);
     assert.equal(git('rev-parse', 'main'), ahead);
     await selected(panel(), ahead);
     assert.equal(ui.of('notify').at(-1)?.message, `Fast-forwarded 'main' to ${git('rev-parse', '--short', ahead)}`);
@@ -126,7 +126,7 @@ describe('history operations', () => {
     await reload(panel());
     ui.press('Create Merge Commit');
     await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
-    assert.deepEqual(ui.first('confirm').buttons, ['Fast-Forward', 'Create Merge Commit']);
+    assert.deepEqual(ui.first('confirm').buttons, ['Fast-Forward', 'Create Merge Commit', 'Squash']);
     assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-ahead'));
     assert.equal(read('NOTES.md'), 'mine\n');
     assert.equal(git('stash', 'list'), '');
@@ -139,7 +139,11 @@ describe('history operations', () => {
     await reload(panel());
     ui.press('Stash & Fast-Forward');
     await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
-    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Fast-Forward', 'Stash & Create Merge Commit']);
+    assert.deepEqual(ui.first('confirm').buttons, [
+      'Stash & Fast-Forward',
+      'Stash & Create Merge Commit',
+      'Stash & Squash',
+    ]);
     assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
     assert.equal(git('stash', 'list', '--format=%gs'), 'autostash', 'the restore conflicted: git keeps the stash');
   });
@@ -153,7 +157,7 @@ describe('history operations', () => {
     ui.press('Fast-Forward Keeping Changes');
     await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
     const asked = ui.first('confirm');
-    assert.deepEqual(asked.buttons, ['Fast-Forward Keeping Changes', 'Stash & Create Merge Commit']);
+    assert.deepEqual(asked.buttons, ['Fast-Forward Keeping Changes', 'Stash & Create Merge Commit', 'Stash & Squash']);
     assert.match(asked.detail, /\nUncommitted changes in 1 file \(1 staged\); untracked files stay in place\.$/);
     assert.equal(git('rev-parse', 'HEAD'), git('rev-parse', 'strata-ahead'));
     assert.equal(git('diff', '--cached', '--name-only'), 'NOTES.md', 'still staged');
@@ -165,10 +169,53 @@ describe('history operations', () => {
     write('NOTES.md', 'staged\n');
     git('add', 'NOTES.md');
     await reload(panel());
-    ui.press('Stash & Merge');
+    ui.press('Stash & Create Merge Commit');
     await run('strata.merge', branchMenu('strata-side', git('rev-parse', 'strata-side')));
-    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Merge']);
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Create Merge Commit', 'Stash & Squash']);
     assert.equal(git('rev-parse', 'HEAD^2'), git('rev-parse', 'strata-side'));
+    assert.equal(read('NOTES.md'), 'staged\n');
+  });
+
+  it('squashes a branch into staged changes for Source Control to commit, HEAD left where it is', async () => {
+    branchWith('strata-ahead', 'main', 'ahead.txt', 'ahead\n');
+    commitFile('more.txt', 'more\n');
+    git('switch', '--quiet', 'main');
+    write('NOTES.md', 'mine\n');
+    await reload(panel());
+    const before = git('rev-parse', 'HEAD');
+    ui.press('Squash');
+    await run('strata.merge', branchMenu('strata-ahead', git('rev-parse', 'strata-ahead')));
+    assert.equal(git('rev-parse', 'HEAD'), before);
+    assert.equal(git('diff', '--cached', '--name-only'), 'ahead.txt\nmore.txt');
+    assert.equal(read('NOTES.md'), 'mine\n', 'untouched changes stay in place');
+    const done = ui.of('notify').at(-1);
+    assert.ok(done, 'told');
+    assert.equal(
+      done.message,
+      "Staged the changes of 2 commits from 'strata-ahead' on 'main': commit them to finish the squash",
+    );
+    assert.deepEqual(done.actions, ['Open Source Control View']);
+  });
+
+  it('says how to finish a squash that stopped at conflicts, keeping its stash for the commit', async () => {
+    const pick = await conflicting();
+    write('NOTES.md', 'staged\n');
+    git('add', 'NOTES.md');
+    await reload(panel());
+    ui.press('Stash & Squash');
+    await run('strata.merge', branchMenu('strata-pick', pick));
+    assert.deepEqual(ui.first('confirm').buttons, ['Stash & Create Merge Commit', 'Stash & Squash']);
+    assert.equal(git('diff', '--name-only', '--diff-filter=U'), 'main.txt');
+    const told = ui.of('notify').at(-1);
+    assert.ok(told, 'told');
+    assert.equal(told.level, 'warning');
+    assert.equal(
+      told.message,
+      "Squashing 'strata-pick' into 'main' stopped at conflicts in main.txt. Resolve them, then commit to finish the squash; your uncommitted changes come back with that commit.",
+    );
+    assert.deepEqual(told.actions, ['Resolve...', 'Open Source Control View']);
+    write('main.txt', 'resolved\n');
+    git('commit', '--quiet', '-am', 'Squashed');
     assert.equal(read('NOTES.md'), 'staged\n');
   });
 
@@ -466,6 +513,7 @@ describe('history operations', () => {
     await run('strata.undo');
     assert.equal(git('rev-parse', 'HEAD'), before);
 
+    ui.press('Create Merge Commit');
     await run('strata.merge', branchMenu('strata-pick', picked));
     assert.equal(api().contextValue('strata.operation'), 'merge');
     write('main.txt', 'resolved\n');
@@ -499,7 +547,7 @@ describe('history operations', () => {
     await reload(panel());
     write('NOTES.md', 'mine\n');
     git('add', 'NOTES.md');
-    ui.press('Stash & Merge');
+    ui.press('Stash & Create Merge Commit');
     await run('strata.merge', branchMenu('strata-topic', git('rev-parse', 'strata-topic')));
     assert.equal(api().contextValue('strata.operation'), 'merge');
     write('main.txt', 'resolved\n');
@@ -517,7 +565,7 @@ describe('history operations', () => {
     await reload(panel());
     write('NOTES.md', 'mine\n');
     git('add', 'NOTES.md');
-    ui.press('Stash & Merge');
+    ui.press('Stash & Create Merge Commit');
     await run('strata.merge', branchMenu('strata-topic', git('rev-parse', 'strata-topic')));
     assert.equal(api().contextValue('strata.operation'), 'merge');
     write('NOTES.md', 'edited while resolving\n');
@@ -1020,7 +1068,7 @@ describe('history operations', () => {
     assert.deepEqual(
       ui.of('confirm').map((q) => [q.message, q.buttons]),
       [
-        ["Merge 'strata-ahead' into 'main'?", ['Fast-Forward', 'Create Merge Commit']],
+        ["Merge 'strata-ahead' into 'main'?", ['Fast-Forward', 'Create Merge Commit', 'Squash']],
         [
           "This clone is shallow: 'main' and 'strata-ahead' have no common commit in it.",
           ['Fetch More History', 'Fetch Full History'],

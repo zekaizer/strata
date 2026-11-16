@@ -600,7 +600,11 @@ export interface MergeFacts {
 /** A dirty merge's answer: how it records the result, and what it does with the changes. */
 export type MergeStashAnswer = `${MergeMode}+${StashChoice}`;
 
-const MODE_VERB: Record<MergeMode, string> = { ff: 'Fast-Forward', noFastForward: 'Create Merge Commit' };
+const MODE_VERB: Record<MergeMode, string> = {
+  ff: 'Fast-Forward',
+  noFastForward: 'Create Merge Commit',
+  squash: 'Squash',
+};
 
 export function mergeAnswer(id: MergeStashAnswer): { mode: MergeMode; choice: StashChoice } {
   const [mode, choice] = id.split('+') as [MergeMode, StashChoice];
@@ -608,8 +612,9 @@ export function mergeAnswer(id: MergeStashAnswer): { mode: MergeMode; choice: St
 }
 
 /**
- * Clean (a merge that can fast-forward): Fast-Forward or Create Merge Commit, merge commit first
- * when merge.ff is false. Dirty: for each of `modes`, in order, a button per answer about the changes.
+ * Clean (a merge from the menu): Fast-Forward or Create Merge Commit (merge commit first when
+ * merge.ff is false; only that when it cannot fast-forward), then Squash. Dirty: for each of
+ * `modes`, in order, a button per answer about the changes.
  */
 export function mergeConfirmation(f: MergeFacts, mergeFf: boolean | undefined): Confirmation<MergeMode>;
 export function mergeConfirmation(
@@ -626,30 +631,47 @@ export function mergeConfirmation(
   const fastForwards = `${f.into} fast-forwards to ${f.short} (${commits}).`;
   const records = `Creates a merge commit on ${f.into} with ${commits} from ${f.src}.`;
   const either = `Brings ${commits} from ${f.src} (${f.short}) into ${f.into}.`;
+  const squashes = `A squash stages their changes on ${f.into}, for you to commit.`;
   const message = `${VERB[f.op]} ${f.src} into ${f.into}?`;
   if (dirty) {
     const [only] = dirty.modes;
-    const both = dirty.modes.length > 1;
+    const several = dirty.modes.length > 1;
+    const squash = dirty.modes.some((m) => m.mode === 'squash');
     return {
       level: 'info',
       message,
-      detail: [both ? either : f.canFastForward && only?.mode === 'ff' ? fastForwards : records, dirty.section].join(
-        '\n',
-      ),
+      detail: [
+        several ? either : f.canFastForward && only?.mode === 'ff' ? fastForwards : records,
+        ...(squash ? [squashes] : []),
+        dirty.section,
+      ].join('\n'),
       buttons: dirty.modes.flatMap(({ mode, choices }) =>
-        stashButtons(f.op, choices, both ? MODE_VERB[mode] : undefined).map((b) => ({
+        stashButtons(f.op, choices, several ? MODE_VERB[mode] : undefined).map((b) => ({
           id: `${mode}+${b.id}` as const,
           label: b.label,
         })),
       ),
     };
   }
-  const both: { id: MergeMode; label: string }[] = [
-    { id: 'ff', label: 'Fast-Forward' },
-    { id: 'noFastForward', label: 'Create Merge Commit' },
-  ];
-  return { level: 'info', message, detail: either, buttons: mergeFf === false ? both.reverse() : both };
+  const modes: MergeMode[] = !f.canFastForward
+    ? ['noFastForward']
+    : mergeFf === false
+      ? ['noFastForward', 'ff']
+      : ['ff', 'noFastForward'];
+  return {
+    level: 'info',
+    message,
+    detail: `${either}\n${squashes}`,
+    buttons: [...modes, 'squash' as const].map((id) => ({ id, label: MODE_VERB[id] })),
+  };
 }
+
+/**
+ * A squash that stopped at conflicts, which git does not keep as a merge in progress. `stashed`:
+ * git holds the uncommitted changes it stashed until the commit that ends the squash.
+ */
+export const squashConflicted = (src: string, into: string, paths: readonly string[], stashed: boolean): string =>
+  `Squashing ${src} into ${into} stopped at conflicts in ${fileList(paths)}. Resolve them, then commit to finish the squash${stashed ? '; your uncommitted changes come back with that commit' : ''}.`;
 
 export interface RebaseFacts {
   /** A rebase from the menu, or the rebase of a pull, which the title calls Pull. */
@@ -948,6 +970,8 @@ export function shallowEdgeConfirmation(short: string, path?: string): Confirmat
 export const HISTORY_DONE = {
   fastForwarded: (into: string, short: string): string => `Fast-forwarded ${into} to ${short}`,
   merged: (src: string, into: string): string => `Merged ${src} into ${into}`,
+  squashed: (src: string, into: string, count: number): string =>
+    `Staged the changes of ${plural(count, 'commit')} from ${src} on ${into}: commit them to finish the squash`,
   rebased: (branch: string, onto: string, count: number): string =>
     `Rebased ${branch} onto ${onto} (${plural(count, 'commit')})`,
   /** `what`: as pickedName names it. `already`: commits left out because `onto` had them. */
@@ -970,6 +994,7 @@ export const HISTORY_DONE = {
 
 export const HISTORY_DOING = {
   merging: (src: string, into: string): string => `Merging ${src} into ${into}`,
+  squashing: (src: string, into: string): string => `Squashing ${src} into ${into}`,
   rebasing: (branch: string, onto: string): string => `Rebasing ${branch} onto ${onto}`,
   picking: (short: string): string => `Cherry picking ${short}`,
   reverting: (short: string): string => `Reverting ${short}`,

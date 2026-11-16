@@ -315,16 +315,20 @@ it found.
   Checkout, Rename or Delete in its menu; when one is refused anyway (from the
   keyboard, or the worktree appeared meanwhile), the notification names the
   worktree and offers to show or open it, or to prune it and try again.
-- **History:** Merge into Current Branch (fast-forward or a merge commit),
-  Rebase Current Branch onto This, Cherry Pick, Revert, and Reset Current Branch
-  to Here in any of git's modes. When a merge can fast-forward, Fast-Forward
-  is the first button of the confirmation, unless `merge.ff` is false: then
-  Create Merge Commit is. Strata asks first only when there is a choice
-  to make, when Undo couldn't bring back what is lost, or when commits already
-  pushed would be rewritten; the confirmation says what happens to which
-  commits. A merge commit can be cherry picked relative to the parent you
-  choose, and reverted, which undoes the commits it brought in from its other
-  parents.
+- **History:** Merge into Current Branch (fast-forward, a merge commit or a
+  squash), Rebase Current Branch onto This, Cherry Pick, Revert, and Reset
+  Current Branch to Here in any of git's modes. When a merge can fast-forward,
+  Fast-Forward is the first button of the confirmation, unless `merge.ff` is
+  false: then Create Merge Commit is. **Squash** stages the changes the merge
+  would bring on the current branch without committing them or moving it;
+  commit them in Source Control, which fills in git's squash message. A squash
+  that stops at conflicts leaves no merge in progress: resolve them and
+  commit. A squash has no Undo; discard the staged changes instead. Strata
+  asks first only when there is a choice to make, when Undo couldn't bring
+  back what is lost, or when commits already pushed would be rewritten; the
+  confirmation says what happens to which commits. A merge commit can be
+  cherry picked relative to the parent you choose, and reverted, which undoes
+  the commits it brought in from its other parents.
 - **Several commits at once:** Revert is also in the menu of a Shift-click
   selection (see below) and undoes all of its commits in one run of git,
   newest first, in one new commit each. Strata asks at most once, the result

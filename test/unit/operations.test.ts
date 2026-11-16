@@ -208,6 +208,38 @@ describe('operations', () => {
     assert.equal(head(d), run(d, 'rev-parse', 'ahead'), 'fast-forwarded, not squashed or left uncommitted');
   });
 
+  it('squashes into staged changes, leaving HEAD where it is, whatever merge.ff says', async () => {
+    const d = repo();
+    run(d, 'checkout', '--quiet', '-b', 'ahead', 'main');
+    writeFileSync(join(d, 'h.txt'), 'h\n');
+    run(d, 'add', '.');
+    run(d, 'commit', '--quiet', '-m', 'ahead1');
+    run(d, 'checkout', '--quiet', 'main');
+    const before = head(d);
+    run(d, 'config', 'merge.ff', 'false');
+    appendFileSync(join(d, 'f.txt'), 'dirty\n');
+    await op(d, { kind: 'merge', ref: 'ahead', mode: 'squash', autostash: true });
+    assert.equal(head(d), before);
+    assert.equal(run(d, 'diff', '--cached', '--name-only'), 'h.txt');
+    assert.equal(run(d, 'diff', '--name-only'), 'f.txt', 'changes came back unstaged');
+  });
+
+  it('leaves the autostash of a squash that conflicts for the commit that ends it', async () => {
+    const d = repo();
+    run(d, 'checkout', '--quiet', '-b', 'side', 'main~1');
+    writeFileSync(join(d, 'f.txt'), 'side\n');
+    run(d, 'commit', '--quiet', '-am', 'side');
+    run(d, 'checkout', '--quiet', 'main');
+    writeFileSync(join(d, 'g.txt'), 'staged\n');
+    run(d, 'add', 'g.txt');
+    await assert.rejects(op(d, { kind: 'merge', ref: 'side', mode: 'squash', autostash: true }), GitOpError);
+    assert.equal(run(d, 'diff', '--name-only', '--diff-filter=U'), 'f.txt');
+    assert.ok(!existsSync(join(d, 'g.txt')), 'stashed, not applied over the conflict');
+    writeFileSync(join(d, 'f.txt'), 'resolved\n');
+    run(d, 'commit', '--quiet', '-am', 'squashed');
+    assert.equal(readFileSync(join(d, 'g.txt'), 'utf8'), 'staged\n', 'back with the commit');
+  });
+
   it('rebases only the current branch, replaying merged commits one by one, whatever the config', async () => {
     const d = repo();
     const commitOn = (branch: string, from: string, file: string) => {

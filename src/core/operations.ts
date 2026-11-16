@@ -11,8 +11,11 @@ export interface Ident {
 /** Reset modes, in increasing order of what they throw away. */
 export type ResetMode = 'soft' | 'mixed' | 'keep' | 'hard';
 
-/** How a merge records the result: fast-forward when it can, or always a merge commit. */
-export type MergeMode = 'ff' | 'noFastForward';
+/**
+ * How a merge records the result: fast-forward when it can, always a merge commit, or none
+ * (squash: the changes staged on HEAD, HEAD left where it is).
+ */
+export type MergeMode = 'ff' | 'noFastForward' | 'squash';
 
 /**
  * Every repository change Strata makes. Ids are validated commit ids, names pass refNameProblem,
@@ -187,6 +190,8 @@ export function argv(op: Operation): string[] {
     case 'deleteTag':
       return ['tag', '--delete', op.name];
     case 'merge':
+      // --ff: git refuses --squash with merge.ff false (as --no-ff).
+      if (op.mode === 'squash') return ['merge', '--squash', '--ff', ...autostash(op.autostash), op.ref];
       // Explicit, so merge.ff and branch.<b>.mergeOptions (--squash, --no-commit) never contradict the button.
       return [
         'merge',

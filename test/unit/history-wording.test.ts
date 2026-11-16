@@ -19,6 +19,7 @@ import {
   resetPick,
   shallowConfirmation,
   skipConfirmation,
+  squashConflicted,
   stillConflicted,
   stoppedMessage,
   type MergeFacts,
@@ -38,12 +39,61 @@ describe('wording of history operations', () => {
     canFastForward: true,
   };
 
-  it('offers fast-forward or a merge commit, merge commit first when merge.ff is false', () => {
+  const squashes = "A squash stages their changes on 'main', for you to commit.";
+
+  it('offers fast-forward, a merge commit or a squash, merge commit first when merge.ff is false', () => {
     const ff = mergeConfirmation(merge, undefined);
     assert.equal(ff.message, "Merge 'topic' into 'main'?");
-    assert.equal(ff.detail, "Brings 2 commits from 'topic' (abc1234) into 'main'.");
-    assert.deepEqual(labels(ff.buttons), ['Fast-Forward', 'Create Merge Commit']);
-    assert.deepEqual(labels(mergeConfirmation(merge, false).buttons), ['Create Merge Commit', 'Fast-Forward']);
+    assert.equal(ff.detail, `Brings 2 commits from 'topic' (abc1234) into 'main'.\n${squashes}`);
+    assert.deepEqual(labels(ff.buttons), ['Fast-Forward', 'Create Merge Commit', 'Squash']);
+    assert.deepEqual(labels(mergeConfirmation(merge, false).buttons), [
+      'Create Merge Commit',
+      'Fast-Forward',
+      'Squash',
+    ]);
+  });
+
+  it('offers a merge commit or a squash when the merge cannot fast-forward', () => {
+    const m = mergeConfirmation({ ...merge, canFastForward: false }, undefined);
+    assert.equal(m.detail, `Brings 2 commits from 'topic' (abc1234) into 'main'.\n${squashes}`);
+    assert.deepEqual(
+      m.buttons.map((b) => [b.id, b.label]),
+      [
+        ['noFastForward', 'Create Merge Commit'],
+        ['squash', 'Squash'],
+      ],
+    );
+  });
+
+  it('asks about uncommitted changes for a squash too', () => {
+    const d = mergeConfirmation({ ...merge, canFastForward: false }, undefined, {
+      section: 'Uncommitted changes: 1 file.',
+      modes: [
+        { mode: 'noFastForward', choices: ['stash'] },
+        { mode: 'squash', choices: ['stash'] },
+      ],
+    });
+    assert.equal(
+      d.detail,
+      `Brings 2 commits from 'topic' (abc1234) into 'main'.\n${squashes}\nUncommitted changes: 1 file.`,
+    );
+    assert.deepEqual(labels(d.buttons), ['Stash & Create Merge Commit', 'Stash & Squash']);
+    assert.deepEqual(mergeAnswer(d.buttons[1]!.id), { mode: 'squash', choice: 'stash' });
+  });
+
+  it('says what a squash left to do', () => {
+    assert.equal(
+      HISTORY_DONE.squashed("'topic'", "'main'", 2),
+      "Staged the changes of 2 commits from 'topic' on 'main': commit them to finish the squash",
+    );
+    assert.equal(
+      squashConflicted("'topic'", "'main'", ['a.txt'], false),
+      "Squashing 'topic' into 'main' stopped at conflicts in a.txt. Resolve them, then commit to finish the squash.",
+    );
+    assert.equal(
+      squashConflicted("'topic'", "'main'", ['a.txt', 'b.txt'], true),
+      "Squashing 'topic' into 'main' stopped at conflicts in a.txt and b.txt. Resolve them, then commit to finish the squash; your uncommitted changes come back with that commit.",
+    );
   });
 
   it('says how a merge with uncommitted changes records the result, and asks about the changes', () => {
