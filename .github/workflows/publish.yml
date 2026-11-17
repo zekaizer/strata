@@ -1,0 +1,89 @@
+name: Publish
+
+# Publishes to the Marketplace a VSIX that CI or the release workflow already built and checked; it is
+# not built again. The Marketplace's Trusted Publishing policy for this file authorizes it: no token is
+# stored. Run by hand only (docs/DEVELOPMENT.md, Releases).
+on:
+  workflow_dispatch:
+    inputs:
+      run:
+        description: CI run whose VSIX to publish as a pre-release. Empty, with no tag, takes the latest successful CI run on main.
+        required: false
+      tag:
+        description: Release tag whose attached VSIX to publish, instead of a CI build.
+        required: false
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+# The Marketplace refuses a version it has; two runs at once would race to it.
+concurrency: publish
+
+jobs:
+  publish:
+    name: Publish the VSIX to the Marketplace
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN: ${{ inputs.run }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      # Silences git's "default branch name" hint from checkout's `git init`.
+      - run: git config --global init.defaultBranch main
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      # For vsce, at the version package-lock.json pins.
+      - run: npm ci
+      - name: Download the VSIX
+        id: vsix
+        run: |
+          if [ -n "$RUN" ] && [ -n "$TAG" ]; then
+            echo "::error::Give a CI run or a release tag, not both"
+            exit 1
+          fi
+          mkdir vsix
+          if [ -n "$TAG" ]; then
+            gh release download "$TAG" --pattern 'strata-*.vsix' --dir vsix
+            echo "prerelease=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            if [ -z "$RUN" ]; then
+              RUN=$(gh run list --workflow ci.yml --branch main --event push --status success --limit 1 \
+                --json databaseId --jq '.[0].databaseId')
+            fi
+            # Only a CI build of main that passed: what CI checked is what is published.
+            built=$(gh run view "$RUN" --json workflowName,headBranch,event,conclusion \
+              --jq '"\(.workflowName) \(.headBranch) \(.event) \(.conclusion)"')
+            if [ "$built" != "CI main push success" ]; then
+              echo "::error::Run $RUN is not a successful CI run of a push to main: $built"
+              exit 1
+            fi
+            artifact=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN}/artifacts" \
+              --jq '.artifacts[] | select(.name | endswith(".vsix")) | select(.expired | not) | "\(.id) \(.name)"')
+            if [ -z "$artifact" ]; then
+              echo "::error::Run $RUN has no VSIX left (CI keeps them for 30 days)"
+              exit 1
+            fi
+            read -r id name <<< "$artifact"
+            # CI uploads the VSIX unzipped; this endpoint returns it as uploaded. `gh run download`
+            # would unpack it.
+            gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}/zip" > "vsix/${name}"
+          fi
+          files=(vsix/*.vsix)
+          if [ "${#files[@]}" != 1 ] || [ ! -f "${files[0]}" ]; then
+            echo "::error::Expected one VSIX, found: ${files[*]}"
+            exit 1
+          fi
+          echo "file=${files[0]}" >> "$GITHUB_OUTPUT"
+          echo "Publishing ${files[0]}" >> "$GITHUB_STEP_SUMMARY"
+      # The VSIX itself says whether it is a pre-release; with --packagePath, --pre-release only makes
+      # vsce refuse one that does not, so a CI build or GitHub pre-release never goes out as a release.
+      - run: >-
+          npx vsce publish --oidc --packagePath "${{ steps.vsix.outputs.file }}"
+          ${{ steps.vsix.outputs.prerelease == 'true' && '--pre-release' || '' }}

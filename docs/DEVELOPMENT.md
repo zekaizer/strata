@@ -207,8 +207,7 @@ those who switch to pre-release versions.
 Versions follow [ADR 4](adr/0004-version-numbers.md): a release has an even
 minor version and a pre-release an odd one, so the next release after `0.2.x`
 is `0.4.0`. The Marketplace takes numbers only, and never the same version
-twice. CI builds are pre-releases as they are: upload one to the Marketplace
-as a pre-release to offer it.
+twice. CI builds are pre-releases as they are: publish one to offer it.
 
 1. Set the version in `package.json` and `package-lock.json`
    (`npm version <x.y.z> --no-git-tag-version`), commit it as
@@ -222,10 +221,30 @@ as a pre-release to offer it.
    the tag, not at `main`. For a pre-release, pass `--prerelease` to
    `gh release create`. The workflow fails when the minor version does not
    fit: odd for a pre-release, even for a release.
-4. Upload that `.vsix` to the Marketplace by hand, at
-   https://marketplace.visualstudio.com/manage/publishers/zekaizer. Its display
-   name there is "Strata Git Graph": the Marketplace refuses a display name
-   another extension has.
+4. Publish it to the Marketplace: `gh workflow run publish.yml -f tag=v<x.y.z>`.
+
+### Publishing to the Marketplace
+
+Nothing is published to the Marketplace on its own. `.github/workflows/publish.yml`
+publishes a VSIX that CI or the release workflow already built and checked,
+when run by hand:
+
+- `gh workflow run publish.yml`: the latest successful CI build of `main`, as a
+  pre-release.
+- `gh workflow run publish.yml -f run=<run id>`: that CI build, as a
+  pre-release. Only a successful CI run of a push to `main` is accepted, and
+  CI keeps its VSIX for 30 days.
+- `gh workflow run publish.yml -f tag=v<x.y.z>`: the VSIX attached to that
+  GitHub release; as a pre-release when the GitHub release is one.
+
+It signs in with the Marketplace's Trusted Publishing (OIDC): no token is
+stored. The policy is on the publisher's **Trusted Publishing** page at
+https://marketplace.visualstudio.com/manage/publishers/zekaizer: GitHub
+Actions, repository `zekaizer/strata`, workflow `publish.yml`, no environment.
+Renaming the workflow file needs the policy changed too. Uploading a `.vsix`
+by hand on that page still works. The extension's display name there is
+"Strata Git Graph": the Marketplace refuses a display name another extension
+has.
 
 `package.json` overrides the `glob` used by mocha (through
 `@vscode/test-cli`) with glob 13: mocha 11 pins the deprecated glob 10,
