@@ -49,6 +49,15 @@ jobs:
           fi
           mkdir vsix
           if [ -n "$TAG" ]; then
+            # The release workflow runs the unit tests only: CI, integration tests included, must
+            # have passed on the tagged commit, pushed to main.
+            sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${TAG}" --jq .sha)
+            passed=$(gh run list --workflow ci.yml --branch main --event push --commit "$sha" --status success \
+              --json databaseId --jq length)
+            if [ "$passed" = 0 ]; then
+              echo "::error::$TAG is on ${sha::7}, which has no successful CI run of a push to main"
+              exit 1
+            fi
             gh release download "$TAG" --pattern 'strata-*.vsix' --dir vsix
             echo "prerelease=$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease)" >> "$GITHUB_OUTPUT"
           else
@@ -82,6 +91,12 @@ jobs:
           fi
           echo "file=${files[0]}" >> "$GITHUB_OUTPUT"
           echo "Publishing ${files[0]}" >> "$GITHUB_STEP_SUMMARY"
+      # Checked again here: the Marketplace may have a higher version than when the VSIX was built.
+      - name: Check the version against the Marketplace
+        run: >-
+          node scripts/release-version.mjs
+          "$(unzip -p "${{ steps.vsix.outputs.file }}" extension/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).version')"
+          ${{ steps.vsix.outputs.prerelease == 'true' && 'pre-release' || 'release' }}
       # The VSIX itself says whether it is a pre-release; with --packagePath, --pre-release only makes
       # vsce refuse one that does not, so a CI build or GitHub pre-release never goes out as a release.
       - run: >-

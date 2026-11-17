@@ -190,8 +190,10 @@ download it from **Artifacts** (requires a GitHub login). The download is the
 pinned to `ubuntu-24.04`.
 
 Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes a
-pre-release version, `<major>.<first odd minor above package.json's>.<run
-number>` (`0.2.0` gives `0.3.<run>`; see Versions below), and the README (the
+pre-release version, `<major>.<first odd minor above package.json's>.<commits
+since package.json became <major>.<minor>.0>`. Three commits after `0.4.0`
+give `0.5.3`; a patch release `0.4.1` does not restart the count, so builds
+after it stay above those before it (see Releases below). The README (the
 extension's details page in the Extensions view) gets the build's commit and
 date under its header, at the `<!-- ci-stamp -->` line, so an installed CI
 build says which one it is. The script fails if the README lacks that line.
@@ -204,9 +206,10 @@ those who switch to pre-release versions.
 
 ## Releases
 
-Versions follow [ADR 4](adr/0004-version-numbers.md): a release has an even
-minor version and a pre-release an odd one, so the next release after `0.2.x`
-is `0.4.0`. The Marketplace takes numbers only, and never the same version
+Versions follow [ADR 4](adr/0004-version-numbers.md) and
+[ADR 6](adr/0006-pre-release-patch-numbers.md): a release has an even minor
+version and a pre-release an odd one, so after `0.4.x` releases and their
+`0.5.x` pre-releases, the next release is `0.6.0`. The Marketplace takes numbers only, and never the same version
 twice. CI builds are pre-releases as they are: publish one to offer it.
 
 1. Set the version in `package.json` and `package-lock.json`
@@ -220,8 +223,15 @@ twice. CI builds are pre-releases as they are: publish one to offer it.
    release. The README's relative links and images in that package point at
    the tag, not at `main`. For a pre-release, pass `--prerelease` to
    `gh release create`. The workflow fails when the minor version does not
-   fit: odd for a pre-release, even for a release.
-4. Publish it to the Marketplace: `gh workflow run publish.yml -f tag=v<x.y.z>`.
+   fit (odd for a pre-release, even for a release) or the version is not
+   above what the Marketplace has (`scripts/release-version.mjs`): a release
+   above every release, and one that starts a minor (`x.y.0`) above every
+   pre-release too. A patch release (`0.4.1`) may stay below the `0.5.x`
+   pre-releases: release users get it, pre-release users keep the newer
+   builds. After CI builds of `0.1.0`, published as
+   `0.3.x`, the release was `0.4.0`, not `0.2.0`.
+4. Once CI has passed on the version commit, publish it to the Marketplace:
+   `gh workflow run publish.yml -f tag=v<x.y.z>`.
 
 ### Publishing to the Marketplace
 
@@ -235,7 +245,11 @@ when run by hand:
   pre-release. Only a successful CI run of a push to `main` is accepted, and
   CI keeps its VSIX for 30 days.
 - `gh workflow run publish.yml -f tag=v<x.y.z>`: the VSIX attached to that
-  GitHub release; as a pre-release when the GitHub release is one.
+  GitHub release; as a pre-release when the GitHub release is one. Only when
+  CI passed on the tagged commit, pushed to `main`.
+
+Before publishing, the workflow checks the version again the way the release
+workflow does: the Marketplace may have a higher one by then.
 
 It signs in with the Marketplace's Trusted Publishing (OIDC): no token is
 stored. The policy is on the publisher's **Trusted Publishing** page at

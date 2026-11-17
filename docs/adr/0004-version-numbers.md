@@ -4,7 +4,7 @@ Date: 2026-11-14
 
 ## Status
 
-Accepted
+Accepted. The pre-release patch number and the next release are superseded by [ADR 6](0006-pre-release-patch-numbers.md).
 
 ## Context
 

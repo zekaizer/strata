@@ -4,9 +4,10 @@ on:
   push:
   pull_request:
 
-# A newer push to the same branch supersedes a running build.
+# A newer push to the same branch supersedes its running or queued build, except on main: each main
+# commit gets a group of its own, since a release is published only once CI passed on its commit.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -108,16 +109,19 @@ jobs:
       # Silences git's "default branch name" hint from checkout's `git init`.
       - run: git config --global init.defaultBranch main
       - uses: actions/checkout@v7
+        with:
+          # ci-stamp counts the commits since the release's x.y.0.
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      # CI builds only (release packaging does not do this): a pre-release version (ADR 4: the next
-      # odd minor, the run as its patch) and a build note under the README header, which the
-      # Extensions view shows as the details page.
+      # CI builds only (release packaging does not do this): a pre-release version (ADR 6: the next
+      # odd minor, the commits since the release's x.y.0 as its patch) and a build note under the
+      # README header, which the Extensions view shows as the details page.
       - name: Mark as a CI build
-        run: node scripts/ci-stamp.mjs "$GITHUB_RUN_NUMBER" "$GITHUB_SHA"
+        run: node scripts/ci-stamp.mjs
       # Not a release: VS Code shows the installed build as a pre-release.
       - run: npm run package -- --pre-release
       - name: Name the VSIX after version and commit

@@ -1,16 +1,13 @@
 // CI builds only: marks the packaged extension as a pre-release build, so the Extensions view shows
-// which build is installed. The version becomes <major>.<first odd minor above the release's>.<run>
-// (ADR 4: the Marketplace takes numbers only, odd minors are pre-releases) and the README, shown as
-// the extension's details page, says the build's commit and date under its header, at the
-// <!-- ci-stamp --> marker. Release packaging does not run this.
-// Usage: node scripts/ci-stamp.mjs <run number> <commit sha>
+// which build is installed. The version becomes <major>.<first odd minor above the release's>.<commits
+// since package.json became <major>.<minor>.0> (ADR 6), and the README, shown as the extension's
+// details page, says the build's commit and date under its header, at the <!-- ci-stamp --> marker.
+// Release packaging does not run this. Needs the history back to that commit (no shallow clone).
+// Usage: node scripts/ci-stamp.mjs
+import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const [run, sha] = process.argv.slice(2);
-if (!/^\d+$/.test(run ?? '') || !/^[0-9a-f]{40}$/.test(sha ?? '')) {
-  console.error('usage: node scripts/ci-stamp.mjs <run number> <40-hex commit sha>');
-  process.exit(1);
-}
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
 const MARKER = '<!-- ci-stamp -->';
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
@@ -30,7 +27,16 @@ if (readme.includes(`${MARKER}\n\n> CI build `)) {
 }
 
 const minor = Number(release[2]);
-pkg.version = `${release[1]}.${minor % 2 === 0 ? minor + 1 : minor + 2}.${run}`;
+const base = `${release[1]}.${minor}.0`;
+// The commit that set the version to x.y.0: patch releases on top of it keep the count going.
+const since = git('log', '--reverse', '--format=%H', `-S"version": "${base}"`, '--', 'package.json').split('\n')[0];
+if (!since) {
+  console.error(`no commit in the history sets package.json to ${base}`);
+  process.exit(1);
+}
+const commits = git('rev-list', '--count', `${since}..HEAD`);
+const sha = git('rev-parse', 'HEAD');
+pkg.version = `${release[1]}.${minor % 2 === 0 ? minor + 1 : minor + 2}.${commits}`;
 writeFileSync('package.json', `${JSON.stringify(pkg, null, 2)}\n`);
 const date = new Date().toISOString().slice(0, 10);
 const note = `> CI build ${pkg.version} · commit ${sha.slice(0, 7)} · ${date}. Not a release.`;

@@ -27,18 +27,13 @@ jobs:
           version=$(node -p "require('./package.json').version")
           test "$TAG" = "v${version}"
           echo "file=strata-${version}.vsix" >> "$GITHUB_OUTPUT"
-      # ADR 4: releases have an even minor version, pre-releases an odd one.
-      - name: Check that the minor version fits the kind of release
-        env:
-          PRERELEASE: ${{ github.event.release.prerelease }}
-        run: |
-          minor=$(node -p "require('./package.json').version.split('.')[1] % 2")
-          want=$([ "$PRERELEASE" = true ] && echo 1 || echo 0)
-          if [ "$minor" != "$want" ]; then
-            echo "::error::A $([ "$want" = 1 ] && echo pre-release || echo release) needs an $([ "$want" = 1 ] && echo odd || echo even) minor version (ADR 4)"
-            exit 1
-          fi
       - run: npm ci
+      # ADR 4: an even minor for a release, an odd one for a pre-release, above every version on the
+      # Marketplace. Checked before the VSIX is attached, so a version that would go wrong never has one.
+      - name: Check the version against the Marketplace
+        run: >-
+          node scripts/release-version.mjs "${TAG#v}"
+          ${{ github.event.release.prerelease && 'pre-release' || 'release' }}
       - run: npm run check
       # The README's relative links and images point at the tag: at the default HEAD they would
       # follow main after the release. A release marked as a pre-release on GitHub is packaged as
