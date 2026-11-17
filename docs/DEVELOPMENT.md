@@ -221,7 +221,8 @@ twice. CI builds are pre-releases as they are: publish one to offer it.
    the tag, not at `main`. For a pre-release, pass `--prerelease` to
    `gh release create`. The workflow fails when the minor version does not
    fit: odd for a pre-release, even for a release.
-4. Publish it to the Marketplace: `gh workflow run publish.yml -f tag=v<x.y.z>`.
+4. Once CI has passed on the version commit, publish it to the Marketplace:
+   `gh workflow run publish.yml -f tag=v<x.y.z>`.
 
 ### Publishing to the Marketplace
 
@@ -235,7 +236,8 @@ when run by hand:
   pre-release. Only a successful CI run of a push to `main` is accepted, and
   CI keeps its VSIX for 30 days.
 - `gh workflow run publish.yml -f tag=v<x.y.z>`: the VSIX attached to that
-  GitHub release; as a pre-release when the GitHub release is one.
+  GitHub release; as a pre-release when the GitHub release is one. Only when
+  CI passed on the tagged commit, pushed to `main`.
 
 It signs in with the Marketplace's Trusted Publishing (OIDC): no token is
 stored. The policy is on the publisher's **Trusted Publishing** page at
