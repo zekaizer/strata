@@ -220,7 +220,13 @@ twice. CI builds are pre-releases as they are: publish one to offer it.
    release. The README's relative links and images in that package point at
    the tag, not at `main`. For a pre-release, pass `--prerelease` to
    `gh release create`. The workflow fails when the minor version does not
-   fit: odd for a pre-release, even for a release.
+   fit (odd for a pre-release, even for a release) or the version is not
+   above what the Marketplace has (`scripts/release-version.mjs`): a release
+   above every release, and one that starts a minor (`x.y.0`) above every
+   pre-release too. A patch release (`0.4.1`) may stay below the `0.5.x`
+   pre-releases: release users get it, pre-release users keep the newer
+   builds. After CI builds of `0.1.0`, published as
+   `0.3.x`, the release was `0.4.0`, not `0.2.0`.
 4. Once CI has passed on the version commit, publish it to the Marketplace:
    `gh workflow run publish.yml -f tag=v<x.y.z>`.
 
@@ -238,6 +244,9 @@ when run by hand:
 - `gh workflow run publish.yml -f tag=v<x.y.z>`: the VSIX attached to that
   GitHub release; as a pre-release when the GitHub release is one. Only when
   CI passed on the tagged commit, pushed to `main`.
+
+Before publishing, the workflow checks the version again the way the release
+workflow does: the Marketplace may have a higher one by then.
 
 It signs in with the Marketplace's Trusted Publishing (OIDC): no token is
 stored. The policy is on the publisher's **Trusted Publishing** page at

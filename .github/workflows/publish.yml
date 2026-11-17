@@ -91,6 +91,12 @@ jobs:
           fi
           echo "file=${files[0]}" >> "$GITHUB_OUTPUT"
           echo "Publishing ${files[0]}" >> "$GITHUB_STEP_SUMMARY"
+      # Checked again here: the Marketplace may have a higher version than when the VSIX was built.
+      - name: Check the version against the Marketplace
+        run: >-
+          node scripts/release-version.mjs
+          "$(unzip -p "${{ steps.vsix.outputs.file }}" extension/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).version')"
+          ${{ steps.vsix.outputs.prerelease == 'true' && 'pre-release' || 'release' }}
       # The VSIX itself says whether it is a pre-release; with --packagePath, --pre-release only makes
       # vsce refuse one that does not, so a CI build or GitHub pre-release never goes out as a release.
       - run: >-
