@@ -4,7 +4,7 @@ Date: 2026-11-04
 
 ## Status
 
-Accepted
+Accepted. The history's start points are superseded by [ADR 5](0005-tags-as-history-start-points.md).
 
 ## Context
 

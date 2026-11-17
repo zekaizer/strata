@@ -3,7 +3,7 @@ import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { git, strata, waitFor } from './helpers.ts';
 
-const ALL = ['--branches', '--remotes', 'HEAD'];
+const ALL = ['--branches', '--remotes', '--tags', 'HEAD'];
 
 describe('merge rows', () => {
   let panel: GraphPanel;

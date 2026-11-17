@@ -174,10 +174,11 @@ describe('locateCommit', () => {
 
   it('names the refs that reach a commit the view leaves out', async () => {
     const hotfix = git(tagOnly, 'rev-parse', 'v1-hotfix^{commit}');
-    assert.deepEqual(await locateCommit({ git: 'git', cwd: tagOnly, hash: hotfix, signal }), {
-      position: undefined,
-      reachedBy: ['refs/tags/v1-hotfix'],
-    });
+    assert.deepEqual(
+      await locateCommit({ git: 'git', cwd: tagOnly, hash: hotfix, signal, refs: ['refs/heads/main'] }),
+      { position: undefined, reachedBy: ['refs/tags/v1-hotfix'] },
+    );
+    assert.notEqual((await locateCommit({ git: 'git', cwd: tagOnly, hash: hotfix, signal })).position, undefined);
     const base = git(tagOnly, 'rev-parse', 'main~1');
     assert.deepEqual(
       await locateCommit({ git: 'git', cwd: tagOnly, hash: base, signal, refs: ['refs/tags/v1-hotfix'] }),

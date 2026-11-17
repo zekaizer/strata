@@ -5,7 +5,7 @@ import { git, waitFor } from './helpers.ts';
 
 describe('compare with the selected commit', () => {
   const { panel, ui } = flowSuite();
-  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
+  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
   const bySubject = (subject: string) =>
     git('log', '--all', '--format=%H', '--fixed-strings', `--grep=${subject}`, '-n1');
   const file = 'feature_search.txt';

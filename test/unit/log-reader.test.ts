@@ -3,13 +3,13 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
-import { LogReader, type LogOptions } from '../../src/git/log-reader.ts';
+import { LogReader, viewArgs, type LogOptions } from '../../src/git/log-reader.ts';
 import { RepoBuilder } from '../fixtures/builder.ts';
 import { scenarios } from '../fixtures/scenarios.ts';
 import { git, tempDir } from './helpers.ts';
 
-// Tags are not start points by default (see ADR 0001); their commits show when reachable from a branch.
-const REV_ARGS = ['--topo-order', '--branches', '--remotes', 'HEAD'];
+// The default view: the history of every branch, remote-tracking branch, tag and HEAD (see ADR 0005).
+const REV_ARGS = ['--topo-order', '--branches', '--remotes', '--tags', 'HEAD'];
 
 async function readAll(opts: LogOptions, pageSize: number): Promise<string[]> {
   const r = new LogReader(opts);
@@ -102,10 +102,11 @@ describe('LogReader', () => {
     assert.deepEqual(await readAll({ git: 'git', cwd: dir, refs }, 7), expected);
   });
 
-  it('leaves out commits reachable only from tags unless a tag is selected', async () => {
+  it('shows commits reachable only from tags, starting only from the tags no branch reaches', async () => {
     const dir = join(root, 'tag-only');
     const b = new RepoBuilder();
     const base = b.commit('main', 'base');
+    b.tag('v0', base, 'on main');
     b.commit('main', 'main tip');
     const hotfix = b.commit('refs/strata-fixture/tmp', 'released from a deleted branch', { parents: [base] });
     b.tag('v1-hotfix', hotfix, 'hotfix release');
@@ -117,8 +118,37 @@ describe('LogReader', () => {
       r.dispose();
       return commits.map((c) => c.subject);
     };
-    assert.deepEqual(await subjects(), ['main tip', 'base']);
+    assert.deepEqual(await subjects(), git(dir, 'log', '--format=%s', ...REV_ARGS).split('\n'));
+    assert.ok((await subjects()).includes('released from a deleted branch'));
     assert.deepEqual(await subjects(['refs/tags/v1-hotfix']), ['released from a deleted branch', 'base']);
+    const args = await viewArgs({ git: 'git', cwd: dir });
+    assert.ok(args.includes(git(dir, 'rev-parse', 'v1-hotfix^{commit}')), 'the off-branch tag is a start');
+    assert.ok(!args.includes(git(dir, 'rev-parse', 'v0^{commit}')), 'a tag on a branch is not');
+    assert.ok(!args.includes('--tags'));
+  });
+
+  it('finds the tags no branch reaches past hundreds of branches, nested tags, tree tags and missing heads', async () => {
+    const dir = join(root, 'many-branches');
+    const b = new RepoBuilder();
+    const first = b.commit('main', 'base');
+    // More branch tips than one git command takes; the last, `zz`, is the only one with `side`.
+    for (let i = 0; i < 450; i++) b.commit(`b${String(i).padStart(3, '0')}`, `b${i}`, { parents: [first] });
+    b.commit('zz', 'side', { parents: [first] });
+    b.commit('refs/strata-fixture/off', 'off', { parents: [first] });
+    b.write(dir);
+    const side = git(dir, 'rev-parse', 'zz');
+    const off = git(dir, 'rev-parse', 'refs/strata-fixture/off');
+    git(dir, 'update-ref', '-d', 'refs/strata-fixture/off');
+    git(dir, 'tag', 'on-side', side);
+    git(dir, 'tag', '-a', '-m', 'off', 'off', off);
+    git(dir, '-c', 'advice.nestedTag=false', 'tag', '-a', '-m', 'nested', 'nested', 'off');
+    git(dir, 'tag', '-a', '-m', 'tree', 'tree', 'main^{tree}');
+    const gone = '1'.repeat(40);
+    const args = await viewArgs({ git: 'git', cwd: dir, heads: [gone] });
+    assert.deepEqual(
+      args.filter((a) => /^[0-9a-f]{40}$/.test(a)),
+      [gone, off],
+    );
   });
 
   it('rejects ref names that are not full refs/ names', async () => {

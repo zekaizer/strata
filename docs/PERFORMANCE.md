@@ -46,8 +46,10 @@ commit-graph when the first page takes longer than 2 s.
 | `--date-order` also starting from all tags     |  3.3 s |
 | No ordering (children may follow parents)      |  29 ms |
 
-- Tags are not start points: old release tags widen git's walk to nearly
-  all history. They still label commits.
+- Only the tags no branch reaches are start points: all tags widen git's
+  walk to nearly all history. Finding them (`git for-each-ref --no-merged`)
+  took 50 ms with a commit-graph and 450 ms without, with git 2.56
+  ([ADR 5](adr/0005-tags-as-history-start-points.md)).
 - `--topo-order` instead of `--date-order`: same cost, but the kernel's first
   page is 14 lanes wide instead of 58.
 - Unordered output is not used: the layout needs children before parents.

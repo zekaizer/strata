@@ -60,6 +60,7 @@ export async function viewArgs(opts: LogOptions): Promise<string[]> {
         () => ['HEAD'],
         () => [],
       );
+  const tagged = refs ? [] : await offBranchTags(git, cwd, [...head, ...heads]);
   return [
     // Topological order keeps each branch's commits together, which keeps the graph narrow.
     opts.order === 'date' ? '--date-order' : '--topo-order',
@@ -76,15 +77,52 @@ export async function viewArgs(opts: LogOptions): Promise<string[]> {
           '--decorate-refs=HEAD',
         ]
       : []),
-    // Tags are not start points: hundreds of old release tags make git's topological walk cover nearly
-    // all history before the first commit is printed. Tags still label commits reachable from branches.
     ...(refs ?? ['--branches', '--remotes', ...head]),
     // A head gone since the worktree list was read is skipped, not an error.
-    ...(heads.length > 0 ? ['--ignore-missing', ...heads] : []),
+    ...(heads.length > 0 || tagged.length > 0 ? ['--ignore-missing', ...heads, ...tagged] : []),
     '--',
     // A ':' or '*' in a file name is not pathspec magic; literal pathspecs still use Bloom filters.
     ...paths.map((p) => `:(literal)${p}`),
   ];
+}
+
+/** --no-merged options per git command, well within Windows' 32,767-character command line. */
+const BASES_PER_RUN = 400;
+
+/**
+ * The commits of the tags that no branch, remote-tracking branch or `starts` reach: the history of
+ * every ref is theirs plus the branches'. Tags reached from a branch are left out because, as start
+ * points, hundreds of old release tags make git's topological walk cover nearly all history before
+ * the first commit (see ADR 0005). `starts` that no longer exist are skipped.
+ */
+async function offBranchTags(git: string, cwd: string, starts: readonly string[]): Promise<string[]> {
+  const [tips, existing] = await Promise.all([
+    runGit(git, cwd, ['for-each-ref', '--format=%(objectname)', 'refs/heads', 'refs/remotes']),
+    starts.length > 0 ? runGit(git, cwd, ['rev-list', '--no-walk', '--ignore-missing', ...starts]) : '',
+  ]);
+  const bases = [...new Set([...tips.split('\n'), ...existing.split('\n')].filter((h) => h !== ''))];
+  const runs: string[][] = bases.length > 0 ? [] : [[]];
+  for (let i = 0; i < bases.length; i += BASES_PER_RUN) runs.push(bases.slice(i, i + BASES_PER_RUN));
+  // A tag no base reaches is kept by every run.
+  let off: Set<string> | undefined;
+  for (const run of runs) {
+    const out = await runGit(git, cwd, [
+      'for-each-ref',
+      '--format=%(objecttype) %(objectname) %(*objecttype) %(*objectname)',
+      ...run.map((b) => `--no-merged=${b}`),
+      'refs/tags',
+    ]);
+    const kept = new Set(
+      out.split('\n').flatMap((l) => {
+        const [type, hash, peeledType, peeled] = l.split(' ');
+        if (type === 'commit') return [hash!];
+        return peeledType === 'commit' ? [peeled!] : [];
+      }),
+    );
+    off = off ? new Set([...off].filter((h) => kept.has(h))) : kept;
+    if (off.size === 0) break;
+  }
+  return [...off!];
 }
 
 export interface PageOptions {

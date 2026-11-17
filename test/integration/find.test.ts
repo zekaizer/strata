@@ -24,7 +24,7 @@ describe('find commits', () => {
   };
   /** What git finds in the whole view, newest first. */
   const expected = (...filter: string[]) =>
-    git('rev-list', '--topo-order', '-i', '-F', ...filter, '--branches', '--remotes', 'HEAD').split('\n');
+    git('rev-list', '--topo-order', '-i', '-F', ...filter, '--branches', '--remotes', '--tags', 'HEAD').split('\n');
   /** Writes `count` commits on `branch` on top of `from`, newer than the rest. */
   const longBranch = (branch: string, count: number, from: string) => {
     const start = Math.floor(Date.now() / 1000) + 1000;
@@ -197,7 +197,7 @@ describe('find commits', () => {
     assert.deepEqual(s.options.refs, ['refs/heads/wip/experiment', 'refs/heads/cross/x']);
   });
 
-  it('says why a commit only a tag reaches is not in the graph', async () => {
+  it('goes to a commit only a tag reaches', async () => {
     const stream = `commit refs/heads/strata-tmp\ncommitter Ada Lovelace <ada@example.com> 1700000000 +0000\ndata 7\nhotfix\nfrom ${git('rev-parse', 'main~1')}\n\n`;
     execFileSync('git', ['fast-import', '--quiet'], { cwd: workspaceRoot(), input: stream });
     git('tag', 'v9-hotfix', 'strata-tmp');
@@ -206,16 +206,9 @@ describe('find commits', () => {
     await reload(panel());
     await open();
     await type(hotfix.slice(0, 7));
-    await until('counted', (p) => p.find.count === '? of 1');
-    await key('Enter');
-    await until('not in view', (p) => p.find.count === 'Not in view');
-    await waitFor('told', () => ui.of('notify').length > 0);
-    assert.equal(
-      ui.first('notify').message,
-      `Commit ${hotfix.slice(0, 7)} is not in the graph: only tag v9-hotfix reaches it, and the graph starts from branches, not tags.`,
-    );
-    assert.deepEqual(ui.first('notify').actions, []);
+    await until('the commit selected', (p) => p.selected === hotfix && p.find.count === '1 of 1');
   });
+
   it('lists the matches by group and goes to the one clicked', async () => {
     await open();
     await type('login');

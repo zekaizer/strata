@@ -9,7 +9,7 @@ import { gitRetry, setIdentity, snapshotRepo } from './repo-snapshot.ts';
 describe('while an operation runs', () => {
   let api: StrataTestApi;
   let panel: GraphPanel;
-  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
+  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
   /** Runs `during` inside a Strata operation, as a flow's steps would run. */
   const operation = (label: string, during: () => Promise<void>) => {
     const host = panel.flowHost();

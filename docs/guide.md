@@ -39,8 +39,8 @@ to get started and the requirements.
   after file without losing your place in the graph.
 - Filter the graph to selected branches, remotes or tags, and switch to
   first-parent history. By default the graph shows all local and remote-tracking
-  branches; tags label their commits, and a tag that is on no branch shows when
-  you select it in the filter.
+  branches and tags, including a tag that is on no branch, such as a release
+  made from a branch since deleted.
 - Hide the badges of noisy refs, such as CI tags, without changing the history:
   glob rules per repository (`*-rc*`), with exceptions, that leave the commits
   and lines in place. Strata keeps the rules itself; nothing is written to the
@@ -186,10 +186,10 @@ to get started and the requirements.
   name has your text, the list offers to search `author:` for it.
 
   A commit the graph does not show, because the branch filter or **First
-  parent** leaves it out or only a tag reaches it, gets **Not in view**, and a
-  notification says why. When showing another branch or all parents would show
-  it, the notification offers that (**Show feature Too**, **Show All
-  Parents**). The search runs again when the graph reloads.
+  parent** leaves it out, gets **Not in view**, and a notification says why.
+  When showing another branch or all parents would show it, the notification
+  offers that (**Show feature Too**, **Show All Parents**). The search runs
+  again when the graph reloads.
 
 - With stashes in the repository, the toolbar counts them and how many are not
   in the graph (their commit is not loaded yet, filtered out, or on no branch).

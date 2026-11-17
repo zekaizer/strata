@@ -6,7 +6,8 @@ import { git, strata, waitFor } from './helpers.ts';
 describe('commit order', () => {
   let panel: GraphPanel;
   const config = () => vscode.workspace.getConfiguration('strata');
-  const subjects = (flag: string) => git('log', flag, '--format=%s', '--branches', '--remotes', 'HEAD').split('\n');
+  const subjects = (flag: string) =>
+    git('log', flag, '--format=%s', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
 
   before(async () => {
     panel = (await strata()).show();

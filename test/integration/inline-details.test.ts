@@ -3,7 +3,7 @@ import type { GraphPanel } from '../../src/host/panel.ts';
 import type { ProbeState } from '../../src/shared/protocol.ts';
 import { git, strata, waitFor } from './helpers.ts';
 
-const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
+const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
 
 describe('inline details', () => {
   let panel: GraphPanel;

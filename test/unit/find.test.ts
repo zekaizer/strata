@@ -213,16 +213,11 @@ describe('outOfView', () => {
       text: 'it does not change src/a.ts.',
       action: { label: 'Show All Files', path: null },
     });
-    assert.equal(outOfView(['refs/tags/v1'], { ...all, path }).action, undefined);
+    assert.equal(outOfView(['refs/tags/v1'], { ...all, path }).action?.label, 'Show All Files');
   });
 
-  it('only says why when every branch is shown', () => {
-    assert.deepEqual(outOfView(['refs/tags/v1.4-rc2'], all), {
-      text: 'only tag v1.4-rc2 reaches it, and the graph starts from branches, not tags.',
-    });
-    assert.deepEqual(outOfView(['refs/tags/v1', 'refs/tags/v2', 'refs/tags/v3', 'refs/tags/v4'], all), {
-      text: 'only tags v1, v2, v3 and 1 more reach it, and the graph starts from branches, not tags.',
-    });
+  it('counts a tag as shown when every ref is', () => {
+    assert.equal(outOfView(['refs/tags/v1'], { ...all, firstParent: true }).action?.label, 'Show All Parents');
     assert.deepEqual(outOfView([], all), { text: 'no branch or tag reaches it.' });
   });
 

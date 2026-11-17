@@ -162,7 +162,7 @@ describe('graph updates after ref changes', () => {
     await waitFor('history', async () => (await panel().probe()).done);
     await panel().simulate({ kind: 'scrollToRow', index: 60 });
     const before = topRow(await panel().probe());
-    const total = Number(git('rev-list', '--count', '--branches')) + 1;
+    const total = Number(git('rev-list', '--count', '--branches', '--tags')) + 1;
     const { after } = await across(
       () => git('commit', '--quiet', '--allow-empty', '-m', 'Above the fold'),
       (p) => p.commits === total,

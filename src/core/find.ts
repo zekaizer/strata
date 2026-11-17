@@ -107,15 +107,14 @@ export interface OutOfView {
 
 /**
  * Explains why a view leaves out a commit that the refs `reachedBy` (full names) reach. A view of
- * every branch is never narrowed to a selection: it only says why.
+ * every ref is never narrowed to a selection: it only says why.
  */
 export function outOfView(
   reachedBy: readonly string[],
   view: { refs: string[] | null; firstParent: boolean; path?: PathFilter | null },
 ): OutOfView {
   const short = (name: string) => name.replace(/^refs\/(heads|remotes|tags)\//, '');
-  const shown = (name: string) =>
-    view.refs === null ? /^refs\/(heads|remotes)\//.test(name) : view.refs.includes(name);
+  const shown = (name: string) => view.refs?.includes(name) ?? true;
   if (view.path && reachedBy.some(shown))
     return {
       text: `it does not change ${view.path.paths[0]}.`,
@@ -127,13 +126,8 @@ export function outOfView(
       action: { label: 'Show All Parents', firstParent: false },
     };
   if (reachedBy.length === 0) return { text: 'no branch or tag reaches it.' };
-  if (view.refs === null) {
-    const tags = reachedBy.map(short);
-    const named = tags.length > 3 ? `${tags.slice(0, 3).join(', ')} and ${tags.length - 3} more` : tags.join(', ');
-    return {
-      text: `only ${tags.length === 1 ? 'tag' : 'tags'} ${named} ${tags.length === 1 ? 'reaches' : 'reach'} it, and the graph starts from branches, not tags.`,
-    };
-  }
+  // Every ref is shown: the refs moved since the graph was read.
+  if (view.refs === null) return { text: 'the graph has not caught up with its refs yet.' };
   const prefix = ['refs/heads/', 'refs/remotes/', 'refs/tags/'];
   const ref = prefix.map((p) => reachedBy.find((r) => r.startsWith(p))).find((r) => r !== undefined)!;
   return {

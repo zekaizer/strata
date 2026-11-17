@@ -18,7 +18,7 @@ describe('context menus', () => {
     await panel.whenReady();
     await waitFor('history', async () => (await panel.probe()).done);
     hash = git('log', '--all', '--format=%H', '--fixed-strings', '--grep=Search ranking', '-n1');
-    const order = git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
+    const order = git('rev-list', '--topo-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
     await panel.simulate({ kind: 'clickRow', index: order.indexOf(hash) });
     await waitFor('details', async () => (await panel.probe()).detailsShown === hash);
   });

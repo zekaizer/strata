@@ -8,7 +8,7 @@ import { gitRetry, snapshotRepo } from './repo-snapshot.ts';
 describe('context menu targets', () => {
   let panel: GraphPanel;
   let restore: () => Promise<void>;
-  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', 'HEAD').split('\n');
+  const order = () => git('rev-list', '--topo-order', '--branches', '--remotes', '--tags', 'HEAD').split('\n');
   // A workbench menu closes when focus leaves it.
   const closeMenu = async () => {
     await vscode.commands.executeCommand('workbench.action.quickOpen');

@@ -37,8 +37,8 @@ describe('historyStarts', () => {
     ['e'],
   );
 
-  it('starts from branches, remote-tracking branches, HEAD and detached worktrees, not tags', () => {
-    assert.deepEqual([...historyStarts(snap, null, false)].sort(), ['a', 'b', 'd', 'e']);
+  it('starts from branches, remote-tracking branches, tags, HEAD and detached worktrees', () => {
+    assert.deepEqual([...historyStarts(snap, null, false)].sort(), ['a', 'b', 'c', 'd', 'e']);
   });
 
   it('starts from the picked refs only, tags too; a path history keeps HEAD', () => {

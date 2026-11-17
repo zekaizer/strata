@@ -97,12 +97,12 @@ export function pairRefs(refs: readonly Ref[], remotes: readonly string[]): Badg
 }
 
 /**
- * The commits a view's history is read from, as viewArgs gives them to git: the refs picked in
- * the filter (`refs`), else every branch and remote-tracking branch, HEAD and the other
- * worktrees' detached HEADs. A path history (`path`) keeps HEAD's commit for its badge too.
+ * The commits a view's history is read from: the refs picked in the filter (`refs`), else every
+ * ref, HEAD and the other worktrees' detached HEADs. viewArgs gives git fewer of them for the same
+ * history. A path history (`path`) keeps HEAD's commit for its badge too.
  */
 export function historyStarts(snapshot: RefSnapshot, refs: readonly string[] | null, path: boolean): Set<string> {
-  const picked = (r: Ref) => (refs ? refs.includes(r.name) : r.kind !== 'tag');
+  const picked = (r: Ref) => refs?.includes(r.name) ?? true;
   const starts = new Set(snapshot.refs.filter(picked).map((r) => r.hash));
   if (snapshot.head !== undefined && (refs === null || path)) starts.add(snapshot.head);
   if (refs === null)
