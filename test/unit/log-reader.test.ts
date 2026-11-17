@@ -139,6 +139,8 @@ describe('LogReader', () => {
     const side = git(dir, 'rev-parse', 'zz');
     const off = git(dir, 'rev-parse', 'refs/strata-fixture/off');
     git(dir, 'update-ref', '-d', 'refs/strata-fixture/off');
+    git(dir, 'config', 'user.name', 'Tagger');
+    git(dir, 'config', 'user.email', 'tagger@example.com');
     git(dir, 'tag', 'on-side', side);
     git(dir, 'tag', '-a', '-m', 'off', 'off', off);
     git(dir, '-c', 'advice.nestedTag=false', 'tag', '-a', '-m', 'nested', 'nested', 'off');
