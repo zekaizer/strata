@@ -190,8 +190,10 @@ download it from **Artifacts** (requires a GitHub login). The download is the
 pinned to `ubuntu-24.04`.
 
 Before packaging, CI runs `scripts/ci-stamp.mjs`: the version becomes a
-pre-release version, `<major>.<first odd minor above package.json's>.<run
-number>` (`0.2.0` gives `0.3.<run>`; see Versions below), and the README (the
+pre-release version, `<major>.<first odd minor above package.json's>.<commits
+since package.json became <major>.<minor>.0>`. Three commits after `0.4.0`
+give `0.5.3`; a patch release `0.4.1` does not restart the count, so builds
+after it stay above those before it (see Releases below). The README (the
 extension's details page in the Extensions view) gets the build's commit and
 date under its header, at the `<!-- ci-stamp -->` line, so an installed CI
 build says which one it is. The script fails if the README lacks that line.
@@ -204,9 +206,10 @@ those who switch to pre-release versions.
 
 ## Releases
 
-Versions follow [ADR 4](adr/0004-version-numbers.md): a release has an even
-minor version and a pre-release an odd one, so the next release after `0.2.x`
-is `0.4.0`. The Marketplace takes numbers only, and never the same version
+Versions follow [ADR 4](adr/0004-version-numbers.md) and
+[ADR 6](adr/0006-pre-release-patch-numbers.md): a release has an even minor
+version and a pre-release an odd one, so after `0.4.x` releases and their
+`0.5.x` pre-releases, the next release is `0.6.0`. The Marketplace takes numbers only, and never the same version
 twice. CI builds are pre-releases as they are: publish one to offer it.
 
 1. Set the version in `package.json` and `package-lock.json`
