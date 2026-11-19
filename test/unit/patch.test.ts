@@ -4,7 +4,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { patchStats } from '../../src/core/patch.ts';
-import { readCommitPatch, readFilePatch, readStashPatch } from '../../src/git/patch.ts';
+import { readCommitPatch, readFileHunks, readFilePatch, readStashPatch } from '../../src/git/patch.ts';
+import { changeMarkers } from '../../src/core/change-markers.ts';
 import { tempDir } from './helpers.ts';
 
 const env = {
@@ -124,6 +125,61 @@ describe('readFilePatch', () => {
     const p = await readFilePatch('git', dir, first, undefined, { status: 'A', path: 'other.txt' });
     assert.match(p, /^new file mode 100644$/m);
     assert.match(p, /^\+x$/m);
+  });
+});
+
+describe('readFileHunks', () => {
+  const root = tempDir('file-hunks');
+  const dir = join(root, 'repo');
+  let first = '';
+  let second = '';
+  before(() => {
+    mkdirSync(dir);
+    run(dir, 'init', '--quiet', '-b', 'main');
+    writeFileSync(join(dir, 'old name.txt'), Array.from({ length: 30 }, (_, i) => `line ${i + 1}\n`).join(''));
+    writeFileSync(join(dir, 'other.txt'), 'x\n');
+    run(dir, 'add', '.');
+    run(dir, 'commit', '--quiet', '-m', 'root');
+    first = run(dir, 'rev-parse', 'HEAD');
+    run(dir, 'mv', 'old name.txt', 'new name.txt');
+    const lines = Array.from({ length: 30 }, (_, i) => `line ${i + 1}\n`);
+    lines[9] = 'changed 10\n';
+    lines.splice(20, 2);
+    writeFileSync(join(dir, 'new name.txt'), ['new top\n', ...lines].join(''));
+    writeFileSync(join(dir, 'other.txt'), 'y\n');
+    run(dir, 'add', '-A');
+    run(dir, 'commit', '--quiet', '-m', 'rename and edit');
+    second = run(dir, 'rev-parse', 'HEAD');
+    // Settings that would move or hide the lines of the versions the editor shows.
+    run(dir, 'config', 'diff.context', '8');
+    run(dir, 'config', 'diff.upcase.textconv', 'tr a-z A-Z');
+    writeFileSync(join(dir, '.git', 'info', 'attributes'), '*.txt diff=upcase\n');
+  });
+
+  it('reads the changed lines of one file, the rename kept, as the blobs number them', async () => {
+    const diff = await readFileHunks('git', dir, second, first, {
+      status: 'R',
+      path: 'new name.txt',
+      oldPath: 'old name.txt',
+    });
+    assert.doesNotMatch(diff, /other\.txt/);
+    assert.doesNotMatch(diff, /LINE/, 'no textconv');
+    assert.deepEqual(changeMarkers(diff), {
+      before: {
+        lines: [
+          { kind: 'modified', start: 10, end: 10 },
+          { kind: 'removed', start: 21, end: 22 },
+        ],
+        gaps: [{ kind: 'added', after: 0 }],
+      },
+      after: {
+        lines: [
+          { kind: 'added', start: 1, end: 1 },
+          { kind: 'modified', start: 11, end: 11 },
+        ],
+        gaps: [{ kind: 'removed', after: 21 }],
+      },
+    });
   });
 });
 

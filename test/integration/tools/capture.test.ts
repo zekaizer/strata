@@ -134,6 +134,56 @@ after(() => setTheme('dark'));
   }
 });
 
+(shotDir ? describe : describe.skip)('tool: change marker screenshots', () => {
+  let restore: () => Promise<void>;
+  let hash = '';
+  const lines = (n: number, f: (i: number) => string) => Array.from({ length: n }, (_, i) => f(i + 1));
+  before(async () => {
+    restore = await snapshotRepo();
+    await setIdentity();
+    const old = lines(40, (i) => `export const value${i} = ${i};`);
+    writeFileSync(join(workspaceRoot(), 'values.ts'), old.join('\n') + '\n');
+    await gitRetry('add', 'values.ts');
+    await gitRetry('commit', '--quiet', '-m', 'Add values');
+    // Lines modified (5-6), added (after 12), removed (20-22) and added at the top.
+    const next = [...old];
+    next.splice(19, 3);
+    next.splice(12, 0, 'export const extra1 = 1;', 'export const extra2 = 2;');
+    next[4] = 'export const value5 = 50;';
+    next[5] = 'export const value6 = 60;';
+    next.unshift('// Values used by the tests.');
+    writeFileSync(join(workspaceRoot(), 'values.ts'), next.join('\n') + '\n');
+    await gitRetry('commit', '--quiet', '-am', 'Change values');
+    hash = await gitRetry('rev-parse', 'HEAD');
+    await gitSettled();
+  });
+  after(() => restore());
+
+  for (const id of themeIds) {
+    it(id, async () => {
+      await setTheme(id);
+      const panel = (await strata()).show();
+      await panel.whenReady();
+      const p = await waitFor('commit', async () => {
+        const s = await panel.probe();
+        return s.done && Object.values(s.rowHashes).includes(hash) && s;
+      });
+      const index = Number(Object.entries(p.rowHashes).find(([, h]) => h === hash)?.[0]);
+      await panel.simulate({ kind: 'clickRow', index });
+      await waitFor('details', async () => (await panel.probe()).detailsShown === hash);
+      await mkdir(shotDir!, { recursive: true });
+      for (const view of ['after', 'before'] as const) {
+        await panel.simulate({ kind: 'clickFile', index: 0, view });
+        await waitFor('editor', () => vscode.window.activeTextEditor?.document.uri.scheme === 'git');
+        await delay(Number(process.env['STRATA_SHOT_DELAY'] ?? 800));
+        await screenshot(join(shotDir!, `markers-${view}-${id}.png`));
+        await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+      }
+      panel.dispose();
+    });
+  }
+});
+
 (shotDir ? describe : describe.skip)('tool: hidden badge screenshots', () => {
   for (const id of themeIds) {
     it(id, async () => {

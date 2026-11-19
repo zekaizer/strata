@@ -775,12 +775,26 @@ class App {
     this.trackInputModality();
     // VS Code rewrites the theme and font variables on <html> when the theme or a font setting changes.
     new MutationObserver(() => {
+      this.postGutterColors();
       this.theme = resolveGraphTheme();
       this.badgeChrome = undefined;
       this.badgeWidths.clear();
       this.queueRender();
       this.layoutDetails();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  }
+
+  private gutterColors = '';
+
+  /** Sends the quick diff colors when they change: the host cannot read theme colors itself. */
+  private postGutterColors(): void {
+    const style = getComputedStyle(document.documentElement);
+    const read = (name: string) => style.getPropertyValue(`--vscode-editorGutter-${name}Background`).trim();
+    const colors = { added: read('added'), modified: read('modified'), removed: read('deleted') };
+    const key = JSON.stringify(colors);
+    if (key === this.gutterColors) return;
+    this.gutterColors = key;
+    vscode.postMessage({ type: 'gutterColors', colors });
   }
 
   async boot(): Promise<void> {
@@ -798,6 +812,7 @@ class App {
     window.addEventListener('message', (e: MessageEvent<HostToWebview>) => {
       this.onHost(e.data);
     });
+    this.postGutterColors();
     vscode.postMessage({
       type: 'ready',
       workerOk,

@@ -2,6 +2,7 @@
 // Every side imports this file; it must stay free of host- and DOM-only types.
 import type { BadgeRule } from '../core/badge-rules.ts';
 import type { Commit } from '../core/commit.ts';
+import type { LineChange } from '../core/change-markers.ts';
 import type { CommitDetails, FileChange, FileView } from '../core/details.ts';
 import type { FindHit, FindQuery } from '../core/find.ts';
 import type { ReadOnly } from '../core/git-version.ts';
@@ -236,6 +237,8 @@ export type WebviewToHost =
       view: FileView;
       beside: boolean;
     }
+  /** The theme's quick diff colors, for the change markers the host draws in editors; on boot and theme change. */
+  | { type: 'gutterColors'; colors: Record<LineChange, string> }
   | { type: 'setOptions'; options: ViewOptions }
   /** A row's Diff under a one-file path filter: opens the commit's change to that file. */
   | { type: 'openPathDiff'; generation: number; hash: string; beside: boolean }

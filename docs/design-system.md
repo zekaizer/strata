@@ -39,6 +39,20 @@ variables it reads directly; `components/bundle.css` declares their values per t
 - **Refs**: the `badge-*` family (branch, remote, tag, stash, head, worktree) is drawn only through **Chip**.
 - **Files**: `color-git-modified` is the "modified" color Source Control uses. Always beside the letter or number it
   colors.
+- **Change markers in the editor**: a changed file opened as Old or New marks the lines the commit changed in the glyph
+  margin, left of the line numbers, in the shapes of VS Code's quick diff: a bar beside changed lines, and a triangle
+  across the boundary of two lines where lines appear or go only on the other side. The column right of the line
+  numbers, where quick diff draws, is not open to extensions, and anything drawn in the text area covers or moves the
+  text. The bar's width and hatching follow the user's `scm.diffDecorationsGutterWidth` and
+  `scm.diffDecorationsGutterPattern` (by default 3px, with only modified lines hatched). The colors are quick diff's,
+  `--vscode-editorGutter-addedBackground`, `modifiedBackground` and `deletedBackground`. The glyph margin only takes
+  images, so the webview reads these variables' computed values and hands them to the extension, again whenever the
+  theme changes. In New, added lines take the added color; in Old, lines about to go take the deleted color; changed
+  lines take the modified color on both sides. Triangles take the deleted color in New, where lines were removed, and
+  the added color in Old, where lines will come in. The overview ruler marks the same places with
+  `--vscode-editorOverviewRuler-addedForeground`, `modifiedForeground` and `deletedForeground`. The editor opens
+  scrolled to bring the first change into view, without moving the cursor. A file the commit added or deleted gets no
+  markers.
 - **Surfaces**: the page is `--vscode-editor-background`. The commit details sit one layer down on `surface-sunken`,
   with `surface-sunken-shadow` for its shadow and `surface-sunken-hover` for its hover. Popovers and cards take VS
   Code's quick input and hover widget backgrounds.
