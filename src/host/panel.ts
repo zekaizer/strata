@@ -295,6 +295,9 @@ export class GraphPanel implements vscode.Disposable {
       case 'state':
         void GraphPanel.memento?.update(GraphPanel.stateKey, m.state);
         break;
+      case 'gutterColors':
+        GraphPanel.env?.changeMarkers.setColors(m.colors);
+        break;
       case 'themeVars':
       case 'probe':
         break;

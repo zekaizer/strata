@@ -99,6 +99,14 @@ to get started and the requirements.
   files, <kbd>Enter</kbd> opens it, and <kbd>O</kbd>, <kbd>D</kbd>,
   <kbd>N</kbd>, <kbd>F</kbd> open the old version, the diff, the new version
   and the working tree's file.
+- The old and new versions mark the lines the commit changed the way the editor
+  marks your own changes, beside the line numbers and in the scroll bar: in the
+  new version, added lines in green and changed lines in blue, with a red
+  triangle where lines were removed; in the old version, the lines the commit
+  removes in red and changes in blue, with a green triangle where it adds lines.
+  The markers sit left of the line numbers, so they need
+  `editor.glyphMargin` (on by default).
+  The file opens scrolled to its first change.
 - Right-click a file for open and copy actions: **Copy Relative Path** (relative
   to the repository root), **Copy Path**, and for renamed files **Copy Old
   Relative Path**. <kbd>Shift</kbd>+<kbd>Alt</kbd>+<kbd>C</kbd> (<kbd>⌥⇧⌘C</kbd>

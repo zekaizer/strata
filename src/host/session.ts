@@ -18,6 +18,7 @@ import type { StashEntry } from '../core/stash.ts';
 import { hasChangedPaths, hasCommitGraph, updateCommitGraph, writeCommitGraph } from '../git/commit-graph.ts';
 import { changingCommits, isPartialClone, isTracked, readPathOrigin } from '../git/path-history.ts';
 import { fileViews, type FileChange, type FileView } from '../core/details.ts';
+import { changeMarkers, firstChange } from '../core/change-markers.ts';
 import { patchStats } from '../core/patch.ts';
 import { COMMIT_GRAPH_OFFER, DONE, type SlowRead } from '../core/wording.ts';
 import { inFilter, isRepoPath, parsePathFilter, samePathFilter, type PathFilter } from '../core/path-filter.ts';
@@ -25,7 +26,7 @@ import { isCommitId, readCommitDetails } from '../git/details.ts';
 import { LogReader, type LogOptions } from '../git/log-reader.ts';
 import { findCommits, findExact, locateCommit } from '../git/find.ts';
 import type { FindHit, FindQuery } from '../core/find.ts';
-import { readCommitPatch, readFilePatch, readStashPatch } from '../git/patch.ts';
+import { readCommitPatch, readFileHunks, readFilePatch, readStashPatch } from '../git/patch.ts';
 import { allReachable, readRefs } from '../git/refs.ts';
 import { readStashDetails, readStashes, stashCache } from '../git/stash.ts';
 import { readWhere } from '../git/where.ts';
@@ -110,6 +111,20 @@ export interface SessionDeps {
  * is disposed: its flows still run git in its repository and keep its Undo, but nothing reaches
  * the graph or the context keys any more.
  */
+/**
+ * Scrolls the editor of `uri` to `line` (1-based) when it is out of view. The cursor stays where it
+ * is: placed on a line, it would highlight the occurrences of the word under it and hide the
+ * marker of that line.
+ */
+function revealLine(uri: vscode.Uri, line: number | undefined): void {
+  if (line === undefined) return;
+  const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri.toString());
+  editor?.revealRange(
+    new vscode.Range(line - 1, 0, line - 1, 0),
+    vscode.TextEditorRevealType.InCenterIfOutsideViewport,
+  );
+}
+
 export class RepoSession implements vscode.Disposable, FlowHost {
   readonly key: RepoKey;
   private readonly repo: GitRepository;
@@ -1034,6 +1049,29 @@ export class RepoSession implements vscode.Disposable, FlowHost {
   }
 
   /**
+   * Marks the lines commit `hash` changed in the `side` version of `file` that `uri` opens, and
+   * returns the first changed line (1-based). A file the commit added or deleted is all change and
+   * gets no markers; neither does one whose hunks git could not give.
+   */
+  private async markChanges(
+    uri: vscode.Uri,
+    side: 'before' | 'after',
+    hash: string,
+    base: string | undefined,
+    file: FileChange,
+  ): Promise<number | undefined> {
+    if (base === undefined || !fileViews(file, base).includes('diff')) return undefined;
+    let markers;
+    try {
+      markers = changeMarkers(await readFileHunks(this.api.git.path, this.cwd, hash, base, file))[side];
+    } catch {
+      return undefined;
+    }
+    this.env.changeMarkers.show(uri, markers);
+    return firstChange(markers);
+  }
+
+  /**
    * Opens a changed file as a diff or as its whole content before or after
    * the commit. The git file system fails for a path missing at a ref instead
    * of returning an empty document, so only views with both sides present
@@ -1073,13 +1111,20 @@ export class RepoSession implements vscode.Disposable, FlowHost {
         await vscode.commands.executeCommand('vscode.open', u, options);
         break;
       }
-      case 'after':
-        await vscode.commands.executeCommand('vscode.open', git(file.path, hash), options, `${name} (${short(hash)})`);
+      case 'after': {
+        const u = git(file.path, hash);
+        const first = await this.markChanges(u, 'after', hash, base, file);
+        await vscode.commands.executeCommand('vscode.open', u, options, `${name} (${short(hash)})`);
+        revealLine(u, first);
         break;
+      }
       case 'before': {
         const path = file.oldPath ?? file.path;
         const title = `${posix.basename(path)} (before ${short(hash)}, at ${short(base!)})`;
-        await vscode.commands.executeCommand('vscode.open', git(path, base!), options, title);
+        const u = git(path, base!);
+        const first = await this.markChanges(u, 'before', hash, base, file);
+        await vscode.commands.executeCommand('vscode.open', u, options, title);
+        revealLine(u, first);
         break;
       }
       case 'diff': {

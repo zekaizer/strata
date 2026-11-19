@@ -70,6 +70,36 @@ export async function readFilePatch(
 }
 
 /**
+ * The hunks of one changed file between `base` and `hash`, with no context lines, numbered as the
+ * two versions' blobs are: what changeMarkers reads.
+ */
+export async function readFileHunks(
+  git: string,
+  cwd: string,
+  hash: string,
+  base: string,
+  file: FileChange,
+): Promise<string> {
+  checkIds(hash, base);
+  const paths = file.oldPath === undefined ? [file.path] : [file.oldPath, file.path];
+  // -U0 overrides diff.context; textconv would number the lines of a converted text, not the blob's.
+  return runGit(git, cwd, [
+    'diff-tree',
+    '--patch',
+    '-U0',
+    '-M',
+    '--no-color',
+    '--no-ext-diff',
+    '--no-textconv',
+    '--no-relative',
+    base,
+    hash,
+    '--',
+    ...paths.map((p) => `:(literal)${p}`),
+  ]);
+}
+
+/**
  * A stash as one plain diff: its tracked changes against the commit it was made on, then its
  * untracked files (the third parent, a root commit) as added files.
  */

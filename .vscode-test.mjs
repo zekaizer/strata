@@ -22,6 +22,8 @@ const launchArgs = (label) => {
     '--disable-workspace-trust',
     '--skip-welcome',
     '--skip-release-notes',
+    // STRATA_SCALE=2 renders at that device scale, for sharper screenshots (with a larger STRATA_SCREEN).
+    ...(process.env.STRATA_SCALE ? [`--force-device-scale-factor=${process.env.STRATA_SCALE}`] : []),
   ];
 };
 

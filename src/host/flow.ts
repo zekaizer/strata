@@ -1,3 +1,4 @@
+import type { ChangeMarkerDecorations } from './change-markers.ts';
 import * as vscode from 'vscode';
 import type { AutostashSetting } from '../core/autostash.ts';
 import { argv, type Operation } from '../core/operations.ts';
@@ -68,6 +69,7 @@ export interface FlowEnv {
   readonly badgeRules: BadgeRuleStore;
   /** The Undo of the last operation in each repository, by RepoKey. */
   readonly undos: Map<string, Undo>;
+  readonly changeMarkers: ChangeMarkerDecorations;
 }
 
 /** What Strata remembers about the stashes it pushed or restored in the graph's worktree (StashMark). */

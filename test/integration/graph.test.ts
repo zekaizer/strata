@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import * as vscode from 'vscode';
+import { changeMarkers, firstChange } from '../../src/core/change-markers.ts';
 import { hasChangedPaths } from '../../src/git/commit-graph.ts';
 import type { GraphPanel } from '../../src/host/panel.ts';
 import type { FileView } from '../../src/shared/protocol.ts';
@@ -148,6 +149,31 @@ describe('graph panel', () => {
     const { hash, file, input } = await openView('Search ranking', 'after');
     assert.ok(input instanceof vscode.TabInputText);
     assert.equal((await vscode.workspace.openTextDocument(input.uri)).getText(), git('show', `${hash}:${file}`) + '\n');
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
+
+  it('marks the lines the commit changed in the version it opens, with the first change in view', async () => {
+    for (const side of ['after', 'before'] as const) {
+      const { hash, file, input } = await openView('Search ranking', side);
+      assert.ok(input instanceof vscode.TabInputText);
+      const expected = changeMarkers(git('diff', '-U0', `${hash}^`, hash, '--', file))[side];
+      assert.ok(expected.lines.length + expected.gaps.length > 0, 'the fixture changes lines');
+      assert.deepEqual((await strata()).changeMarkers(input.uri), expected);
+      const editor = await waitFor('editor', () => vscode.window.activeTextEditor);
+      const first = firstChange(expected)! - 1;
+      assert.ok(
+        editor.visibleRanges.some((r) => r.start.line <= first && first <= r.end.line),
+        `${side}: in view`,
+      );
+      assert.equal(editor.selection.active.line, 0, `${side}: the cursor stays`);
+      await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+    }
+  });
+
+  it('marks nothing in a file the commit added', async () => {
+    const { input } = await openView('Search index', 'after');
+    assert.ok(input instanceof vscode.TabInputText);
+    assert.equal((await strata()).changeMarkers(input.uri), undefined);
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   });
 

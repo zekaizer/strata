@@ -1,3 +1,5 @@
+import type { SideMarkers } from './core/change-markers.ts';
+import { ChangeMarkerDecorations } from './host/change-markers.ts';
 import * as vscode from 'vscode';
 import { BadgeRuleStore } from './host/badge-store.ts';
 import { contextValue, type ContextKey } from './host/context.ts';
@@ -24,6 +26,8 @@ export interface StrataTestApi {
   statusBarItem(): vscode.StatusBarItem | undefined;
   /** Sets the time each ref card query gets; undefined restores WHERE_BUDGET_MS. */
   setWhereBudget(ms: number | undefined): void;
+  /** The change markers the editors of `uri` get. */
+  changeMarkers(uri: vscode.Uri): SideMarkers | undefined;
 }
 
 /** Time for VS Code to revive the graph through the serializer before a tab without it counts as orphaned. */
@@ -38,11 +42,13 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
     state: context.workspaceState,
     badgeRules: new BadgeRuleStore(context.globalState),
     undos: new Map(),
+    changeMarkers: new ChangeMarkerDecorations(),
   };
   GraphPanel.env = env;
   const show = () => GraphPanel.show(context.extensionUri);
   context.subscriptions.push(
     runner,
+    env.changeMarkers,
     ...registerCommands(env),
     registerEntryPoints(context.extensionUri, env),
     vscode.commands.registerCommand('strata.writeCommitGraph', async () => {
@@ -77,6 +83,7 @@ export function activate(context: vscode.ExtensionContext): StrataTestApi {
     setWhereBudget: (ms) => {
       RepoSession.whereBudgetMs = ms ?? WHERE_BUDGET_MS;
     },
+    changeMarkers: (uri) => env.changeMarkers.markersOf(uri),
   };
 }
 
